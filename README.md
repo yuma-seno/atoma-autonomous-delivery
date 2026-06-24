@@ -73,7 +73,7 @@ Go to **Settings → Secrets and variables → Actions** in your repository and 
 | `GITHUB_PAT_TOKEN` | Secret | `github_pat_...` (PAT with `copilot` scope) |
 | `ATOMA_PROVIDER` | Variable | `github-copilot` |
 
-> **Note:** `GITHUB_PAT_TOKEN` is only required when using the GitHub Copilot provider. For OpenRouter/OpenAI/Anthropic, the auto-generated `GITHUB_TOKEN` is sufficient.
+> **Note:** `GITHUB_PAT_TOKEN` is only required when using the GitHub Copilot provider. It is exposed to Atoma as `ATOMA_COPILOT_TOKEN`. For OpenRouter/OpenAI/Anthropic, the auto-generated `GITHUB_TOKEN` is sufficient.
 
 ### 3. Create an issue to kick off
 
