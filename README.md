@@ -56,7 +56,7 @@ Go to **Settings → Secrets and variables → Actions** in your repository and 
 | Setting | Type | Value |
 |---|---|---|
 | `OPENAI_API_KEY` | Secret | `sk-...` (your OpenAI API key) |
-| `OPENAI_BASE_URL` | — | *(leave empty — defaults to `https://api.openai.com/v1`)* |
+| `OPENAI_BASE_URL` | — | *(leave empty — defaults to `https://openrouter.ai/api/v1`)* |
 | `ATOMA_PROVIDER` | — | *(leave empty)* |
 
 **C) Anthropic (Claude):**
@@ -147,4 +147,4 @@ Costs scale with issue complexity. Token usage and cost are displayed in each re
 
 ## License
 
-This template is part of the [Atoma](https://github.com/yuma-seno/atoma) project. See the [LICENSE](https://github.com/yuma-seno/atoma/blob/main/LICENSE).
+This template is part of the [Atoma](https://github.com/yuma-seno/atoma) project. See [LICENSE](https://github.com/yuma-seno/atoma/blob/main/LICENSE).
