@@ -171,7 +171,9 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
             }
         ],
         "isError": False,
-        "session_ends": True,
+        "_meta": {
+            "session_ends": True,
+        },
     })
 
 

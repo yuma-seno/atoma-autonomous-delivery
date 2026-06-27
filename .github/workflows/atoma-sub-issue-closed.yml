@@ -46,6 +46,9 @@ jobs:
       PARENT: ${{ needs.check.outputs.parent_number }}
       CLOSED_NUM: ${{ github.event.issue.number }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Check sibling sub-issues and re-trigger orchestrator
         shell: bash
         run: |
@@ -69,14 +72,60 @@ jobs:
             gh issue comment "${PARENT}" --body-file "$BD"
             rm -f "$BD"
           else
-            echo "All sub-tasks completed! Re-triggering orchestrator on parent #${PARENT}..."
+            echo "All sub-tasks completed! Preparing session for orchestrator re-invocation..."
+
+            # Find ALL sub-issues (closed + this one) for this parent
+            ALL_SUBS=$(gh issue list \
+              --repo "${OWNER}/${REPO}" \
+              --state all \
+              --json number,title,body \
+              --jq "[.[] | select(.body | contains(\"atoma:parent=#${PARENT}\")) | .number] | join(\",\")" 2>/dev/null)
+
+            echo "All sub-issues for parent #${PARENT}: ${ALL_SUBS}"
+
+            # Fetch the orchestrator session from atoma-data branch
+            SESSION_PATH="sessions/issue-${PARENT}-orchestrator.json"
+            echo "Fetching session: ${SESSION_PATH}"
+
+            if git fetch origin atoma-data --depth=1 2>/dev/null && \
+               git cat-file -e "origin/atoma-data:${SESSION_PATH}" 2>/dev/null; then
+              git show "origin/atoma-data:${SESSION_PATH}" > session.json
+              echo "Session loaded from atoma-data"
+            else
+              echo "Session not found in atoma-data; creating empty session"
+              echo '{"messages":[]}' > session.json
+            fi
+
+            # Inject aggregated sub-issue results into the session (replaces last tool message)
+            python3 .github/atoma/tools/scripts/inject_sub_results.py \
+              --session session.json \
+              --repo "${OWNER}/${REPO}" \
+              --parent "${PARENT}" \
+              --sub-issues "${ALL_SUBS}" \
+              --out session.json
+
+            # Push updated session back to atoma-data
+            {
+              git fetch origin atoma-data 2>/dev/null && \
+              git checkout -b atoma-data origin/atoma-data 2>/dev/null
+            } || {
+              git checkout --orphan atoma-data
+              git rm -rf . 2>/dev/null || true
+            }
+            mkdir -p "$(dirname "${SESSION_PATH}")"
+            mv session.json "${SESSION_PATH}"
+            git add "${SESSION_PATH}"
+            git commit -m "atoma: inject sub-issue results for parent #${PARENT}" || echo "No changes"
+            git push origin atoma-data
+
+            # Post completion comment on parent issue
             BD=$(mktemp)
             echo "<!-- atoma:sub-result:#${CLOSED_NUM} -->" > "$BD"
-            echo "Atoma: All sub-tasks (#${CLOSED_NUM} was the last) completed. Re-starting orchestrator for aggregation." >> "$BD"
+            echo "Atoma: All sub-tasks completed. Re-starting orchestrator for aggregation." >> "$BD"
             gh issue comment "${PARENT}" --body-file "$BD"
             rm -f "$BD"
 
-            # Directly dispatch the orchestrator workflow instead of using labels
+            # Dispatch orchestrator
             gh workflow run "atoma-runner.yml" \
               --field agent="orchestrator" \
               --field number="${PARENT}" \
