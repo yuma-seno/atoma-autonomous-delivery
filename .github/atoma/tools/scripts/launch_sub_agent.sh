@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # launch_sub_agent.sh
-# MCP tool for the orchestrator to launch an agent on a sub-issue.
-# When this tool returns, the orchestrator session should end.
-# The orchestrator will be re-invoked automatically when all sub-issues close.
+# Backend for the atoma__launch_sub_agent MCP tool.
+# Posts a dispatch comment on each sub-issue. The atoma-dispatch workflow
+# detects these comments and dispatches the appropriate agent.
 
 ISSUE=""
 AGENT=""
@@ -22,9 +22,8 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: launch_sub_agent --issue N --agent AGENT_NAME"
             echo ""
-            echo "Launch an Atoma agent on a sub-issue and signal session suspension."
-            echo "The orchestrator session will end after all sub-agents are launched."
-            echo "It will resume automatically when all sub-issues complete."
+            echo "Post a dispatch comment on a sub-issue. The atoma-dispatch"
+            echo "workflow will detect the comment and launch the agent."
             exit 0
             ;;
         *)
@@ -54,27 +53,13 @@ if ! [[ "$AGENT" =~ ^[a-z][a-z0-9-]*$ ]]; then
     exit 1
 fi
 
-echo "Launching agent '${AGENT}' on sub-issue #${ISSUE} ..." >&2
+echo "Posting dispatch comment for agent '${AGENT}' on sub-issue #${ISSUE} ..." >&2
 
-# Post a comment announcing the agent dispatch
+# Post a dispatch marker comment. atoma-dispatch.yml picks this up.
 gh issue comment "${ISSUE}" \
-  --body "<!-- atoma:agent-launched -->
-**Atoma:** Agent \`${AGENT}\` has been dispatched to work on this sub-task.
+  --body "<!-- atoma:dispatch=${AGENT} -->
+**Atoma:** Agent \`${AGENT}\` will be dispatched to work on this sub-task.
 
-The orchestrator session has been suspended. It will resume automatically when all sub-issues are complete."
+The comment above triggers automatic agent dispatch."
 
-# Transition from pending to active: remove pending label
-gh issue edit "${ISSUE}" --remove-label "atoma/pending" 2>/dev/null || true
-
-# Dispatch the atoma-runner workflow for this agent on this issue
-DISPATCH_WORKFLOW="${ATOMA_DISPATCH_WORKFLOW:-atoma-runner.yml}"
-
-echo "Dispatching workflow '${DISPATCH_WORKFLOW}' for agent=${AGENT} issue=#${ISSUE} ..." >&2
-
-gh workflow run "$DISPATCH_WORKFLOW" \
-    --field agent="$AGENT" \
-    --field number="$ISSUE" \
-    --field type="issue" \
-    --field notify=""
-
-echo "launched: agent=${AGENT} issue=#${ISSUE}"
+echo "dispatched via comment: agent=${AGENT} issue=#${ISSUE}"

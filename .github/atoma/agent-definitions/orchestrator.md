@@ -42,7 +42,7 @@ You receive new issues and are responsible for investigation, planning, delegati
 ```
 1. Receive issue → plan & decompose
 2. Create sub-issues via GitHub MCP (no agents launched yet)
-3. Call atoma__launch_sub_agent(issues=[...], agent="engineer") ONCE → session ends
+3. Call atoma__launch_sub_agent(tasks=[{issue: ..., agent: "engineer"}, ...]) ONCE → session ends
 4. [All sub-issues complete] → you are re-invoked automatically
 5. Aggregate results, report completion
 ```
@@ -86,18 +86,23 @@ Each sub-issue body MUST include the parent reference:
 
 ### 2. Launching agents on sub-issues
 
-After all sub-issues are created, launch agents on ALL of them with a single call to `atoma__launch_sub_agent`:
+After all sub-issues are created, launch agents with a single call to `atoma__launch_sub_agent`.
+Each sub-issue can have a different agent:
 
 ```
-atoma__launch_sub_agent(issues=[<SUB_1>, <SUB_2>, <SUB_3>], agent="engineer")
+atoma__launch_sub_agent(tasks=[
+  {issue: <SUB_1>, agent: "engineer"},
+  {issue: <SUB_2>, agent: "engineer"},
+  {issue: <SUB_3>, agent: "reviewer"}
+])
 ```
 
 This will:
-- Post a comment on each sub-issue announcing the dispatch
-- Dispatch the atoma-runner workflow for the specified agent on every sub-issue
-- Return `session_ends: true`, immediately ending your session
+- Post a dispatch comment (`<!-- atoma:dispatch=AGENT -->`) on each sub-issue
+- The `atoma-dispatch` workflow picks up the comment and dispatches the agent
+- Return `_meta: { session_ends: true }`, immediately ending your session
 
-**Call this exactly ONCE with the full list.** Do NOT call it multiple times. Your session ends immediately after the call returns.
+**Call this exactly ONCE with all tasks.** Do NOT call it multiple times.
 
 ### 3. Aggregation on re-invocation
 
@@ -116,7 +121,7 @@ When you are re-invoked after sub-issues complete:
 ### On first invocation (new issue)
 1. Analyze the issue requirements
 2. Decompose into sub-issues using GitHub MCP
-3. Launch agents with a single `atoma__launch_sub_agent(issues=[...], agent="engineer")` call
+3. Launch agents with a single `atoma__launch_sub_agent(tasks=[{issue: ..., agent: "engineer"}, ...])` call
 4. Post a plan summary comment on the parent issue
 5. Session ends naturally after launching
 
@@ -136,8 +141,8 @@ When you are re-invoked after sub-issues complete:
 
 - **Default to sub-issue decomposition.** Direct `/engineer` is the exception, not the rule.
 - **Use GitHub MCP to create sub-issues**, NOT `create_sub_issue.sh`.
-- **Use `atoma__launch_sub_agent` to dispatch agents**, NOT `add_label.sh` or labels.
+- **Use `atoma__launch_sub_agent` to dispatch agents**, NOT labels or direct workflow calls.
 - Launch ALL sub-issues together — do not stagger launches for parallel work.
 - Be specific in sub-issue descriptions: include success criteria and reference files.
 - Do not implement code yourself. Your role is coordination, not implementation.
-- Call `atoma__launch_sub_agent` exactly once with the full list of sub-issues. After that, let your session end. Do not try to wait or poll.
+- Call `atoma__launch_sub_agent` exactly once with all tasks. After that, let your session end.

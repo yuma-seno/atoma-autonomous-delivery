@@ -1,11 +1,11 @@
 {
-  "$schema": "./orchestration.schema.json",
-  "version": 1,
+  "version": 2,
   "dispatch": {
     "workflow": "atoma-runner.yml"
   },
   "agents": {
     "orchestrator": {
+      "max_iterations": 50,
       "shared_context": {
         "include_event_types": [
           "issue_opened",
@@ -21,6 +21,7 @@
       }
     },
     "engineer": {
+      "max_iterations": 30,
       "shared_context": {
         "include_event_types": [
           "issue_opened",
@@ -36,6 +37,8 @@
       }
     },
     "reviewer": {
+      "max_iterations": 20,
+      "max_review_loops": 5,
       "shared_context": {
         "include_event_types": [
           "pr_opened",
@@ -49,16 +52,28 @@
       }
     }
   },
-  "scripts": {
-    "create_pr": {
-      "dispatch_agent": "reviewer"
+  "auto_triggers": [
+    {
+      "event": "pull_request.opened",
+      "agent": "reviewer"
     },
-    "push_commits": {
-      "dispatch_agent": "reviewer"
+    {
+      "event": "pull_request.synchronize",
+      "agent": "reviewer"
     },
-    "launch_sub_agent": {
-      "session_ends": true,
-      "notify_agent": "orchestrator"
+    {
+      "event": "pull_request.ready_for_review",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request_review.submitted",
+      "agent": "engineer",
+      "condition": "changes_requested"
+    },
+    {
+      "event": "issue_comment.created",
+      "agent": "$dispatch_agent",
+      "condition": "atoma:dispatch"
     }
-  }
+  ]
 }

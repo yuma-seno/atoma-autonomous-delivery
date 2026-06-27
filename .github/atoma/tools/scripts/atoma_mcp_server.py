@@ -31,26 +31,35 @@ TOOLS = [
     {
         "name": "launch_sub_agent",
         "description": (
-            "Launch Atoma agents on a list of sub-issues and immediately end the orchestrator session. "
+            "Dispatch Atoma agents onto sub-issues and immediately end the orchestrator session. "
             "Call this ONCE after creating all sub-issues via GitHub MCP. "
-            "Pass ALL sub-issue numbers in a single call. "
+            "Each sub-issue can be assigned a different agent. "
             "The orchestrator session ends immediately after this call returns. "
             "The orchestrator will be automatically re-invoked when ALL sub-issues are closed."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "issues": {
+                "tasks": {
                     "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "List of all sub-issue numbers to launch agents on.",
-                },
-                "agent": {
-                    "type": "string",
-                    "description": "The agent name to dispatch on each sub-issue (e.g., 'engineer').",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "issue": {
+                                "type": "integer",
+                                "description": "The sub-issue number.",
+                            },
+                            "agent": {
+                                "type": "string",
+                                "description": "The agent to dispatch (e.g., 'engineer').",
+                            },
+                        },
+                        "required": ["issue", "agent"],
+                    },
+                    "description": "List of {issue, agent} pairs to dispatch.",
                 },
             },
-            "required": ["issues", "agent"],
+            "required": ["tasks"],
         },
     },
 ]
@@ -104,32 +113,38 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
         send_error(request_id, -32601, f"Unknown tool: {tool_name}")
         return
 
-    issues = arguments.get("issues", [])
-    agent = arguments.get("agent")
+    tasks = arguments.get("tasks", [])
 
     # Validate
-    if not isinstance(issues, list) or len(issues) == 0:
-        send_error(request_id, -32602, f"issues must be a non-empty list of integers, got: {issues}")
+    if not isinstance(tasks, list) or len(tasks) == 0:
+        send_error(request_id, -32602, f"tasks must be a non-empty list of {{issue, agent}} objects, got: {tasks}")
         return
-    for i in issues:
-        if not isinstance(i, int) or i <= 0:
-            send_error(request_id, -32602, f"Each issue must be a positive integer, got: {i}")
+    for t in tasks:
+        if not isinstance(t, dict):
+            send_error(request_id, -32602, f"Each task must be an object, got: {t}")
             return
-    if not isinstance(agent, str) or not agent:
-        send_error(request_id, -32602, f"Invalid agent name: {agent}")
-        return
+        issue = t.get("issue")
+        agent = t.get("agent")
+        if not isinstance(issue, int) or issue <= 0:
+            send_error(request_id, -32602, f"Each task.issue must be a positive integer, got: {issue}")
+            return
+        if not isinstance(agent, str) or not agent:
+            send_error(request_id, -32602, f"Each task.agent must be a string, got: {agent}")
+            return
 
-    log(f"Launching agent '{agent}' on {len(issues)} sub-issues: {issues}")
+    log(f"Dispatching {len(tasks)} sub-issue(s): {tasks}")
 
     script = os.path.join(SCRIPT_DIR, "launch_sub_agent.sh")
     if not os.path.isfile(script):
         send_error(request_id, -32603, f"Script not found: {script}")
         return
 
-    launched = []
+    dispatched = []
     errors = []
 
-    for issue in issues:
+    for t in tasks:
+        issue = t["issue"]
+        agent = t["agent"]
         try:
             result = subprocess.run(
                 ["bash", script, "--issue", str(issue), "--agent", agent],
@@ -141,26 +156,25 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
 
             if result.returncode != 0:
                 log(f"Script failed for #{issue} (exit {result.returncode}): {result.stderr}")
-                errors.append(f"#{issue}: {result.stderr.strip() or 'unknown error'}")
+                errors.append(f"#{issue}/{agent}: {result.stderr.strip() or 'unknown error'}")
             else:
-                output = result.stdout.strip()
-                log(f"Script output for #{issue}: {output}")
-                launched.append(f"#{issue}")
+                log(f"Script output for #{issue}: {result.stdout.strip()}")
+                dispatched.append(f"#{issue}→{agent}")
 
         except subprocess.TimeoutExpired:
-            errors.append(f"#{issue}: timed out after 30s")
+            errors.append(f"#{issue}/{agent}: timed out after 30s")
         except OSError as e:
-            errors.append(f"#{issue}: {e}")
+            errors.append(f"#{issue}/{agent}: {e}")
 
-    if errors and not launched:
-        send_error(request_id, -32603, f"All launches failed: {'; '.join(errors)}")
+    if errors and not dispatched:
+        send_error(request_id, -32603, f"All dispatches failed: {'; '.join(errors)}")
         return
 
-    summary_lines = [f"Agent '{agent}' launched on {len(launched)} sub-issue(s): {', '.join(launched)}."]
+    summary_lines = [f"Dispatch comments posted for {len(dispatched)} sub-issue(s): {', '.join(dispatched)}."]
     if errors:
-        summary_lines.append(f"Warning: {len(errors)} launch(es) failed: {'; '.join(errors)}")
+        summary_lines.append(f"Warning: {len(errors)} failed: {'; '.join(errors)}")
     summary_lines.append("")
-    summary_lines.append("The orchestrator session will now end.")
+    summary_lines.append("Agents will be dispatched automatically. The orchestrator session will now end.")
     summary_lines.append("It will resume automatically when all sub-issues are closed.")
 
     send_response(request_id, {

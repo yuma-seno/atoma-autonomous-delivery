@@ -76,7 +76,7 @@ jobs:
           type: ${{ inputs.type }}
           number: ${{ inputs.number }}
           agent_name: ${{ inputs.agent }}
-          orchestration_file: .github/atoma/orchestration.json
+          orchestration_file: .github/atoma/config.json
 
       - name: Run agent
         if: steps.prep.outputs.new_event_count != '0'
@@ -87,7 +87,7 @@ jobs:
           agent_def_dir: .github/atoma/agent-definitions
           tools_file: .github/atoma/tools/tools.yaml
           issue_number: ${{ steps.prep.outputs.resolved_number }}
-          orchestration_file: .github/atoma/orchestration.json
+          orchestration_file: .github/atoma/config.json
           atoma_version: source
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
@@ -123,4 +123,4 @@ jobs:
           directive: ${{ steps.atoma.outputs.directive }}
           max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
           new_event_count: ${{ steps.prep.outputs.new_event_count }}
-          orchestration_file: .github/atoma/orchestration.json
+          orchestration_file: .github/atoma/config.json

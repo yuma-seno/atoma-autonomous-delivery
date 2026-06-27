@@ -87,19 +87,17 @@ Create a new issue with the body:
 
 The orchestrator will be invoked automatically when the issue is opened. The slash command must appear on the first line of the issue body.
 
-> **Note:** Label-based triggering (`atoma/*` labels) has been removed. Agents are now dispatched via the `launch_sub_agent.sh` MCP tool.
+> **Note:** All agent dispatch is now driven by `config.json`. Labels and shell scripts for triggering agents have been removed.
 
 ### 4. Sit back
 
 The orchestrator will:
 1. Analyze the issue
-2. Decompose work into sub-issues via GitHub MCP (no agents launched yet)
-3. Launch engineer agents on each sub-issue via `launch_sub_agent.sh`
+2. Decompose work into sub-issues via GitHub MCP
+3. Dispatch agents on each sub-issue via `atoma__launch_sub_agent` MCP tool
 4. Session ends — the orchestrator waits for all sub-issues to complete
-5. When all sub-issues are closed, the orchestrator is automatically re-invoked
+5. When all sub-issues are closed, the orchestrator is automatically re-invoked with results
 6. The orchestrator aggregates results and reports completion
-7. The reviewer inspects and requests changes if needed
-8. When the PR is approved, the workflow completes
 
 ---
 
@@ -107,12 +105,11 @@ The orchestrator will:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `atoma-entry.yml` | Issue opened | Start orchestrator from issue body `/orchestrator` slash command |
-| `atoma-manual-comment.yml` | Issue/PR comment | Manually invoke any agent via `/agent-name` in a comment |
-| `atoma-reviewer-on-pr.yml` | PR opened/synchronized | Automatically run the reviewer on every PR update |
-| `atoma-engineer-on-changes-requested.yml` | PR review submitted | Re-trigger the engineer when a review requests changes |
-| `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion; when all siblings are closed, directly dispatch orchestrator |
-| `atoma-runner.yml` | (reusable) | Core executor: setup → prepare → run → post-result → dispatch-next |
+| `atoma-entry.yml` | Issue opened | Start agent from issue body `/agent-name` slash command |
+| `atoma-auto-trigger.yml` | PR/review events | Read `config.json` auto_triggers, dispatch matching agents |
+| `atoma-dispatch.yml` | Comment with `<!-- atoma:dispatch=AGENT -->` | Dispatch agent on the issue the comment belongs to |
+| `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion; inject results into session and re-invoke orchestrator |
+| `atoma-runner.yml` | (reusable) | Core executor: setup → prepare → run → post-result |
 
 ## Agent Definitions
 
@@ -122,12 +119,22 @@ See `.github/atoma/agent-definitions/`:
 - **engineer** — Implementation and fixes
 - **reviewer** — Quality gate with automatic fix loop
 
-## Orchestration
+## Configuration
 
-`.github/atoma/orchestration.json` controls:
-- Which agent sees which GitHub events (shared context filtering)
-- Dispatch workflow name
-- Script configuration (create_pr, push_commits, launch_sub_agent)
+`.github/atoma/config.json` centralizes all configuration:
+
+- **agents** — per-agent settings: `max_iterations`, `shared_context` event filters
+- **auto_triggers** — GitHub events mapped to agents (no per-agent workflow files needed)
+- **dispatch.workflow** — which workflow to use for agent execution
+
+### Adding an agent
+
+1. Create `.github/atoma/agent-definitions/my-agent.md` with frontmatter
+2. Add it to `config.json` under `agents` with its `max_iterations` and `shared_context`
+3. Add an `auto_trigger` entry if you want it invoked by GitHub events
+4. Add it to `known_about` in other agent definitions if they should be able to call it
+
+No workflow files need to be created — `atoma-auto-trigger.yml` and `atoma-entry.yml` are fully generic.
 
 ### Multi-Issue Orchestration
 
@@ -136,13 +143,18 @@ The orchestrator follows a clean, natural lifecycle:
 ```
 1. New issue (/orchestrator) → orchestrator runs
 2. orchestrator creates sub-issues via GitHub MCP
-3. orchestrator launches engineers via launch_sub_agent.sh → session ends
-4. Engineers work independently on sub-issues, creating PRs
-5. When every sub-issue is closed → orchestrator is re-invoked
-6. orchestrator aggregates results → reports completion
+3. orchestrator calls atoma__launch_sub_agent(tasks=[{issue: N, agent: "engineer"}, ...])
+4. Session ends; dispatch comments are posted on sub-issues
+5. atoma-dispatch.yml detects comments and dispatches agents
+6. When every sub-issue is closed → session is updated with results → orchestrator re-invoked
+7. orchestrator aggregates results → reports completion
 ```
 
-**From the orchestrator's perspective, this is just one tool call:** it creates sub-issues, then calls `launch_sub_agent.sh` for each. The system handles the rest — waiting, re-invocation, and completion notification — transparently.
+**From the orchestrator's perspective, this is a single blocking tool call:** it calls `atoma__launch_sub_agent` and gets back the aggregated results of all sub-issues. The system handles dispatch, waiting, and re-invocation transparently.
+
+## Prompt Template
+
+`.github/atoma/prompt-template.md` is a custom system prompt template. Pass it to Atoma via the `--template` CLI flag. It extends the built-in template with autonomous-delivery-specific guidance (GitHub workflow, PR conventions, etc.).
 
 ## Tools
 
