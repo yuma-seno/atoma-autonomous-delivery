@@ -28,35 +28,10 @@ shell:
     before_tool: ./scripts/shell_guard.py
 
 github:
-  command: docker
-  args:
-    - run
-    - -i
-    - --rm
-    - -e
-    - GITHUB_PERSONAL_ACCESS_TOKEN
-    - ghcr.io/github/github-mcp-server
+  command: python3
+  args: [".github/atoma/tools/scripts/atoma_github_mcp_server.py"]
   env: {}
-  hooks:
-    tool_allowlist:
-      - "github__search_issues"
-      - "github__get_issue"
-      - "github__list_issues"
-      - "github__get_pull_request"
-      - "github__list_pull_requests"
-      - "github__get_pull_request_diff"
-      - "github__list_commits"
-      - "github__search_code"
-      - "github__get_repo"
-      - "github__get_branch"
-      - "github__list_branches"
-      - "github__get_check_runs"
-      - "github__list_check_runs_for_ref"
-      - "github__get_pull_request_reviews"
-      - "github__list_pull_request_review_comments"
-      - "github__get_issue_comments"
-      - "github__list_workflow_runs"
-      - "github__get_workflow_run"
+  hooks: {}
 
 atoma:
   command: python3
