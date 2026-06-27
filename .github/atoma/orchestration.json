@@ -56,9 +56,9 @@
     "push_commits": {
       "dispatch_agent": "reviewer"
     },
-    "create_sub_issue": {
-      "notify_agent": "orchestrator",
-      "trigger_agent": "engineer"
+    "launch_sub_agent": {
+      "session_ends": true,
+      "notify_agent": "orchestrator"
     }
   }
 }

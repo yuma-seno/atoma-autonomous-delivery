@@ -81,18 +81,25 @@ Create a new issue with the body:
 
 ```
 /orchestrator
+
+...your detailed requirements...
 ```
 
-Or add the `atoma/orchestrator` label to any existing issue.
+The orchestrator will be invoked automatically when the issue is opened. The slash command must appear on the first line of the issue body.
+
+> **Note:** Label-based triggering (`atoma/*` labels) has been removed. Agents are now dispatched via the `launch_sub_agent.sh` MCP tool.
 
 ### 4. Sit back
 
 The orchestrator will:
 1. Analyze the issue
-2. Decompose work into sub-issues (or delegate directly for small tasks)
-3. The engineer implements and creates a PR
-4. The reviewer inspects and requests changes if needed
-5. When the PR is approved, the workflow completes
+2. Decompose work into sub-issues via GitHub MCP (no agents launched yet)
+3. Launch engineer agents on each sub-issue via `launch_sub_agent.sh`
+4. Session ends — the orchestrator waits for all sub-issues to complete
+5. When all sub-issues are closed, the orchestrator is automatically re-invoked
+6. The orchestrator aggregates results and reports completion
+7. The reviewer inspects and requests changes if needed
+8. When the PR is approved, the workflow completes
 
 ---
 
@@ -100,11 +107,11 @@ The orchestrator will:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `atoma-entry.yml` | Issue opened or labeled | Start agents from issue body slash commands or `atoma/*` labels |
+| `atoma-entry.yml` | Issue opened | Start orchestrator from issue body `/orchestrator` slash command |
 | `atoma-manual-comment.yml` | Issue/PR comment | Manually invoke any agent via `/agent-name` in a comment |
 | `atoma-reviewer-on-pr.yml` | PR opened/synchronized | Automatically run the reviewer on every PR update |
 | `atoma-engineer-on-changes-requested.yml` | PR review submitted | Re-trigger the engineer when a review requests changes |
-| `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion and re-invoke orchestrator |
+| `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion; when all siblings are closed, directly dispatch orchestrator |
 | `atoma-runner.yml` | (reusable) | Core executor: setup → prepare → run → post-result → dispatch-next |
 
 ## Agent Definitions
@@ -120,7 +127,22 @@ See `.github/atoma/agent-definitions/`:
 `.github/atoma/orchestration.json` controls:
 - Which agent sees which GitHub events (shared context filtering)
 - Dispatch workflow name
-- Script configuration (create_pr, push_commits, create_sub_issue dispatch targets)
+- Script configuration (create_pr, push_commits, launch_sub_agent)
+
+### Multi-Issue Orchestration
+
+The orchestrator follows a clean, natural lifecycle:
+
+```
+1. New issue (/orchestrator) → orchestrator runs
+2. orchestrator creates sub-issues via GitHub MCP
+3. orchestrator launches engineers via launch_sub_agent.sh → session ends
+4. Engineers work independently on sub-issues, creating PRs
+5. When every sub-issue is closed → orchestrator is re-invoked
+6. orchestrator aggregates results → reports completion
+```
+
+**From the orchestrator's perspective, this is just one tool call:** it creates sub-issues, then calls `launch_sub_agent.sh` for each. The system handles the rest — waiting, re-invocation, and completion notification — transparently.
 
 ## Tools
 

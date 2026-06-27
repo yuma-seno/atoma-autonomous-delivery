@@ -52,7 +52,7 @@
     },
     "scripts": {
       "type": "object",
-      "required": ["create_pr", "push_commits", "create_sub_issue"],
+      "required": ["create_pr", "push_commits", "launch_sub_agent"],
       "properties": {
         "create_pr": {
           "type": "object",
@@ -76,15 +76,14 @@
           },
           "additionalProperties": false
         },
-        "create_sub_issue": {
+        "launch_sub_agent": {
           "type": "object",
-          "required": ["notify_agent", "trigger_agent"],
+          "required": ["session_ends", "notify_agent"],
           "properties": {
-            "notify_agent": {
-              "type": "string",
-              "pattern": "^$|^[a-z][a-z0-9-]*$"
+            "session_ends": {
+              "type": "boolean"
             },
-            "trigger_agent": {
+            "notify_agent": {
               "type": "string",
               "pattern": "^$|^[a-z][a-z0-9-]*$"
             }

@@ -5,6 +5,7 @@ on:
     types: [closed]
 
 permissions:
+  actions: write
   issues: write
   pull-requests: write
   contents: write
@@ -74,5 +75,11 @@ jobs:
             echo "Atoma: All sub-tasks (#${CLOSED_NUM} was the last) completed. Re-starting orchestrator for aggregation." >> "$BD"
             gh issue comment "${PARENT}" --body-file "$BD"
             rm -f "$BD"
-            gh issue edit "${PARENT}" --add-label "atoma/orchestrator" 2>/dev/null || true
+
+            # Directly dispatch the orchestrator workflow instead of using labels
+            gh workflow run "atoma-runner.yml" \
+              --field agent="orchestrator" \
+              --field number="${PARENT}" \
+              --field type="issue" \
+              --field notify=""
           fi

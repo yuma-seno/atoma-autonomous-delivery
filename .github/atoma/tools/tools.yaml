@@ -57,3 +57,9 @@ github:
       - "github__get_issue_comments"
       - "github__list_workflow_runs"
       - "github__get_workflow_run"
+
+atoma:
+  command: python3
+  args: [".github/atoma/tools/scripts/atoma_mcp_server.py"]
+  env: {}
+  hooks: {}

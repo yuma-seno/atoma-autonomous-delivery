@@ -2,7 +2,7 @@ name: Atoma Entry
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
 
 permissions:
   actions: write
@@ -24,22 +24,13 @@ jobs:
         shell: bash
         env:
           NUMBER: ${{ github.event.issue.number }}
-          LABEL_NAME: ${{ github.event.label.name }}
-          EVENT_ACTION: ${{ github.event.action }}
           SENDER: ${{ github.event.sender.login }}
         run: |
           AGENT=""
-          if [ "$EVENT_ACTION" = "labeled" ]; then
-            case "$LABEL_NAME" in
-              atoma/*) AGENT="${LABEL_NAME#atoma/}" ;;
-            esac
-          fi
-          if [ "$EVENT_ACTION" = "opened" ]; then
-            FIRST_LINE=$(python3 -c "import json,sys; b=json.load(sys.stdin).get('issue',{}).get('body',''); print(b.strip().split(chr(10))[0] if b else '')" < "$GITHUB_EVENT_PATH")
-            case "$FIRST_LINE" in
-              /*) AGENT="${FIRST_LINE#/}" ;;
-            esac
-          fi
+          FIRST_LINE=$(python3 -c "import json,sys; b=json.load(sys.stdin).get('issue',{}).get('body',''); print(b.strip().split(chr(10))[0] if b else '')" < "$GITHUB_EVENT_PATH")
+          case "$FIRST_LINE" in
+            /*) AGENT="${FIRST_LINE#/}" ;;
+          esac
           if [ -z "$AGENT" ]; then
             exit 0
           fi
