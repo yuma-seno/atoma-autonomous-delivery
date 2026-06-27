@@ -31,25 +31,26 @@ TOOLS = [
     {
         "name": "launch_sub_agent",
         "description": (
-            "Launch an Atoma agent on a sub-issue and suspend the orchestrator session. "
-            "Use this after creating sub-issues via GitHub MCP. "
-            "Call this once for each sub-issue you want to dispatch an agent to. "
-            "After calling this for all sub-issues, the orchestrator session will end. "
-            "The orchestrator will be automatically re-invoked when all sub-issues are closed."
+            "Launch Atoma agents on a list of sub-issues and immediately end the orchestrator session. "
+            "Call this ONCE after creating all sub-issues via GitHub MCP. "
+            "Pass ALL sub-issue numbers in a single call. "
+            "The orchestrator session ends immediately after this call returns. "
+            "The orchestrator will be automatically re-invoked when ALL sub-issues are closed."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "issue": {
-                    "type": "integer",
-                    "description": "The sub-issue number to launch the agent on.",
+                "issues": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "List of all sub-issue numbers to launch agents on.",
                 },
                 "agent": {
                     "type": "string",
-                    "description": "The agent name to dispatch (e.g., 'engineer').",
+                    "description": "The agent name to dispatch on each sub-issue (e.g., 'engineer').",
                 },
             },
-            "required": ["issue", "agent"],
+            "required": ["issues", "agent"],
         },
     },
 ]
@@ -103,65 +104,75 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
         send_error(request_id, -32601, f"Unknown tool: {tool_name}")
         return
 
-    issue = arguments.get("issue")
+    issues = arguments.get("issues", [])
     agent = arguments.get("agent")
 
     # Validate
-    if not isinstance(issue, int) or issue <= 0:
-        send_error(request_id, -32602, f"Invalid issue number: {issue}")
+    if not isinstance(issues, list) or len(issues) == 0:
+        send_error(request_id, -32602, f"issues must be a non-empty list of integers, got: {issues}")
         return
+    for i in issues:
+        if not isinstance(i, int) or i <= 0:
+            send_error(request_id, -32602, f"Each issue must be a positive integer, got: {i}")
+            return
     if not isinstance(agent, str) or not agent:
         send_error(request_id, -32602, f"Invalid agent name: {agent}")
         return
 
-    log(f"Launching agent '{agent}' on sub-issue #{issue}")
+    log(f"Launching agent '{agent}' on {len(issues)} sub-issues: {issues}")
 
     script = os.path.join(SCRIPT_DIR, "launch_sub_agent.sh")
     if not os.path.isfile(script):
         send_error(request_id, -32603, f"Script not found: {script}")
         return
 
-    try:
-        result = subprocess.run(
-            ["bash", script, "--issue", str(issue), "--agent", agent],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env={**os.environ, "ISSUE_NUMBER": str(issue)},
-        )
+    launched = []
+    errors = []
 
-        if result.returncode != 0:
-            log(f"Script failed (exit {result.returncode}): {result.stderr}")
-            send_error(
-                request_id,
-                -32603,
-                f"launch_sub_agent failed: {result.stderr.strip() or 'unknown error'}",
+    for issue in issues:
+        try:
+            result = subprocess.run(
+                ["bash", script, "--issue", str(issue), "--agent", agent],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "ISSUE_NUMBER": str(issue)},
             )
-            return
 
-        output = result.stdout.strip()
-        log(f"Script output: {output}")
+            if result.returncode != 0:
+                log(f"Script failed for #{issue} (exit {result.returncode}): {result.stderr}")
+                errors.append(f"#{issue}: {result.stderr.strip() or 'unknown error'}")
+            else:
+                output = result.stdout.strip()
+                log(f"Script output for #{issue}: {output}")
+                launched.append(f"#{issue}")
 
-        send_response(request_id, {
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        f"Agent '{agent}' launched on sub-issue #{issue}.\n"
-                        f"{output}\n\n"
-                        "The orchestrator session will now end. "
-                        "It will resume automatically when all sub-issues are closed."
-                    ),
-                }
-            ],
-            "isError": False,
-            "session_ends": True,
-        })
+        except subprocess.TimeoutExpired:
+            errors.append(f"#{issue}: timed out after 30s")
+        except OSError as e:
+            errors.append(f"#{issue}: {e}")
 
-    except subprocess.TimeoutExpired:
-        send_error(request_id, -32603, "launch_sub_agent timed out after 30s")
-    except OSError as e:
-        send_error(request_id, -32603, f"Failed to execute launch_sub_agent.sh: {e}")
+    if errors and not launched:
+        send_error(request_id, -32603, f"All launches failed: {'; '.join(errors)}")
+        return
+
+    summary_lines = [f"Agent '{agent}' launched on {len(launched)} sub-issue(s): {', '.join(launched)}."]
+    if errors:
+        summary_lines.append(f"Warning: {len(errors)} launch(es) failed: {'; '.join(errors)}")
+    summary_lines.append("")
+    summary_lines.append("The orchestrator session will now end.")
+    summary_lines.append("It will resume automatically when all sub-issues are closed.")
+
+    send_response(request_id, {
+        "content": [
+            {
+                "type": "text",
+                "text": "\n".join(summary_lines),
+            }
+        ],
+        "isError": False,
+        "session_ends": True,
+    })
 
 
 METHOD_HANDLERS = {
