@@ -112,15 +112,3 @@ jobs:
           directive: ${{ steps.atoma.outputs.directive }}
           max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
 
-      - name: Dispatch next agent
-        if: steps.atoma.outcome == 'success'
-        uses: yuma-seno/atoma/github/actions/dispatch-next@main
-        with:
-          agent_name: ${{ inputs.agent }}
-          number: ${{ inputs.number }}
-          type: ${{ inputs.type }}
-          notify: ${{ inputs.notify }}
-          directive: ${{ steps.atoma.outputs.directive }}
-          max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
-          new_event_count: ${{ steps.prep.outputs.new_event_count }}
-          orchestration_file: .github/atoma/config.json

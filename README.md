@@ -106,6 +106,7 @@ The orchestrator will:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `atoma-entry.yml` | Issue opened | Start agent from issue body `/agent-name` slash command |
+| `atoma-manual-comment.yml` | Issue/PR comment | Manually invoke any agent via `/agent-name` in a comment |
 | `atoma-auto-trigger.yml` | PR/review events | Read `config.json` auto_triggers, dispatch matching agents |
 | `atoma-dispatch.yml` | Comment with `<!-- atoma:dispatch=AGENT -->` | Dispatch agent on the issue the comment belongs to |
 | `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion; inject results into session and re-invoke orchestrator |
