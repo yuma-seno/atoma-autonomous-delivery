@@ -60,6 +60,8 @@ TOOLS = [
     {"name":"get_check_runs","description":"Get check runs for a ref.","inputSchema":{"type":"object","properties":{"ref":{"type":"string"}},"required":["ref"]}},
     {"name":"get_pr_reviews","description":"Get PR reviews.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_pr_review_comments","description":"List PR review comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
+    {"name":"add_pr_comment","description":"Add a general comment to a pull request.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"body":{"type":"string"}},"required":["number","body"]}},
+    {"name":"submit_pr_review","description":"Submit a PR review (approve, comment, or request changes).","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["APPROVE","COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
 ]
 
 def _create_issue(a):
@@ -122,6 +124,19 @@ def _get_pr_reviews(a):
     return json.dumps(d.get("reviews",[]) if d else [])
 def _list_pr_review_comments(a): return json.dumps(gh_json("api",f"repos/{REPO}/pulls/{a['number']}/comments") or [])
 
+def _add_pr_comment(a):
+    rc, out, err = gh("pr", "comment", str(a["number"]), "--repo", REPO, "--body", a["body"])
+    if rc: raise RuntimeError(err or out)
+    ops_log("add_pr_comment", {"number": a["number"]})
+    return json.dumps({"ok": True})
+def _submit_pr_review(a):
+    cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + a["event"].lower()]
+    if a.get("body"): cmd += ["--body", a["body"]]
+    rc, out, err = gh(*cmd)
+    if rc: raise RuntimeError(err or out)
+    ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
+    return json.dumps({"ok": True})
+
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,
     "get_issue_comments":_get_issue_comments,"add_issue_comment":_add_issue_comment,
@@ -129,6 +144,7 @@ TOOL_HANDLERS = {
     "get_pr_diff":_get_pr_diff,"list_prs":_list_prs,"search_code":_search_code,
     "get_branch":_get_branch,"get_check_runs":_get_check_runs,
     "get_pr_reviews":_get_pr_reviews,"list_pr_review_comments":_list_pr_review_comments,
+    "add_pr_comment":_add_pr_comment,"submit_pr_review":_submit_pr_review,
 }
 
 def hi(params, rid):
