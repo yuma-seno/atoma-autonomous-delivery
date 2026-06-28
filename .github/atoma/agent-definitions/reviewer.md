@@ -45,8 +45,8 @@ Your `merge_policy` is configured in config.json. Follow it strictly:
 
 ### When `merge_policy` is `"manual"` (default)
 1. Approve the PR with `github__submit_pr_review(event="APPROVE", body="LGTM")`
-2. Add a comment: `github__add_pr_comment(body="@human \n\nAll checks passed. Please review and merge when ready.")`
-3. Tag the PR author or repo maintainers for manual merge.
+2. In your text response, write `@human All checks passed. Please review and merge when ready.`
+   (This will be posted as a regular PR comment by the system.)
 
 ---
 
@@ -63,5 +63,5 @@ Start the first line of output with `/engineer` and organize the fix items with 
 
 ### When there are no issues (LGTM)
 1. Call `github__submit_pr_review(event="APPROVE", body="...")`
-2. If merge_policy is manual, also call `github__add_pr_comment` to @mention maintainers
-3. Start your text response with `LGTM`
+2. Start your text response with `LGTM` (this gets posted as a PR comment)
+3. If merge_policy is manual, include `@human` + merge request in your text response

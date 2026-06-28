@@ -49,8 +49,7 @@ TOOLS = [
     {"name":"get_issue","description":"Get an issue by number.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_issues","description":"List issues.","inputSchema":{"type":"object","properties":{"state":{"type":"string","enum":["open","closed","all"]},"labels":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},
     {"name":"get_issue_comments","description":"Get issue comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
-    {"name":"add_issue_comment","description":"Add a comment to an issue.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"body":{"type":"string"}},"required":["number","body"]}},
-    {"name":"close_issue","description":"Close an issue.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
+    {"name":"close_issue","description":"Close an issue. Refuses to close issues opened by humans.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"create_pr","description":"Create a pull request from the current branch.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"base":{"type":"string"}},"required":["title"]}},
     {"name":"get_pr","description":"Get a PR by number.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"get_pr_diff","description":"Get PR diff.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
@@ -60,7 +59,6 @@ TOOLS = [
     {"name":"get_check_runs","description":"Get check runs for a ref.","inputSchema":{"type":"object","properties":{"ref":{"type":"string"}},"required":["ref"]}},
     {"name":"get_pr_reviews","description":"Get PR reviews.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_pr_review_comments","description":"List PR review comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
-    {"name":"add_pr_comment","description":"Add a general comment to a pull request.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"body":{"type":"string"}},"required":["number","body"]}},
     {"name":"submit_pr_review","description":"Submit a PR review (approve, comment, or request changes).","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["APPROVE","COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
 ]
 
@@ -83,15 +81,16 @@ def _list_issues(a):
 def _get_issue_comments(a):
     d = gh_json("issue","view",str(a["number"]),"--repo",REPO,"--json","comments")
     return json.dumps(d.get("comments",[]) if d else [])
-def _add_issue_comment(a):
-    rc, out, err = gh("issue","comment",str(a["number"]),"--repo",REPO,"--body",a["body"])
-    if rc: raise RuntimeError(err or out)
-    ops_log("add_issue_comment",{"number":a["number"]})
-    return json.dumps({"ok":True})
+
 def _close_issue(a):
-    rc, out, err = gh("issue","close",str(a["number"]),"--repo",REPO)
+    num = a["number"]
+    # Refuse to close issues opened by humans
+    d = gh_json("issue", "view", str(num), "--repo", REPO, "--json", "author")
+    if d and d.get("author", {}).get("type") != "Bot":
+        raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
+    rc, out, err = gh("issue", "close", str(num), "--repo", REPO)
     if rc: raise RuntimeError(err or out)
-    ops_log("close_issue",{"number":a["number"]})
+    ops_log("close_issue", {"number": num})
     return json.dumps({"ok":True})
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
@@ -124,11 +123,6 @@ def _get_pr_reviews(a):
     return json.dumps(d.get("reviews",[]) if d else [])
 def _list_pr_review_comments(a): return json.dumps(gh_json("api",f"repos/{REPO}/pulls/{a['number']}/comments") or [])
 
-def _add_pr_comment(a):
-    rc, out, err = gh("pr", "comment", str(a["number"]), "--repo", REPO, "--body", a["body"])
-    if rc: raise RuntimeError(err or out)
-    ops_log("add_pr_comment", {"number": a["number"]})
-    return json.dumps({"ok": True})
 def _submit_pr_review(a):
     cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + a["event"].lower()]
     if a.get("body"): cmd += ["--body", a["body"]]
@@ -139,12 +133,12 @@ def _submit_pr_review(a):
 
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,
-    "get_issue_comments":_get_issue_comments,"add_issue_comment":_add_issue_comment,
+    "get_issue_comments":_get_issue_comments,
     "close_issue":_close_issue,"create_pr":_create_pr,"get_pr":_get_pr,
     "get_pr_diff":_get_pr_diff,"list_prs":_list_prs,"search_code":_search_code,
     "get_branch":_get_branch,"get_check_runs":_get_check_runs,
     "get_pr_reviews":_get_pr_reviews,"list_pr_review_comments":_list_pr_review_comments,
-    "add_pr_comment":_add_pr_comment,"submit_pr_review":_submit_pr_review,
+    "submit_pr_review":_submit_pr_review,
 }
 
 def hi(params, rid):
