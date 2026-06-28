@@ -69,6 +69,12 @@ jobs:
       - name: Setup runtime
         uses: yuma-seno/atoma/github/actions/setup-runtime@main
 
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "atoma-${{ inputs.agent }}"
+          git config user.email "atoma-${{ inputs.agent }}@users.noreply.github.com"
+
       - name: Prepare shared context
         id: prep
         uses: yuma-seno/atoma/github/actions/prepare@main
@@ -93,7 +99,20 @@ jobs:
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           atoma_provider: ${{ vars.ATOMA_PROVIDER }}
-          github_token: ${{ secrets.GITHUB_PAT_TOKEN }}  # required when ATOMA_PROVIDER=github-copilot; otherwise auto-generated token is sufficient
+          github_token: ${{ secrets.GITHUB_PAT_TOKEN }}
+          template: .github/atoma/prompt-template.md
+
+      - name: Add atoma/in-progress label
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          TYPE: ${{ inputs.type }}
+        run: |
+          if [ "$TYPE" = "issue" ]; then
+            gh issue edit "$NUMBER" --add-label "atoma/in-progress" 2>/dev/null || true
+          fi
 
       - name: Post result
         if: always()
@@ -111,6 +130,40 @@ jobs:
           resolved_number: ${{ steps.prep.outputs.resolved_number }}
           directive: ${{ steps.atoma.outputs.directive }}
           max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
+
+      - name: Check for uncommitted changes
+        id: dirty
+        if: steps.atoma.outcome == 'success'
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify on uncommitted changes
+        if: steps.dirty.outputs.has_changes == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          FILES=$(git status --porcelain | head -5 | cut -c4-)
+          gh issue comment "$NUMBER" --body "Atoma: Uncommitted changes exist in the working directory. Commit them before the session ends, or they will be lost. Example: \`git add -A && git commit -m '...' && git push\`.\n\nChanged files:\n\`\`\`\n${FILES}\n\`\`\`"
+
+      - name: Notify on max iterations
+        if: steps.atoma.outputs.max_iterations_reached == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          NOTIFY: ${{ inputs.notify }}
+          AGENT: ${{ inputs.agent }}
+        run: |
+          if [ -n "$NOTIFY" ]; then
+            gh issue comment "$NUMBER" --body "@${NOTIFY} Atoma: \`${AGENT}\` reached the max iteration limit. Review the issue and comment \`/${AGENT}\` to retry."
+          else
+            gh issue comment "$NUMBER" --body "Atoma: \`${AGENT}\` reached the max iteration limit. Comment \`/${AGENT}\` to retry."
+          fi
 
       - name: Dispatch next agent
         if: steps.atoma.outcome == 'success'

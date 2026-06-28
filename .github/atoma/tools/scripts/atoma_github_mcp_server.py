@@ -60,6 +60,7 @@ TOOLS = [
     {"name":"get_pr_reviews","description":"Get PR reviews.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_pr_review_comments","description":"List PR review comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"submit_pr_review","description":"Submit a PR review (approve, comment, or request changes).","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["APPROVE","COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
+    {"name":"commit_and_push","description":"Stage all changes, commit with a message, and push to the current branch.","inputSchema":{"type":"object","properties":{"message":{"type":"string","description":"Commit message."}},"required":["message"]}},
 ]
 
 def _create_issue(a):
@@ -136,6 +137,17 @@ def _submit_pr_review(a):
     ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
     return json.dumps({"ok": True})
 
+def _commit_and_push(a):
+    msg = a["message"]
+    rc, out, err = gh("add", "-A")
+    if rc: raise RuntimeError(err or out)
+    rc, out, err = gh("commit", "-m", msg)
+    if rc: raise RuntimeError(err or out)
+    rc, out, err = gh("push")
+    if rc: raise RuntimeError(err or out)
+    ops_log("commit_and_push", {})
+    return json.dumps({"ok": True})
+
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,
     "get_issue_comments":_get_issue_comments,
@@ -143,7 +155,7 @@ TOOL_HANDLERS = {
     "get_pr_diff":_get_pr_diff,"list_prs":_list_prs,"search_code":_search_code,
     "get_branch":_get_branch,"get_check_runs":_get_check_runs,
     "get_pr_reviews":_get_pr_reviews,"list_pr_review_comments":_list_pr_review_comments,
-    "submit_pr_review":_submit_pr_review,
+    "submit_pr_review":_submit_pr_review,"commit_and_push":_commit_and_push,
 }
 
 def hi(params, rid):
