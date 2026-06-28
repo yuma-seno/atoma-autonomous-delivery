@@ -1,0 +1,16 @@
+[
+  {
+    "id": "issue-7",
+    "event_type": "issue_opened",
+    "content": "Issue #7: Implement calc.py and test_calc.py\n\n<!-- atoma:parent=#6 -->\n## タスク\nコマンドライン電卓アプリ (`calc.py`) とそのユニットテスト (`test_calc.py`) を実装する。\n\n### calc.py 要件\n- Python stdlib のみ使用 (argparseでなくてもよい、sys.stdinで読み取り推奨)\n- 標準入力から式を受け取り、結果を出力する\n  - 例: `echo \"1 + 2\" | python calc.py` → `3`\n  - 例: `python calc.py` で起動し、対話的に式を入力\n  - 各行が1つの式として評価される\n- 四則演算をサポート: `+`, `-`, `*`, `/`\n- ゼロ除算エラーハンドリング: `ZeroDivisionError` をキャッチし、`\"Error: Division by zero\"` と表示して継続\n- 数値は整数と浮動小数点をサポート\n- `eval()` は使用せず、パーサーを自前実装すること（shunting-yard等）\n\n### test_calc.py 要件\n- pytest 不要、assert ベースのテスト\n- `from calc import ...` でcalc.pyの関数をインポートしてテスト\n- テストケース:\n  - 加算、減算、乗算、除算の正常系\n  - ゼロ除算のエラーハンドリング\n  - 浮動小数点計算\n  - 複合式（例: `1 + 2 * 3`）→ 演算子の優先順位が正しいこと\n  - 括弧を使った式（例: `(1 + 2) * 3`）\n- テストは `python test_calc.py` で実行可能にすること\n\n### 成功条件\n- `python test_calc.py` が全テストパスすること\n- `echo \"1 + 2\" | python calc.py` が `3` を出力すること\n- `echo \"1 / 0\" | python calc.py` がエラーメッセージを出力し、強制終了しないこと",
+    "author": "github-actions[bot]",
+    "created_at": "2026-06-28T15:29:15Z"
+  },
+  {
+    "id": 4826554305,
+    "event_type": "issue_comment",
+    "content": "Atoma: Agent `engineer` dispatched to work on this sub-task.",
+    "author": "github-actions[bot]",
+    "created_at": "2026-06-28T15:29:26Z"
+  }
+]
