@@ -180,6 +180,42 @@ Costs scale with issue complexity. Token usage and cost are displayed in each re
 
 ---
 
+## Calculator
+
+This repository includes a simple command-line calculator (`calc.py`) that evaluates arithmetic expressions using Python's standard library only.
+
+### Features
+
+- Supports operators: `+`, `-`, `*`, `/`
+- Supports parentheses for grouping expressions
+- Pipe mode — pass an expression via stdin
+- Interactive mode — run with no arguments for a REPL
+- Error handling for division by zero
+
+### Usage
+
+**Pipe mode:**
+
+```bash
+echo "1 + 2" | python calc.py
+# Output: 3
+
+echo "(1 + 2) * 3" | python calc.py
+# Output: 9
+```
+
+**Interactive mode:**
+
+```bash
+python calc.py
+> 1 + 2
+3
+> 1 / 0
+Error: Division by zero
+```
+
+---
+
 ## License
 
 This template is part of the [Atoma](https://github.com/yuma-seno/atoma) project. See [LICENSE](https://github.com/yuma-seno/atoma/blob/main/LICENSE).
