@@ -73,16 +73,11 @@ Before delegating, assess the task. **Sub-issue decomposition is strongly prefer
 
 ## Sub-Issue Lifecycle (Detailed)
 
-### 1. Creating sub-issues (pure GitHub MCP)
+### 1. Creating sub-issues
 
-Use the GitHub MCP server to create issues. Do NOT use `create_sub_issue.sh` — that old script adds labels and agent triggers that conflict with the new flow. Use `github__create_issue` (or the equivalent GitHub MCP tool) directly.
+Use `github__create_issue(sub_issue=true, title="...", body="...")` to create sub-issues. The `sub_issue=true` flag automatically links the issue to your current issue via `<!-- atoma:parent -->` metadata.
 
-Each sub-issue body MUST include the parent reference:
-```
-<!-- atoma:parent=#<PARENT_NUMBER> -->
-
-...task description...
-```
+Use `github__create_issue(sub_issue=false, title="...", body="...")` (or omit the flag) to create standalone issues — such as bug reports or escalation issues — that are NOT tracked as sub-tasks.
 
 ### 2. Launching agents on sub-issues
 

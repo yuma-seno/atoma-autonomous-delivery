@@ -45,7 +45,7 @@ def gh_json(*args):
     return json.loads(out) if out else None
 
 TOOLS = [
-    {"name":"create_issue","description":"Create a new GitHub issue.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}}},"required":["title"]}},
+    {"name":"create_issue","description":"Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}},"sub_issue":{"type":"boolean","description":"If true, links to the current issue via atoma:parent metadata."}},"required":["title"]}},
     {"name":"get_issue","description":"Get an issue by number.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_issues","description":"List issues.","inputSchema":{"type":"object","properties":{"state":{"type":"string","enum":["open","closed","all"]},"labels":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},
     {"name":"get_issue_comments","description":"Get issue comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
@@ -63,14 +63,19 @@ TOOLS = [
 ]
 
 def _create_issue(a):
-    t, b, ls = a["title"], a.get("body",""), a.get("labels",[])
+    t, b, ls, sub = a["title"], a.get("body",""), a.get("labels",[]), a.get("sub_issue", False)
     cmd = ["issue","create","--repo",REPO,"--title",t]
+    # Auto-inject parent reference for sub-issues
+    if sub:
+        parent = os.environ.get("ISSUE_NUMBER", "")
+        if parent:
+            b = f"<!-- atoma:parent=#{parent} -->\n{b}"
     if b: cmd += ["--body",b]
     for l in ls: cmd += ["--label",l]
     rc, out, err = gh(*cmd)
     if rc: raise RuntimeError(err or out)
     num = int(out.strip().split("/")[-1])
-    ops_log("create_issue",{"number":num,"title":t})
+    ops_log("create_issue",{"number":num,"title":t,"sub_issue":sub})
     return json.dumps({"number":num,"url":out.strip()})
 def _get_issue(a): return json.dumps(gh_json("issue","view",str(a["number"]),"--repo",REPO,"--json","number,title,body,state,labels,createdAt,closedAt,comments"))
 def _list_issues(a):
