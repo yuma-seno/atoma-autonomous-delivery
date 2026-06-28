@@ -54,12 +54,14 @@ jobs:
         run: |
           echo "Sub-issue #${CLOSED_NUM} (parent #${PARENT}) closed. Checking siblings..."
 
-          # Find all open issues referencing the same parent
+          # Find all open issues with atoma/in-progress label that reference the same parent
           OPEN_SIBLINGS=$(gh issue list \
             --repo "${OWNER}/${REPO}" \
             --state open \
-            --json number,title,body \
-            --jq "[.[] | select(.body | contains(\"atoma:parent=#${PARENT}\")) | .number]" 2>/dev/null)
+            --label "atoma/in-progress" \
+            --search "atoma:parent=#${PARENT}" in:body \
+            --json number,title \
+            --jq "[.[].number]" 2>/dev/null)
 
           SIBLING_COUNT=$(echo "$OPEN_SIBLINGS" | jq 'length' 2>/dev/null || echo "0")
 

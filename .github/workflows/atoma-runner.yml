@@ -115,7 +115,11 @@ jobs:
           fi
 
       - name: Post result
-        if: always()
+        if: >-
+          always() &&
+          !(steps.atoma.outcome == 'success' &&
+            steps.atoma.outputs.directive == '' &&
+            steps.atoma.outputs.max_iterations_reached != 'true')
         uses: yuma-seno/atoma/github/actions/post-result@main
         with:
           agent_name: ${{ inputs.agent }}
