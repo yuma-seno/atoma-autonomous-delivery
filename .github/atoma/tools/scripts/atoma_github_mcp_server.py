@@ -45,7 +45,7 @@ def gh_json(*args):
     return json.loads(out) if out else None
 
 TOOLS = [
-    {"name":"create_issue","description":"Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}},"sub_issue":{"type":"boolean","description":"If true, links to the current issue via atoma:parent metadata."}},"required":["title"]}},
+    {"name":"create_issue","description":"Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}},"sub_issue":{"type":"boolean","description":"Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true."}},"required":["title"]}},
     {"name":"get_issue","description":"Get an issue by number.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_issues","description":"List issues.","inputSchema":{"type":"object","properties":{"state":{"type":"string","enum":["open","closed","all"]},"labels":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},
     {"name":"get_issue_comments","description":"Get issue comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
@@ -63,9 +63,9 @@ TOOLS = [
 ]
 
 def _create_issue(a):
-    t, b, ls, sub = a["title"], a.get("body",""), a.get("labels",[]), a.get("sub_issue", False)
+    t, b, ls, sub = a["title"], a.get("body",""), a.get("labels",[]), a.get("sub_issue", True)
     cmd = ["issue","create","--repo",REPO,"--title",t]
-    # Auto-inject parent reference for sub-issues
+    # Auto-inject parent reference for sub-issues (default: true)
     if sub:
         parent = os.environ.get("ISSUE_NUMBER", "")
         if parent:

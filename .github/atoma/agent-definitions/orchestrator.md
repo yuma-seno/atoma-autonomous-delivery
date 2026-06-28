@@ -75,9 +75,9 @@ Before delegating, assess the task. **Sub-issue decomposition is strongly prefer
 
 ### 1. Creating sub-issues
 
-Use `github__create_issue(sub_issue=true, title="...", body="...")` to create sub-issues. The `sub_issue=true` flag automatically links the issue to your current issue via `<!-- atoma:parent -->` metadata.
+Use `github__create_issue(title="...", body="...")` to create sub-issues. The `sub_issue` flag defaults to `true`, which automatically links each issue to your current issue as a child task.
 
-Use `github__create_issue(sub_issue=false, title="...", body="...")` (or omit the flag) to create standalone issues — such as bug reports or escalation issues — that are NOT tracked as sub-tasks.
+Use `github__create_issue(sub_issue=false, title="...", body="...")` to create standalone issues — such as bug reports or escalation issues — that are NOT tracked as sub-tasks.
 
 ### 2. Launching agents on sub-issues
 
