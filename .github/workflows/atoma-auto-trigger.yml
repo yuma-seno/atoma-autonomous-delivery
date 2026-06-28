@@ -28,8 +28,6 @@ jobs:
         id: context
         shell: bash
         run: |
-          # pull_request context: github.event.pull_request.number
-          # pull_request_review context: github.event.pull_request.number
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "type=pr" >> "$GITHUB_OUTPUT"
@@ -41,50 +39,18 @@ jobs:
       - name: Match event to agent from config.json
         id: match
         shell: bash
+        env:
+          EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
+          REVIEW_STATE: ${{ github.event.review.state }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
-          EVENT_TYPE="${{ github.event_name }}.${{ github.event.action }}"
-          echo "Searching auto_triggers for event: ${EVENT_TYPE}"
-
-          # Build jq filter to find matching trigger
-          AGENT=$(python3 -c "
-import json, os, sys
-
-event = os.environ['EVENT_TYPE']
-with open('.github/atoma/config.json') as f:
-    config = json.load(f)
-
-for trigger in config.get('auto_triggers', []):
-    if trigger['event'] == event:
-        # Check condition if present
-        condition = trigger.get('condition')
-        if condition == 'changes_requested':
-            review_state = '${{ github.event.review.state }}'
-            if review_state != 'changes_requested':
-                continue
-        elif condition == 'non_draft':
-            is_draft = '${{ github.event.pull_request.draft }}'
-            if is_draft == 'true':
-                continue
-        agent = trigger['agent']
-        if agent.startswith('\$'):
-            # Dynamic agent reference — skip for now
-            continue
-        print(agent)
-        sys.exit(0)
-
-print('', end='')
-" 2>/dev/null)
-
+          AGENT=$(python3 .github/atoma/tools/scripts/match_trigger.py 2>/dev/null || true)
           if [ -n "${AGENT}" ]; then
             echo "Matched agent: ${AGENT}"
             echo "agent=${AGENT}" >> "$GITHUB_OUTPUT"
             echo "number=${{ steps.context.outputs.number }}" >> "$GITHUB_OUTPUT"
             echo "type=${{ steps.context.outputs.type }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "No matching trigger found for event: ${EVENT_TYPE}"
           fi
-        env:
-          EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
 
   run:
     needs: route
