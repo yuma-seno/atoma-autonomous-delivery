@@ -144,15 +144,22 @@ jobs:
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Notify on uncommitted changes
+      - name: Inject uncommitted changes into session
         if: steps.dirty.outputs.has_changes == 'true'
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ inputs.number }}
         run: |
-          FILES=$(git status --porcelain | head -5 | cut -c4-)
-          gh issue comment "$NUMBER" --body "Atoma: Uncommitted changes exist in the working directory. Commit them before the session ends, or they will be lost. Example: \`git add -A && git commit -m '...' && git push\`.\n\nChanged files:\n\`\`\`\n${FILES}\n\`\`\`"
+          SESSION=$(find . -maxdepth 3 -name 'session.json' 2>/dev/null | head -1)
+          if [ -n "$SESSION" ] && [ -f "$SESSION" ]; then
+            FILES=$(git status --porcelain | head -10 | cut -c4-)
+            python3 << PYEOF
+import json
+with open('$SESSION') as f:
+    session = json.load(f)
+session['messages'].append({'role': 'user', 'content': f'Uncommitted changes exist. Use github__commit_and_push.'})
+with open('$SESSION', 'w') as f:
+    json.dump(session, f, indent=2)
+PYEOF
+          fi
 
       - name: Notify on max iterations
         if: steps.atoma.outputs.max_iterations_reached == 'true'

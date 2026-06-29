@@ -5,7 +5,7 @@
   },
   "agents": {
     "orchestrator": {
-      "max_iterations": 50,
+      "max_iterations": 100,
       "shared_context": {
         "include_event_types": [
           "issue_opened",
