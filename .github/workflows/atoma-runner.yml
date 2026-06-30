@@ -154,15 +154,13 @@ jobs:
         run: |
           SESSION=$(find . -maxdepth 3 -name 'session.json' 2>/dev/null | head -1)
           if [ -n "$SESSION" ] && [ -f "$SESSION" ]; then
-            FILES=$(git status --porcelain | head -10 | cut -c4-)
-            python3 << PYEOF
-import json
-with open('$SESSION') as f:
-    session = json.load(f)
-session['messages'].append({'role': 'user', 'content': f'Uncommitted changes exist. Use github__commit_and_push.'})
-with open('$SESSION', 'w') as f:
-    json.dump(session, f, indent=2)
+            cat > /tmp/inject_uncommitted.py << 'PYEOF'
+import json, sys
+session = json.load(open(sys.argv[1]))
+session['messages'].append({'role': 'user', 'content': 'Uncommitted changes exist. Use github__commit_and_push.'})
+json.dump(session, open(sys.argv[1], 'w'), indent=2)
 PYEOF
+            python3 /tmp/inject_uncommitted.py "$SESSION"
           fi
 
       - name: Notify on max iterations
