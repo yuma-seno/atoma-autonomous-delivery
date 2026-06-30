@@ -36,12 +36,8 @@ def send_error(rid, code, msg):
     sys.stdout.flush()
 
 def gh(*args):
-    """Run gh CLI. Ensures GH_TOKEN is set from GITHUB_TOKEN if available."""
-    env = os.environ.copy()
-    # Prefer GITHUB_TOKEN (auto-generated) over GH_TOKEN (may be overridden by PAT)
-    if 'GITHUB_TOKEN' in env:
-        env['GH_TOKEN'] = env['GITHUB_TOKEN']
-    r = subprocess.run(["gh", *args], capture_output=True, text=True, env=env)
+    """Run gh CLI."""
+    r = subprocess.run(["gh", *args], capture_output=True, text=True)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
 
 def gh_json(*args):
