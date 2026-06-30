@@ -22,29 +22,12 @@ jobs:
        github.event.comment.author_association == 'MEMBER' ||
        github.event.comment.author_association == 'COLLABORATOR')
     outputs:
-      blocked: ${{ steps.block.outputs.blocked }}
       agent: ${{ steps.command.outputs.agent }}
       number: ${{ steps.target.outputs.number }}
       type: ${{ steps.target.outputs.type }}
       notify: ${{ steps.target.outputs.notify }}
     steps:
-      - name: Check if issue is in-progress
-        id: block
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ github.event.issue.number }}
-        run: |
-          LABELS=$(gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
-          if echo "$LABELS" | grep -q "atoma/in-progress"; then
-            echo "blocked=true" >> "$GITHUB_OUTPUT"
-            gh issue comment "$ISSUE" --body "This issue is currently being worked on by an Atoma agent. Please wait."
-          else
-            echo "blocked=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Parse slash command
-        if: steps.block.outputs.blocked != 'true'
         id: command
         uses: yuma-seno/atoma/github/actions/parse-comment-command@main
         with:
