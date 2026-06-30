@@ -101,10 +101,12 @@ jobs:
       - name: Read max_iterations from config
         id: cfg
         shell: bash
+        env:
+          AGENT_NAME: ${{ inputs.agent }}
         run: |
-          MAX=$(python3 -c "import json; d=json.load(open('.github/atoma/config.json')); print(d.get('agents',{}).get('\${{ inputs.agent }}',{}).get('max_iterations',30))")
+          MAX=$(python3 -c "import json,sys; d=json.load(open('.github/atoma/config.json')); print(d.get('agents',{}).get(sys.argv[1],{}).get('max_iterations',30))" "$AGENT_NAME")
           echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
-          echo "Agent \${{ inputs.agent }} max_iterations: ${MAX}"
+          echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
 
       - name: Run agent
         if: steps.prep.outputs.new_event_count != '0'
@@ -122,7 +124,6 @@ jobs:
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           atoma_provider: ${{ vars.ATOMA_PROVIDER }}
-          github_token: ${{ secrets.GITHUB_PAT_TOKEN }}
 
       - name: Add atoma/in-progress label
         if: always()
