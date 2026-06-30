@@ -111,6 +111,10 @@ jobs:
           TYPE: ${{ inputs.type }}
         run: |
           if [ "$TYPE" = "issue" ]; then
+            gh label create "atoma/in-progress" \
+              --color "0366d6" \
+              --description "Issue is being worked on by an Atoma agent" \
+              2>/dev/null || true
             gh issue edit "$NUMBER" --add-label "atoma/in-progress" 2>/dev/null || true
           fi
 
