@@ -100,7 +100,11 @@ def _close_issue(a):
     return json.dumps({"ok":True})
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
-    cmd = ["pr","create","--repo",REPO,"--title",t]
+    # Push current branch first
+    branch = rungit("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
+    rc, out, err = rungit("push", "-u", "origin", branch)
+    # Not fatal if already up-to-date; gh pr create needs the branch on origin
+    cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
     rc, out, err = gh(*cmd)
@@ -139,14 +143,22 @@ def _submit_pr_review(a):
 
 def _commit_and_push(a):
     msg = a["message"]
-    rc, out, err = gh("add", "-A")
+    # Use git directly, not gh
+    rc, out, err = rungit("add", "-A")
     if rc: raise RuntimeError(err or out)
-    rc, out, err = gh("commit", "-m", msg)
+    rc, out, err = rungit("commit", "-m", msg)
     if rc: raise RuntimeError(err or out)
-    rc, out, err = gh("push")
+    # Push current branch to origin
+    branch = rungit("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
+    rc, out, err = rungit("push", "-u", "origin", branch)
     if rc: raise RuntimeError(err or out)
     ops_log("commit_and_push", {})
     return json.dumps({"ok": True})
+
+def rungit(*args):
+    """Run git command, returns (rc, stdout, stderr)."""
+    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
 
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,

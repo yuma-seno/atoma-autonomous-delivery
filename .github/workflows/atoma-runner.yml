@@ -66,6 +66,20 @@ jobs:
               ''
             }}
 
+      - name: Create feature branch for issue
+        if: inputs.type == 'issue'
+        shell: bash
+        run: |
+          BRANCH="atoma/issue-${{ inputs.number }}"
+          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+
+      - name: Set branch env for PR type
+        if: inputs.type != 'issue'
+        shell: bash
+        run: |
+          echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
+
       - name: Setup runtime
         uses: yuma-seno/atoma/github/actions/setup-runtime@main
 
@@ -84,6 +98,14 @@ jobs:
           agent_name: ${{ inputs.agent }}
           orchestration_file: .github/atoma/config.json
 
+      - name: Read max_iterations from config
+        id: cfg
+        shell: bash
+        run: |
+          MAX=$(python3 -c "import json; d=json.load(open('.github/atoma/config.json')); print(d.get('agents',{}).get('\${{ inputs.agent }}',{}).get('max_iterations',30))")
+          echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
+          echo "Agent \${{ inputs.agent }} max_iterations: ${MAX}"
+
       - name: Run agent
         if: steps.prep.outputs.new_event_count != '0'
         id: atoma
@@ -95,12 +117,12 @@ jobs:
           issue_number: ${{ steps.prep.outputs.resolved_number }}
           orchestration_file: .github/atoma/config.json
           atoma_version: source
+          max_iterations: ${{ steps.cfg.outputs.max_iterations }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           atoma_provider: ${{ vars.ATOMA_PROVIDER }}
           github_token: ${{ secrets.GITHUB_PAT_TOKEN }}
-          template: .github/atoma/prompt-template.md
 
       - name: Add atoma/in-progress label
         if: always()

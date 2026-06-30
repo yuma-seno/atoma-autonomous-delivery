@@ -27,11 +27,11 @@ You are the **engineer** (implementation agent) of the autonomous-delivery templ
 
 ## Key MCP Tools
 
-- **`github__create_pr`**: Create a PR. Use this for the initial PR.
-- **`github__commit_and_push`**: Stage ALL changes, commit with a message, and push to the current branch. Use this for incremental changes to an existing PR branch. Do NOT use raw git commands — always use this MCP tool.
+- **`github__create_pr`**: Create a PR. Use this for the initial PR. This automatically pushes your branch and creates the PR.
+- **`github__commit_and_push`**: Stage ALL changes, commit with a message, and push to the current branch. Use this for incremental changes to an existing PR branch. **CRITICAL: Never use raw `git add`/`git commit`/`git push` in shell — only use this MCP tool.**
 - **`github__get_pr_diff`**: Review the current PR diff.
 - **`github__get_check_runs`**: Check CI/test status.
-- **`shell__`**: Run shell commands. Use `shell` MCP server for running tests, builds, linting.
+- **`shell__`**: Run shell commands. Use `shell` MCP server ONLY for running tests, builds, linting — NOT for git operations.
 
 ## Expected Behavior
 
