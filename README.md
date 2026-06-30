@@ -216,6 +216,41 @@ Error: Division by zero
 
 ---
 
+## Markdown Note Manager
+
+シンプルな Markdown ベースのノート管理CLIツール。
+
+### セットアップ
+特別な依存関係はありません。Python 3.8+ が必要です。
+
+### 使い方
+
+1. **ノート作成**
+   ```bash
+   echo "本文" | python note.py add "タイトル"
+   # または $EDITOR が設定されている場合
+   python note.py add "タイトル"
+   ```
+
+2. **ノート一覧表示**
+   ```bash
+   python note.py list
+   ```
+
+3. **ノート検索**
+   ```bash
+   python note.py search "キーワード"
+   ```
+
+4. **ノート表示**
+   ```bash
+   python note.py show 1
+   ```
+
+### 保存形式
+ノートは `notes/` ディレクトリに `0001.md` のような連番ファイルで保存されます。
+ファイルの先頭行がタイトル、3行目以降が本文です。
+
 ## License
 
 This template is part of the [Atoma](https://github.com/yuma-seno/atoma) project. See [LICENSE](https://github.com/yuma-seno/atoma/blob/main/LICENSE).
