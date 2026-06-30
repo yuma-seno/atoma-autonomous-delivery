@@ -1,0 +1,16 @@
+[
+  {
+    "id": "issue-20",
+    "event_type": "issue_opened",
+    "content": "Issue #20: Implement json2csv.py script\n\n<!-- atoma:parent=#19 -->\nImplement a Python CLI tool `json2csv.py` that converts JSON arrays from stdin to CSV on stdout.\n\n## Requirements\n- Read JSON array from stdin, write CSV to stdout\n- Use all object keys as CSV columns (union of all keys across objects)\n- Properly escape values containing commas or double quotes\n- Output header row with column names\n- Empty JSON array → output header only (no data rows)\n- Invalid JSON → print error message to stderr, exit with non-zero code\n\n## Constraints\n- Python stdlib only (json, csv, sys)\n- No argparse — simple stdin/stdout only\n- Japanese keys and values must be handled correctly (UTF-8)\n\n## Acceptance Criteria\n1. `echo '[{\"name\":\"Alice\",\"age\":30},{\"name\":\"Bob\",\"age\":25}]' | python json2csv.py` outputs:\n   ```\n   name,age\n   Alice,30\n   Bob,25\n   ```\n2. Values with commas or quotes are properly escaped\n3. Invalid JSON prints error to stderr\n4. Empty array `[]` outputs just the header (or empty)\n5. Japanese keys work: `[{\"名前\":\"太郎\",\"年齢\":30}]`",
+    "author": "github-actions[bot]",
+    "created_at": "2026-06-30T15:38:14Z"
+  },
+  {
+    "id": 4845315841,
+    "event_type": "issue_comment",
+    "content": "Atoma: Agent `engineer` dispatched to work on this sub-task.",
+    "author": "github-actions[bot]",
+    "created_at": "2026-06-30T15:39:06Z"
+  }
+]
