@@ -36,7 +36,7 @@ def send_error(rid, code, msg):
     sys.stdout.flush()
 
 def gh(*args):
-    """Run gh CLI."""
+    """Run gh CLI. Inherits GH_TOKEN from parent environment."""
     r = subprocess.run(["gh", *args], capture_output=True, text=True)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
 
