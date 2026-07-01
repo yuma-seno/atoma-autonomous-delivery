@@ -99,16 +99,26 @@ def _close_issue(a):
     if rc: raise RuntimeError(err or out)
     ops_log("close_issue", {"number": num})
     return json.dumps({"ok":True})
+def _resolve_branch():
+    """Resolve current branch, preferring BRANCH env var (set by atoma-runner.yml)."""
+    br = os.environ.get("BRANCH", "").strip()
+    if br and br != "HEAD":
+        return br
+    rc, out, _ = rungit("rev-parse", "--abbrev-ref", "HEAD")
+    if rc == 0 and out.strip() and out.strip() != "HEAD":
+        return out.strip()
+    rc, out, _ = rungit("branch", "--format=%(refname:short)", "--points-at=HEAD")
+    if rc == 0 and out.strip():
+        return out.strip().split('\n')[0]
+    raise RuntimeError("Cannot determine branch name; set BRANCH env")
+
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
-    # Push current branch first
-    branch = rungit("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
+    branch = _resolve_branch()
     log(f"create_pr: branch={branch}, title={t[:80]}")
     rc, out, err = rungit("push", "-u", "origin", branch)
     if rc:
         log(f"create_pr: git push failed (rc={rc}): {err}")
-    else:
-        log(f"create_pr: git push ok: {out[:100]}")
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
@@ -125,6 +135,18 @@ def _create_pr(a):
         raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
     return json.dumps({"number":num,"url":out.strip()})
+
+def _commit_and_push(a):
+    msg = a["message"]
+    rc, out, err = rungit("add", "-A")
+    if rc: raise RuntimeError(err or out)
+    rc, out, err = rungit("commit", "-m", msg)
+    if rc: raise RuntimeError(err or out)
+    branch = _resolve_branch()
+    rc, out, err = rungit("push", "-u", "origin", branch)
+    if rc: raise RuntimeError(err or out)
+    ops_log("commit_and_push", {})
+    return json.dumps({"ok": True})
 def _get_pr(a): return json.dumps(gh_json("pr","view",str(a["number"]),"--repo",REPO,"--json","number,title,body,state,baseRefName,headRefName,createdAt"))
 def _get_pr_diff(a):
     rc, out, err = gh("pr","diff",str(a["number"]),"--repo",REPO)
@@ -152,20 +174,6 @@ def _submit_pr_review(a):
     rc, out, err = gh(*cmd)
     if rc: raise RuntimeError(err or out)
     ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
-    return json.dumps({"ok": True})
-
-def _commit_and_push(a):
-    msg = a["message"]
-    # Use git directly, not gh
-    rc, out, err = rungit("add", "-A")
-    if rc: raise RuntimeError(err or out)
-    rc, out, err = rungit("commit", "-m", msg)
-    if rc: raise RuntimeError(err or out)
-    # Push current branch to origin
-    branch = rungit("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
-    rc, out, err = rungit("push", "-u", "origin", branch)
-    if rc: raise RuntimeError(err or out)
-    ops_log("commit_and_push", {})
     return json.dumps({"ok": True})
 
 def rungit(*args):
