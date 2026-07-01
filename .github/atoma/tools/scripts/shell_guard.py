@@ -28,7 +28,7 @@ BLOCKED = [
     (r'(?:^|\s|\||\;)\beval\b', "eval is disabled."),
     (r'(?:^|\s|\||\;)\bexec\b', "exec is disabled."),
     (r'(?:^|\s|\;)\bsource\b', "source is disabled."),
-    (r'(?:^|\s|\;)\.\s', "source (.) is disabled."),
+    (r'(?:^|\s|\||\;)\.\s+', "source (.) is disabled."),
     (r'\bsh\s+(?:-[a-zA-Z]+\s+)*-c\b', "sh -c is disabled."),
     (r'\bbash\s+(?:-[a-zA-Z]+\s+)*-c\b', "bash -c is disabled."),
     (r'\bzsh\s+(?:-[a-zA-Z]+\s+)*-c\b', "zsh -c is disabled."),

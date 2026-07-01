@@ -103,14 +103,26 @@ def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
     # Push current branch first
     branch = rungit("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
+    log(f"create_pr: branch={branch}, title={t[:80]}")
     rc, out, err = rungit("push", "-u", "origin", branch)
-    # Not fatal if already up-to-date; gh pr create needs the branch on origin
+    if rc:
+        log(f"create_pr: git push failed (rc={rc}): {err}")
+    else:
+        log(f"create_pr: git push ok: {out[:100]}")
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
+    log(f"create_pr: running gh {' '.join(cmd)}")
     rc, out, err = gh(*cmd)
-    if rc: raise RuntimeError(err or out)
-    num = int(out.strip().split("/")[-1])
+    if rc:
+        log(f"create_pr: FAILED (rc={rc}): stdout={out[:200]} stderr={err[:200]}")
+        raise RuntimeError(f"gh pr create failed (rc={rc}): {err or out}")
+    log(f"create_pr: SUCCESS output={out[:200]}")
+    try:
+        num = int(out.strip().split("/")[-1])
+    except (ValueError, IndexError):
+        log(f"create_pr: could not parse PR number from: {out[:200]}")
+        raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
     return json.dumps({"number":num,"url":out.strip()})
 def _get_pr(a): return json.dumps(gh_json("pr","view",str(a["number"]),"--repo",REPO,"--json","number,title,body,state,baseRefName,headRefName,createdAt"))
