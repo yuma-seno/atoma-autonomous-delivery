@@ -21,7 +21,7 @@
       }
     },
     "engineer": {
-      "max_iterations": 30,
+      "max_iterations": 50,
       "shared_context": {
         "include_event_types": [
           "issue_opened",
