@@ -114,28 +114,32 @@ def _resolve_branch():
 
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
-    branch = _resolve_branch()
-    print(f"[atoma-github] create_pr: branch={branch}, title={t[:80]}", file=sys.stderr, flush=True)
+    errors = []
+    try:
+        branch = _resolve_branch()
+        errors.append(f"branch={branch}")
+    except RuntimeError as e:
+        return json.dumps({"error": f"Cannot resolve branch: {e}"})
+    errors.append(f"title={t[:80]}")
     rc, out, err = rungit("push", "-u", "origin", branch)
     if rc:
-        print(f"[atoma-github] create_pr: git push failed (rc={rc}): {err}", file=sys.stderr, flush=True)
+        errors.append(f"push failed: {err[:100]}")
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
-    print(f"[atoma-github] create_pr: running: gh {' '.join(cmd)}", file=sys.stderr, flush=True)
+    errors.append(f"running: gh {' '.join(cmd)}")
     rc, out, err = gh(*cmd)
     if rc:
-        print(f"[atoma-github] create_pr: FAILED (rc={rc}) stdout={out[:300]}, stderr={err[:300]}", file=sys.stderr, flush=True)
-        # Return error as JSON so the LLM can understand
-        return json.dumps({"error": f"gh pr create failed (rc={rc}): {err[:200]}"})
-    print(f"[atoma-github] create_pr: SUCCESS output={out[:300]}", file=sys.stderr, flush=True)
+        msg = f"gh pr create failed (rc={rc}): {err[:200]}"
+        errors.append(msg)
+        return json.dumps({"error": msg, "debug": errors, "stdout": out[:200]})
+    errors.append(f"SUCCESS output={out[:200]}")
     try:
         num = int(out.strip().split("/")[-1])
     except (ValueError, IndexError):
-        print(f"[atoma-github] create_pr: could not parse PR number from: {out[:300]}", file=sys.stderr, flush=True)
-        return json.dumps({"number": 0, "url": out.strip()})
+        return json.dumps({"error": f"could not parse PR number from: {out[:200]}", "debug": errors, "url": out.strip()})
     ops_log("create_pr",{"number":num,"title":t})
-    return json.dumps({"number":num,"url":out.strip()})
+    return json.dumps({"number":num,"url":out.strip(),"debug": errors})
 
 def _commit_and_push(a):
     msg = a["message"]
