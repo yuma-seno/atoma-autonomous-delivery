@@ -1,0 +1,34 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Issue #53: json2csv.py: 実装\n\n<!-- atoma:parent=#52 -->\n## タスク\nJSON 配列を CSV に変換する CLI ツール `json2csv.py` を実装する。\n\n### 要件\n- Python stdlib **のみ**使用（`csv`, `json`, `sys` のみ許可）\n- 標準入力から JSON 配列を受取り、CSV を標準出力に書き出す\n- 入力 JSON の全オブジェクトの全キーを CSV ヘッダーとして使用\n- カンマ、ダブルクォート、改行などを適切にエスケープ（Python `csv.writer` 使用で対応可）\n- 日本語キー・日本語値に対応\n- shebang `#!/usr/bin/env python3` を付ける\n- 実行権限を付与（chmod +x）\n\n### 使用例\n```bash\necho '[{\"name\":\"Alice\",\"age\":30},{\"name\":\"Bob\",\"age\":25}]' | python json2csv.py\n# 出力:\n# name,age\n# Alice,30\n# Bob,25\n```\n\n```bash\necho '[{\"商品\":\"りんご\",\"価格\":100},{\"商品\":\"みかん\",\"価格\":50}]' | python json2csv.py\n# 出力:\n# 商品,価格\n# りんご,100\n# みかん,50\n```\n\n### エッジケース対応\n- 空の配列 → 空出力\n- キーが異なるオブジェクト → 全キーの和集合をヘッダーに（不足値は空文字）\n- ネストされたオブジェクト → JSON 文字列としてシリアライズして1セルに\n- `-h` / `--help` フラグで簡易ヘルプ表示\n- 不正な JSON 入力は stderr にエラー出力し exit code 1\n\n### ファイル\nルートディレクトリに `json2csv.py` として作成する。",
+      "atoma_metadata": {
+        "source": "github",
+        "layer": "github-context",
+        "event_type": "issue_opened",
+        "id": "issue-53",
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-02T04:03:21Z"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Agent `engineer` dispatched to work on this sub-task.",
+      "atoma_metadata": {
+        "source": "github",
+        "layer": "github-context",
+        "event_type": "issue_comment",
+        "id": 4862083555,
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-02T04:03:26Z"
+      }
+    }
+  ],
+  "metadata": {
+    "source": "github-context",
+    "agent": "engineer",
+    "snapshot_hash": "1aa3ea0e09c885fb18db45601fa81fa34ad904bf1fcc5c46e0e69cded7bc0c93",
+    "event_count": 2
+  }
+}
