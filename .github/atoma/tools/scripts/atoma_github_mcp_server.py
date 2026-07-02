@@ -115,24 +115,25 @@ def _resolve_branch():
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
     branch = _resolve_branch()
-    log(f"create_pr: branch={branch}, title={t[:80]}")
+    print(f"[atoma-github] create_pr: branch={branch}, title={t[:80]}", file=sys.stderr, flush=True)
     rc, out, err = rungit("push", "-u", "origin", branch)
     if rc:
-        log(f"create_pr: git push failed (rc={rc}): {err}")
+        print(f"[atoma-github] create_pr: git push failed (rc={rc}): {err}", file=sys.stderr, flush=True)
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
-    log(f"create_pr: running gh {' '.join(cmd)}")
+    print(f"[atoma-github] create_pr: running: gh {' '.join(cmd)}", file=sys.stderr, flush=True)
     rc, out, err = gh(*cmd)
     if rc:
-        log(f"create_pr: FAILED (rc={rc}): stdout={out[:200]} stderr={err[:200]}")
-        raise RuntimeError(f"gh pr create failed (rc={rc}): {err or out}")
-    log(f"create_pr: SUCCESS output={out[:200]}")
+        print(f"[atoma-github] create_pr: FAILED (rc={rc}) stdout={out[:300]}, stderr={err[:300]}", file=sys.stderr, flush=True)
+        # Return error as JSON so the LLM can understand
+        return json.dumps({"error": f"gh pr create failed (rc={rc}): {err[:200]}"})
+    print(f"[atoma-github] create_pr: SUCCESS output={out[:300]}", file=sys.stderr, flush=True)
     try:
         num = int(out.strip().split("/")[-1])
     except (ValueError, IndexError):
-        log(f"create_pr: could not parse PR number from: {out[:200]}")
-        raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
+        print(f"[atoma-github] create_pr: could not parse PR number from: {out[:300]}", file=sys.stderr, flush=True)
+        return json.dumps({"number": 0, "url": out.strip()})
     ops_log("create_pr",{"number":num,"title":t})
     return json.dumps({"number":num,"url":out.strip()})
 
