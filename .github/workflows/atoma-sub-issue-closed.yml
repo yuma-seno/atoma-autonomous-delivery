@@ -127,10 +127,9 @@ jobs:
             gh issue comment "${PARENT}" --body-file "$BD"
             rm -f "$BD"
 
-            # Dispatch orchestrator
-            gh workflow run "atoma-runner.yml" \
-              --field agent="orchestrator" \
-              --field number="${PARENT}" \
-              --field type="issue" \
-              --field notify=""
+            # Dispatch orchestrator by comment (uses issue_comment event → correct GITHUB_TOKEN)
+            echo "<!-- atoma:dispatch=orchestrator -->" > dispatch_cmt
+            echo "All sub-tasks completed. Re-starting orchestrator for aggregation." >> dispatch_cmt
+            gh issue comment "${PARENT}" --body-file dispatch_cmt
+            rm -f dispatch_cmt
           fi
