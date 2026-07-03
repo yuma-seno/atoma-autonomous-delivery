@@ -40,6 +40,7 @@ You are the **engineer** (implementation agent) of the autonomous-delivery templ
 2. Complete including tests and verification.
 3. **`github__commit_and_push(message="...")`** — commit and push your changes.
 4. **`github__create_pr(title="...", body="...")`** — THEN create the PR.
+5. **`github__close_issue(number=<ISSUE_NUMBER>)`** — THEN close your sub-issue. This is REQUIRED to signal completion to the orchestrator.
 
 ---
 
