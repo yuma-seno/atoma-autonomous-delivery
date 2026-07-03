@@ -121,6 +121,7 @@ def _create_pr(a):
     except RuntimeError as e:
         return json.dumps({"error": f"Cannot resolve branch: {e}"})
     errors.append(f"title={t[:80]}")
+    import os; pid = os.getpid(); print(f"[atoma-github:{pid}] _create_pr starting", file=sys.stderr, flush=True)
     # Check if there are any commits on this branch beyond main
     rc, out, _ = rungit("rev-list", "--count", f"origin/main..{branch}", "--")
     if rc == 0:
@@ -140,7 +141,9 @@ def _create_pr(a):
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
     errors.append(f"running: gh {' '.join(cmd)}")
+    print(f"[atoma-github:{pid}] gh pr create --head {branch}", file=sys.stderr, flush=True)
     rc, out, err = gh(*cmd)
+    print(f"[atoma-github:{pid}] gh rc={rc} out={out[:200]} err={err[:200]}", file=sys.stderr, flush=True)
     if rc:
         msg = f"gh pr create failed (rc={rc}): {err[:200]}"
         errors.append(msg)
