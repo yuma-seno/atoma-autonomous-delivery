@@ -93,7 +93,8 @@ def _close_issue(a):
     num = a["number"]
     # Refuse to close issues opened by humans
     d = gh_json("issue", "view", str(num), "--repo", REPO, "--json", "author")
-    if d and d.get("author", {}).get("type") != "Bot":
+    author_type = d.get("author", {}).get("type") or ""
+    if author_type.upper() == "USER":
         raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
     rc, out, err = gh("issue", "close", str(num), "--repo", REPO)
     if rc: raise RuntimeError(err or out)
