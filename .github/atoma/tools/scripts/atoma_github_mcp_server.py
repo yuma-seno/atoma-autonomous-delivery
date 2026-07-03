@@ -121,6 +121,18 @@ def _create_pr(a):
     except RuntimeError as e:
         return json.dumps({"error": f"Cannot resolve branch: {e}"})
     errors.append(f"title={t[:80]}")
+    # Check if there are any commits on this branch beyond main
+    rc, out, _ = rungit("rev-list", "--count", f"origin/main..{branch}", "--")
+    if rc == 0:
+        commit_count = int(out.strip() or "0")
+        errors.append(f"commits_ahead_of_main={commit_count}")
+        if commit_count == 0:
+            # Maybe no origin/main yet or first push — check if branch has any commits
+            rc2, out2, _ = rungit("rev-list", "--count", branch)
+            if rc2 == 0 and int(out2.strip() or "0") > 0:
+                pass  # branch has commits, okay
+            else:
+                return json.dumps({"error": "No commits on branch. Use github__commit_and_push first.", "debug": errors})
     rc, out, err = rungit("push", "-u", "origin", branch)
     if rc:
         errors.append(f"push failed: {err[:100]}")
