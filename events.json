@@ -1,0 +1,16 @@
+[
+  {
+    "id": "issue-62",
+    "event_type": "issue_opened",
+    "content": "Issue #62: E2E: シンプルな行数カウントツール\n**Labels:** atoma/in-progress\n\n/orchestrator\n\nシンプルな行数カウント CLI ツールを実装。Python stdlib のみ使用。\n\n- 標準入力からテキストを受け取り行数を出力\n- `lc.py` として実装\n- 単一ファイルのためサブIssue分割不要",
+    "author": "yuma-seno",
+    "created_at": "2026-07-03T14:28:27Z"
+  },
+  {
+    "id": 4877258080,
+    "event_type": "issue_comment",
+    "content": "<!-- atoma:agent=orchestrator -->\nThis is a trivial single-file task — delegating directly.\n\n/engineer\n\nImplement a simple line count CLI tool in `lc.py` at the repo root.\n\n**Spec:**\n- Read text from **stdin**\n- Output the number of lines to **stdout**\n- Use **Python stdlib only** (no external dependencies)\n- Executable as `python lc.py < file.txt` or `cat file.txt | python lc.py`\n- Handle empty input gracefully (output `0`)\n\n**Success criteria:**\n- `echo -e \"a\\nb\\nc\" | python lc.py` outputs `3`\n- `echo -n \"\" | python lc.py` outputs `0`\n- No external imports beyond `sys`\n\n\n---\n_Tokens: 24639 total (24128 prompt + 511 completion)_\n_Estimated cost: $0.0039_\n---\n_run by [orchestrator](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/28666826371)_\n",
+    "author": "github-actions[bot]",
+    "created_at": "2026-07-03T14:30:04Z"
+  }
+]
