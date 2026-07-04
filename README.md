@@ -12,6 +12,9 @@ Three agents (orchestrator → engineer → reviewer) collaborate to decompose r
   - **Anthropic**
   - **GitHub Copilot**
 - A **GitHub repository** where you have admin access (to set secrets and workflows)
+- **GitHub Actions の Pull Request 作成を許可** — リポジトリの **Settings → Actions → General** の一番下にある
+  **"Allow GitHub Actions to create and approve pull requests"** にチェックを入れてください。
+  これを有効にしないと、`GITHUB_TOKEN` による PR 作成が GraphQL レベルでブロックされます。
 
 ## Quick Start
 
