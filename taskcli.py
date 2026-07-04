@@ -1,137 +1,86 @@
-#!/usr/bin/env python3
-"""Task CLI — A simple task management tool.
+"""Task management CLI tool — data persistence layer."""
 
-Usage:
-    python3 taskcli.py add "Buy groceries"
-    python3 taskcli.py list
-    python3 taskcli.py list --all
-    python3 taskcli.py done <ID>
-    python3 taskcli.py delete <ID>
-"""
-
-import argparse
 import json
 import os
-import sys
 from datetime import datetime
-
-DATA_FILE = ".taskcli.json"
 
 
 class TaskStore:
-    """Persistent task storage using a local JSON file."""
+    """Manages persistence of tasks to a JSON file.
 
-    def __init__(self, path=None):
-        self.path = path or DATA_FILE
-        self._tasks = self._load()
+    Each task is a dictionary with keys:
+        id (int): 1-based sequential ID
+        description (str): task description
+        created_at (str): ISO 8601 datetime string
+        done (bool): completion flag
+    """
 
-    def _load(self):
+    def __init__(self, path=".taskcli.json"):
+        self.path = path
+
+    def load(self) -> list[dict]:
+        """Load tasks from the JSON file. Returns an empty list if the file does not exist."""
         if not os.path.exists(self.path):
             return []
-        with open(self.path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(self.path, "r") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                raise ValueError("Invalid task data: expected a list")
+            return data
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(f"Failed to load tasks: {e}") from e
 
-    def _save(self):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(self._tasks, f, indent=2, ensure_ascii=False)
+    def save(self, tasks: list[dict]):
+        """Save the given task list to the JSON file."""
+        with open(self.path, "w") as f:
+            json.dump(tasks, f, indent=2, ensure_ascii=False)
 
-    def _next_id(self):
-        if not self._tasks:
-            return 1
-        return max(t["id"] for t in self._tasks) + 1
-
-    def add(self, description):
+    def add(self, description: str) -> dict:
+        """Add a new task and return it. The ID is auto-incremented."""
+        tasks = self.load()
+        new_id = max((t["id"] for t in tasks), default=0) + 1
         task = {
-            "id": self._next_id(),
+            "id": new_id,
             "description": description,
             "created_at": datetime.now().isoformat(),
             "done": False,
         }
-        self._tasks.append(task)
-        self._save()
+        tasks.append(task)
+        self.save(tasks)
         return task
 
-    def list_tasks(self, include_done=False):
-        if include_done:
-            return list(self._tasks)
-        return [t for t in self._tasks if not t["done"]]
-
-    def mark_done(self, task_id):
-        for task in self._tasks:
+    def get_by_id(self, task_id: int) -> dict | None:
+        """Return the task with the given ID, or None if not found."""
+        tasks = self.load()
+        for task in tasks:
             if task["id"] == task_id:
-                task["done"] = True
-                self._save()
                 return task
         return None
 
-    def delete(self, task_id):
-        for i, task in enumerate(self._tasks):
+    def list_tasks(self, include_done: bool = False) -> list[dict]:
+        """Return tasks. If include_done is False, only return incomplete tasks."""
+        tasks = self.load()
+        if include_done:
+            return tasks
+        return [t for t in tasks if not t["done"]]
+
+    def mark_done(self, task_id: int) -> dict | None:
+        """Mark a task as done. Return the updated task, or None if not found."""
+        tasks = self.load()
+        for task in tasks:
             if task["id"] == task_id:
-                removed = self._tasks.pop(i)
-                self._save()
-                return removed
+                task["done"] = True
+                self.save(tasks)
+                return task
         return None
 
-
-def cmd_add(args, store):
-    task = store.add(args.description)
-    print(f"Added task {task['id']}: {task['description']}")
-
-
-def cmd_list(args, store):
-    tasks = store.list_tasks(include_done=args.all)
-    if not tasks:
-        print("No tasks.")
-        return
-    for task in tasks:
-        suffix = " [done]" if task["done"] else ""
-        print(f"{task['id']}: {task['description']}{suffix}")
-
-
-def cmd_done(args, store):
-    task = store.mark_done(args.task_id)
-    if task is None:
-        print("Task not found.", file=sys.stderr)
-        sys.exit(1)
-    print(f"Task {args.task_id} marked as done.")
-
-
-def cmd_delete(args, store):
-    task = store.delete(args.task_id)
-    if task is None:
-        print("Task not found.", file=sys.stderr)
-        sys.exit(1)
-    print(f"Task {args.task_id} deleted.")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Simple task management CLI")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # add
-    parser_add = subparsers.add_parser("add", help="Add a new task")
-    parser_add.add_argument("description", help="Task description")
-    parser_add.set_defaults(func=cmd_add)
-
-    # list
-    parser_list = subparsers.add_parser("list", help="List tasks")
-    parser_list.add_argument("--all", action="store_true", help="Include done tasks")
-    parser_list.set_defaults(func=cmd_list)
-
-    # done
-    parser_done = subparsers.add_parser("done", help="Mark a task as done")
-    parser_done.add_argument("task_id", type=int, help="Task ID")
-    parser_done.set_defaults(func=cmd_done)
-
-    # delete
-    parser_delete = subparsers.add_parser("delete", help="Delete a task")
-    parser_delete.add_argument("task_id", type=int, help="Task ID")
-    parser_delete.set_defaults(func=cmd_delete)
-
-    args = parser.parse_args()
-    store = TaskStore()
-    args.func(args, store)
-
-
-if __name__ == "__main__":
-    main()
+    def delete(self, task_id: int) -> bool:
+        """Delete a task by ID. Return True on success, False if not found."""
+        tasks = self.load()
+        for i, task in enumerate(tasks):
+            if task["id"] == task_id:
+                del tasks[i]
+                self.save(tasks)
+                return True
+        return False
