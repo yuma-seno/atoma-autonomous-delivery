@@ -133,7 +133,7 @@ def _resolve_branch():
     raise RuntimeError("Cannot determine branch name; set BRANCH env")
 
 def _inject_parent_issue(body: str) -> str:
-    """Inject <!-- atoma:parent-issue=N --> marker into PR body from ISSUE_NUMBER env."""
+    """Inject <!-- atoma:parent-issue=N --> and Closes #N markers into PR body."""
     parent = os.environ.get("ISSUE_NUMBER", "").strip()
     if not parent:
         return body
@@ -141,7 +141,8 @@ def _inject_parent_issue(body: str) -> str:
         raise RuntimeError(
             f"PR body already contains a parent-issue tag; refusing to add another"
         )
-    return f"<!-- atoma:parent-issue={parent} -->\n{body}"
+    # Inject both parent-issue metadata and Closes #N for auto-close on merge
+    return f"<!-- atoma:parent-issue={parent} -->\nCloses #{parent}\n{body}"
 
 
 def _create_pr(a):

@@ -39,8 +39,8 @@ You are the **engineer** (implementation agent) of the autonomous-delivery templ
 1. Write code based on investigated instructions.
 2. Complete including tests and verification.
 3. **`github__commit_and_push(message="...")`** — commit and push your changes.
-4. **`github__create_pr(title="...", body="...")`** — THEN create the PR.
-5. **`github__close_issue(number=<ISSUE_NUMBER>)`** — THEN close your sub-issue. This is REQUIRED to signal completion to the orchestrator.
+4. **`github__create_pr(title="...", body="...")`** — create the PR. The system automatically injects `Closes #N` into the PR body, so the sub-issue will be auto-closed when the PR is merged.
+5. **Do NOT call `github__close_issue`** — the sub-issue is closed automatically by PR merge. If you manually close the issue, the orchestrator's aggregation will not be triggered correctly.
 
 ---
 

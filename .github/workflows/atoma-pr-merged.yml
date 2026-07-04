@@ -1,7 +1,11 @@
 name: Atoma PR Merged
 
-# Detect PR merges and notify the parent issue.
+# Detect PR merges and aggregate sub-issue results.
 # Uses pull_request_target so GITHUB_TOKEN-created PR merges are detected.
+#
+# This is the PRIMARY mechanism for sub-issue aggregation because
+# issues.closed events are NOT triggered for GITHUB_TOKEN-created closures
+# (GitHub design limitation). PR merges via pull_request_target always fire.
 
 on:
   pull_request_target:
@@ -11,19 +15,20 @@ permissions:
   actions: write
   issues: write
   pull-requests: read
-  contents: read
+  contents: write
 
 jobs:
-  notify:
+  parse:
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
     outputs:
-      parent_number: ${{ steps.parse.outputs.parent_number }}
+      parent_issue: ${{ steps.parent-issue.outputs.number }}
+      sub_issue: ${{ steps.sub-issue.outputs.number }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Parse parent issue from PR body
-        id: parse
+        id: parent-issue
         shell: bash
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -31,19 +36,58 @@ jobs:
         run: |
           PARENT=$(echo "$PR_BODY" | grep -oP '(?<=<!-- atoma:parent-issue=)\d+(?= -->)' || true)
           if [ -n "$PARENT" ]; then
-            echo "parent_number=${PARENT}" >> "$GITHUB_OUTPUT"
+            echo "number=${PARENT}" >> "$GITHUB_OUTPUT"
             echo "PR #${PR_NUMBER} is linked to parent issue #${PARENT}"
           else
-            echo "parent_number=" >> "$GITHUB_OUTPUT"
+            echo "number=" >> "$GITHUB_OUTPUT"
             echo "PR #${PR_NUMBER} has no parent-issue metadata"
           fi
 
-      - name: Comment on parent issue
-        if: steps.parse.outputs.parent_number != ''
+      - name: Parse sub-issue from PR body (Closes #N)
+        id: sub-issue
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          SUB=$(echo "$PR_BODY" | grep -oP '(?<=Closes #)\d+' || true)
+          if [ -n "$SUB" ]; then
+            echo "number=${SUB}" >> "$GITHUB_OUTPUT"
+            echo "PR closes sub-issue #${SUB}"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
+          fi
+
+  resolve-parent:
+    needs: parse
+    if: needs.parse.outputs.sub_issue != ''
+    runs-on: ubuntu-latest
+    outputs:
+      parent_issue: ${{ steps.resolve.outputs.parent_issue }}
+    steps:
+      - name: Resolve orchestrator parent from sub-issue body
+        id: resolve
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PARENT: ${{ steps.parse.outputs.parent_number }}
+          SUB: ${{ needs.parse.outputs.sub_issue }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          BODY=$(gh issue view "$SUB" --repo "${OWNER}/${REPO}" --json body --jq '.body' 2>/dev/null || true)
+          PARENT=$(echo "$BODY" | grep -oP '(?<=<!-- atoma:parent=#)\d+(?= -->)' || true)
+          echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: sub-issue #${SUB} → orchestrator parent #${PARENT}"
+
+  notify-parent:
+    needs: resolve-parent
+    if: needs.resolve-parent.outputs.parent_issue != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on parent issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -51,20 +95,91 @@ jobs:
           gh issue comment "$PARENT" --body \
             "PR #${PR_NUMBER} merged: ${PR_TITLE} (${PR_URL})"
 
-  dispatch-orchestrator:
-    needs: notify
-    if: needs.notify.outputs.parent_number != ''
+  aggregate-sub-issues:
+    needs: resolve-parent
+    if: needs.resolve-parent.outputs.parent_issue != ''
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OWNER: ${{ github.repository_owner }}
+      REPO: ${{ github.event.repository.name }}
+      PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
+      CLOSED_NUM: ${{ needs.parse.outputs.sub_issue }}
     steps:
-      - name: Dispatch orchestrator on parent issue
+      - uses: actions/checkout@v4
+
+      - name: Aggregate sub-issue results
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PARENT: ${{ needs.notify.outputs.parent_number }}
         run: |
-          echo "Dispatching orchestrator on parent issue #${PARENT} ..."
-          gh workflow run atoma-runner.yml \
+          echo "PR merged (sub-issue #${CLOSED_NUM}, parent #${PARENT}). Checking siblings..."
+
+          OPEN_SIBLINGS=$(gh issue list \
+            --repo "${OWNER}/${REPO}" \
+            --state open \
+            --label "atoma/sub-issue" \
+            --search "atoma:parent=#${PARENT}" in:body \
+            --json number,title \
+            --jq "[.[].number]" 2>/dev/null)
+
+          SIBLING_COUNT=$(echo "$OPEN_SIBLINGS" | jq 'length' 2>/dev/null || echo "0")
+
+          if [ "$SIBLING_COUNT" -gt 0 ]; then
+            echo "Still ${SIBLING_COUNT} open sibling(s). Notifying progress..."
+            BD=$(mktemp)
+            echo "<!-- atoma:sub-result:#${CLOSED_NUM} -->" > "$BD"
+            echo "Atoma: Sub-task #${CLOSED_NUM} completed. ${SIBLING_COUNT} sub-task(s) still in progress." >> "$BD"
+            gh issue comment "${PARENT}" --body-file "$BD"
+            rm -f "$BD"
+            echo "Not all sub-tasks done yet."
+            exit 0
+          fi
+
+          echo "All sub-tasks completed! Preparing orchestrator re-invocation..."
+
+          ALL_SUBS=$(gh issue list \
+            --repo "${OWNER}/${REPO}" \
+            --state all \
+            --json number,title,body \
+            --jq "[.[] | select(.body | contains(\"atoma:parent=#${PARENT}\")) | .number] | join(\",\")" 2>/dev/null)
+
+          echo "All sub-issues for parent #${PARENT}: ${ALL_SUBS}"
+
+          SESSION_PATH="sessions/issue-${PARENT}-orchestrator.json"
+          if git fetch origin atoma-data --depth=1 2>/dev/null && \
+             git cat-file -e "origin/atoma-data:${SESSION_PATH}" 2>/dev/null; then
+            git show "origin/atoma-data:${SESSION_PATH}" > session.json
+          else
+            echo '{"messages":[]}' > session.json
+          fi
+
+          python3 .github/atoma/tools/scripts/inject_sub_results.py \
+            --session session.json \
+            --repo "${OWNER}/${REPO}" \
+            --parent "${PARENT}" \
+            --sub-issues "${ALL_SUBS}" \
+            --out session.json
+
+          {
+            git fetch origin atoma-data 2>/dev/null && \
+            git checkout -b atoma-data origin/atoma-data 2>/dev/null
+          } || {
+            git checkout --orphan atoma-data
+            git rm -rf . 2>/dev/null || true
+          }
+          mkdir -p "$(dirname "${SESSION_PATH}")"
+          mv session.json "${SESSION_PATH}"
+          git add "${SESSION_PATH}"
+          git commit -m "atoma: inject sub-issue results for parent #${PARENT}" || echo "No changes"
+          git push origin atoma-data
+
+          BD=$(mktemp)
+          echo "<!-- atoma:sub-result:#${CLOSED_NUM} -->" > "$BD"
+          echo "Atoma: All sub-tasks completed. Re-starting orchestrator for aggregation." >> "$BD"
+          gh issue comment "${PARENT}" --body-file "$BD"
+          rm -f "$BD"
+
+          gh workflow run "atoma-runner.yml" \
             --field agent="orchestrator" \
-            --field number="$PARENT" \
+            --field number="${PARENT}" \
             --field type="issue" \
             --field notify=""
