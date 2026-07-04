@@ -73,4 +73,3 @@ jobs:
             --field number="${PARENT}" \
             --field type="issue" \
             --field notify=""
-          fi
