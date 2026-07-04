@@ -8,3 +8,7 @@ context-session.json
 events.json
 session.json
 logs/
+
+# Dependencies
+node_modules/
+.package-lock.json
