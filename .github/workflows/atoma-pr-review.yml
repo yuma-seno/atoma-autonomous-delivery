@@ -1,16 +1,11 @@
-name: Atoma Auto Trigger
+name: Atoma PR Review
 
-# Generic workflow triggered by GitHub events.
-# Uses pull_request_target (NOT pull_request) because GITHUB_TOKEN-created PRs
-# trigger the event but GitHub suppresses workflow runs for pull_request events.
-# pull_request_target runs in the base repo context with full write permissions.
-#
-# pull_request_review is handled in a separate workflow (atoma-pr-review.yml)
-# because pull_request_target and pull_request_review cannot be combined.
+# Separate workflow for pull_request_review events.
+# Cannot be combined with pull_request_target in atoma-auto-trigger.yml.
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
   actions: write
@@ -26,20 +21,14 @@ jobs:
       number: ${{ steps.match.outputs.number }}
       type: ${{ steps.match.outputs.type }}
     steps:
-      # pull_request_target checks out the BASE ref by default — safe for config reads
       - uses: actions/checkout@v4
 
-      - name: Determine PR number from event context
+      - name: Determine PR number
         id: context
         shell: bash
         run: |
-          if [ -n "${{ github.event.pull_request.number }}" ]; then
-            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "type=pr" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "type=issue" >> "$GITHUB_OUTPUT"
-          fi
+          echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          echo "type=pr" >> "$GITHUB_OUTPUT"
 
       - name: Match event to agent from config.json
         id: match
@@ -47,7 +36,6 @@ jobs:
         env:
           EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
           REVIEW_STATE: ${{ github.event.review.state }}
-          IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           AGENT=$(python3 .github/atoma/tools/scripts/match_trigger.py 2>/dev/null || true)
           if [ -n "${AGENT}" ]; then
