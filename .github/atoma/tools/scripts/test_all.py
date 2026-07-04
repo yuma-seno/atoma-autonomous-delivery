@@ -41,7 +41,7 @@ def test6():
     with open(".github/atoma/config.json") as f:
         c = json.load(f)
     assert c["version"] == 2
-    assert c["agents"]["orchestrator"]["max_iterations"] == 50
+    assert c["agents"]["orchestrator"]["max_iterations"] == 100
 
 @t("atoma_github MCP initialize")
 def test7():
