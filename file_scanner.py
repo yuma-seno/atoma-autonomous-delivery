@@ -2,7 +2,6 @@
 """Scan text files in the current directory and display file statistics."""
 
 import os
-import sys
 
 SCAN_EXTENSIONS = {'.txt', '.md', '.py', '.yml', '.yaml', '.json', '.toml'}
 
