@@ -1,0 +1,70 @@
+name: Atoma PR Merged
+
+# Detect PR merges and notify the parent issue.
+# Uses pull_request_target so GITHUB_TOKEN-created PR merges are detected.
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    outputs:
+      parent_number: ${{ steps.parse.outputs.parent_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse parent issue from PR body
+        id: parse
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PARENT=$(echo "$PR_BODY" | grep -oP '(?<=<!-- atoma:parent-issue=)\d+(?= -->)' || true)
+          if [ -n "$PARENT" ]; then
+            echo "parent_number=${PARENT}" >> "$GITHUB_OUTPUT"
+            echo "PR #${PR_NUMBER} is linked to parent issue #${PARENT}"
+          else
+            echo "parent_number=" >> "$GITHUB_OUTPUT"
+            echo "PR #${PR_NUMBER} has no parent-issue metadata"
+          fi
+
+      - name: Comment on parent issue
+        if: steps.parse.outputs.parent_number != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT: ${{ steps.parse.outputs.parent_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh issue comment "$PARENT" --body \
+            "PR #${PR_NUMBER} merged: ${PR_TITLE} (${PR_URL})"
+
+  dispatch-orchestrator:
+    needs: notify
+    if: needs.notify.outputs.parent_number != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch orchestrator on parent issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PARENT: ${{ needs.notify.outputs.parent_number }}
+        run: |
+          echo "Dispatching orchestrator on parent issue #${PARENT} ..."
+          gh workflow run atoma-runner.yml \
+            --field agent="orchestrator" \
+            --field number="$PARENT" \
+            --field type="issue" \
+            --field notify=""
