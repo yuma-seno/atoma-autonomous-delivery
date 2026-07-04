@@ -115,47 +115,23 @@ def _resolve_branch():
 
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
-    errors = []
     try:
         branch = _resolve_branch()
-        errors.append(f"branch={branch}")
     except RuntimeError as e:
-        return json.dumps({"error": f"Cannot resolve branch: {e}"})
-    errors.append(f"title={t[:80]}")
-    import os; pid = os.getpid(); print(f"[atoma-github:{pid}] _create_pr starting", file=sys.stderr, flush=True)
-    # Check if there are any commits on this branch beyond main
-    rc, out, _ = rungit("rev-list", "--count", f"origin/main..{branch}", "--")
-    if rc == 0:
-        commit_count = int(out.strip() or "0")
-        errors.append(f"commits_ahead_of_main={commit_count}")
-        if commit_count == 0:
-            # Maybe no origin/main yet or first push — check if branch has any commits
-            rc2, out2, _ = rungit("rev-list", "--count", branch)
-            if rc2 == 0 and int(out2.strip() or "0") > 0:
-                pass  # branch has commits, okay
-            else:
-                return json.dumps({"error": "No commits on branch. Use github__commit_and_push first.", "debug": errors})
+        raise RuntimeError(f"Cannot resolve branch: {e}")
     rc, out, err = rungit("push", "-u", "origin", branch)
-    if rc:
-        errors.append(f"push failed: {err[:100]}")
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
-    errors.append(f"running: gh {' '.join(cmd)}")
-    print(f"[atoma-github:{pid}] gh pr create --head {branch}", file=sys.stderr, flush=True)
     rc, out, err = gh(*cmd)
-    print(f"[atoma-github:{pid}] gh rc={rc} out={out[:200]} err={err[:200]}", file=sys.stderr, flush=True)
     if rc:
-        msg = f"gh pr create failed (rc={rc}): {err[:200]}"
-        errors.append(msg)
-        return json.dumps({"error": msg, "debug": errors, "stdout": out[:200]})
-    errors.append(f"SUCCESS output={out[:200]}")
+        raise RuntimeError(f"gh pr create failed (rc={rc}): {err or out}")
     try:
         num = int(out.strip().split("/")[-1])
     except (ValueError, IndexError):
-        return json.dumps({"error": f"could not parse PR number from: {out[:200]}", "debug": errors, "url": out.strip()})
+        raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
-    return json.dumps({"number":num,"url":out.strip(),"debug": errors})
+    return json.dumps({"number":num,"url":out.strip()})
 
 def _commit_and_push(a):
     msg = a["message"]
