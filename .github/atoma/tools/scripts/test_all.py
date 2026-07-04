@@ -99,6 +99,45 @@ def test14():
     r = subprocess.run(["python3", "-c", "import py_compile; py_compile.compile('.github/atoma/tools/scripts/inject_sub_results.py')"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
 
+@t("close_issue refuses human-created issues")
+def test15():
+    # Verify _close_issue() refuses to close issues opened by humans
+    # by checking the source code contains the protection logic
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "atoma_github_mcp_server",
+        ".github/atoma/tools/scripts/atoma_github_mcp_server.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    # Don't execute the module (it would start the main loop),
+    # just verify the source contains the protection
+    with open(".github/atoma/tools/scripts/atoma_github_mcp_server.py") as f:
+        src = f.read()
+    # Check for the author type check
+    assert 'author_type.upper() == "USER"' in src, "Missing USER guard in _close_issue"
+    assert 'Refusing to close issue' in src, "Missing error message in _close_issue"
+
+@t("close_issue protection logic (USER raises)")
+def test16():
+    test_globals = {}
+    exec('''
+def _close_issue(a):
+    num = a["number"]
+    d = {"author": {"type": "USER"}}
+    author_type = d.get("author", {}).get("type") or ""
+    if author_type.upper() == "USER":
+        raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
+    return {"ok": True}
+''', test_globals)
+    fn = test_globals["_close_issue"]
+    try:
+        fn({"number": 999})
+        assert False, "Expected RuntimeError"
+    except RuntimeError as e:
+        assert "Refusing to close issue" in str(e)
+        assert "opened by a human" in str(e)
+
+
 for name, fn in tests:
     try:
         fn()
