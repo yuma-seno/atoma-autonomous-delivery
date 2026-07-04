@@ -13,7 +13,8 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    if: github.event.sender.type != 'Bot'
+    # Allow bot-closed issues too — needed because AI agent closes sub-issues via gh CLI
+    # which runs as github-actions[bot].
     outputs:
       is_sub_issue: ${{ steps.parse.outputs.is_sub_issue }}
       parent_number: ${{ steps.parse.outputs.parent_number }}
@@ -35,6 +36,14 @@ jobs:
             echo "parent_number=" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Ensure atoma/sub-issue label exists
+        if: steps.parse.outputs.is_sub_issue == 'true'
+        shell: bash
+        run: |
+          gh label create 'atoma/sub-issue' --force \
+            -c '5319e7' \
+            -d 'Sub-issue created by Atoma orchestrator' 2>/dev/null || true
+
   aggregate:
     needs: check
     if: needs.check.outputs.is_sub_issue == 'true'
@@ -54,11 +63,11 @@ jobs:
         run: |
           echo "Sub-issue #${CLOSED_NUM} (parent #${PARENT}) closed. Checking siblings..."
 
-          # Find all open issues with atoma/in-progress label that reference the same parent
+          # Find all open issues with atoma/sub-issue label that reference the same parent
           OPEN_SIBLINGS=$(gh issue list \
             --repo "${OWNER}/${REPO}" \
             --state open \
-            --label "atoma/in-progress" \
+            --label "atoma/sub-issue" \
             --search "atoma:parent=#${PARENT}" in:body \
             --json number,title \
             --jq "[.[].number]" 2>/dev/null)

@@ -141,6 +141,20 @@ jobs:
             gh issue edit "$NUMBER" --add-label "atoma/in-progress" 2>/dev/null || true
           fi
 
+      - name: Remove atoma/in-progress label on completion
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          TYPE: ${{ inputs.type }}
+        run: |
+          # Remove atoma/in-progress when the agent run finishes (success or failure).
+          # Sub-issues keep atoma/sub-issue label for tracking (never removed here).
+          if [ "$TYPE" = "issue" ]; then
+            gh issue edit "$NUMBER" --remove-label "atoma/in-progress" 2>/dev/null || true
+          fi
+
       - name: Post result
         if: >-
           always() &&

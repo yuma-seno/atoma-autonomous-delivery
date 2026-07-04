@@ -86,6 +86,9 @@ def _create_issue(a):
         parent = os.environ.get("ISSUE_NUMBER", "")
         if parent:
             b = f"<!-- atoma:parent=#{parent} -->\n{b}"
+        # Add atoma/sub-issue label for tracking
+        if "atoma/sub-issue" not in ls:
+            ls = list(ls) + ["atoma/sub-issue"]
     if b: cmd += ["--body",b]
     for l in ls: cmd += ["--label",l]
     rc, out, err = gh(*cmd)
