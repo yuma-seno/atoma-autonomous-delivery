@@ -37,7 +37,7 @@
       }
     },
     "reviewer": {
-      "max_iterations": 20,
+      "max_iterations": 30,
       "max_review_loops": 5,
       "merge_policy": "manual",
       "shared_context": {
