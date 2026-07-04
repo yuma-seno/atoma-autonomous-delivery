@@ -99,6 +99,35 @@ This will:
 
 **Call this exactly ONCE with all tasks.** Do NOT call it multiple times.
 
+### 3. Handling dependencies between sub-issues
+
+When sub-issues have dependencies (e.g., sub-issue B requires code from sub-issue A):
+
+1. **Create ALL sub-issues first** (so they're visible in the issue tracker)
+2. **Launch only the independent (root) sub-issues** via `atoma__launch_sub_agent`
+3. When those complete, the orchestrator is re-invoked automatically
+4. **Launch the next batch of sub-issues** (those whose dependencies are now met)
+
+Example:
+```
+# Phase 1 — independent tasks
+atoma__launch_sub_agent(tasks=[
+  {issue: <CORE_LIB>, agent: "engineer"},
+])
+
+# (session ends. Re-invoked when CORE_LIB is done.)
+
+# Phase 2 — tasks that depended on CORE_LIB
+atoma__launch_sub_agent(tasks=[
+  {issue: <CLI_TOOL>, agent: "engineer"},
+  {issue: <TESTS>, agent: "engineer"},
+])
+```
+
+If a dependency chain is short (e.g., A → B → C), consider using `/engineer` for sequential steps within a single session instead of creating separate sub-issues.
+
+**Rule:** Always prefer launching independent work in parallel. Only serialize when there is a true code dependency (one sub-issue's implementation literally needs files from another).
+
 ### 3. Aggregation on re-invocation
 
 When you are re-invoked after sub-issues complete:
