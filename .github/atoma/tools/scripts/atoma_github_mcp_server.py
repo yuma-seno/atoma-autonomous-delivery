@@ -15,6 +15,20 @@ from datetime import datetime, timezone
 from typing import Any
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
+# Fallback: derive REPO from git remote if env var is not set
+if not REPO:
+    try:
+        rc, out, _ = rungit("remote", "get-url", "origin")
+        if rc == 0 and out:
+            # Handle both https://github.com/owner/repo and git@github.com:owner/repo
+            url = out.strip()
+            for prefix in ["https://github.com/", "git@github.com:"]:
+                if url.startswith(prefix):
+                    suffix = url[len(prefix):]
+                    REPO = suffix.removesuffix(".git")
+                    break
+    except Exception:
+        pass
 OPS_LOG = os.environ.get("ATOMA_OPS_LOG", "/tmp/atoma_ops.log")
 
 def log(msg): print(f"[atoma-github] {msg}", file=sys.stderr, flush=True)
@@ -91,9 +105,11 @@ def _get_issue_comments(a):
 
 def _close_issue(a):
     num = a["number"]
+    log(f"_close_issue: #{num}")
     # Refuse to close issues opened by humans
     d = gh_json("issue", "view", str(num), "--repo", REPO, "--json", "author")
     author_type = d.get("author", {}).get("type") or ""
+    log(f"_close_issue: author.type={author_type!r}")
     if author_type.upper() == "USER":
         raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
     rc, out, err = gh("issue", "close", str(num), "--repo", REPO)
@@ -115,15 +131,23 @@ def _resolve_branch():
 
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
+    log(f"_create_pr: title={t!r}, base={base!r}, REPO={REPO!r}")
     try:
         branch = _resolve_branch()
+        log(f"_create_pr: resolved branch={branch!r}")
     except RuntimeError as e:
+        log(f"_create_pr: branch resolution failed: {e}")
         raise RuntimeError(f"Cannot resolve branch: {e}")
     rc, out, err = rungit("push", "-u", "origin", branch)
+    log(f"_create_pr: git push rc={rc}, err={err!r}")
+    if rc:
+        raise RuntimeError(f"git push failed (rc={rc}): {err or out}")
     cmd = ["pr","create","--repo",REPO,"--title",t, "--head", branch]
     if b: cmd += ["--body",b]
     if base: cmd += ["--base",base]
+    log(f"_create_pr: running gh {' '.join(cmd)}")
     rc, out, err = gh(*cmd)
+    log(f"_create_pr: gh pr create rc={rc}, out={out!r}, err={err!r}")
     if rc:
         raise RuntimeError(f"gh pr create failed (rc={rc}): {err or out}")
     try:
