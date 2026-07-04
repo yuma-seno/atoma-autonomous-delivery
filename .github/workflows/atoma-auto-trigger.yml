@@ -1,18 +1,21 @@
 name: Atoma Auto Trigger
 
 # Generic workflow triggered by GitHub events.
-# Reads config.json auto_triggers to determine which agent to invoke.
+# Uses pull_request_target (NOT pull_request) because GITHUB_TOKEN-created PRs
+# trigger the event but GitHub suppresses workflow runs for pull_request events.
+# pull_request_target runs in the base repo context with full write permissions.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, ready_for_review]
   pull_request_review:
     types: [submitted]
 
 permissions:
   actions: write
-  issues: read
-  pull-requests: read
+  issues: write
+  pull-requests: write
+  contents: read
 
 jobs:
   route:
@@ -22,6 +25,7 @@ jobs:
       number: ${{ steps.match.outputs.number }}
       type: ${{ steps.match.outputs.type }}
     steps:
+      # pull_request_target checks out the BASE ref by default — safe for config reads
       - uses: actions/checkout@v4
 
       - name: Determine PR number from event context
