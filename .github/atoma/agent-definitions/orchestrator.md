@@ -1,7 +1,6 @@
 ---
 name: orchestrator
 description: Issue intake, planning, delegation, and coordination for autonomous delivery.
-model: deepseek/deepseek-v4-flash
 callable_by:
   - user
   - agent

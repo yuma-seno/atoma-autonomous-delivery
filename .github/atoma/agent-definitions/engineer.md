@@ -1,7 +1,6 @@
 ---
 name: engineer
 description: Implementation agent for the autonomous-delivery template. Implements, creates PRs, and enters the fix loop.
-model: deepseek/deepseek-v4-flash
 callable_by:
   - user
   - agent

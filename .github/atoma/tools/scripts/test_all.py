@@ -40,8 +40,10 @@ def test5():
 def test6():
     with open(".github/atoma/config.json") as f:
         c = json.load(f)
-    assert c["version"] == 2
+    assert c["version"] == 3
     assert c["agents"]["orchestrator"]["max_iterations"] == 100
+    assert c["agents"]["orchestrator"]["model"] == "deepseek/deepseek-v4-flash"
+    assert "labels" in c
 
 @t("atoma_github MCP initialize")
 def test7():
