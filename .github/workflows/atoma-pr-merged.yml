@@ -64,7 +64,7 @@ jobs:
     outputs:
       parent_issue: ${{ steps.resolve.outputs.parent_issue }}
     steps:
-      - name: Resolve orchestrator parent from sub-issue body
+      - name: Resolve orchestrator parent via GraphQL parent field
         id: resolve
         shell: bash
         env:
@@ -73,13 +73,27 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
         run: |
-          BODY=$(gh issue view "$SUB" --repo "${OWNER}/${REPO}" --json body --jq '.body' 2>/dev/null || true)
-          PARENT=$(echo "$BODY" | grep -oP '(?<=<!-- atoma:parent=#)\d+(?= -->)' || true)
-          echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
-          echo "Resolved: sub-issue #${SUB} → orchestrator parent #${PARENT}"
+          PARENT=$(gh api graphql -f query='
+            query($owner:String!,$repo:String!,$num:Int!){
+              repository(owner:$owner,name:$repo){
+                issue(number:$num){parent{number}}
+              }
+            }' \
+            -F owner="${OWNER}" -F repo="${REPO}" -F num="${SUB}" \
+            --jq '.data.repository.issue.parent.number' 2>/dev/null || true)
+          if [ -n "$PARENT" ] && [ "$PARENT" != "null" ]; then
+            echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
+            echo "Resolved via GraphQL parent: sub-issue #${SUB} → parent #${PARENT}"
+          else
+            # Fallback: parse HTML comment from sub-issue body
+            BODY=$(gh issue view "$SUB" --repo "${OWNER}/${REPO}" --json body --jq '.body' 2>/dev/null || true)
+            PARENT=$(echo "$BODY" | grep -oP '(?<=<!-- atoma:parent=#)\d+(?= -->)' || true)
+            echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
+            [ -n "$PARENT" ] && echo "Resolved via fallback: sub-issue #${SUB} → parent #${PARENT}"
+          fi
 
   notify-parent:
-    needs: resolve-parent
+    needs: [resolve-parent, parse]
     if: needs.resolve-parent.outputs.parent_issue != ''
     runs-on: ubuntu-latest
     steps:
@@ -96,7 +110,7 @@ jobs:
             "PR #${PR_NUMBER} merged: ${PR_TITLE} (${PR_URL})"
 
   aggregate-sub-issues:
-    needs: resolve-parent
+    needs: [resolve-parent, parse]
     if: needs.resolve-parent.outputs.parent_issue != ''
     runs-on: ubuntu-latest
     env:
