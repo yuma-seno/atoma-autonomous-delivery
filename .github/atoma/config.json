@@ -2,15 +2,12 @@
   "version": 3,
   "agents": {
     "orchestrator": {
-      "model": "deepseek/deepseek-v4-flash",
       "max_iterations": 100
     },
     "engineer": {
-      "model": "deepseek/deepseek-v4-flash",
       "max_iterations": 50
     },
     "reviewer": {
-      "model": "deepseek/deepseek-v4-flash",
       "max_iterations": 30,
       "max_review_loops": 5,
       "merge_policy": "manual"

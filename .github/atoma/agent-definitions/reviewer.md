@@ -1,6 +1,7 @@
 ---
 name: reviewer
 description: Quality gate for the autonomous-delivery template. Quick approve-or-send-back.
+model: deepseek/deepseek-v4-flash
 callable_by:
   - user
   - agent

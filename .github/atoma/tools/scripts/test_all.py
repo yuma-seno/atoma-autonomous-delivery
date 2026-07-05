@@ -42,7 +42,6 @@ def test6():
         c = json.load(f)
     assert c["version"] == 3
     assert c["agents"]["orchestrator"]["max_iterations"] == 100
-    assert c["agents"]["orchestrator"]["model"] == "deepseek/deepseek-v4-flash"
     assert "labels" in c
 
 @t("atoma_github MCP initialize")
