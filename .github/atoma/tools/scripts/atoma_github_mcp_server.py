@@ -59,6 +59,28 @@ def gh_json(*args):
     if rc: raise RuntimeError(f"gh {' '.join(args)}: {err or out}")
     return json.loads(out) if out else None
 
+def gh_graphql(query, **variables):
+    """Run a GraphQL query via gh api graphql."""
+    args = ["api", "graphql", "-f", f"query={query}"]
+    for k, v in variables.items():
+        args += ["-F", f"{k}={v}"]
+    rc, out, err = gh(*args)
+    if rc:
+        raise RuntimeError(f"GraphQL query failed: {err or out[:200]}")
+    result = json.loads(out)
+    if "errors" in result:
+        raise RuntimeError(f"GraphQL errors: {result['errors']}")
+    return result["data"]
+
+def resolve_issue_id(number: int) -> str:
+    """Resolve an issue number to its global GraphQL node ID."""
+    owner, repo = REPO.split("/", 1)
+    d = gh_graphql(
+        "query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){id}}}",
+        owner=owner, repo=repo, num=number,
+    )
+    return d["repository"]["issue"]["id"]
+
 TOOLS = [
     {"name":"create_issue","description":"Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.","inputSchema":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}},"sub_issue":{"type":"boolean","description":"Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true."}},"required":["title"]}},
     {"name":"get_issue","description":"Get an issue by number.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
@@ -80,12 +102,12 @@ TOOLS = [
 
 def _create_issue(a):
     t, b, ls, sub = a["title"], a.get("body",""), a.get("labels",[]), a.get("sub_issue", True)
+    parent_num = os.environ.get("ISSUE_NUMBER", "").strip()
     cmd = ["issue","create","--repo",REPO,"--title",t]
-    # Auto-inject parent reference for sub-issues (default: true)
     if sub:
-        parent = os.environ.get("ISSUE_NUMBER", "")
-        if parent:
-            b = f"<!-- atoma:parent=#{parent} -->\n{b}"
+        # Inject HTML comment for workflow backward compatibility
+        if parent_num:
+            b = f"<!-- atoma:parent=#{parent_num} -->\n{b}"
         # Add atoma/sub-issue label for tracking
         if "atoma/sub-issue" not in ls:
             ls = list(ls) + ["atoma/sub-issue"]
@@ -94,6 +116,18 @@ def _create_issue(a):
     rc, out, err = gh(*cmd)
     if rc: raise RuntimeError(err or out)
     num = int(out.strip().split("/")[-1])
+    # Link via official GitHub sub-issues API (GraphQL addSubIssue)
+    if sub and parent_num:
+        try:
+            pid = resolve_issue_id(int(parent_num))
+            sid = resolve_issue_id(num)
+            gh_graphql(
+                "mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}",
+                parent=pid, sub=sid,
+            )
+            log(f"Linked sub-issue #{num} to parent #{parent_num} via official sub-issues API")
+        except RuntimeError as e:
+            log(f"WARN: Failed to link sub-issue #{num} to parent #{parent_num}: {e}")
     ops_log("create_issue",{"number":num,"title":t,"sub_issue":sub})
     return json.dumps({"number":num,"url":out.strip()})
 def _get_issue(a): return json.dumps(gh_json("issue","view",str(a["number"]),"--repo",REPO,"--json","number,title,body,state,labels,createdAt,closedAt,comments"))
