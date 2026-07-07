@@ -14,6 +14,13 @@ import json, os, subprocess, sys
 from datetime import datetime, timezone
 from typing import Any
 
+from atoma_config import get_label
+
+def rungit(*args):
+    """Run git command, returns (rc, stdout, stderr)."""
+    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip(), r.stderr.strip()
+
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
 # Fallback: derive REPO from git remote if env var is not set
 if not REPO:
@@ -108,9 +115,10 @@ def _create_issue(a):
         # Inject HTML comment for workflow backward compatibility
         if parent_num:
             b = f"<!-- atoma:parent=#{parent_num} -->\n{b}"
-        # Add atoma/sub-issue label for tracking
-        if "atoma/sub-issue" not in ls:
-            ls = list(ls) + ["atoma/sub-issue"]
+        # Add the sub-issue tracking label (from config.json, falls back to a default)
+        sub_issue_label = get_label("sub_issue", "atoma/sub-issue")
+        if sub_issue_label not in ls:
+            ls = list(ls) + [sub_issue_label]
     if b: cmd += ["--body",b]
     for l in ls: cmd += ["--label",l]
     rc, out, err = gh(*cmd)
@@ -247,11 +255,6 @@ def _submit_pr_review(a):
     if rc: raise RuntimeError(err or out)
     ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
     return json.dumps({"ok": True})
-
-def rungit(*args):
-    """Run git command, returns (rc, stdout, stderr)."""
-    r = subprocess.run(["git", *args], capture_output=True, text=True)
-    return r.returncode, r.stdout.strip(), r.stderr.strip()
 
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,

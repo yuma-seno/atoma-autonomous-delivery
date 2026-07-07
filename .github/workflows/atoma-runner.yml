@@ -104,7 +104,7 @@ jobs:
         env:
           AGENT_NAME: ${{ inputs.agent }}
         run: |
-          MAX=$(python3 -c "import json,sys; d=json.load(open('.github/atoma/config.json')); print(d.get('agents',{}).get(sys.argv[1],{}).get('max_iterations',30))" "$AGENT_NAME")
+          MAX=$(python3 .github/atoma/tools/scripts/get_config_value.py "agents.${AGENT_NAME}.max_iterations" 30)
           echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
           echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
 
@@ -134,11 +134,12 @@ jobs:
           TYPE: ${{ inputs.type }}
         run: |
           if [ "$TYPE" = "issue" ]; then
+            LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
             # Create the label if it does not exist yet
-            gh label create 'atoma/in-progress' --force \
+            gh label create "$LABEL" --force \
               -c '0366d6' \
               -d 'Issue is being worked on by an Atoma agent' 2>/dev/null || true
-            gh issue edit "$NUMBER" --add-label "atoma/in-progress" 2>/dev/null || true
+            gh issue edit "$NUMBER" --add-label "$LABEL" 2>/dev/null || true
           fi
 
       - name: Remove atoma/in-progress label on completion
@@ -152,7 +153,8 @@ jobs:
           # Remove atoma/in-progress when the agent run finishes (success or failure).
           # Sub-issues keep atoma/sub-issue label for tracking (never removed here).
           if [ "$TYPE" = "issue" ]; then
-            gh issue edit "$NUMBER" --remove-label "atoma/in-progress" 2>/dev/null || true
+            LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
+            gh issue edit "$NUMBER" --remove-label "$LABEL" 2>/dev/null || true
           fi
 
       - name: Post result

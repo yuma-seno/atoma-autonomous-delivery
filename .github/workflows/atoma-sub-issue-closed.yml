@@ -53,15 +53,10 @@ jobs:
         shell: bash
         run: |
           echo "Sub-issue closed manually. Checking open siblings..."
-          OPEN_SIBLINGS=$(gh issue list \
+          SIBLING_COUNT=$(python3 .github/atoma/tools/scripts/check_open_siblings.py \
             --repo "${OWNER}/${REPO}" \
-            --state open \
-            --label "atoma/sub-issue" \
-            --search "atoma:parent=#${PARENT}" in:body \
-            --json number,title \
-            --jq "[.[].number]" 2>/dev/null)
+            --parent "${PARENT}")
 
-          SIBLING_COUNT=$(echo "$OPEN_SIBLINGS" | jq 'length' 2>/dev/null || echo "0")
           if [ "$SIBLING_COUNT" -gt 0 ]; then
             echo "Still ${SIBLING_COUNT} sibling(s) open. No action needed."
             exit 0

@@ -100,6 +100,21 @@ def test14():
     r = subprocess.run(["python3", "-c", "import py_compile; py_compile.compile('.github/atoma/tools/scripts/inject_sub_results.py')"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
 
+@t("check_open_siblings.py syntax")
+def test17():
+    r = subprocess.run(["python3", "-c", "import py_compile; py_compile.compile('.github/atoma/tools/scripts/check_open_siblings.py')"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+@t("get_config_value.py reads labels.in_progress")
+def test18():
+    r = subprocess.run(["python3", ".github/atoma/tools/scripts/get_config_value.py", "labels.in_progress", "atoma/in-progress"], capture_output=True, text=True)
+    assert r.stdout.strip() == "atoma/in-progress", f"Got: {r.stdout.strip()}"
+
+@t("get_config_value.py falls back to default for missing key")
+def test19():
+    r = subprocess.run(["python3", ".github/atoma/tools/scripts/get_config_value.py", "nonexistent.key", "fallback"], capture_output=True, text=True)
+    assert r.stdout.strip() == "fallback", f"Got: {r.stdout.strip()}"
+
 @t("close_issue refuses human-created issues")
 def test15():
     # Verify _close_issue() refuses to close issues opened by humans
