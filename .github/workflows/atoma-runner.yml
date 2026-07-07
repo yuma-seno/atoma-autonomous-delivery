@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: ''
+      atoma_version:
+        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        required: false
+        type: string
+        default: 'source'
   workflow_dispatch:
     inputs:
       agent:
@@ -40,6 +45,11 @@ on:
         required: false
         type: string
         default: ''
+      atoma_version:
+        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        required: false
+        type: string
+        default: 'source'
 
 jobs:
   run:
@@ -118,7 +128,7 @@ jobs:
           tools_file: .github/atoma/tools/tools.yaml
           issue_number: ${{ steps.prep.outputs.resolved_number }}
           orchestration_file: .github/atoma/config.json
-          atoma_version: source
+          atoma_version: ${{ inputs.atoma_version }}
           max_iterations: ${{ steps.cfg.outputs.max_iterations }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
