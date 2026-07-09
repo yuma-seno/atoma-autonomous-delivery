@@ -88,7 +88,10 @@ def test11():
 
 @t("shell_guard blocks dangerous commands")
 def test12():
-    r = subprocess.run(["python3", ".github/atoma/tools/scripts/shell_guard.py"], input=json.dumps({"arguments":{"command":"git push origin main"}}), capture_output=True, text=True)
+    # shell_guard.py's design explicitly allows `git` (agents need to push their
+    # own commits) -- only raw `gh` CLI / curl / code-exec primitives etc. are
+    # blocked (use a real blocked pattern here, not `git push`).
+    r = subprocess.run(["python3", ".github/atoma/tools/scripts/shell_guard.py"], input=json.dumps({"arguments":{"command":"gh issue list"}}), capture_output=True, text=True)
     assert '"allow": false' in r.stdout
 
 @t("shell_guard allows safe commands")
