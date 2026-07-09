@@ -132,6 +132,22 @@ def test21():
         capture_output=True, text=True)
     assert r.stdout.strip() == "reviewer", f"Got: {r.stdout.strip()} err={r.stderr}"
 
+@t("resolve_notify.py extracts notify tag from body")
+def test22():
+    r = subprocess.run(["python3", "-c",
+        "import sys; sys.path.insert(0, '.github/atoma/tools/scripts'); "
+        "from resolve_notify import NOTIFY_RE; "
+        "print(NOTIFY_RE.search('<!-- atoma:notify=octocat -->\\nbody').group(1))"],
+        capture_output=True, text=True)
+    assert r.stdout.strip() == "octocat", f"Got: {r.stdout.strip()} err={r.stderr}"
+
+@t("atoma_github_mcp_server propagates ISSUE_NOTIFY into created issues/PRs")
+def test23():
+    with open(".github/atoma/tools/scripts/atoma_github_mcp_server.py") as f:
+        src = f.read()
+    assert "_notify_tag_prefix" in src, "Missing _notify_tag_prefix helper"
+    assert "ISSUE_NOTIFY" in src, "Missing ISSUE_NOTIFY propagation"
+
 @t("close_issue refuses human-created issues")
 def test15():
     # Verify _close_issue() refuses to close issues opened by humans

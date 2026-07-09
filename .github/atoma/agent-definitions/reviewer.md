@@ -38,7 +38,7 @@ You are the **reviewer** (quick quality gate) of the autonomous-delivery templat
 Your `merge_policy` is configured in config.json. `github__merge_pr` reads it itself and no-ops if it isn't `"auto"`, so just follow this sequence regardless of the policy:
 
 1. Approve with `github__submit_pr_review(event="COMMENT", body="LGTM")`. **Never use `event="APPROVE"`** — Atoma agents share a single bot identity, so GitHub always rejects self-approval (`Can not approve your own pull request`).
-2. Call `github__merge_pr(number=...)`. If `merge_policy` is `"auto"` this merges the PR immediately; if `"manual"` it does nothing (`merged: false`) and you should instead write `@human All checks passed. Please review and merge when ready.` in your text response.
+2. Call `github__merge_pr(number=...)`. If `merge_policy` is `"auto"` this merges the PR immediately; if `"manual"` it does nothing (`merged: false`) — end your text response with something like `All checks passed. Ready to merge.` The system automatically appends a mention to notify the right person when no further agent is being dispatched; you do not need to write your own `@mention`.
 
 ---
 

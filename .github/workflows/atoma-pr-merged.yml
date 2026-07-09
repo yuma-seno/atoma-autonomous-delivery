@@ -190,8 +190,10 @@ jobs:
           gh issue comment "${PARENT}" --body-file "$BD"
           rm -f "$BD"
 
+          NOTIFY=$(python3 .github/atoma/tools/scripts/resolve_notify.py \
+            --repo "${OWNER}/${REPO}" --number "${PARENT}")
           gh workflow run "atoma-runner.yml" \
             --field agent="orchestrator" \
             --field number="${PARENT}" \
             --field type="issue" \
-            --field notify=""
+            --field notify="${NOTIFY}"

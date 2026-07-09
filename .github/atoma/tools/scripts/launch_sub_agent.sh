@@ -52,6 +52,6 @@ gh workflow run "$DISPATCH_WORKFLOW" \
     --field agent="$AGENT" \
     --field number="$ISSUE" \
     --field type="issue" \
-    --field notify=""
+    --field notify="${ISSUE_NOTIFY:-}"
 
 echo "dispatched: agent=${AGENT} issue=#${ISSUE}"

@@ -130,6 +130,7 @@ jobs:
           orchestration_file: .github/atoma/config.json
           atoma_version: ${{ inputs.atoma_version }}
           max_iterations: ${{ steps.cfg.outputs.max_iterations }}
+          notify_login: ${{ inputs.notify }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

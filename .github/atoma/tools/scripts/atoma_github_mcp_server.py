@@ -108,10 +108,22 @@ TOOLS = [
     {"name":"merge_pr","description":"Merge a PR if config.json's merge_policy is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
 ]
 
+def _notify_tag_prefix() -> str:
+    """<!-- atoma:notify=LOGIN --> prefix propagating ISSUE_NOTIFY (the human to
+    notify, set by run/action.yml from the workflow's `notify` input) into any
+    issue/PR body this run creates. Empty when ISSUE_NOTIFY is unset (e.g. no
+    human is associated with this run, or notify propagation isn't relevant)."""
+    login = os.environ.get("ISSUE_NOTIFY", "").strip()
+    return f"<!-- atoma:notify={login} -->\n" if login else ""
+
 def _create_issue(a):
     t, b, ls, sub = a["title"], a.get("body",""), a.get("labels",[]), a.get("sub_issue", True)
     parent_num = os.environ.get("ISSUE_NUMBER", "").strip()
     cmd = ["issue","create","--repo",REPO,"--title",t]
+    # Propagate the original requester's login forward so downstream dispatches
+    # (this issue's own future runs, PRs closing it, etc.) know who to notify
+    # without needing to walk back up the issue tree.
+    b = _notify_tag_prefix() + b
     if sub:
         # Inject HTML comment for workflow backward compatibility
         if parent_num:
@@ -176,8 +188,12 @@ def _resolve_branch():
     raise RuntimeError("Cannot determine branch name; set BRANCH env")
 
 def _inject_parent_issue(body: str) -> str:
-    """Inject <!-- atoma:parent-issue=N --> and Closes #N markers into PR body."""
+    """Inject <!-- atoma:parent-issue=N -->, <!-- atoma:notify=LOGIN -->, and
+    Closes #N markers into PR body."""
     parent = os.environ.get("ISSUE_NUMBER", "").strip()
+    if "<!-- atoma:notify=" in body:
+        raise RuntimeError("PR body already contains a notify tag; refusing to add another")
+    body = _notify_tag_prefix() + body
     if not parent:
         return body
     if "<!-- atoma:parent-issue=" in body:
@@ -214,7 +230,7 @@ def _dispatch_post_pr_agent(pr_number: int):
         "--field", f"agent={agent}",
         "--field", f"number={pr_number}",
         "--field", "type=pr",
-        "--field", "notify=",
+        "--field", f"notify={os.environ.get('ISSUE_NOTIFY', '').strip()}",
     )
     if rc:
         log(f"_dispatch_post_pr_agent: WARN failed to dispatch {agent} for PR #{pr_number}: {err or out}")

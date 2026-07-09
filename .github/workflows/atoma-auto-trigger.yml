@@ -25,6 +25,7 @@ jobs:
       agent: ${{ steps.match.outputs.agent }}
       number: ${{ steps.match.outputs.number }}
       type: ${{ steps.match.outputs.type }}
+      notify: ${{ steps.notify.outputs.notify }}
     steps:
       # pull_request_target checks out the BASE ref by default — safe for config reads
       - uses: actions/checkout@v4
@@ -40,6 +41,15 @@ jobs:
             echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "type=issue" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve notify login from PR body tag
+        id: notify
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          NOTIFY=$(echo "$PR_BODY" | grep -oP '(?<=<!-- atoma:notify=)[A-Za-z0-9-]+(?= -->)' || true)
+          echo "notify=${NOTIFY}" >> "$GITHUB_OUTPUT"
 
       - name: Match event to agent from config.json
         id: match
@@ -65,5 +75,5 @@ jobs:
       agent: ${{ needs.route.outputs.agent }}
       number: ${{ needs.route.outputs.number }}
       type: ${{ needs.route.outputs.type }}
-      notify: ''
+      notify: ${{ needs.route.outputs.notify }}
     secrets: inherit
