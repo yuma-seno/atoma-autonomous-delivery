@@ -15,7 +15,8 @@
   },
   "labels": {
     "in_progress": "atoma/in-progress",
-    "sub_issue": "atoma/sub-issue"
+    "sub_issue": "atoma/sub-issue",
+    "launched": "atoma/launched"
   },
   "auto_triggers": [
     {

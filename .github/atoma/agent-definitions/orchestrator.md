@@ -35,7 +35,7 @@ You receive new issues and are responsible for investigation, planning, delegati
   - **`atoma__launch_sub_agent`**: launch agents on ALL sub-issues at once — this **ends your session**
   - **`/engineer`**: direct delegation (trivial tasks only)
 - Implementation results flow to the reviewer automatically.
-- You are automatically re-invoked when **all** sub-issues are closed.
+- You are automatically re-invoked when all **launched** sub-issues are closed. Sub-issues you created but have not yet passed to `atoma__launch_sub_agent` are "pending" and do NOT count toward this — they will never auto-close themselves, so it is YOUR job to launch them on a later re-invocation (see "Handling dependencies" below).
 
 ### The Lifecycle (conceptually)
 
@@ -43,8 +43,8 @@ You receive new issues and are responsible for investigation, planning, delegati
 1. Receive issue → plan & decompose (in your head, NOT as an extra issue)
 2. Create sub-issues via GitHub MCP (no agents launched yet)
 3. Call atoma__launch_sub_agent(tasks=[{issue: ..., agent: "engineer"}, ...]) ONCE → session ends
-4. [All sub-issues complete] → you are re-invoked automatically
-5. Aggregate results, report completion
+4. [All currently-launched sub-issues complete] → you are re-invoked automatically
+5. Check for pending (not-yet-launched) sub-issues — launch the next phase if any are ready, otherwise aggregate and report completion
 ```
 
 **Critically: `atoma__launch_sub_agent` is your one-shot session terminator.** You call it exactly once with the full list of sub-issues. After that, your session ends immediately. You do NOT need to call any other tools after it — the system will bring you back when all the work is done.
@@ -106,10 +106,12 @@ This will:
 
 When sub-issues have dependencies (e.g., sub-issue B requires code from sub-issue A):
 
-1. **Create ALL sub-issues first** (so they're visible in the issue tracker)
+1. **Create ALL sub-issues first** (so they're visible in the issue tracker) — the not-yet-launched ones stay "pending" (no agent dispatched, will not auto-close).
 2. **Launch only the independent (root) sub-issues** via `atoma__launch_sub_agent`
-3. When those complete, the orchestrator is re-invoked automatically
+3. When those complete, the orchestrator is re-invoked automatically (this fires once all *launched* sub-issues are closed — pending ones are correctly ignored by the gate)
 4. **Launch the next batch of sub-issues** (those whose dependencies are now met)
+
+**On every re-invocation, check for pending (not-yet-launched) sub-issues.** List the sub-issues under this parent — any that are still open and have never been dispatched are pending work for the next phase. If their dependencies are now satisfied, launch them via `atoma__launch_sub_agent`. If none remain, proceed to final aggregation.
 
 Example:
 ```
@@ -131,15 +133,16 @@ If a dependency chain is short (e.g., A → B → C), consider using `/engineer`
 
 **Rule:** Always prefer launching independent work in parallel. Only serialize when there is a true code dependency (one sub-issue's implementation literally needs files from another).
 
-### 3. Aggregation on re-invocation
+### 4. Aggregation on re-invocation
 
-When you are re-invoked after sub-issues complete:
-1. Review the sub-issue results (comments, PRs created, etc.)
-2. Consolidate findings into a final summary on the parent issue
-3. Report completion or identify any remaining work
-4. If new work is needed, create a new batch of sub-issues and repeat
+When you are re-invoked after (launched) sub-issues complete:
+1. **First, check for pending (not-yet-launched) sub-issues under this parent.** If any exist and their dependencies are now satisfied, launch them via `atoma__launch_sub_agent` and let your session end again — do NOT aggregate yet.
+2. If no pending sub-issues remain, review the sub-issue results (comments, PRs created, etc.)
+3. Consolidate findings into a final summary on the parent issue
+4. Report completion or identify any remaining work
+5. If new work is needed, create a new batch of sub-issues and repeat
 
-**CRITICAL: On re-invocation, check whether this is because all sub-issues are done, or because only some completed.** The parent issue comment history will show progress reports. If some sub-issues are still open, simply report progress — do NOT re-launch anything yet.
+**CRITICAL: On re-invocation, check whether this is because all sub-issues (including pending ones) are done, or only the currently-launched batch.** Re-invocation fires once every *launched* sub-issue is closed — it does NOT mean every sub-issue you created is closed. Always look for still-pending sub-issues first; only treat this as final aggregation once none remain.
 
 ---
 
@@ -153,9 +156,10 @@ When you are re-invoked after sub-issues complete:
 5. Session ends naturally after launching
 
 ### On re-invocation (aggregation)
-1. Check which sub-issues completed and review their outputs
-2. If all done: aggregate into a final summary, close the parent issue if appropriate
-3. If more work needed: create new sub-issues and launch again
+1. Check for pending (not-yet-launched) sub-issues first — launch the next phase via `atoma__launch_sub_agent` if any are ready
+2. Otherwise, check which sub-issues completed and review their outputs
+3. If all done: aggregate into a final summary, close the parent issue if appropriate
+4. If more work needed: create new sub-issues and launch again
 
 ### When delegating directly (trivial tasks only)
 1. Start the first line with `/engineer`

@@ -41,6 +41,12 @@ echo "Dispatching agent '${AGENT}' on sub-issue #${ISSUE} ..." >&2
 gh issue comment "${ISSUE}" \
   --body "Atoma: Agent \`${AGENT}\` dispatched to work on this sub-task."
 
+# Mark this sub-issue as launched so aggregation gating (check_open_siblings.py)
+# only waits on sub-issues that have actually been dispatched, not ones still
+# pending a later phase (see docs/agent-definition.md dependency handling).
+LAUNCHED_LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.launched" "atoma/launched")
+gh issue edit "${ISSUE}" --add-label "${LAUNCHED_LABEL}" || echo "Warning: failed to add '${LAUNCHED_LABEL}' label to #${ISSUE}" >&2
+
 DISPATCH_WORKFLOW="${ATOMA_DISPATCH_WORKFLOW:-atoma-runner.yml}"
 gh workflow run "$DISPATCH_WORKFLOW" \
     --field agent="$AGENT" \

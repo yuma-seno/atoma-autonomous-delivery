@@ -28,16 +28,28 @@ def main() -> None:
     p.add_argument(
         "--label", default=None, help="Override the sub_issue label from config.json"
     )
+    p.add_argument(
+        "--launched-label",
+        default=None,
+        help="Override the launched label from config.json",
+    )
     args = p.parse_args()
 
     label = args.label or get_label("sub_issue", "atoma/sub-issue")
+    launched_label = args.launched_label or get_label("launched", "atoma/launched")
 
+    # Only count siblings that have actually been dispatched (labeled "launched").
+    # Sub-issues created but not yet launched (e.g. a later phase in a
+    # dependency-ordered plan) must NOT block re-invocation of the orchestrator,
+    # otherwise the count can never reach zero and the orchestrator would never
+    # be re-invoked to launch the next phase.
     result = subprocess.run(
         [
             "gh", "issue", "list",
             "--repo", args.repo,
             "--state", "open",
             "--label", label,
+            "--label", launched_label,
             "--search", f"atoma:parent=#{args.parent} in:body",
             "--json", "number",
         ],
