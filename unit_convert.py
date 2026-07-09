@@ -55,9 +55,9 @@ def main() -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Round to 5 decimal places for clean output
-    rounded_result = round(result, 5)
-    print(f"{args.value} {args.from_unit} = {rounded_result} {args.to_unit}")
+    # Round to 5 decimal places and output the numeric result
+    result = round(result, 5)
+    print(result)
 
 
 if __name__ == "__main__":
