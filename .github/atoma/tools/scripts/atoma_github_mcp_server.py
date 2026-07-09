@@ -14,7 +14,7 @@ import json, os, subprocess, sys
 from datetime import datetime, timezone
 from typing import Any
 
-from atoma_config import get_label
+from atoma_config import get_label, get_merge_policy
 
 def rungit(*args):
     """Run git command, returns (rc, stdout, stderr)."""
@@ -103,8 +103,9 @@ TOOLS = [
     {"name":"get_check_runs","description":"Get check runs for a ref.","inputSchema":{"type":"object","properties":{"ref":{"type":"string"}},"required":["ref"]}},
     {"name":"get_pr_reviews","description":"Get PR reviews.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"list_pr_review_comments","description":"List PR review comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
-    {"name":"submit_pr_review","description":"Submit a PR review (approve, comment, or request changes).","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["APPROVE","COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
+    {"name":"submit_pr_review","description":"Submit a PR review (comment or request changes). Note: APPROVE is not usable — Atoma agents share a single bot identity, and GitHub refuses to let an account approve its own pull request.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
     {"name":"commit_and_push","description":"Stage all changes, commit with a message, and push to the current branch.","inputSchema":{"type":"object","properties":{"message":{"type":"string","description":"Commit message."}},"required":["message"]}},
+    {"name":"merge_pr","description":"Merge a PR if agents.reviewer.merge_policy in config.json is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
 ]
 
 def _create_issue(a):
@@ -187,6 +188,30 @@ def _inject_parent_issue(body: str) -> str:
     return f"<!-- atoma:parent-issue={parent} -->\nCloses #{parent}\n{body}"
 
 
+def _dispatch_reviewer(pr_number: int):
+    """Directly dispatch the reviewer agent on a newly created PR.
+
+    GitHub suppresses further workflow-triggering events (e.g. pull_request_target)
+    for actions performed with the default GITHUB_TOKEN, so a bot-created PR does NOT
+    reliably cause atoma-auto-trigger.yml to fire. workflow_dispatch is exempt from
+    that restriction, so dispatch directly here, the same way launch_sub_agent.sh does
+    for orchestrator -> sub-agent handoffs. Best-effort: a dispatch failure does not
+    fail PR creation itself.
+    """
+    dispatch_workflow = os.environ.get("ATOMA_DISPATCH_WORKFLOW", "atoma-runner.yml")
+    rc, out, err = gh(
+        "workflow", "run", dispatch_workflow,
+        "--field", "agent=reviewer",
+        "--field", f"number={pr_number}",
+        "--field", "type=pr",
+        "--field", "notify=",
+    )
+    if rc:
+        log(f"_dispatch_reviewer: WARN failed to dispatch reviewer for PR #{pr_number}: {err or out}")
+    else:
+        log(f"_dispatch_reviewer: dispatched reviewer for PR #{pr_number}")
+
+
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
     b = _inject_parent_issue(b)
@@ -214,6 +239,7 @@ def _create_pr(a):
     except (ValueError, IndexError):
         raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
+    _dispatch_reviewer(num)
     return json.dumps({"number":num,"url":out.strip()})
 
 def _commit_and_push(a):
@@ -249,12 +275,33 @@ def _get_pr_reviews(a):
 def _list_pr_review_comments(a): return json.dumps(gh_json("api",f"repos/{REPO}/pulls/{a['number']}/comments") or [])
 
 def _submit_pr_review(a):
-    cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + a["event"].lower()]
+    event = a["event"]
+    if event == "APPROVE":
+        # GitHub always rejects self-approval since all Atoma agents share the
+        # same bot identity ("Can not approve your own pull request"). Rewrite
+        # to COMMENT instead of letting the gh call fail — don't rely on the
+        # LLM always following the "never use APPROVE" instruction.
+        log(f"_submit_pr_review: rewriting event APPROVE -> COMMENT for PR #{a['number']} (self-approval is never possible)")
+        event = "COMMENT"
+    cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + event.lower()]
     if a.get("body"): cmd += ["--body", a["body"]]
     rc, out, err = gh(*cmd)
     if rc: raise RuntimeError(err or out)
-    ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
+    ops_log("submit_pr_review", {"number": a["number"], "event": event})
     return json.dumps({"ok": True})
+
+def _merge_pr(a):
+    num = a["number"]
+    policy = get_merge_policy()
+    if policy != "auto":
+        log(f"_merge_pr: merge_policy={policy!r}, not 'auto' — skipping merge for PR #{num}")
+        return json.dumps({"merged": False, "reason": f"merge_policy is '{policy}', not 'auto'"})
+    rc, out, err = gh("pr", "merge", str(num), "--repo", REPO, "--squash")
+    log(f"_merge_pr: gh pr merge rc={rc}, out={out!r}, err={err!r}")
+    if rc:
+        raise RuntimeError(f"gh pr merge failed (rc={rc}): {err or out}")
+    ops_log("merge_pr", {"number": num})
+    return json.dumps({"merged": True})
 
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,
@@ -264,6 +311,7 @@ TOOL_HANDLERS = {
     "get_branch":_get_branch,"get_check_runs":_get_check_runs,
     "get_pr_reviews":_get_pr_reviews,"list_pr_review_comments":_list_pr_review_comments,
     "submit_pr_review":_submit_pr_review,"commit_and_push":_commit_and_push,
+    "merge_pr":_merge_pr,
 }
 
 def hi(params, rid):
