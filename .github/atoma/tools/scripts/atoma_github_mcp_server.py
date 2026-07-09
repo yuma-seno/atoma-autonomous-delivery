@@ -187,6 +187,30 @@ def _inject_parent_issue(body: str) -> str:
     return f"<!-- atoma:parent-issue={parent} -->\nCloses #{parent}\n{body}"
 
 
+def _dispatch_reviewer(pr_number: int):
+    """Directly dispatch the reviewer agent on a newly created PR.
+
+    GitHub suppresses further workflow-triggering events (e.g. pull_request_target)
+    for actions performed with the default GITHUB_TOKEN, so a bot-created PR does NOT
+    reliably cause atoma-auto-trigger.yml to fire. workflow_dispatch is exempt from
+    that restriction, so dispatch directly here, the same way launch_sub_agent.sh does
+    for orchestrator -> sub-agent handoffs. Best-effort: a dispatch failure does not
+    fail PR creation itself.
+    """
+    dispatch_workflow = os.environ.get("ATOMA_DISPATCH_WORKFLOW", "atoma-runner.yml")
+    rc, out, err = gh(
+        "workflow", "run", dispatch_workflow,
+        "--field", "agent=reviewer",
+        "--field", f"number={pr_number}",
+        "--field", "type=pr",
+        "--field", "notify=",
+    )
+    if rc:
+        log(f"_dispatch_reviewer: WARN failed to dispatch reviewer for PR #{pr_number}: {err or out}")
+    else:
+        log(f"_dispatch_reviewer: dispatched reviewer for PR #{pr_number}")
+
+
 def _create_pr(a):
     t, b, base = a["title"], a.get("body",""), a.get("base")
     b = _inject_parent_issue(b)
@@ -214,6 +238,7 @@ def _create_pr(a):
     except (ValueError, IndexError):
         raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
+    _dispatch_reviewer(num)
     return json.dumps({"number":num,"url":out.strip()})
 
 def _commit_and_push(a):
