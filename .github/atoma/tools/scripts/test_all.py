@@ -40,8 +40,9 @@ def test5():
 def test6():
     with open(".github/atoma/config.json") as f:
         c = json.load(f)
-    assert c["version"] == 3
+    assert c["version"] == 4
     assert c["agents"]["orchestrator"]["max_iterations"] == 100
+    assert c["merge_policy"] == "manual"
     assert "labels" in c
 
 @t("atoma_github MCP initialize")
@@ -114,6 +115,22 @@ def test18():
 def test19():
     r = subprocess.run(["python3", ".github/atoma/tools/scripts/get_config_value.py", "nonexistent.key", "fallback"], capture_output=True, text=True)
     assert r.stdout.strip() == "fallback", f"Got: {r.stdout.strip()}"
+
+@t("atoma_config.get_merge_policy reads top-level key")
+def test20():
+    r = subprocess.run(["python3", "-c",
+        "import sys; sys.path.insert(0, '.github/atoma/tools/scripts'); "
+        "from atoma_config import get_merge_policy; print(get_merge_policy())"],
+        capture_output=True, text=True)
+    assert r.stdout.strip() == "manual", f"Got: {r.stdout.strip()} err={r.stderr}"
+
+@t("atoma_config.get_trigger_agent resolves pull_request.opened")
+def test21():
+    r = subprocess.run(["python3", "-c",
+        "import sys; sys.path.insert(0, '.github/atoma/tools/scripts'); "
+        "from atoma_config import get_trigger_agent; print(get_trigger_agent('pull_request.opened'))"],
+        capture_output=True, text=True)
+    assert r.stdout.strip() == "reviewer", f"Got: {r.stdout.strip()} err={r.stderr}"
 
 @t("close_issue refuses human-created issues")
 def test15():

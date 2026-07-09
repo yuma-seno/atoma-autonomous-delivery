@@ -1,5 +1,6 @@
 {
-  "version": 3,
+  "version": 4,
+  "merge_policy": "manual",
   "agents": {
     "orchestrator": {
       "max_iterations": 100
@@ -8,9 +9,7 @@
       "max_iterations": 50
     },
     "reviewer": {
-      "max_iterations": 30,
-      "max_review_loops": 5,
-      "merge_policy": "manual"
+      "max_iterations": 30
     }
   },
   "labels": {

@@ -14,7 +14,7 @@ import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 from typing import Any
 
-from atoma_config import get_label, get_merge_policy
+from atoma_config import get_label, get_merge_policy, get_trigger_agent
 
 def rungit(*args):
     """Run git command, returns (rc, stdout, stderr)."""
@@ -105,7 +105,7 @@ TOOLS = [
     {"name":"list_pr_review_comments","description":"List PR review comments.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
     {"name":"submit_pr_review","description":"Submit a PR review (comment or request changes). Note: APPROVE is not usable — Atoma agents share a single bot identity, and GitHub refuses to let an account approve its own pull request.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"},"event":{"type":"string","enum":["COMMENT","REQUEST_CHANGES"]},"body":{"type":"string"}},"required":["number","event"]}},
     {"name":"commit_and_push","description":"Stage all changes, commit with a message, and push to the current branch.","inputSchema":{"type":"object","properties":{"message":{"type":"string","description":"Commit message."}},"required":["message"]}},
-    {"name":"merge_pr","description":"Merge a PR if agents.reviewer.merge_policy in config.json is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
+    {"name":"merge_pr","description":"Merge a PR if config.json's merge_policy is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.","inputSchema":{"type":"object","properties":{"number":{"type":"integer"}},"required":["number"]}},
 ]
 
 def _create_issue(a):
@@ -194,8 +194,11 @@ def _inject_parent_issue(body: str) -> str:
     return f"<!-- atoma:parent-issue={parent} -->\n{closes_line}{body}"
 
 
-def _dispatch_reviewer(pr_number: int):
-    """Directly dispatch the reviewer agent on a newly created PR.
+def _dispatch_post_pr_agent(pr_number: int):
+    """Directly dispatch whichever agent config.json's auto_triggers designates for
+    a newly opened PR ("pull_request.opened", normally "reviewer" -- but read from
+    config, never hardcoded, so retargeting the review role only requires editing
+    config.json).
 
     GitHub suppresses further workflow-triggering events (e.g. pull_request_target)
     for actions performed with the default GITHUB_TOKEN, so a bot-created PR does NOT
@@ -204,18 +207,19 @@ def _dispatch_reviewer(pr_number: int):
     for orchestrator -> sub-agent handoffs. Best-effort: a dispatch failure does not
     fail PR creation itself.
     """
+    agent = get_trigger_agent("pull_request.opened", default="reviewer")
     dispatch_workflow = os.environ.get("ATOMA_DISPATCH_WORKFLOW", "atoma-runner.yml")
     rc, out, err = gh(
         "workflow", "run", dispatch_workflow,
-        "--field", "agent=reviewer",
+        "--field", f"agent={agent}",
         "--field", f"number={pr_number}",
         "--field", "type=pr",
         "--field", "notify=",
     )
     if rc:
-        log(f"_dispatch_reviewer: WARN failed to dispatch reviewer for PR #{pr_number}: {err or out}")
+        log(f"_dispatch_post_pr_agent: WARN failed to dispatch {agent} for PR #{pr_number}: {err or out}")
     else:
-        log(f"_dispatch_reviewer: dispatched reviewer for PR #{pr_number}")
+        log(f"_dispatch_post_pr_agent: dispatched {agent} for PR #{pr_number}")
 
 
 def _create_pr(a):
@@ -245,7 +249,7 @@ def _create_pr(a):
     except (ValueError, IndexError):
         raise RuntimeError(f"gh pr create: unexpected output: {out[:300]}")
     ops_log("create_pr",{"number":num,"title":t})
-    _dispatch_reviewer(num)
+    _dispatch_post_pr_agent(num)
     return json.dumps({"number":num,"url":out.strip()})
 
 def _commit_and_push(a):

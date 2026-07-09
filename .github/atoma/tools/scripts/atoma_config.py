@@ -25,5 +25,18 @@ def get_label(key: str, default: str) -> str:
 
 
 def get_merge_policy(default: str = "manual") -> str:
-    """Look up agents.reviewer.merge_policy from config.json."""
-    return load_config().get("agents", {}).get("reviewer", {}).get("merge_policy", default)
+    """Look up the top-level `merge_policy` from config.json."""
+    return load_config().get("merge_policy", default)
+
+
+def get_trigger_agent(event: str, default: str = "") -> str:
+    """Look up the agent configured for an unconditional `auto_triggers` event.
+
+    Entries with a `condition` (e.g. changes_requested) are evaluated by
+    match_trigger.py at workflow time, not here, so they're skipped -- this is
+    only for simple event->agent lookups like "who reviews a newly opened PR".
+    """
+    for trigger in load_config().get("auto_triggers", []):
+        if trigger.get("event") == event and "condition" not in trigger:
+            return trigger.get("agent", default)
+    return default
