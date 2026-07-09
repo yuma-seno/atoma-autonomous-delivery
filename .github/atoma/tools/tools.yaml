@@ -22,7 +22,11 @@ filesystem_readonly:
 
 shell:
   command: npx
-  args: ["-y", "mcp-shell-server", "."]
+  # Pin to the actively-maintained @mako10k/mcp-shell-server package explicitly.
+  # The unscoped "mcp-shell-server" name on npm is an unrelated, undocumented
+  # package by a different author -- relying on it (even implicitly, via local
+  # bin-name shadowing from setup-runtime's pre-install step) is fragile.
+  args: ["-y", "@mako10k/mcp-shell-server@latest"]
   env: {}
   hooks:
     before_tool: ./scripts/shell_guard.py

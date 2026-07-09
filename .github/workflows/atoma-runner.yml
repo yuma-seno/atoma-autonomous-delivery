@@ -93,6 +93,15 @@ jobs:
       - name: Setup runtime
         uses: yuma-seno/atoma/github/actions/setup-runtime@main
 
+      - name: Pre-install Python test dependencies
+        # engineer's tasks in this template are plain-stdlib Python that get
+        # tested with pytest (see run_tests.py / _run_pytest.py). Installing it
+        # here means the agent never needs to run `pip install pytest` itself
+        # mid-session, which was observed eating several iterations (and shell
+        # MCP tool calls) on a cold runner.
+        shell: bash
+        run: pip install --quiet pytest
+
       - name: Configure git identity
         shell: bash
         run: |
