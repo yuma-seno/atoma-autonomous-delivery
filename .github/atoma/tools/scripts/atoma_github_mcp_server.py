@@ -275,11 +275,19 @@ def _get_pr_reviews(a):
 def _list_pr_review_comments(a): return json.dumps(gh_json("api",f"repos/{REPO}/pulls/{a['number']}/comments") or [])
 
 def _submit_pr_review(a):
-    cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + a["event"].lower()]
+    event = a["event"]
+    if event == "APPROVE":
+        # GitHub always rejects self-approval since all Atoma agents share the
+        # same bot identity ("Can not approve your own pull request"). Rewrite
+        # to COMMENT instead of letting the gh call fail — don't rely on the
+        # LLM always following the "never use APPROVE" instruction.
+        log(f"_submit_pr_review: rewriting event APPROVE -> COMMENT for PR #{a['number']} (self-approval is never possible)")
+        event = "COMMENT"
+    cmd = ["pr", "review", str(a["number"]), "--repo", REPO, "--" + event.lower()]
     if a.get("body"): cmd += ["--body", a["body"]]
     rc, out, err = gh(*cmd)
     if rc: raise RuntimeError(err or out)
-    ops_log("submit_pr_review", {"number": a["number"], "event": a["event"]})
+    ops_log("submit_pr_review", {"number": a["number"], "event": event})
     return json.dumps({"ok": True})
 
 def _merge_pr(a):
