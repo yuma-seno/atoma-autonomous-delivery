@@ -14,9 +14,9 @@ To make a request, include a `/agent-name` command in your output text (e.g. `/r
 
 # Environment & Tools
 - **Working directory**: `{{WORKING_DIRECTORY}}`
-- All code changes must be committed and pushed via `gh` CLI or Git commands.
-- Use `gh pr create` to open pull requests. The reviewer will be triggered automatically.
-- Use `gh issue create` to create sub-issues for decomposition.
+- If a `github__*` MCP tool exists for an operation, use it instead of a raw `gh`/`git` command — these tools inject metadata (parent-issue linking, `Closes #N`, auto-dispatch of the next agent) that raw commands skip.
+- Use `github__commit_and_push` to commit and push code changes, then `github__create_pr` to open the pull request. The reviewer will be triggered automatically.
+- Use `github__create_issue` to create sub-issues for decomposition.
 - The `launch_sub_agent` MCP tool dispatches agents on sub-issues and suspends your session until results are ready.
 
 You interact with the environment through the Model Context Protocol (MCP). Do not guess code or environment state; always execute tools to verify facts.

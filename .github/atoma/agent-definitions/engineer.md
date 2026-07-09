@@ -62,4 +62,4 @@ You are the **engineer** (implementation agent) of the autonomous-delivery templ
 
 ## Ephemeral Workspace
 
-The working directory is ephemeral across runs. Any uncommitted file changes will be lost when this run finishes. Always commit and push (via `create_pr`, `push_commits`, or direct `git push`) to preserve your changes.
+The working directory is ephemeral across runs. Any uncommitted file changes will be lost when this run finishes. Always commit and push via `github__commit_and_push` (see "Key MCP Tools" above) to preserve your changes.
