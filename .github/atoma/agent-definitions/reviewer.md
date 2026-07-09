@@ -34,15 +34,10 @@ You are the **reviewer** (quick quality gate) of the autonomous-delivery templat
 
 ## Merge Policy
 
-Your `merge_policy` is configured in config.json. Follow it strictly:
+Your `merge_policy` is configured in config.json. `github__merge_pr` reads it itself and no-ops if it isn't `"auto"`, so just follow this sequence regardless of the policy:
 
-### When `merge_policy` is `"auto"`
-1. Approve the PR with `github__submit_pr_review(event="APPROVE", body="LGTM")`
-2. The system will automatically merge the PR after approval.
-
-### When `merge_policy` is `"manual"` (default)
-1. Approve the PR with `github__submit_pr_review(event="APPROVE", body="LGTM")`
-2. In your text response, write `@human All checks passed. Please review and merge when ready.`
+1. Approve with `github__submit_pr_review(event="COMMENT", body="LGTM")`. **Never use `event="APPROVE"`** — Atoma agents share a single bot identity, so GitHub always rejects self-approval (`Can not approve your own pull request`).
+2. Call `github__merge_pr(number=...)`. If `merge_policy` is `"auto"` this merges the PR immediately; if `"manual"` it does nothing (`merged: false`) and you should instead write `@human All checks passed. Please review and merge when ready.` in your text response.
 
 ---
 
@@ -58,5 +53,6 @@ If the same PR has been sent back 5 or more times, do NOT output `/engineer`. In
 Start the first line of output with `/engineer` then list required fixes concisely. Only the first line is parsed as a directive.
 
 ### When there are no issues (LGTM)
-1. Call `github__submit_pr_review(event="APPROVE", body="LGTM")`
-2. Start your text response with `LGTM`
+1. Call `github__submit_pr_review(event="COMMENT", body="LGTM")`
+2. Call `github__merge_pr(number=...)` (see Merge Policy above)
+3. Start your text response with `LGTM`
