@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Resolve who to notify (a GitHub login) for a given issue.
+"""Resolve who to notify (a GitHub login) for a given issue or PR.
 
-Looks for an `<!-- atoma:notify=LOGIN -->` tag in the issue body -- embedded
-by atoma_github_mcp_server.py when the agent that created the issue knew who
+Looks for an `<!-- atoma:notify=LOGIN -->` tag in the body -- embedded by
+atoma_github_mcp_server.py when the agent that created the issue/PR knew who
 the original human requester was (see ISSUE_NOTIFY / _notify_tag_prefix).
 
-Falls back to the issue's own author when no tag is present and the author
-is a human. This covers root issues, which are opened directly by a human
-and therefore never carry the tag themselves (only bot-created sub-issues
-and PRs do).
+Falls back to the issue/PR's own author when no tag is present and the
+author is a human. This covers root issues, which are opened directly by a
+human and therefore never carry the tag themselves (only bot-created
+sub-issues and PRs do).
+
+Uses the generic `issues` REST endpoint (not `gh issue view`/`gh pr view`),
+since GitHub treats every PR as an issue under the hood -- this lets a
+single lookup work for both --type issue and --type pr numbers.
 
 Usage:
     resolve_notify.py --repo OWNER/REPO --number N
@@ -40,8 +44,8 @@ def main():
     args = p.parse_args()
 
     d = gh_json(
-        "issue", "view", str(args.number), "--repo", args.repo,
-        "--json", "body,author",
+        "api", f"repos/{args.repo}/issues/{args.number}",
+        "--jq", "{body: .body, login: .user.login, type: .user.type}",
     )
     body = d.get("body") or ""
     match = NOTIFY_RE.search(body)
@@ -49,9 +53,8 @@ def main():
         print(match.group(1))
         return
 
-    author = d.get("author") or {}
-    if (author.get("type") or "").upper() == "USER":
-        login = author.get("login") or ""
+    if (d.get("type") or "").lower() == "user":
+        login = d.get("login") or ""
         if login:
             print(login)
             return

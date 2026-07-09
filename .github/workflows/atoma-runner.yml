@@ -99,6 +99,27 @@ jobs:
           git config user.name "atoma-${{ inputs.agent }}"
           git config user.email "atoma-${{ inputs.agent }}@users.noreply.github.com"
 
+      - name: Resolve effective notify login
+        # Defense in depth: inputs.notify *should* already carry the human to
+        # ping (see resolve_notify.py / atoma:notify= tag propagation), but if
+        # it ever arrives empty (a missed dispatch path, a new caller that
+        # forgot to wire it, etc.) we do a live fallback lookup here so a run
+        # that ends with neither a next-agent directive nor a notify never
+        # goes completely silent. Cheap no-op when notify is already set.
+        id: notify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTIFY: ${{ inputs.notify }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          EFFECTIVE="$NOTIFY"
+          if [ -z "$EFFECTIVE" ]; then
+            EFFECTIVE=$(python3 .github/atoma/tools/scripts/resolve_notify.py --repo "${GITHUB_REPOSITORY}" --number "${NUMBER}")
+            [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: ${EFFECTIVE}"
+          fi
+          echo "notify=${EFFECTIVE}" >> "$GITHUB_OUTPUT"
+
       - name: Prepare shared context
         id: prep
         uses: yuma-seno/atoma/github/actions/prepare@main
@@ -130,7 +151,7 @@ jobs:
           orchestration_file: .github/atoma/config.json
           atoma_version: ${{ inputs.atoma_version }}
           max_iterations: ${{ steps.cfg.outputs.max_iterations }}
-          notify_login: ${{ inputs.notify }}
+          notify_login: ${{ steps.notify.outputs.notify }}
           openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           openai_base_url: ${{ vars.OPENAI_BASE_URL }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -182,7 +203,7 @@ jobs:
           agent_name: ${{ inputs.agent }}
           number: ${{ inputs.number }}
           type: ${{ inputs.type }}
-          notify: ${{ inputs.notify }}
+          notify: ${{ steps.notify.outputs.notify }}
           job_status: ${{ job.status }}
           atoma_outcome: ${{ steps.atoma.outcome }}
           new_event_count: ${{ steps.prep.outputs.new_event_count }}
@@ -217,7 +238,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
-          NOTIFY: ${{ inputs.notify }}
+          NOTIFY: ${{ steps.notify.outputs.notify }}
           AGENT: ${{ inputs.agent }}
         run: |
           if [ -n "$NOTIFY" ]; then
@@ -233,7 +254,7 @@ jobs:
           agent_name: ${{ inputs.agent }}
           number: ${{ inputs.number }}
           type: ${{ inputs.type }}
-          notify: ${{ inputs.notify }}
+          notify: ${{ steps.notify.outputs.notify }}
           directive: ${{ steps.atoma.outputs.directive }}
           max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
           new_event_count: ${{ steps.prep.outputs.new_event_count }}
