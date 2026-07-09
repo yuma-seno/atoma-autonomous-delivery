@@ -22,3 +22,8 @@ def load_config() -> dict:
 def get_label(key: str, default: str) -> str:
     """Look up a label from the top-level `labels` section of config.json."""
     return load_config().get("labels", {}).get(key, default)
+
+
+def get_merge_policy(default: str = "manual") -> str:
+    """Look up agents.reviewer.merge_policy from config.json."""
+    return load_config().get("agents", {}).get("reviewer", {}).get("merge_policy", default)
