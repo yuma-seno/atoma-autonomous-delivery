@@ -49,7 +49,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          SUB=$(echo "$PR_BODY" | grep -oP '(?<=Closes #)\d+' || true)
+          SUB=$(echo "$PR_BODY" | grep -oP '(?<=Closes #)\d+' | head -n1 || true)
           if [ -n "$SUB" ]; then
             echo "number=${SUB}" >> "$GITHUB_OUTPUT"
             echo "PR closes sub-issue #${SUB}"

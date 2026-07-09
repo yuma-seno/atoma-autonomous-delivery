@@ -10,7 +10,7 @@ Every mutation is logged to $ATOMA_OPS_LOG for dispatch-next to consume.
 
 from __future__ import annotations
 
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 from typing import Any
 
@@ -184,8 +184,14 @@ def _inject_parent_issue(body: str) -> str:
         raise RuntimeError(
             f"PR body already contains a parent-issue tag; refusing to add another"
         )
-    # Inject both parent-issue metadata and Closes #N for auto-close on merge
-    return f"<!-- atoma:parent-issue={parent} -->\nCloses #{parent}\n{body}"
+    # Inject parent-issue metadata always, but only add "Closes #N" if the body
+    # doesn't already reference it -- agents sometimes write their own closing
+    # keyword, and a duplicate "Closes #N" line makes downstream parsing (which
+    # greps for the pattern) match twice, corrupting $GITHUB_OUTPUT.
+    closes_line = ""
+    if not re.search(rf"\bcloses\s+#{re.escape(parent)}\b", body, re.IGNORECASE):
+        closes_line = f"Closes #{parent}\n"
+    return f"<!-- atoma:parent-issue={parent} -->\n{closes_line}{body}"
 
 
 def _dispatch_reviewer(pr_number: int):
