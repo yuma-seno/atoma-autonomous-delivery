@@ -168,11 +168,14 @@ jobs:
           fi
 
       - name: Post result
-        if: >-
-          always() &&
-          !(steps.atoma.outcome == 'success' &&
-            steps.atoma.outputs.directive == '' &&
-            steps.atoma.outputs.max_iterations_reached != 'true')
+        # post-result's own inner guard (atoma_outcome == 'success' && new_event_count
+        # != '0') is sufficient: it always posts the agent's final response as a
+        # comment when the run actually did something. Do NOT add extra suppression
+        # here based on `directive` being empty — that shape is indistinguishable
+        # from a normal "nothing more to do" completion AND from an important final
+        # summary (e.g. orchestrator aggregation), so gating on it silently drops
+        # real summaries/notifications instead of just reducing noise.
+        if: always()
         uses: yuma-seno/atoma/github/actions/post-result@main
         with:
           agent_name: ${{ inputs.agent }}

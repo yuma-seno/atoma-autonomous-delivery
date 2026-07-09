@@ -10,7 +10,6 @@ knows_about:
   - reviewer
 mcp_servers:
   - filesystem_readonly
-  - shell
   - github
   - atoma
 ---
@@ -115,34 +114,41 @@ When sub-issues have dependencies (e.g., sub-issue B requires code from sub-issu
 
 Example:
 ```
-# Phase 1 — independent tasks
-atoma__launch_sub_agent(tasks=[
-  {issue: <CORE_LIB>, agent: "engineer"},
-])
-
-# (session ends. Re-invoked when CORE_LIB is done.)
-
-# Phase 2 — tasks that depended on CORE_LIB
+# Phase 1 — CLI_TOOL implements the interface that TESTS must assert against,
+# so it must land first. TESTS stays pending — do NOT launch it yet.
 atoma__launch_sub_agent(tasks=[
   {issue: <CLI_TOOL>, agent: "engineer"},
+])
+
+# (session ends. Re-invoked when CLI_TOOL is done.)
+
+# Phase 2 — now that CLI_TOOL's real interface exists, TESTS can be written
+# against it safely.
+atoma__launch_sub_agent(tasks=[
   {issue: <TESTS>, agent: "engineer"},
 ])
 ```
 
+Genuinely independent work (e.g. two unrelated modules that don't reference each other's output) can still be launched together in Phase 1 — parallelism is about independence, not about phases.
+
 If a dependency chain is short (e.g., A → B → C), consider using `/engineer` for sequential steps within a single session instead of creating separate sub-issues.
 
 **Rule:** Always prefer launching independent work in parallel. Only serialize when there is a true code dependency (one sub-issue's implementation literally needs files from another).
+
+**A test/consumer sub-issue that asserts the exact behavior of another sub-issue's output is a true code dependency, even if it "sounds" independent.** For example, a CLI script and a test suite that calls that CLI and checks its exact output are NOT safe to launch in the same parallel batch — the test-writing sub-issue can only be correct once the CLI's real interface exists, and launching both together risks both agents guessing a compatible interface independently (producing duplicate/conflicting files, or tests that don't match the real implementation). Serialize these, or fold them into a single sub-issue.
 
 ### 4. Aggregation on re-invocation
 
 When you are re-invoked after (launched) sub-issues complete:
 1. **First, check for pending (not-yet-launched) sub-issues under this parent.** If any exist and their dependencies are now satisfied, launch them via `atoma__launch_sub_agent` and let your session end again — do NOT aggregate yet.
 2. If no pending sub-issues remain, review the sub-issue results (comments, PRs created, etc.)
-3. Consolidate findings into a final summary on the parent issue
+3. Consolidate findings into a final summary — write it as your final text response; it is posted to the parent issue automatically, no comment tool call needed.
 4. Report completion or identify any remaining work
 5. If new work is needed, create a new batch of sub-issues and repeat
 
 **CRITICAL: On re-invocation, check whether this is because all sub-issues (including pending ones) are done, or only the currently-launched batch.** Re-invocation fires once every *launched* sub-issue is closed — it does NOT mean every sub-issue you created is closed. Always look for still-pending sub-issues first; only treat this as final aggregation once none remain.
+
+**You have no `shell` or `filesystem` (write) access, and must not attempt code changes yourself.** If reviewing sub-issue results turns up a real bug — e.g. two independently-implemented sub-issues don't actually agree with each other — do NOT try to fix it by hand. Create a new sub-issue describing the problem and dispatch it to `engineer` via `atoma__launch_sub_agent`, the same as any other work. This keeps every code change flowing through the normal PR/review path instead of being pushed directly (and potentially left on an orphaned branch nobody reviews or merges).
 
 ---
 

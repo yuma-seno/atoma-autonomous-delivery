@@ -20,6 +20,7 @@ jobs:
     outputs:
       is_sub_issue: ${{ steps.parse.outputs.is_sub_issue }}
       parent_number: ${{ steps.parse.outputs.parent_number }}
+      closed_via_pr: ${{ steps.pr-check.outputs.closed_via_pr }}
     steps:
       - name: Parse parent reference from issue body
         id: parse
@@ -32,14 +33,47 @@ jobs:
           if [ -n "$PARENT" ]; then
             echo "is_sub_issue=true" >> "$GITHUB_OUTPUT"
             echo "parent_number=${PARENT}" >> "$GITHUB_OUTPUT"
-            echo "Sub-issue #${CLOSED_NUM} closed (manual) — parent #${PARENT}"
+            echo "Sub-issue #${CLOSED_NUM} closed — parent #${PARENT}"
           else
             echo "is_sub_issue=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # atoma-pr-merged.yml (pull_request_target: closed) is the PRIMARY aggregation
+      # path and already handles sub-issues auto-closed by a merged PR's "Closes #N".
+      # A merged PR's auto-close ALSO fires this `issues: closed` event (GitHub only
+      # suppresses that cascade for GITHUB_TOKEN-driven merges — under the default
+      # merge_policy: "manual", a human/agent merges via their own credentials, so
+      # both workflows fire). Without this check, the orchestrator gets dispatched
+      # twice. Skip here whenever a merged PR already closed the issue.
+      - name: Check if closed via a merged PR
+        id: pr-check
+        if: steps.parse.outputs.is_sub_issue == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          CLOSED_NUM: ${{ github.event.issue.number }}
+        run: |
+          MERGED_PR=$(gh api graphql -f query='
+            query($owner:String!,$repo:String!,$num:Int!){
+              repository(owner:$owner,name:$repo){
+                issue(number:$num){
+                  closedByPullRequestsReferences(first: 1) { nodes { number } }
+                }
+              }
+            }' -F owner="${OWNER}" -F repo="${REPO}" -F num="${CLOSED_NUM}" \
+            --jq '.data.repository.issue.closedByPullRequestsReferences.nodes[0].number // ""' 2>/dev/null || true)
+          if [ -n "$MERGED_PR" ]; then
+            echo "Closed via merged PR #${MERGED_PR} — already handled by atoma-pr-merged.yml. Skipping."
+            echo "closed_via_pr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "closed_via_pr=false" >> "$GITHUB_OUTPUT"
+          fi
+
   aggregate:
     needs: check
-    if: needs.check.outputs.is_sub_issue == 'true'
+    if: needs.check.outputs.is_sub_issue == 'true' && needs.check.outputs.closed_via_pr != 'true'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}

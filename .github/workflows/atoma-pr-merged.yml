@@ -3,9 +3,12 @@ name: Atoma PR Merged
 # Detect PR merges and aggregate sub-issue results.
 # Uses pull_request_target so GITHUB_TOKEN-created PR merges are detected.
 #
-# This is the PRIMARY mechanism for sub-issue aggregation because
-# issues.closed events are NOT triggered for GITHUB_TOKEN-created closures
-# (GitHub design limitation). PR merges via pull_request_target always fire.
+# This is the PRIMARY mechanism for sub-issue aggregation. It fires reliably
+# regardless of who/what merged the PR. The `issues: closed` event that also
+# fires when the merge auto-closes the linked issue is handled by
+# atoma-sub-issue-closed.yml, which explicitly skips issues closed via a merged
+# PR (see its "Check if closed via a merged PR" step) to avoid dispatching the
+# orchestrator twice for the same completion.
 
 on:
   pull_request_target:
