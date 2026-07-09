@@ -101,12 +101,13 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          gh issue comment "$PARENT" --body \
+          gh issue comment "$PARENT" --repo "$REPO" --body \
             "PR #${PR_NUMBER} merged: ${PR_TITLE} (${PR_URL})"
 
   aggregate-sub-issues:
