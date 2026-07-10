@@ -327,7 +327,24 @@ def _merge_pr(a):
     if rc:
         raise RuntimeError(f"gh pr merge failed (rc={rc}): {err or out}")
     ops_log("merge_pr", {"number": num})
-    return json.dumps({"merged": True})
+    # GitHub's native "Closes #N" auto-close does not reliably fire when the
+    # merge is performed via the Actions GITHUB_TOKEN (as opposed to a human
+    # merging through the UI) -- confirmed empirically: linked issues stayed
+    # open after bot-driven squash-merges. Close the parent issue explicitly
+    # instead of relying on that.
+    closed_issue = None
+    d = gh_json("pr", "view", str(num), "--repo", REPO, "--json", "body")
+    body = (d or {}).get("body") or ""
+    m = re.search(r"<!--\s*atoma:parent-issue=(\d+)\s*-->", body)
+    if m:
+        parent_num = int(m.group(1))
+        try:
+            _close_issue({"number": parent_num})
+            closed_issue = parent_num
+        except RuntimeError as e:
+            log(f"_merge_pr: could not close parent issue #{parent_num}: {e}")
+    return json.dumps({"merged": True, "closed_issue": closed_issue})
+
 
 TOOL_HANDLERS = {
     "create_issue":_create_issue,"get_issue":_get_issue,"list_issues":_list_issues,
