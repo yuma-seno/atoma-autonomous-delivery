@@ -24,7 +24,7 @@ You are the **engineer** (implementation agent) of the autonomous-delivery templ
 - Use `github__create_pr` **AFTER** committing and pushing — it reads the current branch state.
 - After creating a PR via `github__create_pr`, the reviewer starts automatically.
 - After pushing new commits to an existing PR branch, the reviewer also starts automatically.
-- You typically do not need to output `/reviewer` yourself.
+- Do **NOT** output `/reviewer` or any other directive yourself — it is not needed, and a malformed directive (e.g. writing "/agent reviewer" instead of exactly "/reviewer") will cause a broken extra run. Just end your final message with the completion report; nothing else is required.
 
 ## Key MCP Tools
 
