@@ -357,6 +357,20 @@ def _dispatch_orchestrator_if_ready(sub_issue_num: int) -> None:
         log(f"_dispatch_orchestrator_if_ready: {sibling_count} sibling(s) of #{parent_num} still open, not dispatching")
         return
 
+    # atoma-runner.yml only actually runs the agent when new_event_count != '0'
+    # (build_context_session.py's change-detection gate, comparing a hash of the
+    # target issue's own body+comments against the orchestrator's last processed
+    # snapshot). A bare `gh workflow run` with nothing new posted on the parent
+    # issue itself would dispatch a run that immediately no-ops as "skipped" --
+    # confirmed empirically. Post a visible completion comment first so the
+    # orchestrator's next invocation sees a genuinely new event.
+    rc, out, err = gh(
+        "issue", "comment", parent_num, "--repo", REPO,
+        "--body", f"All sub-tasks completed (last: #{sub_issue_num}). Re-invoking orchestrator for aggregation.",
+    )
+    if rc:
+        log(f"_dispatch_orchestrator_if_ready: could not post trigger comment on #{parent_num}: {err or out}")
+
     notify_out = subprocess.run(
         ["python3", os.path.join(scripts_dir, "resolve_notify.py"),
          "--repo", REPO, "--number", parent_num],

@@ -97,6 +97,13 @@ jobs:
           fi
 
           echo "All siblings done. Dispatching orchestrator on parent #${PARENT} ..."
+          # atoma-runner.yml only actually runs the agent when new_event_count != '0'
+          # (a hash comparison of the parent issue's own body+comments against the
+          # orchestrator's last processed snapshot). Without a new comment on the
+          # parent itself, the dispatched run would just no-op as "skipped" -- post
+          # one here first, same as atoma-pr-merged.yml's aggregate-sub-issues job.
+          gh issue comment "${PARENT}" --repo "${OWNER}/${REPO}" --body \
+            "All sub-tasks completed. Re-invoking orchestrator for aggregation."
           NOTIFY=$(python3 .github/atoma/tools/scripts/resolve_notify.py \
             --repo "${OWNER}/${REPO}" --number "${PARENT}")
           gh workflow run "atoma-runner.yml" \
