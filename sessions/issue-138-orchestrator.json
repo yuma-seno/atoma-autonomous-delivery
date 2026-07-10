@@ -176,15 +176,23 @@
       "role": "assistant",
       "content": "セッション終了。Phase 1 (#139, #140) 完了後に自動再開し、Phase 2 (#141) を起動します。",
       "atoma_metadata": {
-        "github_comment_id": 4937335665,
+        "agent": "orchestrator",
+        "github_comment_id": 4937335665
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "セッションを終了します。Phase 1 (#139, #140) の完了後に自動再開します。",
+      "atoma_metadata": {
+        "github_comment_id": 4937364857,
         "agent": "orchestrator"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "f31045e9d51eb25f05c9058c6c3bcdd32969dbc0ff67b44a672f4e907d7e3ab5",
-      "event_count": 3,
+      "snapshot_hash": "9f07a1f4353838f422043627abd58a25439f5a3df7fdd6fda4c0a52e908b86c6",
+      "event_count": 4,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "138"
