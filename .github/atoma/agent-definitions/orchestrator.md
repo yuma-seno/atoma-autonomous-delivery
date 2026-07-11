@@ -157,8 +157,10 @@ If a dependency chain is short (e.g., A → B → C), consider using `/engineer`
 
 ### 4. Aggregation on re-invocation
 
+**MANDATORY FIRST STEP — before calling `atoma__launch_sub_agent` or deciding anything else: call `github__list_issues` (or `github__get_issue` for each sub-issue you remember creating) to fetch the CURRENT, real state of every sub-issue under this parent.** Never decide what to launch next purely from your own memory of the plan/phase numbering — that memory can be stale or wrong about which phase is actually next. A sub-issue that already has a `atoma/launched` label and/or is `closed` is DONE; do NOT pass it to `atoma__launch_sub_agent` again. Only sub-issues that are still `open` AND have never been launched (no `atoma/launched` label, no prior dispatch comment) are eligible for the next `atoma__launch_sub_agent` call.
+
 When you are re-invoked after (launched) sub-issues complete:
-1. **First, check for pending (not-yet-launched) sub-issues under this parent.** If any exist and their dependencies are now satisfied, launch them via `atoma__launch_sub_agent` and let your session end again — do NOT aggregate yet.
+1. **First, check for pending (not-yet-launched) sub-issues under this parent** (per the mandatory verification step above). If any exist and their dependencies are now satisfied, launch them via `atoma__launch_sub_agent` and let your session end again — do NOT aggregate yet.
 2. If no pending sub-issues remain, review the sub-issue results (comments, PRs created, etc.)
 3. Consolidate findings into a final summary — write it as your final text response; it is posted to the parent issue automatically, no comment tool call needed.
 4. Report completion or identify any remaining work
@@ -181,8 +183,9 @@ When you are re-invoked after (launched) sub-issues complete:
 5. Session ends naturally after launching
 
 ### On re-invocation (aggregation)
-1. Check for pending (not-yet-launched) sub-issues first — launch the next phase via `atoma__launch_sub_agent` if any are ready
-2. Otherwise, check which sub-issues completed and review their outputs
+1. **Call `github__list_issues`/`github__get_issue` first to verify current state** — never trust memorized plan/phase content alone
+2. Check for pending (not-yet-launched, still-open) sub-issues — launch the next phase via `atoma__launch_sub_agent` if any are ready
+3. Otherwise, check which sub-issues completed and review their outputs
 3. If all done: aggregate into a final summary; if this issue was itself dispatched to you as a sub-issue (`agent: "orchestrator"`), close it now so the level above can aggregate
 4. If more work needed: create new sub-issues and launch again
 
@@ -202,3 +205,4 @@ When you are re-invoked after (launched) sub-issues complete:
 - Be specific in sub-issue descriptions: include success criteria and reference files.
 - Do not implement code yourself. Your role is coordination, not implementation.
 - Call `atoma__launch_sub_agent` exactly once with all tasks. After that, let your session end.
+- **On re-invocation, always verify current sub-issue state via `github__list_issues`/`github__get_issue` before calling `atoma__launch_sub_agent`.** Never re-launch a sub-issue that is already closed or already has the `atoma/launched` label — check first, every time, even if you "remember" the plan.
