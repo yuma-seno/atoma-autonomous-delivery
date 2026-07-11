@@ -185,7 +185,7 @@
       "content": "セッションを終了します。Phase 1 (#139, #140) の完了後に自動再開します。",
       "atoma_metadata": {
         "agent": "orchestrator",
-        "github_comment_id": 4940510785
+        "github_comment_id": 4940619490
       }
     },
     {
@@ -262,12 +262,30 @@
       "role": "tool",
       "content": "Dispatch comments posted for 1 sub-issue(s): #141→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_decb36b62f63429db80783f6"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_33f9df32946648db8e342fd8",
+          "type": "function",
+          "function": {
+            "name": "atoma__launch_sub_agent",
+            "arguments": "{\"tasks\": [{\"agent\": \"engineer\", \"issue\": 141}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Dispatch comments posted for 1 sub-issue(s): #141→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
+      "tool_call_id": "call_33f9df32946648db8e342fd8"
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "3e9e3e3136977f9317ee365735217515fc2630f1d74e502c050508762bbe9b3e",
-      "event_count": 5,
+      "snapshot_hash": "9d01d3dc1f813221493035af9b85735fb23b9c124b2ce338b464eb6f269a8aad",
+      "event_count": 6,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "138"
