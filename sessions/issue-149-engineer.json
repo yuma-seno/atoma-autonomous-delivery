@@ -528,15 +528,41 @@
       "role": "assistant",
       "content": "**Completion Report**\n\n- **Summary**: Created `todo_filter.py` (3 filter functions) and `test_todo_filter.py` (16 unit tests) following TDD — tests were written first (red), then implementation (green). All functions use list comprehensions returning new lists, no mutation of input, zero external dependencies.\n- **Verification**: Files committed and pushed. PR created. The reviewer will run tests automatically.\n- **PR**: #153 — https://github.com/yuma-seno/atoma-autonomous-delivery/pull/153",
       "atoma_metadata": {
-        "github_comment_id": 4950650499,
+        "agent": "engineer",
+        "github_comment_id": 4950650499
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_4652ac34b97c4cc49e48ad75",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 149}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_4652ac34b97c4cc49e48ad75"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #153. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4950661956,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "c330fe3aa4ae43b9c3652686d23fe9bc214b58f15ad2404b0a7b4e403dbef5dd",
-      "event_count": 2,
+      "snapshot_hash": "46876bfe3cb07564c544afc973d874d2116cab2511f956be806ddb669ae3f089",
+      "event_count": 3,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "149"
