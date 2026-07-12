@@ -173,6 +173,16 @@ def _close_issue(a):
     rc, out, err = gh("issue", "close", str(num), "--repo", REPO)
     if rc: raise RuntimeError(err or out)
     ops_log("close_issue", {"number": num})
+    # Whether this is a sub-issue closed via the normal merge_pr path or via
+    # an origin-agent re-invocation confirming its own work (see
+    # _dispatch_post_merge_agent), phase-gating/aggregation must be checked
+    # here so it fires regardless of which path closed the issue.
+    # _dispatch_orchestrator_if_ready no-ops harmlessly if #num has no
+    # atoma:parent tag (e.g. closing an unrelated issue).
+    try:
+        _dispatch_orchestrator_if_ready(num)
+    except Exception as e:
+        log(f"_close_issue: _dispatch_orchestrator_if_ready failed for #{num}: {e}")
     return json.dumps({"ok":True})
 def _resolve_branch():
     """Resolve current branch, preferring BRANCH env var (set by atoma-runner.yml)."""
@@ -480,15 +490,13 @@ def _merge_pr(a):
         if origin_match and _dispatch_post_merge_agent(parent_num, origin_match.group(1)):
             return json.dumps({"merged": True, "closed_issue": None, "reinvoked_agent": origin_match.group(1)})
         try:
+            # _close_issue now triggers _dispatch_orchestrator_if_ready itself
+            # (so the origin-agent re-invocation path gets the same gating
+            # behavior when the re-invoked agent calls close_issue on its own).
             _close_issue({"number": parent_num})
             closed_issue = parent_num
         except RuntimeError as e:
             log(f"_merge_pr: could not close parent issue #{parent_num}: {e}")
-        if closed_issue is not None:
-            try:
-                _dispatch_orchestrator_if_ready(closed_issue)
-            except Exception as e:
-                log(f"_merge_pr: _dispatch_orchestrator_if_ready failed: {e}")
     return json.dumps({"merged": True, "closed_issue": closed_issue})
 
 
