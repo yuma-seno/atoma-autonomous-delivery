@@ -315,15 +315,41 @@
       "role": "assistant",
       "content": "## Completion Report\n\n**Summary:** Created `test_integration.py` with 11 subprocess-based integration tests exercising the full ToDo CLI workflow end-to-end.\n\n**Verification:** All 11 tests pass with the real CLI (`pytest test_integration.py -v`). Each test uses `tempfile.TemporaryDirectory` for isolation and automatic cleanup.\n\n**PR:** https://github.com/yuma-seno/atoma-autonomous-delivery/pull/155",
       "atoma_metadata": {
-        "github_comment_id": 4950716470,
+        "agent": "engineer",
+        "github_comment_id": 4950716470
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_94c54b5348b3498dbab8dadc",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 151}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_94c54b5348b3498dbab8dadc"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #155. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4950727073,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "b27135d0601803c466358e856081589f305222c919b6f382b060fd252ca5101f",
-      "event_count": 2,
+      "snapshot_hash": "de4c3a32920f7e5c4a444db6580aea67a1b3bcb2c083a20fa13bacdcb6536c83",
+      "event_count": 3,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "151"
