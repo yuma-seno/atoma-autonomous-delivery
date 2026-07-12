@@ -158,12 +158,61 @@
       "role": "tool",
       "content": "Dispatch comments posted for 1 sub-issue(s): #150→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_2062d640ee6f44e1980f869d"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_015d70128ba745d39a54c70c",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 150}"
+          }
+        },
+        {
+          "id": "call_6abdb73f341d4918bb5a53d1",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 151}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#147 -->\\n<!-- atoma:notify=yuma-seno -->\\n## Task\\nImplement the `todo_cli.py` CLI entry point that combines storage and filter modules.\\n\\n## Dependencies\\nThis task depends on Phase 1a (storage module) and Phase 1b (filter module) being completed first.\\n\\n## TDD Approach\\n1. First write `test_todo_cli.py` with unit-level tests for the CLI argument parsing/logic (not full integration)\\n2. Then implement `todo_cli.py`\\n3. Include both files in the same PR\\n\\n## Requirements\\n- CLI script invoked as: `python todo_cli.py <command> [args]`\\n- Commands:\\n  - `add <title> <priority>` \\u2014 adds a new task (stores to `tasks.json` by default)\\n  - `list` \\u2014 lists all tasks with their status\\n  - `done <id>` \\u2014 marks a task as done by ID\\n  - `filter --status <done|pending>` \\u2014 filter by status\\n  - `filter --priority <N>` \\u2014 filter by exact priority\\n  - `filter --priority-min <N> --priority-max <M>` \\u2014 filter by priority range\\n- Use `argparse` for argument parsing\\n- Default storage file: `tasks.json` in current directory\\n- Storage file path should be configurable (optional `--file` argument)\\n\\n## Files to create\\n- `todo_cli.py` (implementation)\\n- `test_todo_cli.py` (unit tests for CLI logic)\\n\\n## Success Criteria\\n- All commands work as expected\\n- Integration with storage and filter modules is correct\\n- Help text is informative\", \"closedAt\": \"2026-07-12T09:35:21Z\", \"comments\": [{\"id\": \"IC_kwDOS6gmSM8AAAABJxVCvw\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Agent `engineer` dispatched to work on this sub-task.\", \"createdAt\": \"2026-07-12T09:23:30Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/150#issuecomment-4950672063\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxWP_Q\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n## Completion Report\\n\\n### Summary of changes\\n- **`todo_cli.py`** \\u2014 CLI entry point using `argparse` with 4 subcommands (`add`, `list`, `done`, `filter`) and optional `--file` argument (default: `tasks.json`). Integrates with `todo_storage` for persistence and `todo_filter` for filtering.\\n- **`test_todo_cli.py`** \\u2014 28 unit tests across 5 test classes: `TestCreateParser` (12 tests), `TestRunAdd` (2 tests), `TestRunList` (2 tests), `TestRunDone` (2 tests), `TestRunFilter` (6 tests), `TestMain` (4 tests).\\n\\n### Verification performed\\n- All 28 tests pass (confirmed via terminal output)\\n- Existing `test_todo_storage.py` and `test_todo_filter.py` tests remain unaffected\\n\\n### PR\\n- **PR #154** \\u2014 https://github.com/yuma-seno/atoma-autonomous-delivery/pull/154\\n\\n\\n---\\n_Tokens: 1160224 total (1147575 prompt + 12649 completion)_\\n_Estimated cost: $0.1797_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29187392221)_\\n\", \"createdAt\": \"2026-07-12T09:31:13Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/150#issuecomment-4950691837\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxWoNg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\", \"createdAt\": \"2026-07-12T09:33:29Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/150#issuecomment-4950698038\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxW_yQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\nMerged in PR #154. Closing this sub-task.\\n\\n\\n---\\n_Tokens: 108492 total (108288 prompt + 204 completion)_\\n_Estimated cost: $0.0164_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29187669117)_\\n\", \"createdAt\": \"2026-07-12T09:35:39Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/150#issuecomment-4950704073\", \"viewerDidAuthor\": true}], \"createdAt\": \"2026-07-12T09:09:22Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACq85w7w\", \"name\": \"atoma/launched\", \"description\": \"Sub-issue has been dispatched to an agent\", \"color\": \"0E8A16\"}], \"number\": 150, \"state\": \"CLOSED\", \"title\": \"Phase 2: Implement CLI entry point (todo_cli.py)\"}",
+      "tool_call_id": "call_015d70128ba745d39a54c70c"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#147 -->\\n<!-- atoma:notify=yuma-seno -->\\n## Task\\nWrite integration tests that exercise the full ToDo CLI workflow end-to-end.\\n\\n## Dependencies\\nThis task depends on Phase 2 (CLI entry point) being completed first (which in turn depends on Phase 1a and 1b).\\n\\n## Requirements\\n- Test file: `test_integration.py`\\n- Use `subprocess` to invoke `python todo_cli.py <args>` in a temporary directory\\n- Workflow to test (in order):\\n  1. Add a task with priority 1 \\u2192 confirm output\\n  2. Add a task with priority 2 \\u2192 confirm output\\n  3. Add a task with priority 3 \\u2192 confirm output\\n  4. List all tasks \\u2192 confirm 3 tasks shown\\n  5. Mark task with id=1 as done\\n  6. List tasks \\u2192 confirm task 1 shows done, others pending\\n  7. Filter by status=pending \\u2192 confirm 2 tasks\\n  8. Filter by status=done \\u2192 confirm 1 task\\n  9. Filter by priority=2 \\u2192 confirm 1 task\\n  10. Filter by priority range 2-3 \\u2192 confirm 2 tasks\\n- Use a temp directory and a temp storage file for each test to avoid side effects\\n- Clean up temp files after tests\\n\\n## Files to create\\n- `test_integration.py`\\n\\n## Success Criteria\\n- All integration tests pass with the real CLI\\n- Tests are isolated (use temp files, clean up after themselves)\\n- Tests cover the critical user workflow end-to-end\", \"closedAt\": null, \"comments\": [], \"createdAt\": \"2026-07-12T09:09:23Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}], \"number\": 151, \"state\": \"OPEN\", \"title\": \"Phase 3: Integration tests for the ToDo CLI\"}",
+      "tool_call_id": "call_6abdb73f341d4918bb5a53d1"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_00_vSXyMViMHiMEjnWbKHL85432",
+          "type": "function",
+          "function": {
+            "name": "atoma__launch_sub_agent",
+            "arguments": "{\"tasks\": [{\"issue\":151,\"agent\":\"engineer\"}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Dispatch comments posted for 1 sub-issue(s): #151→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
+      "tool_call_id": "call_00_vSXyMViMHiMEjnWbKHL85432"
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "163b5348aa2b3886e0b11bba77685d0c83129824da421c50e768889b1c6f20d2",
-      "event_count": 2,
+      "snapshot_hash": "8f750e5c5ca0b5e01e7d4d25f99ef277645e0127706803703bfa8160dad17a8c",
+      "event_count": 3,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "147"
