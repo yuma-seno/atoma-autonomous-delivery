@@ -1,6 +1,12 @@
 {
   "version": 4,
   "merge_policy": "auto",
+  "environment": {
+    "description": "Tasks in this template are plain-stdlib Python tested with pytest; pytest is pre-installed by setup_commands below so agents never need to install it themselves mid-session.",
+    "setup_commands": [
+      "pip install --quiet pytest"
+    ]
+  },
   "agents": {
     "orchestrator": {
       "max_iterations": 100

@@ -54,4 +54,10 @@ gh workflow run "$DISPATCH_WORKFLOW" \
     --field type="issue" \
     --field notify="${ISSUE_NOTIFY:-}"
 
+# Best-effort "eyes" reaction on the sub-issue itself so a human glancing at
+# the tracker can tell at a glance that it's already being worked on, not
+# just sitting idle waiting for attention (mirrors atoma-entry.yml's reaction
+# on newly routed issues).
+gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/reactions" -f content="eyes" 2>/dev/null || true
+
 echo "dispatched: agent=${AGENT} issue=#${ISSUE}"

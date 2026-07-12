@@ -188,8 +188,8 @@ def _resolve_branch():
     raise RuntimeError("Cannot determine branch name; set BRANCH env")
 
 def _inject_parent_issue(body: str) -> str:
-    """Inject <!-- atoma:parent-issue=N -->, <!-- atoma:notify=LOGIN -->, and
-    Closes #N markers into PR body."""
+    """Inject <!-- atoma:parent-issue=N -->, <!-- atoma:origin-agent=AGENT -->,
+    <!-- atoma:notify=LOGIN -->, and Closes #N markers into PR body."""
     parent = os.environ.get("ISSUE_NUMBER", "").strip()
     if "<!-- atoma:notify=" in body:
         raise RuntimeError("PR body already contains a notify tag; refusing to add another")
@@ -207,7 +207,9 @@ def _inject_parent_issue(body: str) -> str:
     closes_line = ""
     if not re.search(rf"\bcloses\s+#{re.escape(parent)}\b", body, re.IGNORECASE):
         closes_line = f"Closes #{parent}\n"
-    return f"<!-- atoma:parent-issue={parent} -->\n{closes_line}{body}"
+    origin_agent = os.environ.get("AGENT", "").strip()
+    origin_line = f"<!-- atoma:origin-agent={origin_agent} -->\n" if origin_agent else ""
+    return f"<!-- atoma:parent-issue={parent} -->\n{origin_line}{closes_line}{body}"
 
 
 def _dispatch_post_pr_agent(pr_number: int):
@@ -236,6 +238,10 @@ def _dispatch_post_pr_agent(pr_number: int):
         log(f"_dispatch_post_pr_agent: WARN failed to dispatch {agent} for PR #{pr_number}: {err or out}")
     else:
         log(f"_dispatch_post_pr_agent: dispatched {agent} for PR #{pr_number}")
+    # Best-effort "eyes" reaction on the PR itself so a human glancing at it
+    # can tell it's already being worked on (mirrors launch_sub_agent.sh's
+    # reaction on newly dispatched sub-issues).
+    gh("api", "--method", "POST", f"repos/{REPO}/issues/{pr_number}/reactions", "-f", "content=eyes")
 
 
 def _create_pr(a):
@@ -402,6 +408,50 @@ def _dispatch_orchestrator_if_ready(sub_issue_num: int) -> None:
     if rc:
         log(f"_dispatch_orchestrator_if_ready: gh workflow run failed (rc={rc}): {err or out}")
 
+def _dispatch_post_merge_agent(sub_issue_num: int, agent: str) -> bool:
+    """After a PR merges, re-invoke the agent that originally created it (tagged
+    via <!-- atoma:origin-agent=... --> in the PR body, see _inject_parent_issue)
+    on the linked sub-issue, instead of silently closing the sub-issue ourselves.
+
+    This lets the sub-issue's own thread get a natural wrap-up from the agent
+    that actually did the work (it posts a brief confirmation and calls
+    github__close_issue itself), rather than being closed with no comment on
+    that thread at all. _close_issue (called by the re-invoked agent) already
+    triggers _dispatch_orchestrator_if_ready, so aggregation still works the
+    same way as before -- it just happens one hop later, from the agent's own
+    close_issue call instead of from here directly.
+
+    Returns True if the dispatch was sent (best-effort; a failure here should
+    not fail merge_pr itself -- caller falls back to closing directly).
+    """
+    scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    notify_out = subprocess.run(
+        ["python3", os.path.join(scripts_dir, "resolve_notify.py"),
+         "--repo", REPO, "--number", str(sub_issue_num)],
+        capture_output=True, text=True,
+    )
+    notify = (notify_out.stdout or "").strip()
+    rc, out, err = gh(
+        "issue", "comment", str(sub_issue_num), "--repo", REPO,
+        "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+    )
+    if rc:
+        log(f"_dispatch_post_merge_agent: could not post trigger comment on #{sub_issue_num}: {err or out}")
+        return False
+    rc, out, err = gh(
+        "workflow", "run", "atoma-runner.yml",
+        "--repo", REPO,
+        "--field", f"agent={agent}",
+        "--field", f"number={sub_issue_num}",
+        "--field", "type=issue",
+        "--field", f"notify={notify}",
+    )
+    if rc:
+        log(f"_dispatch_post_merge_agent: gh workflow run failed for #{sub_issue_num} (rc={rc}): {err or out}")
+        return False
+    log(f"_dispatch_post_merge_agent: re-invoked {agent} on #{sub_issue_num} to confirm and close")
+    return True
+
 def _merge_pr(a):
     num = a["number"]
     policy = get_merge_policy()
@@ -416,14 +466,19 @@ def _merge_pr(a):
     # GitHub's native "Closes #N" auto-close does not reliably fire when the
     # merge is performed via the Actions GITHUB_TOKEN (as opposed to a human
     # merging through the UI) -- confirmed empirically: linked issues stayed
-    # open after bot-driven squash-merges. Close the parent issue explicitly
-    # instead of relying on that.
+    # open after bot-driven squash-merges. Prefer re-invoking the PR's origin
+    # agent to close the sub-issue itself (see _dispatch_post_merge_agent);
+    # only fall back to closing it directly here if there's no origin-agent
+    # tag to dispatch (e.g. a PR created before this feature existed).
     closed_issue = None
     d = gh_json("pr", "view", str(num), "--repo", REPO, "--json", "body")
     body = (d or {}).get("body") or ""
     m = re.search(r"<!--\s*atoma:parent-issue=(\d+)\s*-->", body)
     if m:
         parent_num = int(m.group(1))
+        origin_match = re.search(r"<!--\s*atoma:origin-agent=([a-z][a-z0-9-]*)\s*-->", body)
+        if origin_match and _dispatch_post_merge_agent(parent_num, origin_match.group(1)):
+            return json.dumps({"merged": True, "closed_issue": None, "reinvoked_agent": origin_match.group(1)})
         try:
             _close_issue({"number": parent_num})
             closed_issue = parent_num

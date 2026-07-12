@@ -93,14 +93,37 @@ jobs:
       - name: Setup runtime
         uses: yuma-seno/atoma/github/actions/setup-runtime@main
 
-      - name: Pre-install Python test dependencies
-        # engineer's tasks in this template are plain-stdlib Python that get
-        # tested with pytest (see run_tests.py / _run_pytest.py). Installing it
-        # here means the agent never needs to run `pip install pytest` itself
-        # mid-session, which was observed eating several iterations (and shell
-        # MCP tool calls) on a cold runner.
+      - name: Run configured environment setup
+        # Generic hook, NOT Python/pytest-specific: runs whatever shell commands
+        # are declared in config.json's `environment.setup_commands` (if any)
+        # before the agent starts, so it never has to spend iterations/tool
+        # calls doing one-off environment prep itself (e.g. installing a test
+        # runner) on a cold runner. Leave `environment.setup_commands` empty or
+        # unset in config.json if your project needs no such step.
         shell: bash
-        run: pip install --quiet pytest
+        run: |
+          python3 - <<'PY' > /tmp/_setup_commands.txt
+          import json
+          from pathlib import Path
+
+          path = Path(".github/atoma/config.json")
+          commands = []
+          if path.exists():
+              config = json.loads(path.read_text(encoding="utf-8"))
+              env = config.get("environment") or {}
+              commands = env.get("setup_commands") or []
+          for cmd in commands:
+              print(cmd)
+          PY
+          if [ -s /tmp/_setup_commands.txt ]; then
+            while IFS= read -r cmd; do
+              echo "Running environment setup command: ${cmd}"
+              bash -c "$cmd"
+            done < /tmp/_setup_commands.txt
+          else
+            echo "No environment.setup_commands configured; skipping."
+          fi
+          rm -f /tmp/_setup_commands.txt
 
       - name: Configure git identity
         shell: bash
@@ -201,11 +224,15 @@ jobs:
       - name: Post result
         # post-result's own inner guard (atoma_outcome == 'success' && new_event_count
         # != '0') is sufficient: it always posts the agent's final response as a
-        # comment when the run actually did something. Do NOT add extra suppression
-        # here based on `directive` being empty — that shape is indistinguishable
-        # from a normal "nothing more to do" completion AND from an important final
-        # summary (e.g. orchestrator aggregation), so gating on it silently drops
-        # real summaries/notifications instead of just reducing noise.
+        # comment when the run actually did something. Do NOT gate the comment
+        # itself on `directive` being empty -- that shape is indistinguishable from
+        # a normal "nothing more to do" completion AND from an important final
+        # summary (e.g. orchestrator aggregation), so gating on it would silently
+        # drop real summaries/notifications instead of just reducing noise.
+        # The "please review" notice inside post-result is separately suppressed
+        # via `chain_continues` (set when a tool call, e.g. launch_sub_agent or
+        # create_pr, already triggered an automatic follow-up run) -- that is a
+        # purpose-built signal, not a reuse of the ambiguous `directive` emptiness.
         if: always()
         uses: yuma-seno/atoma/github/actions/post-result@main
         with:
@@ -221,6 +248,7 @@ jobs:
           resolved_number: ${{ steps.prep.outputs.resolved_number }}
           directive: ${{ steps.atoma.outputs.directive }}
           max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
+          chain_continues: ${{ steps.atoma.outputs.chain_continues }}
 
       - name: Check for uncommitted changes
         id: dirty
