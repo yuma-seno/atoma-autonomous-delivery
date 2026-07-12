@@ -255,15 +255,41 @@
       "role": "assistant",
       "content": "## Completion Report\n\n**Summary of changes:**\n- Created `todo_storage.py` — implementation with `add_task`, `save_tasks`, `load_tasks`, `mark_done`\n- Created `test_todo_storage.py` — 19 tests across 5 test classes\n\n**Verification performed:**\n- All 19 tests passed in 0.03s\n- Zero external dependencies (Python stdlib only)\n\n**PR:** [#152](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/152)",
       "atoma_metadata": {
-        "github_comment_id": 4950648480,
+        "agent": "engineer",
+        "github_comment_id": 4950648480
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_b2457543f77f4e9e88d79b17",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 148}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_b2457543f77f4e9e88d79b17"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #152. All 19 tests pass, both files (`todo_storage.py` and `test_todo_storage.py`) are on main. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4950659518,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "161979a23aa0b99290e030db9c90c3209c92b30ddc92ec6bfb02b6272d744e5f",
-      "event_count": 2,
+      "snapshot_hash": "69d35c54808c9b9c7c407b459b02efe0c0a5a96d2c0b04a98393a6b125b4cd81",
+      "event_count": 3,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "148"
