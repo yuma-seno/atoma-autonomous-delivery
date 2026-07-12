@@ -207,12 +207,38 @@
       "role": "tool",
       "content": "Dispatch comments posted for 1 sub-issue(s): #151→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_00_vSXyMViMHiMEjnWbKHL85432"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_b933ceb19e384e209f3d755e",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 151}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#147 -->\\n<!-- atoma:notify=yuma-seno -->\\n## Task\\nWrite integration tests that exercise the full ToDo CLI workflow end-to-end.\\n\\n## Dependencies\\nThis task depends on Phase 2 (CLI entry point) being completed first (which in turn depends on Phase 1a and 1b).\\n\\n## Requirements\\n- Test file: `test_integration.py`\\n- Use `subprocess` to invoke `python todo_cli.py <args>` in a temporary directory\\n- Workflow to test (in order):\\n  1. Add a task with priority 1 \\u2192 confirm output\\n  2. Add a task with priority 2 \\u2192 confirm output\\n  3. Add a task with priority 3 \\u2192 confirm output\\n  4. List all tasks \\u2192 confirm 3 tasks shown\\n  5. Mark task with id=1 as done\\n  6. List tasks \\u2192 confirm task 1 shows done, others pending\\n  7. Filter by status=pending \\u2192 confirm 2 tasks\\n  8. Filter by status=done \\u2192 confirm 1 task\\n  9. Filter by priority=2 \\u2192 confirm 1 task\\n  10. Filter by priority range 2-3 \\u2192 confirm 2 tasks\\n- Use a temp directory and a temp storage file for each test to avoid side effects\\n- Clean up temp files after tests\\n\\n## Files to create\\n- `test_integration.py`\\n\\n## Success Criteria\\n- All integration tests pass with the real CLI\\n- Tests are isolated (use temp files, clean up after themselves)\\n- Tests cover the critical user workflow end-to-end\", \"closedAt\": \"2026-07-12T09:44:18Z\", \"comments\": [{\"id\": \"IC_kwDOS6gmSM8AAAABJxXRRQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Agent `engineer` dispatched to work on this sub-task.\", \"createdAt\": \"2026-07-12T09:37:19Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/151#issuecomment-4950708549\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxXwNg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n## Completion Report\\n\\n**Summary:** Created `test_integration.py` with 11 subprocess-based integration tests exercising the full ToDo CLI workflow end-to-end.\\n\\n**Verification:** All 11 tests pass with the real CLI (`pytest test_integration.py -v`). Each test uses `tempfile.TemporaryDirectory` for isolation and automatic cleanup.\\n\\n**PR:** https://github.com/yuma-seno/atoma-autonomous-delivery/pull/155\\n\\n\\n---\\n_Tokens: 298686 total (293442 prompt + 5244 completion)_\\n_Estimated cost: $0.0472_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29187779965)_\\n\", \"createdAt\": \"2026-07-12T09:40:20Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/151#issuecomment-4950716470\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxYCIg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\", \"createdAt\": \"2026-07-12T09:42:10Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/151#issuecomment-4950721058\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABJxYZoQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\nMerged in PR #155. Closing this sub-task.\\n\\n\\n---\\n_Tokens: 53870 total (53753 prompt + 117 completion)_\\n_Estimated cost: $0.0081_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29187916222)_\\n\", \"createdAt\": \"2026-07-12T09:44:31Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/151#issuecomment-4950727073\", \"viewerDidAuthor\": true}], \"createdAt\": \"2026-07-12T09:09:23Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACq85w7w\", \"name\": \"atoma/launched\", \"description\": \"Sub-issue has been dispatched to an agent\", \"color\": \"0E8A16\"}], \"number\": 151, \"state\": \"CLOSED\", \"title\": \"Phase 3: Integration tests for the ToDo CLI\"}",
+      "tool_call_id": "call_b933ceb19e384e209f3d755e"
+    },
+    {
+      "role": "assistant",
+      "content": "全サブIssueが完了しました。最終集計を行います。\n\n## 完了報告 — Issue #147: ToDoリスト管理CLI\n\n### 成果物（全PRマージ済み）\n\n| Phase | サブIssue | PR | ファイル | ステータス |\n|-------|-----------|-----|---------|-----------|\n| 1a | #148 — storage モジュール | #152 | `todo_storage.py`, `test_todo_storage.py` | ✅ マージ |\n| 1b | #149 — filter モジュール | #153 | `todo_filter.py`, `test_todo_filter.py` | ✅ マージ |\n| 2 | #150 — CLI エントリポイント | #154 | `todo_cli.py`, `test_todo_cli.py` | ✅ マージ |\n| 3 | #151 — 結合テスト | #155 | `test_integration.py` | ✅ マージ |\n\n### テスト結果\n- **19 tests** — `test_todo_storage.py` (保存/読込/完了マークの全エッジケース)\n- **16 tests** — `test_todo_filter.py` (状態・優先度フィルタリング)\n- **28 tests** — `test_todo_cli.py` (CLIパース・各サブコマンド)\n- **11 tests** — `test_integration.py` (End-to-end: add → list → done → filter)\n\n**全74テスト通過、外部依存0。**\n\n### 実装概要\n\n- **`todo_storage.py`**: JSONファイルへのタスク永続化。`add_task`（自動ID採番）、`save_tasks`、`load_tasks`、`mark_done`\n- **`todo_filter.py`**: タスクリストのフィルタリング関数。`filter_by_status`、`filter_by_priority`、`filter_by_priority_range`（非破壊）\n- **`todo_cli.py`**: `argparse`ベースのCLI。コマンド: `add`, `list`, `done`, `filter`（`--status`, `--priority`, `--priority-min/--priority-max`）。`--file` オプションでパス指定可能、デフォルト `tasks.json`",
+      "atoma_metadata": {
+        "github_comment_id": 4950733067,
+        "agent": "orchestrator"
+      }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "8f750e5c5ca0b5e01e7d4d25f99ef277645e0127706803703bfa8160dad17a8c",
-      "event_count": 3,
+      "snapshot_hash": "a1d59c3a2512b06628d7177de9512ffef1f5a8ae4d18e70fe822c2187af9ac8c",
+      "event_count": 4,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "147"
