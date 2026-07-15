@@ -129,6 +129,9 @@ jobs:
       - name: Aggregate sub-issue results
         shell: bash
         run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Actions"
+
           echo "PR merged (sub-issue #${CLOSED_NUM}, parent #${PARENT}). Checking siblings..."
 
           SIBLING_COUNT=$(python3 .github/atoma/tools/scripts/check_open_siblings.py \
@@ -157,32 +160,60 @@ jobs:
           echo "All sub-issues for parent #${PARENT}: ${ALL_SUBS}"
 
           SESSION_PATH="sessions/issue-${PARENT}-orchestrator.json"
-          if git fetch origin atoma-data --depth=1 2>/dev/null && \
-             git cat-file -e "origin/atoma-data:${SESSION_PATH}" 2>/dev/null; then
-            git show "origin/atoma-data:${SESSION_PATH}" > session.json
-          else
-            echo '{"messages":[]}' > session.json
+
+          # Multiple parents can finish aggregation around the same time, all
+          # pushing to the same atoma-data branch, so a push race is expected,
+          # not exceptional. Re-pull the latest tip on every attempt and, if
+          # the push still loses the race, reset and retry from scratch --
+          # safe because each parent only ever touches its own uniquely-named
+          # SESSION_PATH, so a reset can never discard another parent's
+          # concurrently-pushed session.
+          SAVED=false
+          for attempt in 1 2 3 4 5; do
+            if git fetch origin atoma-data 2>/dev/null; then
+              git checkout -B atoma-data origin/atoma-data
+            else
+              git checkout --orphan atoma-data
+              git rm -rf . 2>/dev/null || true
+            fi
+
+            if git cat-file -e "HEAD:${SESSION_PATH}" 2>/dev/null; then
+              git show "HEAD:${SESSION_PATH}" > session.json
+            else
+              echo '{"messages":[]}' > session.json
+            fi
+
+            python3 .github/atoma/tools/scripts/inject_sub_results.py \
+              --session session.json \
+              --repo "${OWNER}/${REPO}" \
+              --parent "${PARENT}" \
+              --sub-issues "${ALL_SUBS}" \
+              --out session.json
+
+            mkdir -p "$(dirname "${SESSION_PATH}")"
+            mv session.json "${SESSION_PATH}"
+            git add "${SESSION_PATH}"
+
+            if git diff --cached --quiet; then
+              echo "No changes to session; skipping commit."
+              SAVED=true
+              break
+            fi
+
+            git commit -m "atoma: inject sub-issue results for parent #${PARENT}"
+
+            if git push origin atoma-data; then
+              SAVED=true
+              break
+            fi
+
+            echo "Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull..."
+            sleep $((attempt * 2))
+          done
+
+          if [ "$SAVED" != "true" ]; then
+            echo "::warning::Failed to save session to atoma-data:${SESSION_PATH} after all retries."
           fi
-
-          python3 .github/atoma/tools/scripts/inject_sub_results.py \
-            --session session.json \
-            --repo "${OWNER}/${REPO}" \
-            --parent "${PARENT}" \
-            --sub-issues "${ALL_SUBS}" \
-            --out session.json
-
-          {
-            git fetch origin atoma-data 2>/dev/null && \
-            git checkout -b atoma-data origin/atoma-data 2>/dev/null
-          } || {
-            git checkout --orphan atoma-data
-            git rm -rf . 2>/dev/null || true
-          }
-          mkdir -p "$(dirname "${SESSION_PATH}")"
-          mv session.json "${SESSION_PATH}"
-          git add "${SESSION_PATH}"
-          git commit -m "atoma: inject sub-issue results for parent #${PARENT}" || echo "No changes"
-          git push origin atoma-data
 
           BD=$(mktemp)
           echo "<!-- atoma:sub-result:#${CLOSED_NUM} -->" > "$BD"

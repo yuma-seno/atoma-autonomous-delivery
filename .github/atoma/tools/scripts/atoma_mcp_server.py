@@ -134,6 +134,12 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
 
     log(f"Dispatching {len(tasks)} sub-issue(s): {tasks}")
 
+    # The orchestrator's OWN current issue (the parent, from the sub-issues'
+    # point of view). Captured before the dispatch loop -- each iteration below
+    # only overrides ISSUE_NUMBER in the *subprocess's* env dict, never in this
+    # process's actual os.environ, so this stays stable throughout.
+    parent_issue = os.environ.get("ISSUE_NUMBER", "").strip()
+
     script = os.path.join(SCRIPT_DIR, "launch_sub_agent.sh")
     if not os.path.isfile(script):
         send_error(request_id, -32603, f"Script not found: {script}")
@@ -165,6 +171,19 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
             errors.append(f"#{issue}/{agent}: timed out after 30s")
         except OSError as e:
             errors.append(f"#{issue}/{agent}: {e}")
+
+    # Best-effort comment on the PARENT issue (not just each sub-issue) so a
+    # human reading the parent's thread has a full audit trail of what was
+    # dispatched without needing to open every sub-issue individually.
+    if dispatched and parent_issue:
+        try:
+            body_lines = ["Atoma: Launched sub-agent(s):"] + [f"- {d}" for d in dispatched]
+            subprocess.run(
+                ["gh", "issue", "comment", parent_issue, "--body", "\n".join(body_lines)],
+                capture_output=True, text=True, timeout=15,
+            )
+        except (subprocess.TimeoutExpired, OSError) as e:
+            log(f"Failed to post dispatch summary comment on parent #{parent_issue}: {e}")
 
     if errors and not dispatched:
         send_error(request_id, -32603, f"All dispatches failed: {'; '.join(errors)}")

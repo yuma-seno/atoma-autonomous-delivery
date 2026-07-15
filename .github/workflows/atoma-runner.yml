@@ -171,6 +171,26 @@ jobs:
           echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
           echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
 
+      - name: Add atoma/in-progress label
+        # Added BEFORE the agent actually runs (not after) so it's visible to a
+        # human for the entire duration of the run, not just flickered on/off
+        # afterwards. Applies to both issues and PRs -- `gh issue edit` works on
+        # PR numbers too since GitHub treats every PR as an issue under the hood.
+        # Gated on the same condition as "Run agent" so the label isn't added
+        # for no-op runs that will be skipped entirely (new_event_count == '0').
+        if: steps.prep.outputs.new_event_count != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
+          # Create the label if it does not exist yet
+          gh label create "$LABEL" --force \
+            -c '0366d6' \
+            -d 'Issue is being worked on by an Atoma agent' 2>/dev/null || true
+          gh issue edit "$NUMBER" --add-label "$LABEL" 2>/dev/null || true
+
       - name: Run agent
         if: steps.prep.outputs.new_event_count != '0'
         id: atoma
@@ -189,37 +209,18 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           atoma_provider: ${{ vars.ATOMA_PROVIDER }}
 
-      - name: Add atoma/in-progress label
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ inputs.number }}
-          TYPE: ${{ inputs.type }}
-        run: |
-          if [ "$TYPE" = "issue" ]; then
-            LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
-            # Create the label if it does not exist yet
-            gh label create "$LABEL" --force \
-              -c '0366d6' \
-              -d 'Issue is being worked on by an Atoma agent' 2>/dev/null || true
-            gh issue edit "$NUMBER" --add-label "$LABEL" 2>/dev/null || true
-          fi
-
       - name: Remove atoma/in-progress label on completion
+        # Remove atoma/in-progress when the agent run finishes (success or failure).
+        # Sub-issues keep atoma/sub-issue label for tracking (never removed here).
+        # Applies to both issues and PRs, mirroring the Add step above.
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
-          TYPE: ${{ inputs.type }}
         run: |
-          # Remove atoma/in-progress when the agent run finishes (success or failure).
-          # Sub-issues keep atoma/sub-issue label for tracking (never removed here).
-          if [ "$TYPE" = "issue" ]; then
-            LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
-            gh issue edit "$NUMBER" --remove-label "$LABEL" 2>/dev/null || true
-          fi
+          LABEL=$(python3 .github/atoma/tools/scripts/get_config_value.py "labels.in_progress" "atoma/in-progress")
+          gh issue edit "$NUMBER" --remove-label "$LABEL" 2>/dev/null || true
 
       - name: Post result
         # post-result's own inner guard (atoma_outcome == 'success' && new_event_count

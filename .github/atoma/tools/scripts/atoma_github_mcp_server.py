@@ -248,10 +248,6 @@ def _dispatch_post_pr_agent(pr_number: int):
         log(f"_dispatch_post_pr_agent: WARN failed to dispatch {agent} for PR #{pr_number}: {err or out}")
     else:
         log(f"_dispatch_post_pr_agent: dispatched {agent} for PR #{pr_number}")
-    # Best-effort "eyes" reaction on the PR itself so a human glancing at it
-    # can tell it's already being worked on (mirrors launch_sub_agent.sh's
-    # reaction on newly dispatched sub-issues).
-    gh("api", "--method", "POST", f"repos/{REPO}/issues/{pr_number}/reactions", "-f", "content=eyes")
 
 
 def _create_pr(a):
