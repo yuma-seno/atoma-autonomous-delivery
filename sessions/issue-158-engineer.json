@@ -2026,15 +2026,23 @@
       "role": "assistant",
       "content": "Merged in PR #162. Closing this sub-task.\n\n**Summary of changes:**\n- Created `note_query.py` with `find_by_tag`, `find_by_keyword`, and `all_tags` functions\n- Created `test_note_query.py` with 19 pytest tests covering all functions, edge cases\n- All 19 tests pass\n\n**Verification:** pytest output shows 19 passed in 0.02s\n\n**PR:** #162 (merged)",
       "atoma_metadata": {
-        "github_comment_id": 4982867590,
+        "agent": "engineer",
+        "github_comment_id": 4982867590
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Sub-task #158 already closed. The PR #162 was merged and the issue is closed. \n\n**Summary:**\n- `note_query.py` — implemented `find_by_tag`, `find_by_keyword`, `all_tags`\n- `test_note_query.py` — 19 pytest tests, all passing\n- PR #162 merged, issue #158 closed",
+      "atoma_metadata": {
+        "github_comment_id": 4982888258,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "ab8bdb4c057cf1674ec092d89e5878671c987aeb783adc6490b776f7d619df6a",
-      "event_count": 6,
+      "snapshot_hash": "680916671718c1fa8d5a14735fc85091b918b0dc1a47129d6f74f1ed23a15fb5",
+      "event_count": 7,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "158"
