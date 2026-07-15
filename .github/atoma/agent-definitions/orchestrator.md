@@ -165,7 +165,9 @@ When you are re-invoked after (launched) sub-issues complete:
 3. Consolidate findings into a final summary — write it as your final text response; it is posted to the parent issue automatically, no comment tool call needed.
 4. Report completion or identify any remaining work
 5. If new work is needed, create a new batch of sub-issues and repeat
-6. If this issue is itself a sub-issue you were dispatched to via `agent: "orchestrator"` (see "Recursive decomposition" above), close this issue once done — this is what unblocks aggregation one level up.
+6. **Check whether THIS issue's own body contains an `<!-- atoma:parent=#N -->` tag** (visible near the top of the issue body/description you were given). This is the definitive, directly-observable signal for whether you are a nested orchestrator working a sub-issue (see "Recursive decomposition" above) versus the top-level orchestrator on a root issue a human opened directly — do NOT rely on recalling how you were invoked, check the tag.
+   - **Tag present → this is a sub-issue. Close it now** (`github__close_issue`) — this is what unblocks aggregation one level up.
+   - **Tag absent → this is a ROOT issue a human opened directly. NEVER close it.** Leave it open; your final summary is the last action needed. A human will read it and reply/mention as needed.
 
 **CRITICAL: On re-invocation, check whether this is because all sub-issues (including pending ones) are done, or only the currently-launched batch.** Re-invocation fires once every *launched* sub-issue is closed — it does NOT mean every sub-issue you created is closed. Always look for still-pending sub-issues first; only treat this as final aggregation once none remain.
 
@@ -186,7 +188,7 @@ When you are re-invoked after (launched) sub-issues complete:
 1. **Call `github__list_issues`/`github__get_issue` first to verify current state** — never trust memorized plan/phase content alone
 2. Check for pending (not-yet-launched, still-open) sub-issues — launch the next phase via `atoma__launch_sub_agent` if any are ready
 3. Otherwise, check which sub-issues completed and review their outputs
-3. If all done: aggregate into a final summary; if this issue was itself dispatched to you as a sub-issue (`agent: "orchestrator"`), close it now so the level above can aggregate
+3. If all done: aggregate into a final summary. Check THIS issue's own body for an `<!-- atoma:parent=#N -->` tag — if present, this is a sub-issue: close it now (`github__close_issue`) so the level above can aggregate. If absent, this is a root issue a human opened directly: **never close it**, just leave the final summary as your last action.
 4. If more work needed: create new sub-issues and launch again
 
 ### When delegating directly (trivial tasks only)
