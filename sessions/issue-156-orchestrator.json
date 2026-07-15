@@ -256,12 +256,56 @@
       "role": "tool",
       "content": "Dispatch comments posted for 1 sub-issue(s): #160→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_3f63d25f966b4e9599d27632"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_723eb7f45f51471482051df0",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 160}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#156 -->\\n<!-- atoma:notify=yuma-seno -->\\n## \\u4f9d\\u5b58\\n- Sub-issue #157 (note_storage.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n- Sub-issue #158 (note_query.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n- Sub-issue #159 (note_cli.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n\\n## \\u30bf\\u30b9\\u30af\\n`note_storage.py`\\u30fb`note_query.py`\\u30fb`note_cli.py` \\u3092\\u7d44\\u307f\\u5408\\u308f\\u305b\\u305f\\u30a8\\u30f3\\u30c9\\u30c4\\u30fc\\u30a8\\u30f3\\u30c9\\u306e\\u7d50\\u5408\\u30c6\\u30b9\\u30c8\\u3092 `test_e2e.py` \\u306b\\u4f5c\\u6210\\u3059\\u308b\\u3002\\n\\n## \\u30c6\\u30b9\\u30c8\\u5185\\u5bb9 (`test_e2e.py`)\\n- \\u5b9f\\u969b\\u306e\\u30d5\\u30a1\\u30a4\\u30eb\\uff08\\u30c6\\u30f3\\u30dd\\u30e9\\u30ea\\uff09\\u3092\\u4f7f\\u3063\\u305f\\u30d5\\u30ed\\u30fc:\\n  1. `add_note` \\u3067\\u30e1\\u30e2\\u8ffd\\u52a0 \\u2192 `save_notes` \\u3067\\u4fdd\\u5b58\\n  2. `load_notes` \\u3067\\u8aad\\u8fbc \\u2192 `find_by_tag` / `find_by_keyword` \\u3067\\u691c\\u7d22\\n  3. CLI\\u7d4c\\u7531\\u3067\\u306eadd \\u2192 list \\u2192 tag \\u2192 search \\u306e\\u4e00\\u9023\\u306e\\u64cd\\u4f5c\\u78ba\\u8a8d\\n- \\u30d5\\u30a1\\u30a4\\u30eb\\u306e\\u30af\\u30ea\\u30fc\\u30f3\\u30a2\\u30c3\\u30d7\\uff08`tempfile` \\u307e\\u305f\\u306f `pytest` fixture \\u4f7f\\u7528\\uff09\\n\\n## \\u5236\\u7d04\\n- \\u5916\\u90e8\\u30e9\\u30a4\\u30d6\\u30e9\\u30ea\\u7981\\u6b62\\n- \\u30c6\\u30b9\\u30c8\\u306f `pytest` \\u3067\\u5b9f\\u884c\\u53ef\\u80fd\\u306a\\u5f62\\u5f0f\", \"closedAt\": \"2026-07-15T16:51:39Z\", \"comments\": [{\"id\": \"IC_kwDOS6gmSM8AAAABKQPj9Q\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Agent `engineer` dispatched to work on this sub-task.\", \"createdAt\": \"2026-07-15T16:44:01Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/160#issuecomment-4983088117\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQRtqQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n## Completion Report\\n\\n**Summary:** Added `test_e2e.py` with 17 end-to-end integration tests covering API-level and CLI-level workflows across `note_storage`, `note_query`, and `note_cli`.\\n\\n**Verification:** All 17 tests pass (`17 passed in 0.06s`).\\n\\n**PR:** [#164](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/164)\\n\\n\\n---\\n_Tokens: 332641 total (325357 prompt + 7284 completion)_\\n_Estimated cost: $0.0532_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29433636886)_\\n\", \"createdAt\": \"2026-07-15T16:47:38Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/160#issuecomment-4983123369\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQS0Dg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\", \"createdAt\": \"2026-07-15T16:49:31Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/160#issuecomment-4983141390\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQUGjQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\nMerged in PR #164. Closing this sub-task.\\n\\n\\n---\\n_Tokens: 57913 total (57801 prompt + 112 completion)_\\n_Estimated cost: $0.0087_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29434007727)_\\n\", \"createdAt\": \"2026-07-15T16:51:56Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/160#issuecomment-4983162509\", \"viewerDidAuthor\": true}], \"createdAt\": \"2026-07-15T16:03:32Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACq85w7w\", \"name\": \"atoma/launched\", \"description\": \"Sub-issue has been dispatched to an agent\", \"color\": \"0E8A16\"}], \"number\": 160, \"state\": \"CLOSED\", \"title\": \"E2E\\u7d50\\u5408\\u30c6\\u30b9\\u30c8 (test_e2e.py)\"}",
+      "tool_call_id": "call_723eb7f45f51471482051df0"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_5a868df0da4048d2af4ce8e2",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 156}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_5a868df0da4048d2af4ce8e2"
+    },
+    {
+      "role": "assistant",
+      "content": "## 集約サマリー — タグ付きノート管理CLI (#156)\n\n### 完了状況\nすべてのサブイシューが完了し、マージ済み。親イシューをクローズ。\n\n### サブイシュー一覧\n\n| # | モジュール | 状態 | PR |\n|---|---|---|---|\n| 157 | `note_storage.py` — 保存/読込 | ✅ 完了 | [#161](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/161) |\n| 158 | `note_query.py` — タグ/キーワード検索 | ✅ 完了 | [#162](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/162) |\n| 159 | `note_cli.py` — CLIエントリポイント | ✅ 完了 | [#163](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/163) |\n| 160 | `test_e2e.py` — E2E結合テスト | ✅ 完了 | [#164](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/164) |\n\n### 生成ファイル\n\n| ファイル | 説明 |\n|---|---|\n| `note_storage.py` | `add_note`, `save_notes`, `load_notes` |\n| `note_query.py` | `find_by_tag`, `find_by_keyword`, `all_tags` |\n| `note_cli.py` | CLI: `add`, `list`, `tag`, `search`, `--file` |\n| `test_note_storage.py` | 15 単体テスト ✅ |\n| `test_note_query.py` | 19 単体テスト ✅ |\n| `test_note_cli.py` | 34 単体テスト ✅ |\n| `test_e2e.py` | 17 E2E結合テスト ✅ |\n\n### 検証\n全85テストがパス済み。外部ライブラリ不使用。全PRがレビュー・マージ完了。",
+      "atoma_metadata": {
+        "github_comment_id": 4983180671,
+        "agent": "orchestrator"
+      }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "f07a7c12ba8729858c7c5af2da49739a3a11ca09de9056cea8e511717873947b",
-      "event_count": 5,
+      "snapshot_hash": "3791ac959b5683be973ec85ed7ff241376f8b0bb7eaad99551662399b87116df",
+      "event_count": 7,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "156"
