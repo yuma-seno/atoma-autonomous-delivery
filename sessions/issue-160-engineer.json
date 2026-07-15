@@ -307,15 +307,41 @@
       "role": "assistant",
       "content": "## Completion Report\n\n**Summary:** Added `test_e2e.py` with 17 end-to-end integration tests covering API-level and CLI-level workflows across `note_storage`, `note_query`, and `note_cli`.\n\n**Verification:** All 17 tests pass (`17 passed in 0.06s`).\n\n**PR:** [#164](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/164)",
       "atoma_metadata": {
-        "github_comment_id": 4983123369,
+        "agent": "engineer",
+        "github_comment_id": 4983123369
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_04e2c766781a429881fb6a6e",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 160}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_04e2c766781a429881fb6a6e"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #164. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4983162509,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "459d07951913b55978b6d9dde584490dbe9741e7d18367594104404e810cc52e",
-      "event_count": 2,
+      "snapshot_hash": "84c50705b62ef772ed2a4aa1d3c8aafc98f150291dd8ad4000a6cbd5969d18d5",
+      "event_count": 3,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "160"
