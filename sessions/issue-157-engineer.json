@@ -281,15 +281,41 @@
       "role": "assistant",
       "content": "## 完了\n\n### 変更内容\n\n**`note_storage.py`** — 新規ファイル\n- `add_note(notes, text, tags) -> dict` — ノート追加（ID自動採番、テキスト、タグリスト）\n- `save_notes(notes, filepath) -> None` — JSON保存\n- `load_notes(filepath) -> list` — JSON読込（ファイル不在時は空リスト）\n\n**`test_note_storage.py`** — 新規ファイル\n- 15 テストケース: `add_note` (7), `save_notes` (2), `load_notes` (4), 統合テスト (2)\n\n### 検証結果\n- 全15テスト通過 (0.03s)\n- 標準ライブラリのみ使用 (`json`, `os`)\n- 外部依存なし\n\n### PR\n[#161](https://github.com/yuma-seno/atoma-autonomous-delivery/pull/161)",
       "atoma_metadata": {
-        "github_comment_id": 4982738747,
+        "agent": "engineer",
+        "github_comment_id": 4982738747
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_06e0904f91264060bb120940",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 157}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_06e0904f91264060bb120940"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #161. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4982773710,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "05ff0e33fd9041014a1548cf7c00f79cfce656871f1b214cda499e77879da217",
-      "event_count": 2,
+      "snapshot_hash": "1257c3273180b18d8ab15f95b3476631b77d540e4f20d904de198100f6ffa126",
+      "event_count": 3,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "157"
