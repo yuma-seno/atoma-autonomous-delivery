@@ -207,12 +207,61 @@
       "role": "tool",
       "content": "Dispatch comments posted for 1 sub-issue(s): #159→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_72a6929a1c3f48e6bf081341"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_eca53363fac04255ba80c51d",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 159}"
+          }
+        },
+        {
+          "id": "call_140b3d46472d4ee0b13adb0c",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 160}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#156 -->\\n<!-- atoma:notify=yuma-seno -->\\n## \\u4f9d\\u5b58\\n- `note_storage.py` (Sub-issue #157) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n- `note_query.py` (Sub-issue #158) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n\\n## \\u30bf\\u30b9\\u30af\\n`note_cli.py` \\u3092\\u5b9f\\u88c5\\u3057\\u3001\\u5358\\u4f53\\u30c6\\u30b9\\u30c8\\u3092 `test_note_cli.py` \\u306b\\u4f5c\\u6210\\u3059\\u308b\\u3002\\n\\n## \\u5b9f\\u88c5\\u5185\\u5bb9 (`note_cli.py`)\\nCLI\\u30a8\\u30f3\\u30c8\\u30ea\\u30dd\\u30a4\\u30f3\\u30c8\\u3002\\u4ee5\\u4e0b\\u306e\\u30b3\\u30de\\u30f3\\u30c9\\u3092\\u30b5\\u30dd\\u30fc\\u30c8:\\n- `add <text> --tags tag1,tag2` \\u2014 \\u30ce\\u30fc\\u30c8\\u8ffd\\u52a0\\n- `list` \\u2014 \\u5168\\u30ce\\u30fc\\u30c8\\u4e00\\u89a7\\u8868\\u793a\\n- `tag <tag>` \\u2014 \\u6307\\u5b9a\\u30bf\\u30b0\\u306e\\u30ce\\u30fc\\u30c8\\u3092\\u8868\\u793a\\n- `search <keyword>` \\u2014 \\u30ad\\u30fc\\u30ef\\u30fc\\u30c9\\u691c\\u7d22\\n- `--file PATH` \\u30aa\\u30d7\\u30b7\\u30e7\\u30f3\\u3067\\u30d5\\u30a1\\u30a4\\u30eb\\u30d1\\u30b9\\u6307\\u5b9a\\u53ef\\u80fd(\\u30c7\\u30d5\\u30a9\\u30eb\\u30c8: `notes.json`)\\n\\n`note_storage.py` \\u306e `add_note`, `save_notes`, `load_notes` \\u3068\\n`note_query.py` \\u306e `find_by_tag`, `find_by_keyword` \\u3092\\u5229\\u7528\\u3059\\u308b\\u3002\\n\\n## \\u30c6\\u30b9\\u30c8\\u5185\\u5bb9 (`test_note_cli.py`)\\n- \\u5404\\u30b3\\u30de\\u30f3\\u30c9\\u306e\\u30d1\\u30fc\\u30b9\\u3068\\u5b9f\\u884c\\u7d50\\u679c\\u306e\\u78ba\\u8a8d\\n- `--file` \\u30aa\\u30d7\\u30b7\\u30e7\\u30f3\\u306e\\u30c6\\u30b9\\u30c8\\n- \\u30a8\\u30e9\\u30fc\\u30b1\\u30fc\\u30b9\\uff08\\u4e0d\\u660e\\u306a\\u30b3\\u30de\\u30f3\\u30c9\\u306a\\u3069\\uff09\\n\\n## \\u5236\\u7d04\\n- \\u5916\\u90e8\\u30e9\\u30a4\\u30d6\\u30e9\\u30ea\\u7981\\u6b62\\n- `argparse` \\u307e\\u305f\\u306f `sys.argv` \\u3092\\u4f7f\\u7528\\n- \\u30c6\\u30b9\\u30c8\\u306f `pytest` \\u3067\\u5b9f\\u884c\\u53ef\\u80fd\\u306a\\u5f62\\u5f0f\", \"closedAt\": \"2026-07-15T16:41:35Z\", \"comments\": [{\"id\": \"IC_kwDOS6gmSM8AAAABKQDEzA\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Agent `engineer` dispatched to work on this sub-task.\", \"createdAt\": \"2026-07-15T16:23:48Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4982883532\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQJEXQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n\\n@yuma-seno \\u2014 **engineer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\\n\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29432226793)_\\n\\u26a0\\ufe0f _Max iterations reached. Comment `/engineer` to continue._\\n\", \"createdAt\": \"2026-07-15T16:33:52Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4982981725\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQJGaA\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"@yuma-seno Atoma: `engineer` reached the max iteration limit. Review the issue and comment `/engineer` to retry.\", \"createdAt\": \"2026-07-15T16:33:54Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4982982248\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQJXMA\", \"author\": {\"login\": \"yuma-seno\"}, \"authorAssociation\": \"OWNER\", \"body\": \"/engineer\", \"createdAt\": \"2026-07-15T16:34:17Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4982986544\", \"viewerDidAuthor\": false}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQL1_g\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n**Summary of changes:**\\n- **`note_cli.py`**: CLI entry point supporting `add`, `list`, `tag`, `search` commands with `--file PATH` option. Uses `note_storage.py` (add_note, save_notes, load_notes) and `note_query.py` (find_by_tag, find_by_keyword).\\n- **`test_note_cli.py`**: 34 unit tests covering argument parsing, command handlers, helper function `_parse_tags`, error cases, and integration via `main()`.\\n\\n**Verification performed:**\\n- All 34 tests pass on `pytest test_note_cli.py -v`\\n\\n**PR:** https://github.com/yuma-seno/atoma-autonomous-delivery/pull/163\\n\\n\\n---\\n_Tokens: 485092 total (478351 prompt + 6741 completion)_\\n_Estimated cost: $0.0758_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29432964565)_\\n\", \"createdAt\": \"2026-07-15T16:38:28Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4983027198\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQMscg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\", \"createdAt\": \"2026-07-15T16:39:59Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4983041138\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQOLMA\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\nMerged in PR #163. Closing this sub-task.\\n\\n\\n---\\n_Tokens: 114543 total (114431 prompt + 112 completion)_\\n_Estimated cost: $0.0172_\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29433354597)_\\n\", \"createdAt\": \"2026-07-15T16:42:07Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/159#issuecomment-4983065392\", \"viewerDidAuthor\": true}], \"createdAt\": \"2026-07-15T16:03:30Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACq85w7w\", \"name\": \"atoma/launched\", \"description\": \"Sub-issue has been dispatched to an agent\", \"color\": \"0E8A16\"}], \"number\": 159, \"state\": \"CLOSED\", \"title\": \"note_cli.py \\u2014 CLI\\u30a8\\u30f3\\u30c8\\u30ea\\u30dd\\u30a4\\u30f3\\u30c8 + \\u5358\\u4f53\\u30c6\\u30b9\\u30c8\"}",
+      "tool_call_id": "call_eca53363fac04255ba80c51d"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#156 -->\\n<!-- atoma:notify=yuma-seno -->\\n## \\u4f9d\\u5b58\\n- Sub-issue #157 (note_storage.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n- Sub-issue #158 (note_query.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n- Sub-issue #159 (note_cli.py) \\u304c\\u5b9f\\u88c5\\u6e08\\u307f\\u3067\\u3042\\u308b\\u3053\\u3068\\n\\n## \\u30bf\\u30b9\\u30af\\n`note_storage.py`\\u30fb`note_query.py`\\u30fb`note_cli.py` \\u3092\\u7d44\\u307f\\u5408\\u308f\\u305b\\u305f\\u30a8\\u30f3\\u30c9\\u30c4\\u30fc\\u30a8\\u30f3\\u30c9\\u306e\\u7d50\\u5408\\u30c6\\u30b9\\u30c8\\u3092 `test_e2e.py` \\u306b\\u4f5c\\u6210\\u3059\\u308b\\u3002\\n\\n## \\u30c6\\u30b9\\u30c8\\u5185\\u5bb9 (`test_e2e.py`)\\n- \\u5b9f\\u969b\\u306e\\u30d5\\u30a1\\u30a4\\u30eb\\uff08\\u30c6\\u30f3\\u30dd\\u30e9\\u30ea\\uff09\\u3092\\u4f7f\\u3063\\u305f\\u30d5\\u30ed\\u30fc:\\n  1. `add_note` \\u3067\\u30e1\\u30e2\\u8ffd\\u52a0 \\u2192 `save_notes` \\u3067\\u4fdd\\u5b58\\n  2. `load_notes` \\u3067\\u8aad\\u8fbc \\u2192 `find_by_tag` / `find_by_keyword` \\u3067\\u691c\\u7d22\\n  3. CLI\\u7d4c\\u7531\\u3067\\u306eadd \\u2192 list \\u2192 tag \\u2192 search \\u306e\\u4e00\\u9023\\u306e\\u64cd\\u4f5c\\u78ba\\u8a8d\\n- \\u30d5\\u30a1\\u30a4\\u30eb\\u306e\\u30af\\u30ea\\u30fc\\u30f3\\u30a2\\u30c3\\u30d7\\uff08`tempfile` \\u307e\\u305f\\u306f `pytest` fixture \\u4f7f\\u7528\\uff09\\n\\n## \\u5236\\u7d04\\n- \\u5916\\u90e8\\u30e9\\u30a4\\u30d6\\u30e9\\u30ea\\u7981\\u6b62\\n- \\u30c6\\u30b9\\u30c8\\u306f `pytest` \\u3067\\u5b9f\\u884c\\u53ef\\u80fd\\u306a\\u5f62\\u5f0f\", \"closedAt\": null, \"comments\": [], \"createdAt\": \"2026-07-15T16:03:32Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}], \"number\": 160, \"state\": \"OPEN\", \"title\": \"E2E\\u7d50\\u5408\\u30c6\\u30b9\\u30c8 (test_e2e.py)\"}",
+      "tool_call_id": "call_140b3d46472d4ee0b13adb0c"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_3f63d25f966b4e9599d27632",
+          "type": "function",
+          "function": {
+            "name": "atoma__launch_sub_agent",
+            "arguments": "{\"tasks\": [{\"issue\": 160, \"agent\": \"engineer\"}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Dispatch comments posted for 1 sub-issue(s): #160→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
+      "tool_call_id": "call_3f63d25f966b4e9599d27632"
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "a77da41c488dbe2df1cc6fc3f9722b628070ecf2da3174c15d0e38cf51340521",
-      "event_count": 3,
+      "snapshot_hash": "f07a7c12ba8729858c7c5af2da49739a3a11ca09de9056cea8e511717873947b",
+      "event_count": 5,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "156"
