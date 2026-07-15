@@ -1972,12 +1972,69 @@
       "role": "tool",
       "content": "{\"number\": 162, \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/162\"}",
       "tool_call_id": "call_ve7gfwifu0uiouqvfg25fb15"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_c29e3dd9728e4c6c9fe89605",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 158}"
+          }
+        },
+        {
+          "id": "call_295cb273b9d749378ac60de6",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 162}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\": \"<!-- atoma:parent=#156 -->\\n<!-- atoma:notify=yuma-seno -->\\n## \\u30bf\\u30b9\\u30af\\n`note_query.py` \\u3092\\u5b9f\\u88c5\\u3057\\u3001\\u5358\\u4f53\\u30c6\\u30b9\\u30c8\\u3092 `test_note_query.py` \\u306b\\u4f5c\\u6210\\u3059\\u308b\\u3002\\n\\n## \\u5b9f\\u88c5\\u5185\\u5bb9 (`note_query.py`)\\n- `find_by_tag(notes: list, tag: str) -> list` \\u2014 \\u6307\\u5b9a\\u30bf\\u30b0\\u3092\\u6301\\u3064\\u30ce\\u30fc\\u30c8\\u306e\\u307f\\u62bd\\u51fa(\\u975e\\u7834\\u58ca)\\u3002\\u30ce\\u30fc\\u30c8\\u306e `tags` \\u30ea\\u30b9\\u30c8\\u306b tag \\u304c\\u542b\\u307e\\u308c\\u3066\\u3044\\u308b\\u304b\\u78ba\\u8a8d\\u3002\\n- `find_by_keyword(notes: list, keyword: str) -> list` \\u2014 \\u30c6\\u30ad\\u30b9\\u30c8\\u306b\\u6307\\u5b9a\\u30ad\\u30fc\\u30ef\\u30fc\\u30c9\\u3092\\u542b\\u3080\\u30ce\\u30fc\\u30c8\\u306e\\u307f\\u62bd\\u51fa(\\u5927\\u6587\\u5b57\\u5c0f\\u6587\\u5b57\\u533a\\u5225\\u306a\\u3057\\u3001\\u975e\\u7834\\u58ca)\\u3002\\n- `all_tags(notes: list) -> list` \\u2014 \\u5168\\u30ce\\u30fc\\u30c8\\u306b\\u4f7f\\u308f\\u308c\\u3066\\u3044\\u308b\\u91cd\\u8907\\u306a\\u3057\\u30bf\\u30b0\\u4e00\\u89a7(\\u30bd\\u30fc\\u30c8\\u6e08\\u307f)\\u3002\\n\\n## \\u30c6\\u30b9\\u30c8\\u5185\\u5bb9 (`test_note_query.py`)\\n- `find_by_tag`: \\u30bf\\u30b0\\u4e00\\u81f4\\u3001\\u975e\\u7834\\u58ca\\u6027\\u78ba\\u8a8d\\u3001\\u8a72\\u5f53\\u306a\\u3057\\u306e\\u30b1\\u30fc\\u30b9\\n- `find_by_keyword`: \\u5927\\u6587\\u5b57\\u5c0f\\u6587\\u5b57\\u533a\\u5225\\u306a\\u3057\\u306e\\u691c\\u7d22\\u3001\\u975e\\u7834\\u58ca\\u6027\\u78ba\\u8a8d\\u3001\\u8a72\\u5f53\\u306a\\u3057\\n- `all_tags`: \\u91cd\\u8907\\u9664\\u53bb\\u3001\\u30bd\\u30fc\\u30c8\\u9806\\u78ba\\u8a8d\\u3001\\u7a7a\\u30ce\\u30fc\\u30c8\\u30ea\\u30b9\\u30c8\\n\\n## \\u5236\\u7d04\\n- \\u5916\\u90e8\\u30e9\\u30a4\\u30d6\\u30e9\\u30ea\\u7981\\u6b62\\uff08\\u6a19\\u6e96\\u30e9\\u30a4\\u30d6\\u30e9\\u30ea\\u306e\\u307f\\uff09\\n- TDD\\u63a8\\u5968\\n- \\u30c6\\u30b9\\u30c8\\u306f `pytest` \\u3067\\u5b9f\\u884c\\u53ef\\u80fd\\u306a\\u5f62\\u5f0f\", \"closedAt\": null, \"comments\": [{\"id\": \"IC_kwDOS6gmSM8AAAABKP3ygA\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Agent `engineer` dispatched to work on this sub-task.\", \"createdAt\": \"2026-07-15T16:03:43Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982698624\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKP7dkg\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n\\n@yuma-seno \\u2014 **engineer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\\n\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29430825928)_\\n\\u26a0\\ufe0f _Max iterations reached. Comment `/engineer` to continue._\\n\", \"createdAt\": \"2026-07-15T16:09:59Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982758802\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKP7e-A\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"@yuma-seno Atoma: `engineer` reached the max iteration limit. Review the issue and comment `/engineer` to retry.\", \"createdAt\": \"2026-07-15T16:10:01Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982759160\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKP72dw\", \"author\": {\"login\": \"yuma-seno\"}, \"authorAssociation\": \"OWNER\", \"body\": \"/engineer\", \"createdAt\": \"2026-07-15T16:10:39Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982765175\", \"viewerDidAuthor\": false}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQAc6Q\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"<!-- atoma:agent=engineer -->\\n\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/29431315150)_\\n\\u26a0\\ufe0f _Max iterations reached. Comment `/engineer` to continue._\\n\", \"createdAt\": \"2026-07-15T16:18:52Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982840553\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQAfAQ\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"@yuma-seno Atoma: `engineer` reached the max iteration limit. Review the issue and comment `/engineer` to retry.\", \"createdAt\": \"2026-07-15T16:18:55Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982841089\", \"viewerDidAuthor\": true}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQA4Zg\", \"author\": {\"login\": \"yuma-seno\"}, \"authorAssociation\": \"OWNER\", \"body\": \"/engineer\", \"createdAt\": \"2026-07-15T16:19:40Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982847590\", \"viewerDidAuthor\": false}, {\"id\": \"IC_kwDOS6gmSM8AAAABKQBYUA\", \"author\": {\"login\": \"github-actions\"}, \"authorAssociation\": \"CONTRIBUTOR\", \"body\": \"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\", \"createdAt\": \"2026-07-15T16:20:36Z\", \"includesCreatedEdit\": false, \"isMinimized\": false, \"minimizedReason\": \"\", \"reactionGroups\": [], \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/158#issuecomment-4982855760\", \"viewerDidAuthor\": true}], \"createdAt\": \"2026-07-15T16:03:14Z\", \"labels\": [{\"id\": \"LA_kwDOS6gmSM8AAAACpVkEzg\", \"name\": \"atoma/in-progress\", \"description\": \"Issue is being worked on by an Atoma agent\", \"color\": \"0366d6\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACqHlk9g\", \"name\": \"atoma/sub-issue\", \"description\": \"Sub-issue created by Atoma orchestrator\", \"color\": \"5319e7\"}, {\"id\": \"LA_kwDOS6gmSM8AAAACq85w7w\", \"name\": \"atoma/launched\", \"description\": \"Sub-issue has been dispatched to an agent\", \"color\": \"0E8A16\"}], \"number\": 158, \"state\": \"OPEN\", \"title\": \"note_query.py \\u2014 \\u30bf\\u30b0\\u691c\\u7d22/\\u30ad\\u30fc\\u30ef\\u30fc\\u30c9\\u691c\\u7d22 + \\u5358\\u4f53\\u30c6\\u30b9\\u30c8\"}",
+      "tool_call_id": "call_c29e3dd9728e4c6c9fe89605"
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\": \"main\", \"body\": \"<!-- atoma:parent-issue=158 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #158\\n<!-- atoma:notify=yuma-seno -->\\nAdds `note_query.py` with three functions:\\n- `find_by_tag` \\u2014 filter notes by tag (non-destructive)\\n- `find_by_keyword` \\u2014 case-insensitive text search (non-destructive)\\n- `all_tags` \\u2014 sorted unique tags across all notes\\n\\nIncludes comprehensive pytest test suite (`test_note_query.py`) covering:\\n- Tag matching, no-match, non-destructive, missing tags key, empty list\\n- Case-insensitive keyword search, partial match, missing text key\\n- Tag deduplication, sorting, empty/single cases\\n\\nAll 19 tests pass.\", \"createdAt\": \"2026-07-15T16:18:47Z\", \"headRefName\": \"atoma/issue-158\", \"number\": 162, \"state\": \"MERGED\", \"title\": \"feat: add note_query module with tag/keyword search and all_tags\"}",
+      "tool_call_id": "call_295cb273b9d749378ac60de6"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_2ba4cd7dffde474797ff5d0f",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 158}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_2ba4cd7dffde474797ff5d0f"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #162. Closing this sub-task.\n\n**Summary of changes:**\n- Created `note_query.py` with `find_by_tag`, `find_by_keyword`, and `all_tags` functions\n- Created `test_note_query.py` with 19 pytest tests covering all functions, edge cases\n- All 19 tests pass\n\n**Verification:** pytest output shows 19 passed in 0.02s\n\n**PR:** #162 (merged)",
+      "atoma_metadata": {
+        "github_comment_id": 4982867590,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "0394ebbcd1537c3d7e0c1a0adbefc06f7d8a0941bcf0de5a4be06ef069a258df",
-      "event_count": 4,
+      "snapshot_hash": "ab8bdb4c057cf1674ec092d89e5878671c987aeb783adc6490b776f7d619df6a",
+      "event_count": 6,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "158"
