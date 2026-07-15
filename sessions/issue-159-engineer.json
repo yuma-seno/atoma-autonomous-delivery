@@ -1182,15 +1182,41 @@
       "role": "assistant",
       "content": "**Summary of changes:**\n- **`note_cli.py`**: CLI entry point supporting `add`, `list`, `tag`, `search` commands with `--file PATH` option. Uses `note_storage.py` (add_note, save_notes, load_notes) and `note_query.py` (find_by_tag, find_by_keyword).\n- **`test_note_cli.py`**: 34 unit tests covering argument parsing, command handlers, helper function `_parse_tags`, error cases, and integration via `main()`.\n\n**Verification performed:**\n- All 34 tests pass on `pytest test_note_cli.py -v`\n\n**PR:** https://github.com/yuma-seno/atoma-autonomous-delivery/pull/163",
       "atoma_metadata": {
-        "github_comment_id": 4983027198,
+        "agent": "engineer",
+        "github_comment_id": 4983027198
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_fd0989f783d14aa3921d60fc",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 159}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true}",
+      "tool_call_id": "call_fd0989f783d14aa3921d60fc"
+    },
+    {
+      "role": "assistant",
+      "content": "Merged in PR #163. Closing this sub-task.",
+      "atoma_metadata": {
+        "github_comment_id": 4983065392,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "35aaaca4e3996937e4ad5c557eb08a4d6e7cce53b43c29c0cfe99ab5ca3a32b4",
-      "event_count": 4,
+      "snapshot_hash": "b36e24e35ea5d2e83e56712a9f6c7bc6ee2156cde2d0e4e65418d111a4ba8b8a",
+      "event_count": 5,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "159"
