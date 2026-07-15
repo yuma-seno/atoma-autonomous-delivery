@@ -164,11 +164,17 @@ def _get_issue_comments(a):
 def _close_issue(a):
     num = a["number"]
     log(f"_close_issue: #{num}")
-    # Refuse to close issues opened by humans
+    # Refuse to close issues opened by humans.
+    # NOTE: `gh issue view --json author` (the gh CLI's GraphQL-based command)
+    # returns {id, is_bot, login, name} -- there is NO `.type` field. (`.type`
+    # only exists on the REST `gh api repos/OWNER/REPO/issues/N` endpoint, as
+    # `.user.type`.) Confirmed live: using `.author.type` here silently always
+    # evaluated to "", so this guard never actually refused anything until
+    # this fix -- use the reliable `.author.is_bot` boolean instead.
     d = gh_json("issue", "view", str(num), "--repo", REPO, "--json", "author")
-    author_type = d.get("author", {}).get("type") or ""
-    log(f"_close_issue: author.type={author_type!r}")
-    if author_type.upper() == "USER":
+    is_bot = bool((d or {}).get("author", {}).get("is_bot"))
+    log(f"_close_issue: author.is_bot={is_bot!r}")
+    if not is_bot:
         raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
     rc, out, err = gh("issue", "close", str(num), "--repo", REPO)
     if rc: raise RuntimeError(err or out)

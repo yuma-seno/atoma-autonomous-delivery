@@ -55,7 +55,13 @@ if ! [[ "$ISSUE" =~ ^[0-9]+$ ]]; then echo "Error: --issue must be a positive in
 REPO="${GITHUB_REPOSITORY}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-AUTHOR_TYPE=$(gh issue view "${ISSUE}" --repo "${REPO}" --json author --jq '.author.type // ""')
+# NOTE: `gh issue view --json author` returns {id, is_bot, login, name} -- there
+# is NO `.type` field (that only exists on the REST `gh api .../issues/N`
+# endpoint, as `.user.type`). Confirmed live: using `.author.type` here always
+# silently evaluated to empty, so this ALWAYS fell through to the bot-authored
+# (close) branch, even for a human-opened root issue -- use the reliable
+# `.author.is_bot` boolean instead.
+IS_BOT=$(gh issue view "${ISSUE}" --repo "${REPO}" --json author --jq '.author.is_bot // false')
 
 BODY="Atoma: orchestrator considers work on this issue complete.
 
@@ -66,7 +72,7 @@ if [[ -n "$SUMMARY" ]]; then
 ${SUMMARY}"
 fi
 
-if [[ "${AUTHOR_TYPE^^}" == "USER" ]]; then
+if [[ "${IS_BOT}" != "true" ]]; then
   NOTIFY=$(python3 "${SCRIPT_DIR}/resolve_notify.py" --repo "${REPO}" --number "${ISSUE}" 2>/dev/null || true)
   MENTION=""
   [[ -n "$NOTIFY" ]] && MENTION="@${NOTIFY} "

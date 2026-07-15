@@ -166,18 +166,18 @@ def test15():
     with open(".github/atoma/tools/scripts/atoma_github_mcp_server.py") as f:
         src = f.read()
     # Check for the author type check
-    assert 'author_type.upper() == "USER"' in src, "Missing USER guard in _close_issue"
+    assert 'is_bot' in src, "Missing is_bot guard in _close_issue"
     assert 'Refusing to close issue' in src, "Missing error message in _close_issue"
 
-@t("close_issue protection logic (USER raises)")
+@t("close_issue protection logic (is_bot=False raises)")
 def test16():
     test_globals = {}
     exec('''
 def _close_issue(a):
     num = a["number"]
-    d = {"author": {"type": "USER"}}
-    author_type = d.get("author", {}).get("type") or ""
-    if author_type.upper() == "USER":
+    d = {"author": {"is_bot": False}}
+    is_bot = bool(d.get("author", {}).get("is_bot"))
+    if not is_bot:
         raise RuntimeError(f"Refusing to close issue #{num}: opened by a human, not a bot")
     return {"ok": True}
 ''', test_globals)
@@ -221,7 +221,7 @@ def test27():
 def test28():
     with open(".github/atoma/tools/scripts/request_close_issue.sh") as f:
         src = f.read()
-    assert 'AUTHOR_TYPE^^}" == "USER"' in src, "Missing USER-type branch"
+    assert 'IS_BOT}" != "true"' in src, "Missing is_bot-based human-author branch"
     assert "not be closed automatically" in src or "will not be closed automatically" in src, "Missing escalation message"
     assert "gh issue close" in src, "Missing close call for bot-authored branch"
 
