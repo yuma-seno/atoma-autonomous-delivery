@@ -42,7 +42,7 @@ def test6():
         c = json.load(f)
     assert c["version"] == 4
     assert c["agents"]["orchestrator"]["max_iterations"] == 100
-    assert c["merge_policy"] == "manual"
+    assert c["merge_policy"] == "auto"
     assert "labels" in c
 
 @t("atoma_github MCP initialize")
@@ -125,7 +125,7 @@ def test20():
         "import sys; sys.path.insert(0, '.github/atoma/tools/scripts'); "
         "from atoma_config import get_merge_policy; print(get_merge_policy())"],
         capture_output=True, text=True)
-    assert r.stdout.strip() == "manual", f"Got: {r.stdout.strip()} err={r.stderr}"
+    assert r.stdout.strip() == "auto", f"Got: {r.stdout.strip()} err={r.stderr}"
 
 @t("atoma_config.get_trigger_agent resolves pull_request.opened")
 def test21():
@@ -188,6 +188,48 @@ def _close_issue(a):
     except RuntimeError as e:
         assert "Refusing to close issue" in str(e)
         assert "opened by a human" in str(e)
+
+@t("request_close_issue.sh executable")
+def test24():
+    p = ".github/atoma/tools/scripts/request_close_issue.sh"
+    assert os.access(p, os.X_OK), f"{p} not executable"
+
+@t("dispatch_orchestrator_if_ready.py syntax")
+def test25():
+    r = subprocess.run(["python3", "-c", "import py_compile; py_compile.compile('.github/atoma/tools/scripts/dispatch_orchestrator_if_ready.py')"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+@t("atoma MCP request_close_issue schema")
+def test26():
+    p = subprocess.Popen(["python3", ".github/atoma/tools/scripts/atoma_mcp_server.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    out, err = p.communicate(input=json.dumps({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})+"\n", timeout=5)
+    r = json.loads(out.strip())
+    names = [t["name"] for t in r["result"]["tools"]]
+    assert "request_close_issue" in names, f"Missing: request_close_issue in {names}"
+    tool = next(t for t in r["result"]["tools"] if t["name"] == "request_close_issue")
+    assert tool["inputSchema"]["required"] == ["reason"]
+    assert "summary" in tool["inputSchema"]["properties"]
+
+@t("request_close_issue validates missing reason")
+def test27():
+    p = subprocess.Popen(["python3", ".github/atoma/tools/scripts/atoma_mcp_server.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env={**os.environ, "ISSUE_NUMBER": "999"})
+    out, err = p.communicate(input=json.dumps({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"request_close_issue","arguments":{}}})+"\n", timeout=5)
+    r = json.loads(out.strip())
+    assert r["error"]["code"] == -32602
+
+@t("request_close_issue.sh escalates for human-authored issues (source check)")
+def test28():
+    with open(".github/atoma/tools/scripts/request_close_issue.sh") as f:
+        src = f.read()
+    assert 'AUTHOR_TYPE^^}" == "USER"' in src, "Missing USER-type branch"
+    assert "not be closed automatically" in src or "will not be closed automatically" in src, "Missing escalation message"
+    assert "gh issue close" in src, "Missing close call for bot-authored branch"
+
+@t("dispatch_orchestrator_if_ready.py shared by atoma_github_mcp_server.py")
+def test29():
+    with open(".github/atoma/tools/scripts/atoma_github_mcp_server.py") as f:
+        src = f.read()
+    assert "dispatch_orchestrator_if_ready.py" in src, "atoma_github_mcp_server.py should delegate to the standalone script"
 
 
 for name, fn in tests:

@@ -10,7 +10,7 @@ Every mutation is logged to $ATOMA_OPS_LOG for dispatch-next to consume.
 
 from __future__ import annotations
 
-import json, os, re, subprocess, sys, time
+import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 from typing import Any
 
@@ -328,91 +328,16 @@ def _submit_pr_review(a):
     ops_log("submit_pr_review", {"number": a["number"], "event": event})
     return json.dumps({"ok": True})
 
-def _dispatch_orchestrator_if_ready(sub_issue_num: int) -> None:
-    """After merge_pr auto-closes a sub-issue, decide whether to re-invoke the
-    orchestrator on its parent.
-
-    Normally this decision is made by atoma-pr-merged.yml / atoma-sub-issue-closed.yml,
-    triggered by the pull_request_target/issues GitHub events. But those events are
-    NEVER delivered for actions taken with the Actions GITHUB_TOKEN (this process's
-    own `gh pr merge` / `gh issue close` calls) -- GitHub explicitly suppresses event
-    cascades from the default token to prevent recursive workflow runs. So under
-    merge_policy: "auto" neither workflow ever fires, and the aggregation logic would
-    silently never run. `gh workflow run` (workflow_dispatch) is explicitly exempted
-    from that suppression -- the same reason dispatch-next/action.yml uses it to chain
-    agents -- so replicate the sibling-check-and-dispatch here instead of relying on
-    the event-triggered workflows.
-    """
+def _dispatch_orchestrator_if_ready(sub_issue_num) -> None:
+    """Thin wrapper around the standalone dispatch_orchestrator_if_ready.py
+    script. Extracted out so request_close_issue.sh (used by the orchestrator's
+    atoma__request_close_issue tool) can trigger the exact same phase-gating
+    logic as this module's own _close_issue, without duplicating it."""
     scripts_dir = os.path.dirname(os.path.abspath(__file__))
-    d = gh_json("issue", "view", str(sub_issue_num), "--repo", REPO, "--json", "body")
-    body = (d or {}).get("body") or ""
-    m = re.search(r"<!--\s*atoma:parent=#(\d+)\s*-->", body)
-    if not m:
-        log(f"_dispatch_orchestrator_if_ready: issue #{sub_issue_num} has no atoma:parent tag, nothing to do")
-        return
-    parent_num = m.group(1)
-
-    # gh issue list --search relies on GitHub's search index, which is only
-    # eventually consistent -- the issue we just closed a moment ago (via
-    # _close_issue, right before this call) may still be reported as open
-    # for a second or two. Retry a few times with a short backoff before
-    # trusting a non-zero count, otherwise this races and under-counts
-    # correctly-closed siblings as still open, silently skipping dispatch.
-    sibling_count = None
-    for attempt in range(4):
-        if attempt:
-            time.sleep(2 * attempt)
-        count_out = subprocess.run(
-            ["python3", os.path.join(scripts_dir, "check_open_siblings.py"),
-             "--repo", REPO, "--parent", parent_num],
-            capture_output=True, text=True,
-        )
-        if count_out.returncode != 0:
-            log(f"_dispatch_orchestrator_if_ready: check_open_siblings failed: {count_out.stderr.strip()}")
-            return
-        try:
-            sibling_count = int((count_out.stdout or "0").strip())
-        except ValueError:
-            log(f"_dispatch_orchestrator_if_ready: unexpected sibling count output: {count_out.stdout!r}")
-            return
-        if sibling_count == 0:
-            break
-        log(f"_dispatch_orchestrator_if_ready: attempt {attempt + 1}: {sibling_count} sibling(s) of #{parent_num} still open (may be search-index lag), retrying")
-    if sibling_count:
-        log(f"_dispatch_orchestrator_if_ready: {sibling_count} sibling(s) of #{parent_num} still open after retries, not dispatching")
-        return
-
-    # atoma-runner.yml only actually runs the agent when new_event_count != '0'
-    # (build_context_session.py's change-detection gate, comparing a hash of the
-    # target issue's own body+comments against the orchestrator's last processed
-    # snapshot). A bare `gh workflow run` with nothing new posted on the parent
-    # issue itself would dispatch a run that immediately no-ops as "skipped" --
-    # confirmed empirically. Post a visible completion comment first so the
-    # orchestrator's next invocation sees a genuinely new event.
-    rc, out, err = gh(
-        "issue", "comment", parent_num, "--repo", REPO,
-        "--body", f"All sub-tasks completed (last: #{sub_issue_num}). Re-invoking orchestrator for aggregation.",
+    subprocess.run(
+        ["python3", os.path.join(scripts_dir, "dispatch_orchestrator_if_ready.py"),
+         "--repo", REPO, "--issue", str(sub_issue_num)],
     )
-    if rc:
-        log(f"_dispatch_orchestrator_if_ready: could not post trigger comment on #{parent_num}: {err or out}")
-
-    notify_out = subprocess.run(
-        ["python3", os.path.join(scripts_dir, "resolve_notify.py"),
-         "--repo", REPO, "--number", parent_num],
-        capture_output=True, text=True,
-    )
-    notify = (notify_out.stdout or "").strip()
-    log(f"_dispatch_orchestrator_if_ready: all siblings of #{parent_num} done, dispatching orchestrator")
-    rc, out, err = gh(
-        "workflow", "run", "atoma-runner.yml",
-        "--repo", REPO,
-        "--field", "agent=orchestrator",
-        "--field", f"number={parent_num}",
-        "--field", "type=issue",
-        "--field", f"notify={notify}",
-    )
-    if rc:
-        log(f"_dispatch_orchestrator_if_ready: gh workflow run failed (rc={rc}): {err or out}")
 
 def _dispatch_post_merge_agent(sub_issue_num: int, agent: str) -> bool:
     """After a PR merges, re-invoke the agent that originally created it (tagged

@@ -62,6 +62,34 @@ TOOLS = [
             "required": ["tasks"],
         },
     },
+    {
+        "name": "request_close_issue",
+        "description": (
+            "Conclude work on YOUR CURRENT issue and end your session. This is the ONLY "
+            "correct way for the orchestrator to finish an issue -- do NOT call "
+            "github__close_issue yourself, and do NOT just stop responding without calling "
+            "this. The tool decides what happens next based on who opened THIS issue: "
+            "if it was created by another Atoma agent (a sub-issue), it is closed "
+            "automatically right now and phase-gating/aggregation is triggered for its "
+            "parent. If it was opened directly by a human (a root issue), it is NOT "
+            "closed -- instead a comment mentioning that human is posted with your reason "
+            "and summary, asking them to review and close it themselves."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why this issue's work is considered complete.",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Final summary to include in the posted comment (e.g. an aggregation report).",
+                },
+            },
+            "required": ["reason"],
+        },
+    },
 ]
 
 SERVER_INFO = {
@@ -108,6 +136,10 @@ def handle_tools_list(_params: dict[str, Any], request_id: Any) -> None:
 def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+
+    if tool_name == "request_close_issue":
+        handle_request_close_issue(arguments, request_id)
+        return
 
     if tool_name != "launch_sub_agent":
         send_error(request_id, -32601, f"Unknown tool: {tool_name}")
@@ -201,6 +233,76 @@ def handle_tools_call(params: dict[str, Any], request_id: Any) -> None:
             {
                 "type": "text",
                 "text": "\n".join(summary_lines),
+            }
+        ],
+        "isError": False,
+        "_meta": {
+            "session_ends": True,
+        },
+    })
+
+
+def handle_request_close_issue(arguments: dict[str, Any], request_id: Any) -> None:
+    reason = (arguments.get("reason") or "").strip()
+    summary = (arguments.get("summary") or "").strip()
+
+    if not reason:
+        send_error(request_id, -32602, "reason must be a non-empty string")
+        return
+
+    issue_number = os.environ.get("ISSUE_NUMBER", "").strip()
+    if not issue_number:
+        send_error(request_id, -32603, "ISSUE_NUMBER is not set in the environment")
+        return
+
+    script = os.path.join(SCRIPT_DIR, "request_close_issue.sh")
+    if not os.path.isfile(script):
+        send_error(request_id, -32603, f"Script not found: {script}")
+        return
+
+    cmd = ["bash", script, "--issue", issue_number, "--reason", reason]
+    if summary:
+        cmd += ["--summary", summary]
+
+    log(f"Concluding issue #{issue_number}: reason={reason!r}")
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        send_error(request_id, -32603, f"request_close_issue.sh timed out for #{issue_number}")
+        return
+    except OSError as e:
+        send_error(request_id, -32603, f"Failed to run request_close_issue.sh: {e}")
+        return
+
+    if result.returncode != 0:
+        log(f"request_close_issue.sh failed for #{issue_number} (exit {result.returncode}): {result.stderr}")
+        send_error(
+            request_id, -32603,
+            f"Failed to conclude issue #{issue_number}: {result.stderr.strip() or 'unknown error'}",
+        )
+        return
+
+    output = result.stdout.strip()
+    log(f"request_close_issue.sh output for #{issue_number}: {output}")
+
+    if output.startswith("closed:"):
+        text = (
+            f"Issue #{issue_number} was created by an Atoma agent (a sub-issue) and has "
+            "been closed automatically. Phase-gating/aggregation for its parent has been checked."
+        )
+    else:
+        text = (
+            f"Issue #{issue_number} was opened directly by a human. It has NOT been closed "
+            "automatically -- a comment mentioning them was posted with your reason/summary, "
+            "asking them to review and close it themselves."
+        )
+
+    send_response(request_id, {
+        "content": [
+            {
+                "type": "text",
+                "text": text,
             }
         ],
         "isError": False,
