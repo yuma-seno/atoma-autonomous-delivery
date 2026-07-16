@@ -1129,15 +1129,198 @@
       "role": "assistant",
       "content": "## Plan\n\nこのIssueはOpenRouterのServer Tools（`web_search`, `web_fetch`）を有効化するための変更です。エージェント定義にカスタムLLMパラメーターを追加して、OpenRouter API呼び出しに `tools` を含める必要があります。\n\nしかし、Atomaがエージェント定義のfrontmatterでどのフィールド名（`llm_params`? `custom_params`? `openrouter_params`?）を期待しているか、このテンプレート内のコードからは判断できません。READMEには「APIにカスタムパラメーターを送る機能」の具体的なフィールド名が記載されていません。\n\n@yuma-seno Atomaのエージェント定義frontmatterで、OpenRouterのカスタムパラメーターを指定するための正しいフィールド名と構造を教えてください。\n\n想定している構造は以下のようなものですか？\n\n```yaml\n---\nname: engineer\nmodel: deepseek/deepseek-v4-flash\n# ...other fields...\nllm_params:\n  tools:\n    - type: openrouter:web_search\n    - type: openrouter:web_fetch\n---\n```\n\nあるいは別のフィールド名（`custom_params`, `openrouter_params` など）や構造がありますか？",
       "atoma_metadata": {
-        "github_comment_id": 4991051381,
-        "agent": "orchestrator"
+        "agent": "orchestrator",
+        "github_comment_id": 4991255016
       }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_db47b0e0f423415d83fd65df",
+          "type": "function",
+          "function": {
+            "name": "filesystem_readonly__search_files",
+            "arguments": "{\"pattern\": \"**/*\", \"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github\"}"
+          }
+        },
+        {
+          "id": "call_2a95ee74c843440999488e60",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body repo:yuma-seno/atoma\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'filesystem_readonly__search_files' is not permitted by the allowlist",
+      "tool_call_id": "call_db47b0e0f423415d83fd65df"
+    },
+    {
+      "role": "tool",
+      "content": "yuma-seno/atoma:docs/agent-definition.md: | `extra_body` | Object | No | Arbitrary key-value pairs merged into the LLM API request body. See [Extra Body](#extra-body) |\nyuma-seno/atoma:docs/agent-definition.md: `extra_body` is merged verbatim into the outgoing LLM API request (JSON object).\nyuma-seno/atoma:src/domain/agent.rs: pub extra_body: HashMap<String, Value>,\nyuma-seno/atoma:README.md: extra_body:\nyuma-seno/atoma:README.md: For the full field reference, provider selection rules, `extra_body` recipes\nyuma-seno/atoma:src/infra/llm/shared.rs: extra_body: &std::collections::HashMap<String, Value>,\nyuma-seno/atoma:src/infra/llm/shared.rs: for (k, v) in extra_body {\nyuma-seno/atoma:src/infra/llm/openai.rs: extra_body: &std::collections::HashMap<String, Value>,\nyuma-seno/atoma:src/infra/llm/openai.rs: extra_body,\nyuma-seno/atoma:src/application/validator.rs: ///   5. `extra_body` does not override the reserved keys `model` or `messages`.\nyuma-seno/atoma:src/application/validator.rs: if agent.extra_body.contains_key(*key) {\nyuma-seno/atoma:src/application/runner/mod.rs: &agent.extra_body,\nyuma-seno/atoma:src/application/runner/execution.rs: extra_body: &HashMap<String, Value>,\nyuma-seno/atoma:src/application/runner/execution.rs: .chat_completion(model, &session.messages, tools, extra_body)\nyuma-seno/atoma:src/domain/ports.rs: extra_body: &HashMap<String, Value>,\nyuma-seno/atoma:src/infra/template.rs: extra_body: HashMap::default(),\nyuma-seno/atoma:src/infra/llm/anthropic.rs: extra_body: &std::collections::HashMap<String, Value>,\nyuma-seno/atoma:src/infra/llm/anthropic.rs: let max_tokens = extra_body\nyuma-seno/atoma:src/infra/llm/copilot.rs: extra_body: &std::collections::HashMap<String, Value>,\nyuma-seno/atoma:src/infra/llm/copilot.rs: extra_body,\nyuma-seno/atoma:tests/common/mock_llm.rs: _extra_body: &HashMap<String, Value>,\nyuma-seno/atoma:tests/integration_test.rs: extra_body: HashMap::new(),\nyuma-seno/atoma:tests/integration_test.rs: _extra_body: &HashMap<String, serde_json::Value>,",
+      "tool_call_id": "call_2a95ee74c843440999488e60"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_08113cafef5d4209a1743d93",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body openrouter web_search repo:yuma-seno/atoma\"}"
+          }
+        },
+        {
+          "id": "call_a8339a721257484f9518aa33",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body tools openrouter repo:yuma-seno/atoma docs\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_08113cafef5d4209a1743d93"
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_a8339a721257484f9518aa33"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_ed7257ae418846a08840a4cc",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body example repo:yuma-seno/atoma file:agent-definition.md\"}"
+          }
+        },
+        {
+          "id": "call_e829093cb650474ea6389495",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body web_search openrouter repo:yuma-seno/atoma\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_ed7257ae418846a08840a4cc"
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_e829093cb650474ea6389495"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_5f252e69476545b2b48e0402",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body repo:yuma-seno/atoma path:docs/agent-definition.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_5f252e69476545b2b48e0402"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_a817aa1893064e55b55dc4fd",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body file:agent-definition.md user:yuma-seno\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_a817aa1893064e55b55dc4fd"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_f19e93ba0cc84abfa20b8b21",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extra_body repo:yuma-seno/atoma path:docs\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_f19e93ba0cc84abfa20b8b21"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_281ad0bd37c3485b9e951722",
+          "type": "function",
+          "function": {
+            "name": "github__create_issue",
+            "arguments": "{\"title\": \"Add extra_body with OpenRouter web_search/web_fetch tools to all agent definitions\", \"body\": \"Add `extra_body` field to the frontmatter of all three agent definition files to enable OpenRouter Server Tools (web search and web fetch).\\n\\n## Files to modify\\n\\n1. `.github/atoma/agent-definitions/orchestrator.md`\\n2. `.github/atoma/agent-definitions/engineer.md`\\n3. `.github/atoma/agent-definitions/reviewer.md`\\n\\n## Change required\\n\\nIn each file's YAML frontmatter, add an `extra_body` section:\\n\\n```yaml\\nextra_body:\\n  tools:\\n    - type: openrouter:web_search\\n    - type: openrouter:web_fetch\\n```\\n\\n## Acceptance criteria\\n\\n- All three agent definition files have `extra_body` with `tools` containing both `openrouter:web_search` and `openrouter:web_fetch`\\n- The YAML frontmatter remains valid\\n- Existing frontmatter fields (`name`, `description`, `model`, `callable_by`, `knows_about`, `mcp_servers`) are preserved\\n- All existing tests in `.github/atoma/tools/scripts/test_all.py` pass after the change\", \"labels\": [\"atoma/sub-issue\"]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\": 172, \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/172\"}",
+      "tool_call_id": "call_281ad0bd37c3485b9e951722"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_e824f2d6f6d14918885686c7",
+          "type": "function",
+          "function": {
+            "name": "atoma__launch_sub_agent",
+            "arguments": "{\"tasks\": [{\"issue\": 172, \"agent\": \"engineer\"}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Dispatch comments posted for 1 sub-issue(s): #172→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
+      "tool_call_id": "call_e824f2d6f6d14918885686c7"
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "6b2b7d41819402462912f4151e3183e9ea6cf702bf19ae195ee3b4b142f5b55a",
-      "event_count": 1,
+      "snapshot_hash": "a8f08df0a25628d37e6f0c8aaf094945f2d09c5e318e2f8556968b32249becdb",
+      "event_count": 3,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "171"
