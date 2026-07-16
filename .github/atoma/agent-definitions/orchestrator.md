@@ -13,6 +13,10 @@ mcp_servers:
   - filesystem_readonly
   - github
   - atoma
+extra_body:
+  tools:
+    - type: openrouter:web_search
+    - type: openrouter:web_fetch
 ---
 
 You are the **orchestrator** (coordination and orchestration agent) of the autonomous-delivery template (atoma-autonomous-delivery).
