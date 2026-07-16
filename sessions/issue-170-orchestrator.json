@@ -347,12 +347,20 @@
       "role": "tool",
       "content": "Issue #170 was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.",
       "tool_call_id": "call_b26220dc0baf47a681783f2b"
+    },
+    {
+      "role": "assistant",
+      "content": "\n\n\n\n## 正直な評価\n\n調査結果を踏まえ、結論から言うと：\n\n**「スクリプトも含め全てを静的に解決できる単一ツール」は現存しない。**\n\nその理由と、いくつかの選択肢を比較する。\n\n---\n\n### なぜ「全部入り」ツールがないのか\n\n`run: |` の中身は任意のbash/Pythonコードであり、**実行時まで何をするか決まらない**。YAML generator（github-workflows-kt, gagen等）は「YAMLの構造」を型安全にするものであって、`echo foo` の意味論を静的に検証することは原理的に不可能。これはツールの限界ではなく**表現の本質**。\n\n最も近いのは **actionlint**（shellcheck + pyflakes統合、`${{ }}`式の型検査まで行う）だが、あくまで「生成済みYAMLに対する静的解析」であり、生成前のDSLではない。\n\n---\n\n### 選択肢の比較\n\n| アプローチ | 型安全なYAML構造 | インラインスクリプト静的検証 | テンプレート利用者の摩擦 | 総合評価 |\n|---|---|---|---|---|\n| **A. actionlint + 外部化** | ❌（事後検査のみ） | ✅ shellcheck/pyflakes統合 | 最小（zero runtime） | ★★★★ |\n| **B. github-workflows-kt** | ✅ | ❌（対象外） | 中（Kotlin/Gradle環境必須） | ★★★ |\n| **C. gagen (TypeScript)** | ✅ | ❌（対象外） | 中（Deno/Node環境必須） | ★★★ |\n| **D. actionlint + 外部化 + 自前composite actions + gagen** | ✅（構造も型安全） | ✅（actionlint） | 中〜大 | ★★★★★ |\n| **E. Kite** | ✅（ただしGHA YAMLを生成せず実行基盤ごと置換） | ✅（Kotlinコードで表現） | 大（GHAから完全離脱） | ★★（過剰） |\n\n---\n\n### 本当のベストは「D」だが…\n\n**Dが技術的に最適解**だが、テンプレートリポジトリとしての現実的コストを考えると疑問が残る。\n\n代わりに **もっと実践的で強力な構成** を提案する：\n\n### おすすめ：A（actionlint + 外部化）を最適化する\n\nactionlintは以下を**全て単一のバイナリ（ダウンロードのみ）で行う**：\n\n- YAML構造の静的検証（キー名typo、必須フィールド欠落）\n- `${{ }}` 式の型検査（存在しないcontextプロパティへのアクセス、型ミスマッチ）\n- **shellcheck統合** → bashのバグ/脆弱パターン検出\n- **pyflakes統合** → Pythonの未使用import、未定義変数検出\n- アクションinput名のtypoチェック\n- スクリプトインジェクション脆弱性の検出\n- cron式の妥当性検証\n\n**しかも依存関係ゼロ**。curlでバイナリを落として実行するだけ。\n\n```\n# CIに追加するだけ\n- uses: actions/checkout@v4\n- run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)\n- run: ./actionlint -color\n```\n\n### 正直な比較：A vs D\n\n| 観点 | A（actionlint + 外部化） | D（gagen + composite actions） |\n|---|---|---|\n| セットアップ | curl 1行 | TypeScript環境 + CIビルドパイプライン |\n| 型安全性 | 事後検査（CIで発見） | コンパイル時（エディタで発見） |\n| 学習曲線 | ゼロ（既存YAMLのまま） | 中〜大（DSL + 独自composite actions） |\n| インラインスクリプト | ✅ shellcheck/pyflakes | ❌ 別途actionlint必須 |\n| テンプレートユーザー影響 | なし | 生成YAMLコミット＋CI diffチェックで緩和可 |\n| アクションversion pinning | なし | ✅ gagenのlockfile自動解決 |\n| **実装コスト** | **1日** | **2〜3週間** |\n| **保守コスト** | ほぼゼロ | 中（DSL + 生成の二重管理） |\n\n---\n\n### 結論\n\n**私の正直なおすすめは「actionlint + 外部化」（A）**。理由：\n\n1. **コスト対効果が最も高い。** 複雑さの~50%を占めるインラインスクリプトを外部化し、残るYAML構造のバグをactionlintがほぼ全て捕捉する。これで十分な静的保証が得られる。\n2. **テンプレートユーザーへの影響がゼロ。** フォークするだけで使える。DSLのランタイムは不要。\n3. **github-workflows-kt/gagenを追加する場合、得られる追加メリットは「エディタ補完」と「コンパイル時チェック（CIじゃなくても気づける）」のみ。** それに見合う価値があるならDを選べばよいが、テンプレートリポジトリとしてはAが現実的。\n\nどうしても「コンパイル時に全部知りたい」というこだわりがあるなら、**Dでやる価値はある**。その場合、gagen（TypeScript）推奨：\n- KotlinよりTypeScriptの方がこのリポジトリのエコシステムに馴染む\n- gagenは自動condition伝播やlockfile pinningが地味に便利\n- actionlintと併用で最も堅牢な構成になる",
+      "atoma_metadata": {
+        "github_comment_id": 4992528473,
+        "agent": "orchestrator"
+      }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "cb17b81c52e090708e882f07cb2bb35eb46d987a53dfca756eb3646330db168a",
-      "event_count": 4,
+      "snapshot_hash": "5a274f53687866e3560729f9c1299fd15d1689da37370914d265644774578ccd",
+      "event_count": 6,
       "agent": "orchestrator",
       "type": "issue",
       "resolved_number": "170"
