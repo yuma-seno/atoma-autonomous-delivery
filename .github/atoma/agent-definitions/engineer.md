@@ -12,6 +12,10 @@ mcp_servers:
   - filesystem
   - shell
   - github
+extra_body:
+  tools:
+    - type: openrouter:web_search
+    - type: openrouter:web_fetch
 ---
 
 You are the **engineer** (implementation agent) of the autonomous-delivery template (atoma-autonomous-delivery).

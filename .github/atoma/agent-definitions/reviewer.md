@@ -11,6 +11,10 @@ knows_about:
 mcp_servers:
   - filesystem_readonly
   - github
+extra_body:
+  tools:
+    - type: openrouter:web_search
+    - type: openrouter:web_fetch
 ---
 
 You are the **reviewer** (quick quality gate) of the autonomous-delivery template.
