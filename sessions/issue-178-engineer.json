@@ -2544,15 +2544,258 @@
       "role": "assistant",
       "content": "Network error, please try again later.",
       "atoma_metadata": {
-        "github_comment_id": 4999396758,
+        "agent": "engineer",
+        "github_comment_id": 4999396758
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_467cf2bff80e4ab99b7aa979",
+          "type": "function",
+          "function": {
+            "name": "filesystem__list_directory",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[DIR] atoma\n[DIR] workflows",
+      "tool_call_id": "call_467cf2bff80e4ab99b7aa979"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_xrdakqx4026tdippp889g0mn",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"cd /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery && git rev-parse --abbrev-ref HEAD\", \"execution_mode\": \"foreground\", \"timeout_seconds\": 10}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: MCP server did not return a result",
+      "tool_call_id": "call_xrdakqx4026tdippp889g0mn"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_80f5fd41056a4ec48d3542d2",
+          "type": "function",
+          "function": {
+            "name": "filesystem__list_directory",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[DIR] .git\n[DIR] .github\n[FILE] .gitignore\n[FILE] README.md\n[FILE] atoma_logs.txt\n[FILE] atoma_output.txt\n[FILE] context-session.json\n[FILE] events.json\n[DIR] logs\n[DIR] node_modules\n[FILE] session.json",
+      "tool_call_id": "call_80f5fd41056a4ec48d3542d2"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_9f33f50f7fc94383b584b775",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions\"}"
+          }
+        },
+        {
+          "id": "call_4db94b06d03e4652b437c776",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/setup-runtime\"}"
+          }
+        },
+        {
+          "id": "call_401b7171b4014f93bdbbab93",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/prepare\"}"
+          }
+        },
+        {
+          "id": "call_14b7937c3ca540679911e956",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/run\"}"
+          }
+        },
+        {
+          "id": "call_ec5f0bb7e95242af989be199",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/post-result\"}"
+          }
+        },
+        {
+          "id": "call_7383e55360e24b8c8ce8ea97",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/dispatch-next\"}"
+          }
+        },
+        {
+          "id": "call_bdc668b9ce2b4736af290976",
+          "type": "function",
+          "function": {
+            "name": "filesystem__create_directory",
+            "arguments": "{\"path\":\"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/parse-comment-command\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions",
+      "tool_call_id": "call_9f33f50f7fc94383b584b775"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/setup-runtime",
+      "tool_call_id": "call_4db94b06d03e4652b437c776"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/prepare",
+      "tool_call_id": "call_401b7171b4014f93bdbbab93"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/run",
+      "tool_call_id": "call_14b7937c3ca540679911e956"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/post-result",
+      "tool_call_id": "call_ec5f0bb7e95242af989be199"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/dispatch-next",
+      "tool_call_id": "call_7383e55360e24b8c8ce8ea97"
+    },
+    {
+      "role": "tool",
+      "content": "Successfully created directory /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/parse-comment-command",
+      "tool_call_id": "call_bdc668b9ce2b4736af290976"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_f685e49fc0284dd0bed20043",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/workflows/atoma-runner.yml\", \"head\": 50}"
+          }
+        },
+        {
+          "id": "call_f5f654f3eab044a5ac6d7600",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/workflows/atoma-manual-comment.yml\", \"head\": 10}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "name: Atoma Runner\n\non:\n  workflow_call:\n    inputs:\n      agent:\n        description: Agent name to invoke\n        required: true\n        type: string\n      number:\n        description: Issue or PR number\n        required: true\n        type: string\n      type:\n        description: Context type\n        required: true\n        type: string\n      notify:\n        description: GitHub login to mention on completion\n        required: false\n        type: string\n        default: ''\n      atoma_version:\n        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository\n        required: false\n        type: string\n        default: 'source'\n  workflow_dispatch:\n    inputs:\n      agent:\n        description: Agent name to invoke\n        required: true\n        type: string\n      number:\n        description: Issue or PR number\n        required: true\n        type: string\n      type:\n        description: Context type\n        required: true\n        type: choice\n        options: [issue, pr]\n      notify:\n        description: GitHub login to mention on completion\n        required: false\n        type: string\n        default: ''\n      atoma_version:\n        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository\n        required: false",
+      "tool_call_id": "call_f685e49fc0284dd0bed20043"
+    },
+    {
+      "role": "tool",
+      "content": "name: Atoma Manual Comment\n\n# Invoke agents via /agent-name slash command in issue/PR comments.\n# Restricted to OWNER/MEMBER/COLLABORATOR.\n\non:\n  issue_comment:\n    types: [created]\n\npermissions:",
+      "tool_call_id": "call_f5f654f3eab044a5ac6d7600"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_sa5vti557iwkz4uhm1vv93ps",
+          "type": "function",
+          "function": {
+            "name": "filesystem__write_file",
+            "arguments": "{\"content\": \"name: 'Setup Runtime'\\ndescription: |\\n  Prepare local .github/atoma tool scripts and install shared runtime\\n  dependencies (Node.js, npm, MCP servers). Replaces\\n  yuma-seno/atoma/github/actions/setup-runtime@main.\\ninputs:\\n  tools_file:\\n    description: Path to the tools YAML configuration file\\n    required: false\\n    default: .github/atoma/tools/tools.yaml\\n  scripts_dir:\\n    description: Path to the local tool scripts directory\\n    required: false\\n    default: .github/atoma/tools/scripts\\nruns:\\n  using: composite\\n  steps:\\n    - shell: bash\\n      run: |\\n        SCRIPTS_DIR=\\\"${{ inputs.scripts_dir }}\\\"\\n        if [ -d \\\"$SCRIPTS_DIR\\\" ]; then\\n          find \\\"$SCRIPTS_DIR\\\" -maxdepth 1 -type f \\\\( -name '*.sh' -o -name '*.py' \\\\) -exec chmod +x {} +\\n          echo \\\"$GITHUB_WORKSPACE/$SCRIPTS_DIR\\\" >> \\\"$GITHUB_PATH\\\"\\n        fi\\n    - uses: actions/cache@v4\\n      with:\\n        path: ~/.npm\\n        key: npm-mcp-${{ runner.os }}-${{ hashFiles(inputs.tools_file) }}\\n        restore-keys: |\\n          npm-mcp-${{ runner.os }}-\\n    - shell: bash\\n      run: |\\n        if [ ! -f \\\"${{ inputs.tools_file }}\\\" ]; then\\n          echo \\\"::notice::No tools file found; skipping MCP preinstall\\\"\\n          exit 0\\n        fi\\n        npm install --no-save \\\\\\n          @modelcontextprotocol/server-filesystem@latest \\\\\\n          @mako10k/mcp-shell-server@latest\", \"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/setup-runtime/action.yml\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Successfully wrote to /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/setup-runtime/action.yml",
+      "tool_call_id": "call_sa5vti557iwkz4uhm1vv93ps"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_b990727478ab41dfb94f0eb4",
+          "type": "function",
+          "function": {
+            "name": "filesystem__write_file",
+            "arguments": "{\"content\": \"name: 'Prepare Context'\\ndescription: |\\n  Fetch GitHub events for an Issue or PR, build a shared context session with\\n  change detection. Replaces yuma-seno/atoma/github/actions/prepare@main.\\ninputs:\\n  type:\\n    description: '\\\"issue\\\" or \\\"pr\\\"'\\n    required: true\\n  number:\\n    description: Issue or PR number\\n    required: true\\n  agent_name:\\n    description: Name of the agent being invoked\\n    required: true\\n  orchestration_file:\\n    description: Path to the orchestration config JSON\\n    required: false\\n    default: .github/atoma/config.json\\noutputs:\\n  new_event_count:\\n    description: Number of new events since last snapshot (0 if unchanged)\\n    value: ${{ steps.build.outputs.new_event_count }}\\n  resolved_number:\\n    description: Resolved issue number\\n    value: ${{ steps.build.outputs.resolved_number }}\\n  context_snapshot_hash:\\n    description: Hash of the current context snapshot\\n    value: ${{ steps.build.outputs.context_snapshot_hash }}\\n  context_event_count:\\n    description: Total number of context events\\n    value: ${{ steps.build.outputs.context_event_count }}\\nruns:\\n  using: composite\\n  steps:\\n    - shell: bash\\n      id: fetch\\n      env:\\n        GH_TOKEN: ${{ github.token }}\\n        TYPE: ${{ inputs.type }}\\n        NUMBER: ${{ inputs.number }}\\n      run: |\\n        DATA=$(gh issue view \\\"${NUMBER}\\\" --repo \\\"${GITHUB_REPOSITORY}\\\" \\\\\\n          --json number,title,body,state,labels,comments,createdAt,author 2>/dev/null || echo '{}')\\n        RN=$(echo \\\"${DATA}\\\" | python3 -c \\\"import json,sys; d=json.load(sys.stdin); print(d.get('number','${NUMBER}'))\\\" 2>/dev/null || echo \\\"${NUMBER}\\\")\\n        echo \\\"resolved_number=${RN}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        python3 -c \\\"\\nimport json, os\\ndata = json.loads(os.environ.get('DATA', '{}'))\\nevents = []\\nbody = data.get('body') or ''\\ntitle = data.get('title') or ''\\nauthor = data.get('author', {}).get('login', 'github-actions[bot]')\\nevents.append({'id':'${TYPE}-${NUMBER}','event_type':'${TYPE}_opened','content':('${TYPE^} #${NUMBER}: '+title+'\\\\n\\\\n'+body) if title else body,'author':author,'created_at':data.get('createdAt','')})\\nfor c in data.get('comments') or []:\\n    events.append({'id':c.get('id'),'event_type':'issue_comment','content':c.get('body',''),'author':c.get('author',{}).get('login',''),'created_at':c.get('createdAt','')})\\nwith open('events.json','w') as f: json.dump(events, f, indent=2, ensure_ascii=False)\\nprint(f'Wrote {len(events)} events')\\n\\\" 2>&1\\n    - shell: bash\\n      id: build\\n      env:\\n        AGENT_NAME: ${{ inputs.agent_name }}\\n      run: |\\n        EVENTS_JSON=$(cat events.json)\\n        EVENT_COUNT=$(echo \\\"${EVENTS_JSON}\\\" | python3 -c \\\"import json,sys; print(len(json.load(sys.stdin)))\\\")\\n        SNAPSHOT_HASH=$(echo \\\"${EVENTS_JSON}\\\" | sha256sum | cut -d' ' -f1)\\n        PREV_HASH=\\\"\\\"\\n        if [ -f context-session.json ]; then\\n          PREV_HASH=$(python3 -c \\\"import json; d=json.load(open('context-session.json')); print(d.get('metadata',{}).get('snapshot_hash',''))\\\" 2>/dev/null || echo \\\"\\\")\\n        fi\\n        if [ \\\"${SNAPSHOT_HASH}\\\" = \\\"${PREV_HASH}\\\" ]; then\\n          NEW_COUNT=0\\n        else\\n          NEW_COUNT=${EVENT_COUNT}\\n        fi\\n        python3 -c \\\"\\nimport json\\nsession = {\\n    'messages': [],\\n    'metadata': {\\n        'source': 'github-context',\\n        'agent': '${AGENT_NAME}',\\n        'snapshot_hash': '${SNAPSHOT_HASH}',\\n        'event_count': ${EVENT_COUNT},\\n    },\\n}\\nwith open('context-session.json', 'w') as f:\\n    json.dump(session, f, indent=2, ensure_ascii=False)\\n\\\"\\n        echo \\\"new_event_count=${NEW_COUNT}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"resolved_number=${{ steps.fetch.outputs.resolved_number }}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"context_snapshot_hash=${SNAPSHOT_HASH}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"context_event_count=${EVENT_COUNT}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\", \"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/prepare/action.yml\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Successfully wrote to /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/prepare/action.yml",
+      "tool_call_id": "call_b990727478ab41dfb94f0eb4"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_4e2dca05177a4feb96c92533",
+          "type": "function",
+          "function": {
+            "name": "filesystem__write_file",
+            "arguments": "{\"content\": \"name: 'Run Agent'\\ndescription: |\\n  Execute the Atoma agent (atoma-cli) with the provided configuration.\\n  Replaces yuma-seno/atoma/github/actions/run@main.\\ninputs:\\n  agent_name:\\n    required: true\\n  agent_def_dir:\\n    required: true\\n  tools_file:\\n    required: true\\n  issue_number:\\n    required: true\\n  orchestration_file:\\n    required: true\\n  atoma_version:\\n    required: false\\n    default: latest\\n  max_iterations:\\n    required: false\\n    default: '30'\\n  notify_login:\\n    required: false\\n    default: ''\\n  openai_api_key:\\n    required: false\\n  openai_base_url:\\n    required: false\\n  anthropic_api_key:\\n    required: false\\n  atoma_provider:\\n    required: false\\noutputs:\\n  outcome:\\n    value: ${{ steps.atoma.outputs.outcome }}\\n  directive:\\n    value: ${{ steps.atoma.outputs.directive }}\\n  max_iterations_reached:\\n    value: ${{ steps.atoma.outputs.max_iterations_reached }}\\n  chain_continues:\\n    value: ${{ steps.atoma.outputs.chain_continues }}\\nruns:\\n  using: composite\\n  steps:\\n    - shell: bash\\n      run: |\\n        if command -v atoma &>/dev/null; then\\n          echo \\\"atoma CLI already available\\\"\\n          exit 0\\n        fi\\n        npm install --no-save atoma-cli@latest 2>&1 || true\\n        if command -v atoma &>/dev/null; then\\n          echo \\\"atoma CLI installed\\\"\\n        else\\n          echo \\\"::warning::atoma CLI not found; will use npx\\\"\\n        fi\\n    - shell: bash\\n      id: atoma\\n      env:\\n        GITHUB_TOKEN: ${{ github.token }}\\n        OPENAI_API_KEY: ${{ inputs.openai_api_key }}\\n        OPENAI_BASE_URL: ${{ inputs.openai_base_url }}\\n        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}\\n        ATOMA_PROVIDER: ${{ inputs.atoma_provider }}\\n        ISSUE_NUMBER: ${{ inputs.issue_number }}\\n        ISSUE_NOTIFY: ${{ inputs.notify_login }}\\n        AGENT: ${{ inputs.agent_name }}\\n        ATOMA_SCRIPTS_DIR: ${{ github.action_path }}/../../../.github/atoma/tools/scripts\\n      run: |\\n        ATOMA_CMD=\\\"npx -y atoma\\\"\\n        command -v atoma &>/dev/null && ATOMA_CMD=\\\"atoma\\\"\\n        ARGS=\\\"run --agent-name '${{ inputs.agent_name }}' --agent-def-dir '${{ inputs.agent_def_dir }}' --tools-file '${{ inputs.tools_file }}' --issue-number '${{ inputs.issue_number }}' --orchestration-file '${{ inputs.orchestration_file }}' --max-iterations '${{ inputs.max_iterations }}'\\\"\\n        [ -n \\\"${ATOMA_PROVIDER:-}\\\" ] && ARGS=\\\"${ARGS} --provider '${ATOMA_PROVIDER}'\\\"\\n        EXIT_CODE=0\\n        ${ATOMA_CMD} ${ARGS} | tee atoma_output.txt || EXIT_CODE=$?\\n        if [ ${EXIT_CODE} -ne 0 ]; then\\n          echo \\\"outcome=failure\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n          echo \\\"directive=\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n          echo \\\"max_iterations_reached=false\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n          echo \\\"chain_continues=false\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n          exit 0\\n        fi\\n        DIRECTIVE=\\\"\\\"; MAX_ITER=\\\"false\\\"; CHAIN=\\\"false\\\"\\n        grep -q \\\"Directive:\\\" atoma_output.txt 2>/dev/null && DIRECTIVE=$(grep \\\"Directive:\\\" atoma_output.txt | sed 's/.*Directive:[[:space:]]*//' | head -1)\\n        grep -q \\\"max_iterations_reached\\\" atoma_output.txt 2>/dev/null && MAX_ITER=\\\"true\\\"\\n        grep -q \\\"chain_continues\\\" atoma_output.txt 2>/dev/null && CHAIN=\\\"true\\\"\\n        echo \\\"outcome=success\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"directive=${DIRECTIVE}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"max_iterations_reached=${MAX_ITER}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\\n        echo \\\"chain_continues=${CHAIN}\\\" >> \\\"${GITHUB_OUTPUT}\\\"\", \"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/run/action.yml\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Successfully wrote to /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/.github/actions/run/action.yml",
+      "tool_call_id": "call_4e2dca05177a4feb96c92533"
+    },
+    {
+      "role": "assistant",
+      "content": "Connect timeout, please try again later.",
+      "atoma_metadata": {
+        "github_comment_id": 5005603946,
         "agent": "engineer"
       }
     }
   ],
   "metadata": {
     "github_context": {
-      "snapshot_hash": "7380b3205c4da2e773209b1f63bfaa192c54f974fe571013712ede9141a9142a",
-      "event_count": 7,
+      "snapshot_hash": "359c4d67af9cccaa9d2e45bbab175e4565a4cac2174bc51c1b5f4c582ed8c295",
+      "event_count": 8,
       "agent": "engineer",
       "type": "issue",
       "resolved_number": "178"
