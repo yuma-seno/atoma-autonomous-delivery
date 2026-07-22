@@ -15,11 +15,6 @@ import { ref as matchTriggerRef, type MatchTriggerEnv } from "../scripts/match_t
 //
 // Job graph:
 //   route --> run (atoma-runner.yml, reusable)
-const checkoutStep = new ActionsCheckoutV4({});
-
-// Required by the "Match event to agent" step below, which runs
-// match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted runners.
-const setupBunStep = new SetupBunAction();
 
 const contextStep = new TypedOutputsStep(
   {
@@ -76,7 +71,16 @@ const routeJob = new DefinedJob(
       notify: notifyStep.outputs.notify,
     },
   },
-  [checkoutStep, setupBunStep, contextStep, notifyStep, matchStep],
+  [
+    new ActionsCheckoutV4({}),
+    // Required by the "Match event to agent" step below, which runs
+    // match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted
+    // runners.
+    new SetupBunAction(),
+    contextStep,
+    notifyStep,
+    matchStep,
+  ],
 );
 
 // NOTE: preserved verbatim from the original hand-written YAML -- unlike the

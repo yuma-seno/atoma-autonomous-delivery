@@ -45,26 +45,28 @@ const checkJob = new DefinedJob(
   [new SetupBunAction(), checkStep],
 );
 
-const aggregateStep = new TypedOutputsStep({
-  name: "Check siblings and re-trigger orchestrator",
-  shell: "bash",
-  env: {
-    GH_TOKEN: "${{ github.token }}",
-    OWNER: "${{ github.repository_owner }}",
-    REPO: "${{ github.event.repository.name }}",
-    PARENT: checkJob.outputs.parent_number,
-  },
-  run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}" })}
-`,
-});
-
 const aggregateJob = new DefinedJob(
   "aggregate",
   {
     "runs-on": "ubuntu-latest",
     if: `${checkJob.rawOutputs.is_sub_issue} == 'true' && ${checkJob.rawOutputs.closed_via_pr} != 'true'`,
   },
-  [new ActionsCheckoutV4({}), new SetupBunAction(), aggregateStep],
+  [
+    new ActionsCheckoutV4({}),
+    new SetupBunAction(),
+    new TypedOutputsStep({
+      name: "Check siblings and re-trigger orchestrator",
+      shell: "bash",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        OWNER: "${{ github.repository_owner }}",
+        REPO: githubEvent<IssuesClosedEvent>((e) => e.repository.name),
+        PARENT: checkJob.outputs.parent_number,
+      },
+      run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}" })}
+`,
+    }),
+  ],
   [checkJob],
 );
 

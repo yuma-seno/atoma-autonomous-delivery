@@ -49,63 +49,12 @@ const ORCHESTRATION_FILE = ".github/atoma/config.json";
 const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
 
-const checkoutStep = new ActionsCheckoutV4({
-  name: "Checkout repository",
-  with: {
-    ref: "${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}",
-  },
-});
-
-const createFeatureBranchStep = new TypedOutputsStep({
-  name: "Create feature branch for issue",
-  if: "inputs.type == 'issue'",
-  shell: "bash",
-  run: `BRANCH="atoma/issue-\${{ inputs.number }}"
-git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
-echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-`,
-});
-
-const setBranchEnvStep = new TypedOutputsStep({
-  name: "Set branch env for PR type",
-  if: "inputs.type != 'issue'",
-  shell: "bash",
-  run: `echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
-`,
-});
-
-const setupRuntimeStep = new SetupRuntimeAction({ name: "Setup runtime" });
-
-// Required for every subsequent step / the "Run agent" step itself (tools.yaml
-// spawns the atoma MCP servers via `bun run ...`) -- GitHub-hosted runners do
-// not ship Bun preinstalled.
-const setupBunStep = new SetupBunAction({ name: "Setup Bun" });
-
-// The MCP servers under .github/atoma/tools/scripts/mcp/ depend on
-// @modelcontextprotocol/sdk. Installing it scoped to their own
-// scripts/package.json (rather than relying on a repo-root package.json)
-// keeps this whole workflow self-sufficient: copying just `.github/` into a
-// project is enough for it to work, with no root-level Node project required.
-const installMcpDepsStep = new TypedOutputsStep({
-  name: "Install MCP server dependencies",
-  shell: "bash",
-  "working-directory": ".github/atoma/tools/scripts",
-  run: "bun install\n",
-});
-
-const environmentSetupStep = new TypedOutputsStep({
-  name: "Run configured environment setup",
-  shell: "bash",
-  run: `${scriptCommand(runEnvironmentSetupRef)}\n`,
-});
-
-const gitIdentityStep = new TypedOutputsStep({
-  name: "Configure git identity",
-  shell: "bash",
-  run: `git config user.name "atoma-\${{ inputs.agent }}"
-git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
-`,
-});
+// Referenced downstream by name only where a later step (or the job's own
+// `if`/`outputs`) needs to read a `.outputs`/`.rawOutputs` value; every step
+// with no such reference is inlined directly into the `.addSteps([...])`
+// array below in its actual execution position instead -- so that array is
+// the single, complete, top-to-bottom picture of what this job does, not
+// just a name-list requiring you to hunt down each step's own declaration.
 
 const notifyStep = new TypedOutputsStep(
   {
@@ -159,24 +108,6 @@ echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
   ["max_iterations"] as const,
 );
 
-const addInProgressLabelStep = new TypedOutputsStep({
-  // Added BEFORE the agent actually runs (not after) so it's visible to a
-  // human for the entire duration of the run, not just flickered on/off
-  // afterwards. Applies to both issues and PRs -- `gh issue edit` works on
-  // PR numbers too since GitHub treats every PR as an issue under the hood.
-  // Gated on the same condition as "Run agent" so the label isn't added for
-  // no-op runs that will be skipped entirely (new_event_count == '0').
-  name: "Add atoma/in-progress label",
-  if: `${prepareStep.rawOutputs.new_event_count} != '0'`,
-  shell: "bash",
-  env: {
-    GH_TOKEN: "${{ github.token }}",
-    NUMBER: "${{ inputs.number }}",
-  },
-  run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
-`,
-});
-
 const runAgentStep = new RunAgentAction({
   name: "Run agent",
   id: "atoma",
@@ -197,54 +128,6 @@ const runAgentStep = new RunAgentAction({
   },
 });
 
-const removeInProgressLabelStep = new TypedOutputsStep({
-  // Remove atoma/in-progress when the agent run finishes (success or
-  // failure). Sub-issues keep atoma/sub-issue label for tracking (never
-  // removed here). Applies to both issues and PRs, mirroring the Add step
-  // above.
-  name: "Remove atoma/in-progress label on completion",
-  if: "always()",
-  shell: "bash",
-  env: {
-    GH_TOKEN: "${{ github.token }}",
-    NUMBER: "${{ inputs.number }}",
-  },
-  run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "remove", number: "\${NUMBER}" })}
-`,
-});
-
-const postResultStep = new PostResultAction({
-  // post-result's own inner guard (atoma_outcome == 'success' &&
-  // new_event_count != '0') is sufficient: it always posts the agent's
-  // final response as a comment when the run actually did something. Do NOT
-  // gate the comment itself on `directive` being empty -- that shape is
-  // indistinguishable from a normal "nothing more to do" completion AND from
-  // an important final summary (e.g. orchestrator aggregation), so gating
-  // on it would silently drop real summaries/notifications instead of just
-  // reducing noise. The "please review" notice inside post-result is
-  // separately suppressed via `chain_continues` (set when a tool call, e.g.
-  // launch_sub_agent or create_pr, already triggered an automatic follow-up
-  // run) -- that is a purpose-built signal, not a reuse of the ambiguous
-  // `directive` emptiness.
-  name: "Post result",
-  if: "always()",
-  with: {
-    agent_name: "${{ inputs.agent }}",
-    number: "${{ inputs.number }}",
-    type: "${{ inputs.type }}",
-    notify: notifyStep.outputs.notify,
-    job_status: "${{ job.status }}",
-    atoma_outcome: "${{ steps.atoma.outcome }}",
-    new_event_count: prepareStep.outputs.new_event_count,
-    context_snapshot_hash: prepareStep.outputs.context_snapshot_hash,
-    context_event_count: prepareStep.outputs.context_event_count,
-    resolved_number: prepareStep.outputs.resolved_number,
-    directive: runAgentStep.outputs.directive,
-    max_iterations_reached: runAgentStep.outputs.max_iterations_reached,
-    chain_continues: runAgentStep.outputs.chain_continues,
-  },
-});
-
 const dirtyStep = new TypedOutputsStep(
   {
     name: "Check for uncommitted changes",
@@ -259,43 +142,6 @@ fi
   ["has_changes"] as const,
 );
 
-const injectUncommittedStep = new TypedOutputsStep({
-  name: "Inject uncommitted changes into session",
-  if: `${dirtyStep.rawOutputs.has_changes} == 'true'`,
-  shell: "bash",
-  run: `${scriptCommand(injectUncommittedNoticeRef)}\n`,
-});
-
-const notifyMaxIterationsStep = new TypedOutputsStep({
-  name: "Notify on max iterations",
-  if: `${runAgentStep.rawOutputs.max_iterations_reached} == 'true'`,
-  shell: "bash",
-  env: {
-    GH_TOKEN: "${{ github.token }}",
-    NUMBER: "${{ inputs.number }}",
-    NOTIFY: notifyStep.outputs.notify,
-    AGENT: "${{ inputs.agent }}",
-  },
-  run: `${scriptCommandWithArgs(notifyMaxIterationsRef, { number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" })}
-`,
-});
-
-const dispatchNextStep = new DispatchNextAction({
-  name: "Dispatch next agent",
-  if: "steps.atoma.outcome == 'success'",
-  with: {
-    agent_name: "${{ inputs.agent }}",
-    number: "${{ inputs.number }}",
-    type: "${{ inputs.type }}",
-    notify: notifyStep.outputs.notify,
-    directive: runAgentStep.outputs.directive,
-    max_iterations_reached: runAgentStep.outputs.max_iterations_reached,
-    new_event_count: prepareStep.outputs.new_event_count,
-    atoma_outcome: "${{ steps.atoma.outcome }}",
-    orchestration_file: ORCHESTRATION_FILE,
-  },
-});
-
 const runJob = new NormalJob("run", {
   "runs-on": "ubuntu-latest",
   "timeout-minutes": 60,
@@ -305,25 +151,160 @@ const runJob = new NormalJob("run", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addSteps([
-  checkoutStep,
-  createFeatureBranchStep,
-  setBranchEnvStep,
-  setupRuntimeStep,
-  setupBunStep,
-  installMcpDepsStep,
-  environmentSetupStep,
-  gitIdentityStep,
+  new ActionsCheckoutV4({
+    name: "Checkout repository",
+    with: {
+      ref: "${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}",
+    },
+  }),
+  new TypedOutputsStep({
+    name: "Create feature branch for issue",
+    if: "inputs.type == 'issue'",
+    shell: "bash",
+    run: `BRANCH="atoma/issue-\${{ inputs.number }}"
+git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+`,
+  }),
+  new TypedOutputsStep({
+    name: "Set branch env for PR type",
+    if: "inputs.type != 'issue'",
+    shell: "bash",
+    run: `echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
+`,
+  }),
+  new SetupRuntimeAction({ name: "Setup runtime" }),
+  // Required for every subsequent step / the "Run agent" step itself
+  // (tools.yaml spawns the atoma MCP servers via `bun run ...`) --
+  // GitHub-hosted runners do not ship Bun preinstalled.
+  new SetupBunAction({ name: "Setup Bun" }),
+  // The MCP servers under .github/atoma/tools/scripts/mcp/ depend on
+  // @modelcontextprotocol/sdk. Installing it scoped to their own
+  // scripts/package.json (rather than relying on a repo-root package.json)
+  // keeps this whole workflow self-sufficient: copying just `.github/` into
+  // a project is enough for it to work, with no root-level Node project
+  // required.
+  new TypedOutputsStep({
+    name: "Install MCP server dependencies",
+    shell: "bash",
+    "working-directory": ".github/atoma/tools/scripts",
+    run: "bun install\n",
+  }),
+  new TypedOutputsStep({
+    name: "Run configured environment setup",
+    shell: "bash",
+    run: `${scriptCommand(runEnvironmentSetupRef)}\n`,
+  }),
+  new TypedOutputsStep({
+    name: "Configure git identity",
+    shell: "bash",
+    run: `git config user.name "atoma-\${{ inputs.agent }}"
+git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
+`,
+  }),
   notifyStep,
   prepareStep,
   cfgStep,
-  addInProgressLabelStep,
+  new TypedOutputsStep({
+    // Added BEFORE the agent actually runs (not after) so it's visible to a
+    // human for the entire duration of the run, not just flickered on/off
+    // afterwards. Applies to both issues and PRs -- `gh issue edit` works on
+    // PR numbers too since GitHub treats every PR as an issue under the
+    // hood. Gated on the same condition as "Run agent" so the label isn't
+    // added for no-op runs that will be skipped entirely
+    // (new_event_count == '0').
+    name: "Add atoma/in-progress label",
+    if: `${prepareStep.rawOutputs.new_event_count} != '0'`,
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      NUMBER: "${{ inputs.number }}",
+    },
+    run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
+`,
+  }),
   runAgentStep,
-  removeInProgressLabelStep,
-  postResultStep,
+  new TypedOutputsStep({
+    // Remove atoma/in-progress when the agent run finishes (success or
+    // failure). Sub-issues keep atoma/sub-issue label for tracking (never
+    // removed here). Applies to both issues and PRs, mirroring the Add step
+    // above.
+    name: "Remove atoma/in-progress label on completion",
+    if: "always()",
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      NUMBER: "${{ inputs.number }}",
+    },
+    run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "remove", number: "\${NUMBER}" })}
+`,
+  }),
+  new PostResultAction({
+    // post-result's own inner guard (atoma_outcome == 'success' &&
+    // new_event_count != '0') is sufficient: it always posts the agent's
+    // final response as a comment when the run actually did something. Do
+    // NOT gate the comment itself on `directive` being empty -- that shape
+    // is indistinguishable from a normal "nothing more to do" completion
+    // AND from an important final summary (e.g. orchestrator aggregation),
+    // so gating on it would silently drop real summaries/notifications
+    // instead of just reducing noise. The "please review" notice inside
+    // post-result is separately suppressed via `chain_continues` (set when
+    // a tool call, e.g. launch_sub_agent or create_pr, already triggered an
+    // automatic follow-up run) -- that is a purpose-built signal, not a
+    // reuse of the ambiguous `directive` emptiness.
+    name: "Post result",
+    if: "always()",
+    with: {
+      agent_name: "${{ inputs.agent }}",
+      number: "${{ inputs.number }}",
+      type: "${{ inputs.type }}",
+      notify: notifyStep.outputs.notify,
+      job_status: "${{ job.status }}",
+      atoma_outcome: "${{ steps.atoma.outcome }}",
+      new_event_count: prepareStep.outputs.new_event_count,
+      context_snapshot_hash: prepareStep.outputs.context_snapshot_hash,
+      context_event_count: prepareStep.outputs.context_event_count,
+      resolved_number: prepareStep.outputs.resolved_number,
+      directive: runAgentStep.outputs.directive,
+      max_iterations_reached: runAgentStep.outputs.max_iterations_reached,
+      chain_continues: runAgentStep.outputs.chain_continues,
+    },
+  }),
   dirtyStep,
-  injectUncommittedStep,
-  notifyMaxIterationsStep,
-  dispatchNextStep,
+  new TypedOutputsStep({
+    name: "Inject uncommitted changes into session",
+    if: `${dirtyStep.rawOutputs.has_changes} == 'true'`,
+    shell: "bash",
+    run: `${scriptCommand(injectUncommittedNoticeRef)}\n`,
+  }),
+  new TypedOutputsStep({
+    name: "Notify on max iterations",
+    if: `${runAgentStep.rawOutputs.max_iterations_reached} == 'true'`,
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      NUMBER: "${{ inputs.number }}",
+      NOTIFY: notifyStep.outputs.notify,
+      AGENT: "${{ inputs.agent }}",
+    },
+    run: `${scriptCommandWithArgs(notifyMaxIterationsRef, { number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" })}
+`,
+  }),
+  new DispatchNextAction({
+    name: "Dispatch next agent",
+    if: "steps.atoma.outcome == 'success'",
+    with: {
+      agent_name: "${{ inputs.agent }}",
+      number: "${{ inputs.number }}",
+      type: "${{ inputs.type }}",
+      notify: notifyStep.outputs.notify,
+      directive: runAgentStep.outputs.directive,
+      max_iterations_reached: runAgentStep.outputs.max_iterations_reached,
+      new_event_count: prepareStep.outputs.new_event_count,
+      atoma_outcome: "${{ steps.atoma.outcome }}",
+      orchestration_file: ORCHESTRATION_FILE,
+    },
+  }),
 ]);
 
 export const atomaRunner = new Workflow("atoma-runner", {

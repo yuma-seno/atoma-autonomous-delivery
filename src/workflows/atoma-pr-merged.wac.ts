@@ -107,19 +107,6 @@ const notifyParentJob = new DefinedJob(
   [resolveParentJob, parseJob],
 );
 
-const aggregateStep = new TypedOutputsStep({
-  name: "Aggregate sub-issue results",
-  shell: "bash",
-  env: {
-    OWNER: "${{ github.repository_owner }}",
-    REPO: githubEvent<PullRequestClosedEvent>((e) => e.repository.name),
-    PARENT: resolveParentJob.outputs.parent_issue,
-    CLOSED_NUM: parseJob.outputs.sub_issue,
-  },
-  run: `${scriptCommandWithArgs(aggregateSubIssuesRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" })}
-`,
-});
-
 const aggregateSubIssuesJob = new DefinedJob(
   "aggregate-sub-issues",
   {
@@ -135,7 +122,18 @@ const aggregateSubIssuesJob = new DefinedJob(
     // check_open_siblings.ts / inject_sub_results.ts / resolve_notify.ts) is
     // run via `bun run` -- not preinstalled on GitHub-hosted runners.
     new SetupBunAction(),
-    aggregateStep,
+    new TypedOutputsStep({
+      name: "Aggregate sub-issue results",
+      shell: "bash",
+      env: {
+        OWNER: "${{ github.repository_owner }}",
+        REPO: githubEvent<PullRequestClosedEvent>((e) => e.repository.name),
+        PARENT: resolveParentJob.outputs.parent_issue,
+        CLOSED_NUM: parseJob.outputs.sub_issue,
+      },
+      run: `${scriptCommandWithArgs(aggregateSubIssuesRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" })}
+`,
+    }),
   ],
   [resolveParentJob, parseJob],
 );
