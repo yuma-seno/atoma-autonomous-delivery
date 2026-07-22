@@ -1,0 +1,54 @@
+# AUTO-GENERATED FILE -- DO NOT EDIT DIRECTLY.
+# Source of truth: src/workflows/atoma-sub-issue-closed.wac.ts
+# Regenerate with: bun run synth
+
+name: Atoma Sub-Issue Closed
+'on':
+  issues:
+    types:
+      - closed
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      is_sub_issue: ${{ steps.check.outputs.is_sub_issue }}
+      parent_number: ${{ steps.check.outputs.parent_number }}
+      closed_via_pr: ${{ steps.check.outputs.closed_via_pr }}
+    steps:
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Check sub-issue closure (parent tag + already-handled-via-PR?)
+        id: check
+        shell: bash
+        env:
+          CLOSED_NUM: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          bun run .github/atoma/tools/scripts/check_sub_issue_closure.ts
+  aggregate:
+    runs-on: ubuntu-latest
+    if: needs.check.outputs.is_sub_issue == 'true' && needs.check.outputs.closed_via_pr != 'true'
+    needs:
+      - check
+    steps:
+      - uses: actions/checkout@v4
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Check siblings and re-trigger orchestrator
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PARENT: ${{ needs.check.outputs.parent_number }}
+        run: |
+          bun run .github/atoma/tools/scripts/dispatch_if_siblings_done.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}"

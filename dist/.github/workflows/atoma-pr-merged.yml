@@ -1,0 +1,96 @@
+# AUTO-GENERATED FILE -- DO NOT EDIT DIRECTLY.
+# Source of truth: src/workflows/atoma-pr-merged.wac.ts
+# Regenerate with: bun run synth
+
+name: Atoma PR Merged
+'on':
+  pull_request_target:
+    types:
+      - closed
+permissions:
+  actions: write
+  issues: write
+  pull-requests: read
+  contents: write
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    outputs:
+      parent_issue: ${{ steps.parse-metadata.outputs.parent_number }}
+      sub_issue: ${{ steps.parse-metadata.outputs.sub_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Parse parent-issue / sub-issue metadata from PR body
+        id: parse-metadata
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          bun run .github/atoma/tools/scripts/parse_pr_metadata.ts
+  resolve-parent:
+    runs-on: ubuntu-latest
+    if: needs.parse.outputs.sub_issue != ''
+    outputs:
+      parent_issue: ${{ steps.resolve.outputs.parent_issue }}
+    needs:
+      - parse
+    steps:
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Resolve orchestrator parent via GraphQL parent field
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SUB: ${{ needs.parse.outputs.sub_issue }}
+        run: |
+          PARENT=$(bun run .github/atoma/tools/scripts/resolve_orchestrator_parent.ts --repo "${REPO}" --sub "${SUB}")
+          echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
+  notify-parent:
+    runs-on: ubuntu-latest
+    if: needs.resolve-parent.outputs.parent_issue != ''
+    needs:
+      - resolve-parent
+      - parse
+    steps:
+      - name: Comment on parent issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh issue comment "$PARENT" --repo "$REPO" --body \
+            "PR #${PR_NUMBER} merged: ${PR_TITLE} (${PR_URL})"
+  aggregate-sub-issues:
+    runs-on: ubuntu-latest
+    if: needs.resolve-parent.outputs.parent_issue != ''
+    env:
+      GH_TOKEN: ${{ github.token }}
+    needs:
+      - resolve-parent
+      - parse
+    steps:
+      - uses: actions/checkout@v4
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Aggregate sub-issue results
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
+          CLOSED_NUM: ${{ needs.parse.outputs.sub_issue }}
+        run: |
+          bun run .github/atoma/tools/scripts/aggregate_sub_issues.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}" --closed-num "${CLOSED_NUM}"

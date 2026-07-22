@@ -1,0 +1,44 @@
+# Tools configuration for Atoma GitHub templates
+
+filesystem:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  env: {}
+  hooks:
+    tool_denylist:
+      - "filesystem__directory_tree"
+      - "filesystem__search_files"
+
+filesystem_readonly:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  env: {}
+  hooks:
+    tool_allowlist:
+      - "filesystem_readonly__read_file"
+      - "filesystem_readonly__read_multiple_files"
+      - "filesystem_readonly__list_directory"
+      - "filesystem_readonly__get_file_info"
+
+shell:
+  command: npx
+  # Pin to the actively-maintained @mako10k/mcp-shell-server package explicitly.
+  # The unscoped "mcp-shell-server" name on npm is an unrelated, undocumented
+  # package by a different author -- relying on it (even implicitly, via local
+  # bin-name shadowing from setup-runtime's pre-install step) is fragile.
+  args: ["-y", "@mako10k/mcp-shell-server@latest"]
+  env: {}
+  hooks:
+    before_tool: ./scripts/hooks/shell_guard.ts
+
+github:
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/github.ts"]
+  env: {}
+  hooks: {}
+
+atoma:
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/atoma.ts"]
+  env: {}
+  hooks: {}

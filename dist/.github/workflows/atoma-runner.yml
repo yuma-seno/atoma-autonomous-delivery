@@ -1,0 +1,224 @@
+# AUTO-GENERATED FILE -- DO NOT EDIT DIRECTLY.
+# Source of truth: src/workflows/atoma-runner.wac.ts
+# Regenerate with: bun run synth
+
+name: Atoma Runner
+'on':
+  workflow_call:
+    inputs:
+      agent:
+        description: Agent name to invoke
+        required: true
+        type: string
+      number:
+        description: Issue or PR number
+        required: true
+        type: string
+      type:
+        description: Context type
+        required: true
+        type: string
+      notify:
+        description: GitHub login to mention on completion
+        required: false
+        type: string
+        default: ''
+      atoma_version:
+        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        required: false
+        type: string
+        default: source
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: Agent name to invoke
+        required: true
+        type: string
+      number:
+        description: Issue or PR number
+        required: true
+        type: string
+      type:
+        description: Context type
+        required: true
+        type: choice
+        options:
+          - issue
+          - pr
+      notify:
+        description: GitHub login to mention on completion
+        required: false
+        type: string
+        default: ''
+      atoma_version:
+        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        required: false
+        type: string
+        default: source
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: atoma-${{ inputs.type }}-${{ inputs.number }}
+      cancel-in-progress: false
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}
+      - name: Create feature branch for issue
+        if: inputs.type == 'issue'
+        shell: bash
+        run: |
+          BRANCH="atoma/issue-${{ inputs.number }}"
+          git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+      - name: Set branch env for PR type
+        if: inputs.type != 'issue'
+        shell: bash
+        run: |
+          echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
+      - name: Setup runtime
+        with: {}
+        uses: yuma-seno/atoma/github/actions/setup-runtime@main
+      - name: Setup Bun
+        with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Install MCP server dependencies
+        shell: bash
+        working-directory: .github/atoma/tools/scripts
+        run: |
+          bun install
+      - name: Run configured environment setup
+        shell: bash
+        run: |
+          bun run .github/atoma/tools/scripts/run_environment_setup.ts
+      - name: Configure git identity
+        shell: bash
+        run: |
+          git config user.name "atoma-${{ inputs.agent }}"
+          git config user.email "atoma-${{ inputs.agent }}@users.noreply.github.com"
+      - name: Resolve effective notify login
+        id: notify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTIFY: ${{ inputs.notify }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          EFFECTIVE="$NOTIFY"
+          if [ -z "$EFFECTIVE" ]; then
+            EFFECTIVE=$(bun run .github/atoma/tools/scripts/resolve_notify.ts --repo "${GITHUB_REPOSITORY}" --number "${NUMBER}")
+            [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: ${EFFECTIVE}"
+          fi
+          echo "notify=${EFFECTIVE}" >> "$GITHUB_OUTPUT"
+      - name: Prepare shared context
+        id: prep
+        with:
+          type: ${{ inputs.type }}
+          number: ${{ inputs.number }}
+          agent_name: ${{ inputs.agent }}
+          orchestration_file: .github/atoma/config.json
+        uses: yuma-seno/atoma/github/actions/prepare@main
+      - name: Read max_iterations from config
+        id: cfg
+        shell: bash
+        env:
+          AGENT_NAME: ${{ inputs.agent }}
+        run: |
+          MAX=$(bun run .github/atoma/tools/scripts/get_config_value.ts "agents.${AGENT_NAME}.max_iterations" "30")
+          echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
+          echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
+      - name: Add atoma/in-progress label
+        if: steps.prep.outputs.new_event_count != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          bun run .github/atoma/tools/scripts/manage_in_progress_label.ts --action "add" --number "${NUMBER}"
+      - name: Run agent
+        id: atoma
+        if: steps.prep.outputs.new_event_count != '0'
+        with:
+          agent_name: ${{ inputs.agent }}
+          agent_def_dir: .github/atoma/agent-definitions
+          tools_file: .github/atoma/tools/tools.yaml
+          issue_number: ${{ steps.prep.outputs.resolved_number }}
+          orchestration_file: .github/atoma/config.json
+          atoma_version: ${{ inputs.atoma_version }}
+          max_iterations: ${{ steps.cfg.outputs.max_iterations }}
+          notify_login: ${{ steps.notify.outputs.notify }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          openai_base_url: ${{ vars.OPENAI_BASE_URL }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          atoma_provider: ${{ vars.ATOMA_PROVIDER }}
+        uses: yuma-seno/atoma/github/actions/run@main
+      - name: Remove atoma/in-progress label on completion
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          bun run .github/atoma/tools/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
+      - name: Post result
+        if: always()
+        with:
+          agent_name: ${{ inputs.agent }}
+          number: ${{ inputs.number }}
+          type: ${{ inputs.type }}
+          notify: ${{ steps.notify.outputs.notify }}
+          job_status: ${{ job.status }}
+          atoma_outcome: ${{ steps.atoma.outcome }}
+          new_event_count: ${{ steps.prep.outputs.new_event_count }}
+          context_snapshot_hash: ${{ steps.prep.outputs.context_snapshot_hash }}
+          context_event_count: ${{ steps.prep.outputs.context_event_count }}
+          resolved_number: ${{ steps.prep.outputs.resolved_number }}
+          directive: ${{ steps.atoma.outputs.directive }}
+          max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
+          chain_continues: ${{ steps.atoma.outputs.chain_continues }}
+        uses: yuma-seno/atoma/github/actions/post-result@main
+      - name: Check for uncommitted changes
+        id: dirty
+        if: steps.atoma.outcome == 'success'
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Inject uncommitted changes into session
+        if: steps.dirty.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          bun run .github/atoma/tools/scripts/inject_uncommitted_notice.ts
+      - name: Notify on max iterations
+        if: steps.atoma.outputs.max_iterations_reached == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          NOTIFY: ${{ steps.notify.outputs.notify }}
+          AGENT: ${{ inputs.agent }}
+        run: |
+          bun run .github/atoma/tools/scripts/notify_max_iterations.ts --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}"
+      - name: Dispatch next agent
+        if: steps.atoma.outcome == 'success'
+        with:
+          agent_name: ${{ inputs.agent }}
+          number: ${{ inputs.number }}
+          type: ${{ inputs.type }}
+          notify: ${{ steps.notify.outputs.notify }}
+          directive: ${{ steps.atoma.outputs.directive }}
+          max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
+          new_event_count: ${{ steps.prep.outputs.new_event_count }}
+          atoma_outcome: ${{ steps.atoma.outcome }}
+          orchestration_file: .github/atoma/config.json
+        uses: yuma-seno/atoma/github/actions/dispatch-next@main
