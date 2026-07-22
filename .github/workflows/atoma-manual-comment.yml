@@ -1,0 +1,61 @@
+# AUTO-GENERATED FILE -- DO NOT EDIT DIRECTLY.
+# Source of truth: src/workflows/atoma-manual-comment.wac.ts
+# Regenerate with: bun run synth
+
+name: Atoma Manual Comment
+'on':
+  issue_comment:
+    types:
+      - created
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+  contents: write
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    if: |-
+      (github.event.comment.user.type == 'Bot' &&
+       contains(github.event.comment.body, 'atoma:dispatch')) ||
+      (github.event.comment.user.type != 'Bot' &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    outputs:
+      agent: ${{ steps.command.outputs.agent }}
+      number: ${{ steps.target.outputs.number }}
+      type: ${{ steps.target.outputs.type }}
+      notify: ${{ steps.target.outputs.notify }}
+    steps:
+      - name: Parse slash command
+        id: command
+        with:
+          body: ${{ github.event.comment.body }}
+        uses: yuma-seno/atoma/github/actions/parse-comment-command@main
+      - name: Resolve target context
+        id: target
+        shell: bash
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+          IS_PR: ${{ toJSON(github.event.issue.pull_request != null) }}
+          NOTIFY: ${{ github.event.comment.user.login }}
+        run: |
+          echo "number=${NUMBER}" >> "$GITHUB_OUTPUT"
+          if [ "$IS_PR" = "true" ]; then
+            echo "type=pr" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=issue" >> "$GITHUB_OUTPUT"
+          fi
+          echo "notify=${NOTIFY}" >> "$GITHUB_OUTPUT"
+  run:
+    if: needs.parse.outputs.agent != ''
+    uses: ./.github/workflows/atoma-runner.yml
+    with:
+      agent: ${{ needs.parse.outputs.agent }}
+      number: ${{ needs.parse.outputs.number }}
+      type: ${{ needs.parse.outputs.type }}
+      notify: ${{ needs.parse.outputs.notify }}
+    secrets: inherit
+    needs:
+      - parse

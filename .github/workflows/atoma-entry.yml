@@ -1,0 +1,53 @@
+# AUTO-GENERATED FILE -- DO NOT EDIT DIRECTLY.
+# Source of truth: src/workflows/atoma-entry.wac.ts
+# Regenerate with: bun run synth
+
+name: Atoma Entry
+'on':
+  issues:
+    types:
+      - opened
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+  contents: write
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    outputs:
+      agent: ${{ steps.resolve.outputs.agent }}
+      number: ${{ steps.resolve.outputs.number }}
+      type: ${{ steps.resolve.outputs.type }}
+      notify: ${{ steps.resolve.outputs.notify }}
+    steps:
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Resolve agent and context
+        id: resolve
+        shell: bash
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          bun run .github/atoma/tools/scripts/resolve_entry_agent.ts
+      - name: Add reaction to issue
+        if: steps.resolve.outputs.agent != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/reactions" -f content="eyes" 2>/dev/null || true
+  run:
+    if: needs.route.outputs.agent != ''
+    uses: ./.github/workflows/atoma-runner.yml
+    with:
+      agent: ${{ needs.route.outputs.agent }}
+      number: ${{ needs.route.outputs.number }}
+      type: ${{ needs.route.outputs.type }}
+      notify: ${{ needs.route.outputs.notify }}
+    secrets: inherit
+    needs:
+      - route
