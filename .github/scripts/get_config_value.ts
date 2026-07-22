@@ -8,15 +8,16 @@
  * Examples:
  *   bun run get_config_value.ts agents.engineer.max_iterations 30
  *   bun run get_config_value.ts labels.in_progress atoma/in-progress
- *
- * NOTE: this is Atoma's own copy (called by launch_sub_agent.ts, a
- * same-directory sibling). An independent, functionally-identical copy also
- * lives at `.github/scripts/get_config_value.ts` (source-tracked in
- * src/scripts/, called by atoma-runner.wac.ts) -- deliberately duplicated
- * rather than shared so each of `.github/atoma/**` and `.github/scripts/**`
- * stays a fully self-contained tree with no cross-references between them.
  */
 import { loadConfig } from "./lib/config.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
+
+/** Build the positional argv for this script, used by callers for a type-checked invocation. */
+export function buildArgv(path: string, fallback?: string): string[] {
+  return fallback === undefined ? [`"${path}"`] : [`"${path}"`, `"${fallback}"`];
+}
 
 function main(): void {
   const [path, fallback = ""] = Bun.argv.slice(2);

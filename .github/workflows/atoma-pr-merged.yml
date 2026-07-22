@@ -31,7 +31,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          bun run .github/atoma/tools/scripts/parse_pr_metadata.ts
+          bun run .github/scripts/parse_pr_metadata.ts
   resolve-parent:
     runs-on: ubuntu-latest
     if: needs.parse.outputs.sub_issue != ''
@@ -51,7 +51,7 @@ jobs:
           REPO: ${{ github.repository }}
           SUB: ${{ needs.parse.outputs.sub_issue }}
         run: |
-          PARENT=$(bun run .github/atoma/tools/scripts/resolve_orchestrator_parent.ts --repo "${REPO}" --sub "${SUB}")
+          PARENT=$(bun run .github/scripts/resolve_orchestrator_parent.ts --repo "${REPO}" --sub "${SUB}")
           echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
   notify-parent:
     runs-on: ubuntu-latest
@@ -93,4 +93,4 @@ jobs:
           PARENT: ${{ needs.resolve-parent.outputs.parent_issue }}
           CLOSED_NUM: ${{ needs.parse.outputs.sub_issue }}
         run: |
-          bun run .github/atoma/tools/scripts/aggregate_sub_issues.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}" --closed-num "${CLOSED_NUM}"
+          bun run .github/scripts/aggregate_sub_issues.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}" --closed-num "${CLOSED_NUM}"

@@ -31,7 +31,7 @@ jobs:
           NUMBER: ${{ github.event.issue.number }}
           SENDER: ${{ github.event.sender.login }}
         run: |
-          bun run .github/atoma/tools/scripts/resolve_entry_agent.ts
+          bun run .github/scripts/resolve_entry_agent.ts
       - name: Add reaction to issue
         if: steps.resolve.outputs.agent != ''
         shell: bash

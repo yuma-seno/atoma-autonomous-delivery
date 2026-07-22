@@ -32,7 +32,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
         run: |
-          bun run .github/atoma/tools/scripts/check_sub_issue_closure.ts
+          bun run .github/scripts/check_sub_issue_closure.ts
   aggregate:
     runs-on: ubuntu-latest
     if: needs.check.outputs.is_sub_issue == 'true' && needs.check.outputs.closed_via_pr != 'true'
@@ -51,4 +51,4 @@ jobs:
           REPO: ${{ github.event.repository.name }}
           PARENT: ${{ needs.check.outputs.parent_number }}
         run: |
-          bun run .github/atoma/tools/scripts/dispatch_if_siblings_done.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}"
+          bun run .github/scripts/dispatch_if_siblings_done.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}"

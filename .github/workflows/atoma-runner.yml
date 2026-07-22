@@ -99,7 +99,7 @@ jobs:
       - name: Run configured environment setup
         shell: bash
         run: |
-          bun run .github/atoma/tools/scripts/run_environment_setup.ts
+          bun run .github/scripts/run_environment_setup.ts
       - name: Configure git identity
         shell: bash
         run: |
@@ -115,7 +115,7 @@ jobs:
         run: |
           EFFECTIVE="$NOTIFY"
           if [ -z "$EFFECTIVE" ]; then
-            EFFECTIVE=$(bun run .github/atoma/tools/scripts/resolve_notify.ts --repo "${GITHUB_REPOSITORY}" --number "${NUMBER}")
+            EFFECTIVE=$(bun run .github/scripts/resolve_notify.ts --repo "${GITHUB_REPOSITORY}" --number "${NUMBER}")
             [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: ${EFFECTIVE}"
           fi
           echo "notify=${EFFECTIVE}" >> "$GITHUB_OUTPUT"
@@ -133,7 +133,7 @@ jobs:
         env:
           AGENT_NAME: ${{ inputs.agent }}
         run: |
-          MAX=$(bun run .github/atoma/tools/scripts/get_config_value.ts "agents.${AGENT_NAME}.max_iterations" "30")
+          MAX=$(bun run .github/scripts/get_config_value.ts "agents.${AGENT_NAME}.max_iterations" "30")
           echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
           echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
       - name: Add atoma/in-progress label
@@ -143,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
         run: |
-          bun run .github/atoma/tools/scripts/manage_in_progress_label.ts --action "add" --number "${NUMBER}"
+          bun run .github/scripts/manage_in_progress_label.ts --action "add" --number "${NUMBER}"
       - name: Run agent
         id: atoma
         if: steps.prep.outputs.new_event_count != '0'
@@ -168,7 +168,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
         run: |
-          bun run .github/atoma/tools/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
+          bun run .github/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
       - name: Post result
         if: always()
         with:
@@ -198,7 +198,7 @@ jobs:
         if: steps.dirty.outputs.has_changes == 'true'
         shell: bash
         run: |
-          bun run .github/atoma/tools/scripts/inject_uncommitted_notice.ts
+          bun run .github/scripts/inject_uncommitted_notice.ts
       - name: Notify on max iterations
         if: steps.atoma.outputs.max_iterations_reached == 'true'
         shell: bash
@@ -208,7 +208,7 @@ jobs:
           NOTIFY: ${{ steps.notify.outputs.notify }}
           AGENT: ${{ inputs.agent }}
         run: |
-          bun run .github/atoma/tools/scripts/notify_max_iterations.ts --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}"
+          bun run .github/scripts/notify_max_iterations.ts --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}"
       - name: Dispatch next agent
         if: steps.atoma.outcome == 'success'
         with:

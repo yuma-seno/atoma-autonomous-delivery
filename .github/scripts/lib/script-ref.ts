@@ -31,7 +31,7 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Where `build-dist.ts` places scripts inside a deployed `.github/`. */
-const SCRIPTS_RUNTIME_ROOT = ".github/atoma/tools/scripts";
+const SCRIPTS_RUNTIME_ROOT = ".github/scripts";
 
 export interface ScriptRef<TArgs = void> {
   /** Deployed runtime path, e.g. `.github/atoma/tools/scripts/foo.ts`. */
