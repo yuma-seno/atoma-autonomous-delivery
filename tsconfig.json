@@ -20,8 +20,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "dist/.github/atoma/tools/scripts/mcp/**/*.ts",
-    "dist/.github/atoma/tools/scripts/hooks/**/*.ts",
+    "dist/.github/atoma/tools/scripts/**/*.ts",
     "wac.config.ts"
   ]
 }

@@ -18,17 +18,18 @@
  *
  * Prints the resolved login (possibly empty) to stdout. Never throws for
  * missing data -- callers treat an empty result as "nobody to notify".
- *
- * NOTE: this is Atoma's own copy (called by mcp/github.ts, request_close_issue.ts,
- * dispatch_orchestrator_if_ready.ts -- all same-directory siblings). An
- * independent, functionally-identical copy also lives at
- * `.github/scripts/resolve_notify.ts` (source-tracked in src/scripts/,
- * called by atoma-runner.wac.ts) -- deliberately duplicated rather than
- * shared so each of `.github/atoma/**` and `.github/scripts/**` stays a
- * fully self-contained tree with no cross-references between them.
  */
 import { parseArgs } from "node:util";
 import { gh } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+/** CLI contract for this script, used by callers (e.g. src/workflows/*.wac.ts) to build a type-checked argv. */
+export interface ResolveNotifyArgs {
+  repo: string;
+  number: string | number;
+}
+
+export const ref = defineScript<ResolveNotifyArgs>(import.meta.url);
 
 const NOTIFY_RE = /<!--\s*atoma:notify=([A-Za-z0-9-]+)\s*-->/;
 const PARENT_RE = /<!--\s*atoma:parent(?:-issue)?=#?(\d+)\s*-->/;
