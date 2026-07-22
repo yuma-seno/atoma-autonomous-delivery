@@ -11,6 +11,9 @@
  */
 import { readFileSync, appendFileSync } from "node:fs";
 import { ghGraphql } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 interface GithubIssueClosedEvent {
   issue?: { body?: string };

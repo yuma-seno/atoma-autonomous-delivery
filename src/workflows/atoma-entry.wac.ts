@@ -1,13 +1,19 @@
-import { Workflow, NormalJob, Step } from "@github-actions-workflow-ts/lib";
-import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { Workflow, Step } from "@github-actions-workflow-ts/lib";
+import type { IssuesOpenedEvent } from "@octokit/webhooks-types";
+import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { githubEvent } from "./actions/github-context.ts";
+import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
-// Path-validation-only import: resolve_entry_agent.ts exports no Args/Env
-// type (it reads NUMBER/SENDER from env and writes $GITHUB_OUTPUT directly),
-// so this exists solely to make a renamed/deleted script fail
-// `bun run typecheck` at the `scriptCommand()` call site below.
-import type * as ResolveEntryAgent from "../scripts/resolve_entry_agent.ts";
+import { ref as resolveEntryAgentRef } from "../scripts/resolve_entry_agent.ts";
+
+// Fires when a new issue is opened. Resolves which agent (if any) should
+// handle it from the issue body's first line, then hands off to the shared
+// atoma-runner reusable workflow.
+//
+// Job graph:
+//   route --> run (atoma-runner.yml, reusable)
 
 // Required by the "Resolve agent and context" step below, which runs
 // resolve_entry_agent.ts via `bun run` -- not preinstalled on GitHub-hosted
@@ -20,10 +26,10 @@ const resolveStep = new TypedOutputsStep(
     id: "resolve",
     shell: "bash",
     env: {
-      NUMBER: "${{ github.event.issue.number }}",
-      SENDER: "${{ github.event.sender.login }}",
+      NUMBER: githubEvent<IssuesOpenedEvent>((e) => e.issue.number),
+      SENDER: githubEvent<IssuesOpenedEvent>((e) => e.sender.login),
     },
-    run: `${scriptCommand("../scripts/resolve_entry_agent.ts")}\n`,
+    run: `${scriptCommand(resolveEntryAgentRef)}\n`,
   },
   ["agent", "number", "type", "notify"] as const,
 );
@@ -34,32 +40,34 @@ const addReactionStep = new Step({
   shell: "bash",
   env: {
     GH_TOKEN: "${{ github.token }}",
-    NUMBER: "${{ github.event.issue.number }}",
+    NUMBER: githubEvent<IssuesOpenedEvent>((e) => e.issue.number),
   },
   run: `gh api --method POST "repos/\${GITHUB_REPOSITORY}/issues/\${NUMBER}/reactions" -f content="eyes" 2>/dev/null || true
 `,
 });
 
-const routeJob = new NormalJob("route", {
-  "runs-on": "ubuntu-latest",
-  outputs: {
-    agent: resolveStep.outputs.agent,
-    number: resolveStep.outputs.number,
-    type: resolveStep.outputs.type,
-    notify: resolveStep.outputs.notify,
+const routeJob = new DefinedJob(
+  "route",
+  {
+    "runs-on": "ubuntu-latest",
+    outputs: {
+      agent: resolveStep.outputs.agent,
+      number: resolveStep.outputs.number,
+      type: resolveStep.outputs.type,
+      notify: resolveStep.outputs.notify,
+    },
   },
-}).addSteps([setupBunStep, resolveStep, addReactionStep]);
-
-const routeOutputs = new TypedJobOutputs(routeJob, ["agent", "number", "type", "notify"] as const);
+  [setupBunStep, resolveStep, addReactionStep],
+);
 
 const runJob = atomaRunnerWorkflow.call("run", {
   needs: [routeJob],
-  if: `${routeOutputs.rawOutputs.agent} != ''`,
+  if: `${routeJob.rawOutputs.agent} != ''`,
   with: {
-    agent: routeOutputs.outputs.agent,
-    number: routeOutputs.outputs.number,
-    type: routeOutputs.outputs.type,
-    notify: routeOutputs.outputs.notify,
+    agent: routeJob.outputs.agent,
+    number: routeJob.outputs.number,
+    type: routeJob.outputs.type,
+    notify: routeJob.outputs.notify,
   },
   secrets: "inherit",
 });
@@ -69,10 +77,5 @@ export const atomaEntry = new Workflow("atoma-entry", {
   on: {
     issues: { types: ["opened"] },
   },
-  permissions: {
-    actions: "write",
-    issues: "write",
-    "pull-requests": "write",
-    contents: "write",
-  },
+  permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs([routeJob, runJob]);

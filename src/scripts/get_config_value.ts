@@ -10,6 +10,9 @@
  *   bun run get_config_value.ts labels.in_progress atoma/in-progress
  */
 import { loadConfig } from "./lib/config.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 /** Build the positional argv for this script, used by callers for a type-checked invocation. */
 export function buildArgv(path: string, fallback?: string): string[] {

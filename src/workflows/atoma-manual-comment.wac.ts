@@ -1,14 +1,20 @@
-import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
+import { Workflow } from "@github-actions-workflow-ts/lib";
+import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
 import { ParseCommentCommandAction } from "./actions/atoma.ts";
-import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
+import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
 
 // Invoke agents via /agent-name slash command in issue/PR comments.
 // Restricted to OWNER/MEMBER/COLLABORATOR.
+//
+// Job graph:
+//   parse --> run (atoma-runner.yml, reusable)
 const parseCommandStep = new ParseCommentCommandAction({
   name: "Parse slash command",
   id: "command",
-  with: { body: "${{ github.event.comment.body }}" },
+  with: { body: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.body) },
 });
 
 const targetStep = new TypedOutputsStep(
@@ -17,9 +23,9 @@ const targetStep = new TypedOutputsStep(
     id: "target",
     shell: "bash",
     env: {
-      NUMBER: "${{ github.event.issue.number }}",
-      IS_PR: "${{ toJSON(github.event.issue.pull_request != null) }}",
-      NOTIFY: "${{ github.event.comment.user.login }}",
+      NUMBER: githubEvent<IssueCommentCreatedEvent>((e) => e.issue.number),
+      IS_PR: `\${{ toJSON(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.issue.pull_request)} != null) }}`,
+      NOTIFY: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.user.login),
     },
     run: `echo "number=\${NUMBER}" >> "$GITHUB_OUTPUT"
 if [ "$IS_PR" = "true" ]; then
@@ -33,33 +39,35 @@ echo "notify=\${NOTIFY}" >> "$GITHUB_OUTPUT"
   ["number", "type", "notify"] as const,
 );
 
-const parseJob = new NormalJob("parse", {
-  "runs-on": "ubuntu-latest",
-  if:
-    "(github.event.comment.user.type == 'Bot' &&\n" +
-    " contains(github.event.comment.body, 'atoma:dispatch')) ||\n" +
-    "(github.event.comment.user.type != 'Bot' &&\n" +
-    " (github.event.comment.author_association == 'OWNER' ||\n" +
-    "  github.event.comment.author_association == 'MEMBER' ||\n" +
-    "  github.event.comment.author_association == 'COLLABORATOR'))",
-  outputs: {
-    agent: parseCommandStep.outputs.agent,
-    number: targetStep.outputs.number,
-    type: targetStep.outputs.type,
-    notify: targetStep.outputs.notify,
+const parseJob = new DefinedJob(
+  "parse",
+  {
+    "runs-on": "ubuntu-latest",
+    if:
+      `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
+      ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
+      `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
+      ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
+      `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
+      `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`,
+    outputs: {
+      agent: parseCommandStep.outputs.agent,
+      number: targetStep.outputs.number,
+      type: targetStep.outputs.type,
+      notify: targetStep.outputs.notify,
+    },
   },
-}).addSteps([parseCommandStep, targetStep]);
-
-const parseOutputs = new TypedJobOutputs(parseJob, ["agent", "number", "type", "notify"] as const);
+  [parseCommandStep, targetStep],
+);
 
 const runJob = atomaRunnerWorkflow.call("run", {
   needs: [parseJob],
-  if: `${parseOutputs.rawOutputs.agent} != ''`,
+  if: `${parseJob.rawOutputs.agent} != ''`,
   with: {
-    agent: parseOutputs.outputs.agent,
-    number: parseOutputs.outputs.number,
-    type: parseOutputs.outputs.type,
-    notify: parseOutputs.outputs.notify,
+    agent: parseJob.outputs.agent,
+    number: parseJob.outputs.number,
+    type: parseJob.outputs.type,
+    notify: parseJob.outputs.notify,
   },
   secrets: "inherit",
 });
@@ -69,10 +77,5 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
   on: {
     issue_comment: { types: ["created"] },
   },
-  permissions: {
-    actions: "write",
-    issues: "write",
-    "pull-requests": "write",
-    contents: "write",
-  },
+  permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs([parseJob, runJob]);

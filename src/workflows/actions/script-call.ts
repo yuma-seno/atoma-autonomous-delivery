@@ -5,42 +5,47 @@
  *
  * Every call site used to hardcode the *deployed* path as a bare string --
  * `bun run .github/atoma/tools/scripts/foo.ts` -- with zero connection to
- * the actual script file. A rename/typo there is a silent runtime failure
- * (`bun run` exits 127, discovered only when the workflow actually runs),
- * not a compile error, and there's no way to jump from the workflow file to
- * the script it invokes.
+ * the actual script file, PLUS a separately hand-typed import specifier
+ * paired next to it purely so a rename/delete would fail `tsc --noEmit`.
+ * Two independent strings, nothing stopping them from silently mismatching.
  *
- * `scriptCommand()` instead takes the *dev-time* relative import specifier
- * -- the exact same string you'd write in an `import` statement, e.g.
- * `"../scripts/foo.ts"` -- and derives the deployed path from its basename
- * (`build-dist.ts` always flat-copies `src/scripts/**`, minus `lib/` and
- * `*.test.ts`, preserving basenames -- that invariant is what makes this
- * correct). Pairing the specifier with a real `import`/`import type` of that
- * same path (which every call site should already have, to get the script's
- * typed `Args`/`Env` contract -- see `../../scripts/lib/cli.ts`) means a
- * renamed or deleted script fails `bun run typecheck` immediately, at the
- * same place, instead of only surfacing at workflow-run time.
+ * Now every call site imports the script's own `ref` (see
+ * `../../scripts/lib/script-ref.ts`) -- a real value, derived from the
+ * script's `import.meta.url`, so there is only ONE thing identifying the
+ * script (the import itself) and the deployed path is never hand-typed at
+ * all. `scriptCommand()`/`scriptCommandWithArgs()` just turn that `ref` (and,
+ * for the latter, a typed `args` object checked directly against the
+ * script's own `Args` interface) into the `bun run ...` command string.
  */
-import { basename } from "node:path";
-
-/** Where `build-dist.ts` places scripts inside a deployed `.github/`. */
-const SCRIPTS_RUNTIME_ROOT = ".github/atoma/tools/scripts";
+import { toArgv } from "../../scripts/lib/cli.ts";
+import type { ScriptRef } from "../../scripts/lib/script-ref.ts";
 
 /**
- * Resolve a `src/scripts/**` relative import specifier (e.g.
- * `"../scripts/foo.ts"`, exactly as written in an `import` statement) to its
- * deployed runtime path (e.g. `.github/atoma/tools/scripts/foo.ts`).
+ * Build a `bun run <deployed-path> [argv...]` command for a script that
+ * takes no CLI flags at all (env-driven, or none) -- or whose CLI shape
+ * doesn't fit a flat named-args object (e.g. `get_config_value.ts`'s
+ * positional `<path> [default]`, built with its own `buildArgv()`). Pass a
+ * pre-built argv array for that second case.
  */
-export function scriptRuntimePath(scriptImportSpecifier: string): string {
-  return `${SCRIPTS_RUNTIME_ROOT}/${basename(scriptImportSpecifier)}`;
+export function scriptCommand(ref: ScriptRef<void>, argv: readonly string[] = []): string {
+  return argv.length > 0 ? `bun run ${ref.runtimePath} ${argv.join(" ")}` : `bun run ${ref.runtimePath}`;
 }
 
 /**
- * Build a `bun run <deployed-path> [argv...]` command string for embedding
- * in a step's `run:` bash, either as the whole command or spliced into a
- * larger heredoc (e.g. `` `AGENT=$(${scriptCommand(...)} 2>/dev/null)` ``).
+ * Build a `bun run <deployed-path> --flag "value" ...` command for a script
+ * whose CLI flags are a flat named-args object. `args` is checked directly
+ * against the script's own exported `Args` interface via `ref`'s type
+ * parameter -- no separate import of that interface needed at the call site.
+ *
+ * `TArgs extends object` (not `extends Record<string, ...>`) because plain
+ * named-property interfaces (e.g. `export interface FooArgs { repo: string }`)
+ * have no index signature and don't structurally satisfy a `Record<...>`
+ * constraint -- same reasoning as `CustomAction`'s `TWith` in `base.ts`.
  */
-export function scriptCommand(scriptImportSpecifier: string, argv: readonly string[] = []): string {
-  const path = scriptRuntimePath(scriptImportSpecifier);
-  return argv.length > 0 ? `bun run ${path} ${argv.join(" ")}` : `bun run ${path}`;
+export function scriptCommandWithArgs<TArgs extends object>(ref: ScriptRef<TArgs>, args: TArgs): string {
+  return scriptCommand(
+    { runtimePath: ref.runtimePath },
+    toArgv(args as Record<string, string | number | boolean | undefined>),
+  );
 }
+

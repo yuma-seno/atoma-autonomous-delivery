@@ -21,12 +21,15 @@
  */
 import { parseArgs } from "node:util";
 import { gh } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
 
 /** CLI contract for this script, used by callers (e.g. src/workflows/*.wac.ts) to build a type-checked argv. */
 export interface ResolveNotifyArgs {
   repo: string;
   number: string | number;
 }
+
+export const ref = defineScript<ResolveNotifyArgs>(import.meta.url);
 
 const NOTIFY_RE = /<!--\s*atoma:notify=([A-Za-z0-9-]+)\s*-->/;
 const PARENT_RE = /<!--\s*atoma:parent(?:-issue)?=#?(\d+)\s*-->/;

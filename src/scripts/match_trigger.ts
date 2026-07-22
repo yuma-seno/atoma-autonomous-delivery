@@ -4,6 +4,9 @@
  * auto_triggers.
  */
 import { loadConfig } from "./lib/config.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 /** Env-var contract for this script, used by callers to build a type-checked `env:` block. */
 export interface MatchTriggerEnv {

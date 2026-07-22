@@ -11,11 +11,14 @@
 import { parseArgs } from "node:util";
 import { gh } from "./lib/gh.ts";
 import { getLabel } from "./lib/config.ts";
+import { defineScript } from "./lib/script-ref.ts";
 
 export interface ManageInProgressLabelArgs {
   action: "add" | "remove";
   number: string | number;
 }
+
+export const ref = defineScript<ManageInProgressLabelArgs>(import.meta.url);
 
 function main(): void {
   const { values } = parseArgs({

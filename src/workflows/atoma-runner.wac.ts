@@ -9,26 +9,45 @@ import {
   SetupRuntimeAction,
 } from "./actions/atoma.ts";
 import { TypedOutputsStep } from "./actions/base.ts";
+import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
-import { scriptCommand } from "./actions/script-call.ts";
+import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
-import { toArgv } from "../scripts/lib/cli.ts";
-import type { ResolveNotifyArgs } from "../scripts/resolve_notify.ts";
-import { buildArgv as configValueArgv } from "../scripts/get_config_value.ts";
-import type { ManageInProgressLabelArgs } from "../scripts/manage_in_progress_label.ts";
-import type { NotifyMaxIterationsArgs } from "../scripts/notify_max_iterations.ts";
-// `import type * as` (rather than a named type) is used below for scripts
-// that take no CLI args/env inputs -- these imports exist purely so a
-// renamed/deleted script fails `bun run typecheck` at the `scriptCommand()`
-// call site, same as the named-type imports above do for scripts with args.
-import type * as RunEnvironmentSetup from "../scripts/run_environment_setup.ts";
-import type * as InjectUncommittedNotice from "../scripts/inject_uncommitted_notice.ts";
+import { ref as resolveNotifyRef } from "../scripts/resolve_notify.ts";
+import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
+import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
+import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
+import { ref as runEnvironmentSetupRef } from "../scripts/run_environment_setup.ts";
+import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
+
+// The shared reusable workflow every entry-point workflow (atoma-entry,
+// atoma-auto-trigger, atoma-manual-comment, atoma-pr-review) hands off to via
+// `atomaRunnerWorkflow.call(...)` (see actions/reusable-workflow.ts) once
+// they've resolved an `agent`/`number`/`type`. Single job ("run"), step
+// sequence below mirrors execution order top to bottom:
+//
+//   1. checkout repo + resolve/create the working branch
+//   2. install runtime deps (atoma CLI, Bun, MCP server deps)
+//   3. run configured environment setup, set git identity
+//   4. resolve `notify` login + this agent's `max_iterations` from config
+//   5. add atoma/in-progress label, then RUN THE AGENT
+//   6. remove the label, post the agent's result as a comment
+//   7. handle follow-ups: uncommitted-changes notice, max-iterations notice,
+//      dispatch the next agent in the chain (if any)
 
 const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install, or `source` to build from the checked-out action repository";
+
+// Deployed-repo-relative paths into the `.github/atoma/` content tree (see
+// dist/.github/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
+// Referenced from three separate steps below (prepare/run/dispatch-next);
+// centralized here so they can't drift from each other by typo.
+const ORCHESTRATION_FILE = ".github/atoma/config.json";
+const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
+const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
 
 const checkoutStep = new ActionsCheckoutV4({
   name: "Checkout repository",
@@ -77,7 +96,7 @@ const installMcpDepsStep = new TypedOutputsStep({
 const environmentSetupStep = new TypedOutputsStep({
   name: "Run configured environment setup",
   shell: "bash",
-  run: `${scriptCommand("../scripts/run_environment_setup.ts")}\n`,
+  run: `${scriptCommand(runEnvironmentSetupRef)}\n`,
 });
 
 const gitIdentityStep = new TypedOutputsStep({
@@ -106,7 +125,7 @@ const notifyStep = new TypedOutputsStep(
     },
     run: `EFFECTIVE="$NOTIFY"
 if [ -z "$EFFECTIVE" ]; then
-  EFFECTIVE=$(${scriptCommand("../scripts/resolve_notify.ts", toArgv({ repo: "\${GITHUB_REPOSITORY}", number: "\${NUMBER}" } satisfies ResolveNotifyArgs))})
+  EFFECTIVE=$(${scriptCommandWithArgs(resolveNotifyRef, { repo: "\${GITHUB_REPOSITORY}", number: "\${NUMBER}" })})
   [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: \${EFFECTIVE}"
 fi
 echo "notify=\${EFFECTIVE}" >> "$GITHUB_OUTPUT"
@@ -122,7 +141,7 @@ const prepareStep = new PrepareAction({
     type: "${{ inputs.type }}",
     number: "${{ inputs.number }}",
     agent_name: "${{ inputs.agent }}",
-    orchestration_file: ".github/atoma/config.json",
+    orchestration_file: ORCHESTRATION_FILE,
   },
 });
 
@@ -132,7 +151,7 @@ const cfgStep = new TypedOutputsStep(
     id: "cfg",
     shell: "bash",
     env: { AGENT_NAME: "${{ inputs.agent }}" },
-    run: `MAX=$(${scriptCommand("../scripts/get_config_value.ts", configValueArgv("agents.${AGENT_NAME}.max_iterations", "30"))})
+    run: `MAX=$(${scriptCommand(getConfigValueRef, configValueArgv("agents.${AGENT_NAME}.max_iterations", "30"))})
 echo "max_iterations=\${MAX}" >> "$GITHUB_OUTPUT"
 echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
 `,
@@ -154,7 +173,7 @@ const addInProgressLabelStep = new TypedOutputsStep({
     GH_TOKEN: "${{ github.token }}",
     NUMBER: "${{ inputs.number }}",
   },
-  run: `${scriptCommand("../scripts/manage_in_progress_label.ts", toArgv({ action: "add", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs))}
+  run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
 `,
 });
 
@@ -164,10 +183,10 @@ const runAgentStep = new RunAgentAction({
   if: `${prepareStep.rawOutputs.new_event_count} != '0'`,
   with: {
     agent_name: "${{ inputs.agent }}",
-    agent_def_dir: ".github/atoma/agent-definitions",
-    tools_file: ".github/atoma/tools/tools.yaml",
+    agent_def_dir: AGENT_DEF_DIR,
+    tools_file: TOOLS_FILE,
     issue_number: prepareStep.outputs.resolved_number,
-    orchestration_file: ".github/atoma/config.json",
+    orchestration_file: ORCHESTRATION_FILE,
     atoma_version: "${{ inputs.atoma_version }}",
     max_iterations: cfgStep.outputs.max_iterations,
     notify_login: notifyStep.outputs.notify,
@@ -190,7 +209,7 @@ const removeInProgressLabelStep = new TypedOutputsStep({
     GH_TOKEN: "${{ github.token }}",
     NUMBER: "${{ inputs.number }}",
   },
-  run: `${scriptCommand("../scripts/manage_in_progress_label.ts", toArgv({ action: "remove", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs))}
+  run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "remove", number: "\${NUMBER}" })}
 `,
 });
 
@@ -244,7 +263,7 @@ const injectUncommittedStep = new TypedOutputsStep({
   name: "Inject uncommitted changes into session",
   if: `${dirtyStep.rawOutputs.has_changes} == 'true'`,
   shell: "bash",
-  run: `${scriptCommand("../scripts/inject_uncommitted_notice.ts")}\n`,
+  run: `${scriptCommand(injectUncommittedNoticeRef)}\n`,
 });
 
 const notifyMaxIterationsStep = new TypedOutputsStep({
@@ -257,7 +276,7 @@ const notifyMaxIterationsStep = new TypedOutputsStep({
     NOTIFY: notifyStep.outputs.notify,
     AGENT: "${{ inputs.agent }}",
   },
-  run: `${scriptCommand("../scripts/notify_max_iterations.ts", toArgv({ number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" } satisfies NotifyMaxIterationsArgs))}
+  run: `${scriptCommandWithArgs(notifyMaxIterationsRef, { number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" })}
 `,
 });
 
@@ -273,7 +292,7 @@ const dispatchNextStep = new DispatchNextAction({
     max_iterations_reached: runAgentStep.outputs.max_iterations_reached,
     new_event_count: prepareStep.outputs.new_event_count,
     atoma_outcome: "${{ steps.atoma.outcome }}",
-    orchestration_file: ".github/atoma/config.json",
+    orchestration_file: ORCHESTRATION_FILE,
   },
 });
 
@@ -284,12 +303,7 @@ const runJob = new NormalJob("run", {
     group: "atoma-${{ inputs.type }}-${{ inputs.number }}",
     "cancel-in-progress": false,
   },
-  permissions: {
-    actions: "write",
-    issues: "write",
-    "pull-requests": "write",
-    contents: "write",
-  },
+  permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addSteps([
   checkoutStep,
   createFeatureBranchStep,

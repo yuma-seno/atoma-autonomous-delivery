@@ -11,6 +11,9 @@
  * Writes `notify=<login-or-empty>` to $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 const NOTIFY_RE = /<!--\s*atoma:notify=([A-Za-z0-9-]+)\s*-->/;
 

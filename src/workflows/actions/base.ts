@@ -16,7 +16,7 @@
  *     step's output elsewhere is typo-checked and refactor-safe (renaming an
  *     output name updates every usage via TS, not a raw string search).
  */
-import { Step } from "@github-actions-workflow-ts/lib";
+import { NormalJob, ReusableWorkflowCallJob, Step } from "@github-actions-workflow-ts/lib";
 import type { GeneratedWorkflowTypes as GWT } from "@github-actions-workflow-ts/lib";
 
 export type StepBaseProps = Pick<GWT.Step, "id" | "name" | "if" | "env" | "timeout-minutes">;
@@ -50,26 +50,53 @@ export class TypedOutputsStep<TOutputs extends string = never> extends Step {
 }
 
 /**
- * Typed `needs.<job>.outputs.<name>` reference helper -- the job-level
- * counterpart to `TypedOutputsStep`'s `steps.<id>.outputs.<name>`. Wrap a
- * `NormalJob` once with the same output names it declares in its own
- * `outputs:` map, and every consumer gets typo-checked, refactor-safe
- * references (`.outputs.foo` / `.rawOutputs.foo`) instead of hand-building
- * `` `needs.${job.name}.outputs.foo` `` strings at each use site. Same
- * `.outputs` (`${{ }}`-wrapped, for `with:`/`env:`/`run:`) vs `.rawOutputs`
- * (bare, for `if:`) split as `TypedOutputsStep`, for the same reason.
+ * A `NormalJob` whose `outputs:` map doubles as the single source of truth
+ * for typo-checked, refactor-safe `needs.<job>.outputs.<name>` references --
+ * the job-level counterpart to `TypedOutputsStep`'s
+ * `steps.<id>.outputs.<name>`.
+ *
+ * Previously this required TWO hand-kept-in-sync declarations: the job's own
+ * `outputs: {...}` object (defining what GitHub Actions actually exposes) AND
+ * a separate `readonly outputNames = [...] as const` array (defining what TS
+ * exposes as `.outputs.foo`) -- nothing enforced the two matched, so a
+ * renamed/removed job output could silently desync from its typed accessor.
+ * `DefinedJob` derives `.outputs`/`.rawOutputs` directly from
+ * `Object.keys(jobProps.outputs)`, so there is exactly one place that lists
+ * a job's outputs.
+ *
+ * Also accepts `steps` and `needs` directly in the constructor (in place of
+ * trailing `.addSteps([...])`/`.needs([...])` calls) purely for readability
+ * -- a job's full shape (props + dependencies + steps) is then visible in
+ * one expression instead of split across a constructor call and chained
+ * methods. `needs` is applied before `steps` (matching the order every
+ * hand-written call site used before this class existed) so generated YAML
+ * key order -- and therefore diffs -- stay stable.
+ *
+ * Same `.outputs` (`${{ }}`-wrapped, for `with:`/`env:`/`run:`) vs
+ * `.rawOutputs` (bare, for `if:`) split as `TypedOutputsStep`, for the same
+ * reason (GitHub Actions `if:` conditions must stay fully bare or fully
+ * `${{ }}`-wrapped, never mixed).
  */
-export class TypedJobOutputs<TOutputs extends string = never> {
-  readonly outputs: Record<TOutputs, string>;
-  readonly rawOutputs: Record<TOutputs, string>;
+export class DefinedJob<TOutputsMap extends Record<string, string> = Record<never, string>> extends NormalJob {
+  readonly outputs: Record<keyof TOutputsMap & string, string>;
+  readonly rawOutputs: Record<keyof TOutputsMap & string, string>;
 
-  constructor(job: { name: string }, outputNames: readonly TOutputs[]) {
-    this.outputs = {} as Record<TOutputs, string>;
-    this.rawOutputs = {} as Record<TOutputs, string>;
-    for (const name of outputNames) {
-      const ref = `needs.${job.name}.outputs.${name}`;
-      this.outputs[name] = `\${{ ${ref} }}`;
-      this.rawOutputs[name] = ref;
+  constructor(
+    name: string,
+    jobProps: Omit<GWT.NormalJob, "outputs"> & { outputs?: TOutputsMap },
+    steps: Step[] = [],
+    needs: (NormalJob | ReusableWorkflowCallJob)[] = [],
+  ) {
+    super(name, jobProps as GWT.NormalJob);
+    if (needs.length > 0) this.needs(needs);
+    if (steps.length > 0) this.addSteps(steps);
+
+    this.outputs = {} as Record<keyof TOutputsMap & string, string>;
+    this.rawOutputs = {} as Record<keyof TOutputsMap & string, string>;
+    for (const key of Object.keys(jobProps.outputs ?? {}) as (keyof TOutputsMap & string)[]) {
+      const ref = `needs.${name}.outputs.${key}`;
+      this.outputs[key] = `\${{ ${ref} }}`;
+      this.rawOutputs[key] = ref;
     }
   }
 }

@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { gh, gitRun } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,8 @@ export interface AggregateSubIssuesArgs {
   parent: string | number;
   "closed-num": string | number;
 }
+
+export const ref = defineScript<AggregateSubIssuesArgs>(import.meta.url);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

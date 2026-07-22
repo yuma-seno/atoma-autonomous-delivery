@@ -1,15 +1,20 @@
-import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
+import { Workflow } from "@github-actions-workflow-ts/lib";
+import type { PullRequestReviewSubmittedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
+import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
-import type { MatchTriggerEnv } from "../scripts/match_trigger.ts";
-// Path-validation-only import: see the identical note in atoma-auto-trigger.wac.ts.
-import type * as ExtractNotifyTag from "../scripts/extract_notify_tag.ts";
+import { ref as extractNotifyTagRef } from "../scripts/extract_notify_tag.ts";
+import { ref as matchTriggerRef, type MatchTriggerEnv } from "../scripts/match_trigger.ts";
 
 // Separate workflow for pull_request_review events.
 // Cannot be combined with pull_request_target in atoma-auto-trigger.wac.ts.
+//
+// Job graph:
+//   route --> run (atoma-runner.yml, reusable)
 const checkoutStep = new ActionsCheckoutV4({});
 
 // Required by the "Match event to agent" step below, which runs
@@ -21,7 +26,7 @@ const contextStep = new TypedOutputsStep(
     name: "Determine PR number",
     id: "context",
     shell: "bash",
-    run: `echo "number=\${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+    run: `echo "number=${githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.number)}" >> "$GITHUB_OUTPUT"
 echo "type=pr" >> "$GITHUB_OUTPUT"
 `,
   },
@@ -33,8 +38,8 @@ const notifyStep = new TypedOutputsStep(
     name: "Resolve notify login from PR body tag",
     id: "notify",
     shell: "bash",
-    env: { PR_BODY: "${{ github.event.pull_request.body }}" },
-    run: `${scriptCommand("../scripts/extract_notify_tag.ts")}\n`,
+    env: { PR_BODY: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.body) },
+    run: `${scriptCommand(extractNotifyTagRef)}\n`,
   },
   ["notify"] as const,
 );
@@ -45,10 +50,10 @@ const matchStep = new TypedOutputsStep(
     id: "match",
     shell: "bash",
     env: {
-      EVENT_TYPE: "${{ github.event_name }}.${{ github.event.action }}",
-      REVIEW_STATE: "${{ github.event.review.state }}",
+      EVENT_TYPE: `\${{ github.event_name }}.\${{ ${githubEventRaw<PullRequestReviewSubmittedEvent>((e) => e.action)} }}`,
+      REVIEW_STATE: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.review.state),
     } satisfies MatchTriggerEnv,
-    run: `AGENT=$(${scriptCommand("../scripts/match_trigger.ts")} 2>/dev/null || true)
+    run: `AGENT=$(${scriptCommand(matchTriggerRef)} 2>/dev/null || true)
 if [ -n "\${AGENT}" ]; then
   echo "Matched agent: \${AGENT}"
   echo "agent=\${AGENT}" >> "$GITHUB_OUTPUT"
@@ -60,28 +65,30 @@ fi
   ["agent", "number", "type"] as const,
 );
 
-const routeJob = new NormalJob("route", {
-  "runs-on": "ubuntu-latest",
-  outputs: {
-    agent: matchStep.outputs.agent,
-    number: matchStep.outputs.number,
-    type: matchStep.outputs.type,
-    notify: notifyStep.outputs.notify,
+const routeJob = new DefinedJob(
+  "route",
+  {
+    "runs-on": "ubuntu-latest",
+    outputs: {
+      agent: matchStep.outputs.agent,
+      number: matchStep.outputs.number,
+      type: matchStep.outputs.type,
+      notify: notifyStep.outputs.notify,
+    },
   },
-}).addSteps([checkoutStep, setupBunStep, contextStep, notifyStep, matchStep]);
-
-const routeOutputs = new TypedJobOutputs(routeJob, ["agent", "number", "type", "notify"] as const);
+  [checkoutStep, setupBunStep, contextStep, notifyStep, matchStep],
+);
 
 // NOTE: preserved verbatim from the original hand-written YAML -- unlike the
 // other routing workflows, this job intentionally has no `secrets: inherit`.
 const runJob = atomaRunnerWorkflow.call("run", {
   needs: [routeJob],
-  if: `${routeOutputs.rawOutputs.agent} != ''`,
+  if: `${routeJob.rawOutputs.agent} != ''`,
   with: {
-    agent: routeOutputs.outputs.agent,
-    number: routeOutputs.outputs.number,
-    type: routeOutputs.outputs.type,
-    notify: routeOutputs.outputs.notify,
+    agent: routeJob.outputs.agent,
+    number: routeJob.outputs.number,
+    type: routeJob.outputs.type,
+    notify: routeJob.outputs.notify,
   },
 });
 
@@ -90,10 +97,5 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
   on: {
     pull_request_review: { types: ["submitted"] },
   },
-  permissions: {
-    actions: "write",
-    issues: "write",
-    "pull-requests": "write",
-    contents: "write",
-  },
+  permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs([routeJob, runJob]);
