@@ -35,6 +35,16 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Empirically confirmed (2026-07-22): the default GITHUB_TOKEN's
+          # push is rejected once it touches .github/workflows/**, with
+          # "refusing to allow a GitHub App to create or update workflow
+          # ... without `workflows` permission" -- a hard GitHub restriction
+          # with no `permissions:` YAML equivalent to grant it. This job
+          # needs to push there (see "Deploy dist/.github into .github"
+          # below), so it checks out with a PAT that has the `repo` +
+          # `workflow` scopes, stored as the WORKFLOW_PAT secret.
+          token: ${{ secrets.WORKFLOW_PAT }}
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

@@ -16,7 +16,7 @@ const resolveStep = new TypedOutputsStep(
       NUMBER: "${{ github.event.issue.number }}",
       SENDER: "${{ github.event.sender.login }}",
     },
-    run: "# sync-dist push verification (harmless no-op)\nbun run .github/atoma/tools/scripts/resolve_entry_agent.ts\n",
+    run: "bun run .github/atoma/tools/scripts/resolve_entry_agent.ts\n",
   },
   ["agent", "number", "type", "notify"] as const,
 );
