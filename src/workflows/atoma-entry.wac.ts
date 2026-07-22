@@ -1,6 +1,13 @@
-import { Workflow, NormalJob, ReusableWorkflowCallJob, Step } from "@github-actions-workflow-ts/lib";
-import { TypedOutputsStep } from "./actions/base.ts";
+import { Workflow, NormalJob, Step } from "@github-actions-workflow-ts/lib";
+import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
+// Path-validation-only import: resolve_entry_agent.ts exports no Args/Env
+// type (it reads NUMBER/SENDER from env and writes $GITHUB_OUTPUT directly),
+// so this exists solely to make a renamed/deleted script fail
+// `bun run typecheck` at the `scriptCommand()` call site below.
+import type * as ResolveEntryAgent from "../scripts/resolve_entry_agent.ts";
 
 // Required by the "Resolve agent and context" step below, which runs
 // resolve_entry_agent.ts via `bun run` -- not preinstalled on GitHub-hosted
@@ -16,7 +23,7 @@ const resolveStep = new TypedOutputsStep(
       NUMBER: "${{ github.event.issue.number }}",
       SENDER: "${{ github.event.sender.login }}",
     },
-    run: "bun run .github/atoma/tools/scripts/resolve_entry_agent.ts\n",
+    run: `${scriptCommand("../scripts/resolve_entry_agent.ts")}\n`,
   },
   ["agent", "number", "type", "notify"] as const,
 );
@@ -43,17 +50,19 @@ const routeJob = new NormalJob("route", {
   },
 }).addSteps([setupBunStep, resolveStep, addReactionStep]);
 
-const runJob = new ReusableWorkflowCallJob("run", {
-  if: `needs.${routeJob.name}.outputs.agent != ''`,
-  uses: "./.github/workflows/atoma-runner.yml",
+const routeOutputs = new TypedJobOutputs(routeJob, ["agent", "number", "type", "notify"] as const);
+
+const runJob = atomaRunnerWorkflow.call("run", {
+  needs: [routeJob],
+  if: `${routeOutputs.rawOutputs.agent} != ''`,
   with: {
-    agent: `\${{ needs.${routeJob.name}.outputs.agent }}`,
-    number: `\${{ needs.${routeJob.name}.outputs.number }}`,
-    type: `\${{ needs.${routeJob.name}.outputs.type }}`,
-    notify: `\${{ needs.${routeJob.name}.outputs.notify }}`,
+    agent: routeOutputs.outputs.agent,
+    number: routeOutputs.outputs.number,
+    type: routeOutputs.outputs.type,
+    notify: routeOutputs.outputs.notify,
   },
   secrets: "inherit",
-}).needs([routeJob]);
+});
 
 export const atomaEntry = new Workflow("atoma-entry", {
   name: "Atoma Entry",

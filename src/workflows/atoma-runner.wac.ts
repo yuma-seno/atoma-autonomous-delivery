@@ -9,12 +9,20 @@ import {
   SetupRuntimeAction,
 } from "./actions/atoma.ts";
 import { TypedOutputsStep } from "./actions/base.ts";
+import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
+import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { toArgv } from "../scripts/lib/cli.ts";
 import type { ResolveNotifyArgs } from "../scripts/resolve_notify.ts";
 import { buildArgv as configValueArgv } from "../scripts/get_config_value.ts";
 import type { ManageInProgressLabelArgs } from "../scripts/manage_in_progress_label.ts";
 import type { NotifyMaxIterationsArgs } from "../scripts/notify_max_iterations.ts";
+// `import type * as` (rather than a named type) is used below for scripts
+// that take no CLI args/env inputs -- these imports exist purely so a
+// renamed/deleted script fails `bun run typecheck` at the `scriptCommand()`
+// call site, same as the named-type imports above do for scripts with args.
+import type * as RunEnvironmentSetup from "../scripts/run_environment_setup.ts";
+import type * as InjectUncommittedNotice from "../scripts/inject_uncommitted_notice.ts";
 
 const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
@@ -69,7 +77,7 @@ const installMcpDepsStep = new TypedOutputsStep({
 const environmentSetupStep = new TypedOutputsStep({
   name: "Run configured environment setup",
   shell: "bash",
-  run: "bun run .github/atoma/tools/scripts/run_environment_setup.ts\n",
+  run: `${scriptCommand("../scripts/run_environment_setup.ts")}\n`,
 });
 
 const gitIdentityStep = new TypedOutputsStep({
@@ -98,7 +106,7 @@ const notifyStep = new TypedOutputsStep(
     },
     run: `EFFECTIVE="$NOTIFY"
 if [ -z "$EFFECTIVE" ]; then
-  EFFECTIVE=$(bun run .github/atoma/tools/scripts/resolve_notify.ts ${toArgv({ repo: "\${GITHUB_REPOSITORY}", number: "\${NUMBER}" } satisfies ResolveNotifyArgs).join(" ")})
+  EFFECTIVE=$(${scriptCommand("../scripts/resolve_notify.ts", toArgv({ repo: "\${GITHUB_REPOSITORY}", number: "\${NUMBER}" } satisfies ResolveNotifyArgs))})
   [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: \${EFFECTIVE}"
 fi
 echo "notify=\${EFFECTIVE}" >> "$GITHUB_OUTPUT"
@@ -124,7 +132,7 @@ const cfgStep = new TypedOutputsStep(
     id: "cfg",
     shell: "bash",
     env: { AGENT_NAME: "${{ inputs.agent }}" },
-    run: `MAX=$(bun run .github/atoma/tools/scripts/get_config_value.ts ${configValueArgv("agents.${AGENT_NAME}.max_iterations", "30").join(" ")})
+    run: `MAX=$(${scriptCommand("../scripts/get_config_value.ts", configValueArgv("agents.${AGENT_NAME}.max_iterations", "30"))})
 echo "max_iterations=\${MAX}" >> "$GITHUB_OUTPUT"
 echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
 `,
@@ -146,7 +154,7 @@ const addInProgressLabelStep = new TypedOutputsStep({
     GH_TOKEN: "${{ github.token }}",
     NUMBER: "${{ inputs.number }}",
   },
-  run: `bun run .github/atoma/tools/scripts/manage_in_progress_label.ts ${toArgv({ action: "add", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs).join(" ")}
+  run: `${scriptCommand("../scripts/manage_in_progress_label.ts", toArgv({ action: "add", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs))}
 `,
 });
 
@@ -182,7 +190,7 @@ const removeInProgressLabelStep = new TypedOutputsStep({
     GH_TOKEN: "${{ github.token }}",
     NUMBER: "${{ inputs.number }}",
   },
-  run: `bun run .github/atoma/tools/scripts/manage_in_progress_label.ts ${toArgv({ action: "remove", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs).join(" ")}
+  run: `${scriptCommand("../scripts/manage_in_progress_label.ts", toArgv({ action: "remove", number: "\${NUMBER}" } satisfies ManageInProgressLabelArgs))}
 `,
 });
 
@@ -236,7 +244,7 @@ const injectUncommittedStep = new TypedOutputsStep({
   name: "Inject uncommitted changes into session",
   if: `${dirtyStep.rawOutputs.has_changes} == 'true'`,
   shell: "bash",
-  run: "bun run .github/atoma/tools/scripts/inject_uncommitted_notice.ts\n",
+  run: `${scriptCommand("../scripts/inject_uncommitted_notice.ts")}\n`,
 });
 
 const notifyMaxIterationsStep = new TypedOutputsStep({
@@ -249,7 +257,7 @@ const notifyMaxIterationsStep = new TypedOutputsStep({
     NOTIFY: notifyStep.outputs.notify,
     AGENT: "${{ inputs.agent }}",
   },
-  run: `bun run .github/atoma/tools/scripts/notify_max_iterations.ts ${toArgv({ number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" } satisfies NotifyMaxIterationsArgs).join(" ")}
+  run: `${scriptCommand("../scripts/notify_max_iterations.ts", toArgv({ number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" } satisfies NotifyMaxIterationsArgs))}
 `,
 });
 
@@ -332,3 +340,22 @@ export const atomaRunner = new Workflow("atoma-runner", {
     },
   } as unknown as GWT.Workflow["on"],
 }).addJob(runJob);
+
+/**
+ * The `workflow_call.inputs` contract above, mirrored as a TS type. This is
+ * the single source of truth every caller (`atoma-entry.wac.ts`,
+ * `atoma-auto-trigger.wac.ts`, `atoma-manual-comment.wac.ts`,
+ * `atoma-pr-review.wac.ts`) is checked against -- required vs. optional here
+ * matches `required`/`default` above, so a caller forgetting `agent` (or
+ * typo-ing it) is a compile error, not a silent no-op input.
+ */
+export interface AtomaRunnerInputs {
+  agent: string;
+  number: string;
+  type: string;
+  notify?: string;
+  atoma_version?: string;
+}
+
+/** Type-safe `workflow_call` invocation of this workflow from other `*.wac.ts` files. */
+export const atomaRunnerWorkflow = defineCallableWorkflow<AtomaRunnerInputs>(atomaRunner);

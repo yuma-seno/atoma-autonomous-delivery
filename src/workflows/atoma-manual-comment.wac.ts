@@ -1,6 +1,7 @@
-import { Workflow, NormalJob, ReusableWorkflowCallJob } from "@github-actions-workflow-ts/lib";
+import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
 import { ParseCommentCommandAction } from "./actions/atoma.ts";
-import { TypedOutputsStep } from "./actions/base.ts";
+import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
 
 // Invoke agents via /agent-name slash command in issue/PR comments.
 // Restricted to OWNER/MEMBER/COLLABORATOR.
@@ -49,17 +50,19 @@ const parseJob = new NormalJob("parse", {
   },
 }).addSteps([parseCommandStep, targetStep]);
 
-const runJob = new ReusableWorkflowCallJob("run", {
-  if: `needs.${parseJob.name}.outputs.agent != ''`,
-  uses: "./.github/workflows/atoma-runner.yml",
+const parseOutputs = new TypedJobOutputs(parseJob, ["agent", "number", "type", "notify"] as const);
+
+const runJob = atomaRunnerWorkflow.call("run", {
+  needs: [parseJob],
+  if: `${parseOutputs.rawOutputs.agent} != ''`,
   with: {
-    agent: `\${{ needs.${parseJob.name}.outputs.agent }}`,
-    number: `\${{ needs.${parseJob.name}.outputs.number }}`,
-    type: `\${{ needs.${parseJob.name}.outputs.type }}`,
-    notify: `\${{ needs.${parseJob.name}.outputs.notify }}`,
+    agent: parseOutputs.outputs.agent,
+    number: parseOutputs.outputs.number,
+    type: parseOutputs.outputs.type,
+    notify: parseOutputs.outputs.notify,
   },
   secrets: "inherit",
-}).needs([parseJob]);
+});
 
 export const atomaManualComment = new Workflow("atoma-manual-comment", {
   name: "Atoma Manual Comment",

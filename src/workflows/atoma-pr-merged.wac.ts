@@ -1,10 +1,16 @@
 import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { TypedOutputsStep } from "./actions/base.ts";
+import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { toArgv } from "../scripts/lib/cli.ts";
 import type { ResolveOrchestratorParentArgs } from "../scripts/resolve_orchestrator_parent.ts";
 import type { AggregateSubIssuesArgs } from "../scripts/aggregate_sub_issues.ts";
+// Path-validation-only import: parse_pr_metadata.ts exports no Args/Env type
+// (it reads PR_BODY/PR_NUMBER from env and writes $GITHUB_OUTPUT directly),
+// so this exists solely to make a renamed/deleted script fail
+// `bun run typecheck` at the `scriptCommand()` call site below.
+import type * as ParsePrMetadata from "../scripts/parse_pr_metadata.ts";
 
 // Detect PR merges and aggregate sub-issue results.
 // Uses pull_request_target so GITHUB_TOKEN-created PR merges are detected.
@@ -25,7 +31,7 @@ const parseMetadataStep = new TypedOutputsStep(
       PR_BODY: "${{ github.event.pull_request.body }}",
       PR_NUMBER: "${{ github.event.pull_request.number }}",
     },
-    run: "bun run .github/atoma/tools/scripts/parse_pr_metadata.ts\n",
+    run: `${scriptCommand("../scripts/parse_pr_metadata.ts")}\n`,
   },
   ["parent_number", "sub_number"] as const,
 );
@@ -49,9 +55,7 @@ const resolveStep = new TypedOutputsStep(
       REPO: "${{ github.repository }}",
       SUB: `\${{ needs.${parseJob.name}.outputs.sub_issue }}`,
     },
-    run: `PARENT=$(bun run .github/atoma/tools/scripts/resolve_orchestrator_parent.ts ${toArgv(
-      { repo: "\${REPO}", sub: "\${SUB}" } satisfies ResolveOrchestratorParentArgs,
-    ).join(" ")})
+    run: `PARENT=$(${scriptCommand("../scripts/resolve_orchestrator_parent.ts", toArgv({ repo: "\${REPO}", sub: "\${SUB}" } satisfies ResolveOrchestratorParentArgs))})
 echo "parent_issue=\${PARENT}" >> "$GITHUB_OUTPUT"
 `,
   },
@@ -100,9 +104,7 @@ const aggregateStep = new TypedOutputsStep({
     PARENT: `\${{ needs.${resolveParentJob.name}.outputs.parent_issue }}`,
     CLOSED_NUM: `\${{ needs.${parseJob.name}.outputs.sub_issue }}`,
   },
-  run: `bun run .github/atoma/tools/scripts/aggregate_sub_issues.ts ${toArgv(
-    { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" } satisfies AggregateSubIssuesArgs,
-  ).join(" ")}
+  run: `${scriptCommand("../scripts/aggregate_sub_issues.ts", toArgv({ repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" } satisfies AggregateSubIssuesArgs))}
 `,
 });
 

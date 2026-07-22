@@ -1,8 +1,15 @@
-import { Workflow, NormalJob, ReusableWorkflowCallJob } from "@github-actions-workflow-ts/lib";
+import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { TypedOutputsStep } from "./actions/base.ts";
+import { TypedJobOutputs, TypedOutputsStep } from "./actions/base.ts";
+import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
 import type { MatchTriggerEnv } from "../scripts/match_trigger.ts";
+// Path-validation-only import: extract_notify_tag.ts exports no Args/Env
+// type (its only input is the PR_BODY env var), so this exists solely to
+// make a renamed/deleted script fail `bun run typecheck` at the
+// `scriptCommand()` call site below.
+import type * as ExtractNotifyTag from "../scripts/extract_notify_tag.ts";
 
 // Generic workflow triggered by GitHub events.
 // Uses pull_request_target (NOT pull_request) because GITHUB_TOKEN-created PRs
@@ -40,7 +47,7 @@ const notifyStep = new TypedOutputsStep(
     id: "notify",
     shell: "bash",
     env: { PR_BODY: "${{ github.event.pull_request.body }}" },
-    run: "bun run .github/atoma/tools/scripts/extract_notify_tag.ts\n",
+    run: `${scriptCommand("../scripts/extract_notify_tag.ts")}\n`,
   },
   ["notify"] as const,
 );
@@ -55,7 +62,7 @@ const matchStep = new TypedOutputsStep(
       REVIEW_STATE: "${{ github.event.review.state }}",
       IS_DRAFT: "${{ github.event.pull_request.draft }}",
     } satisfies MatchTriggerEnv,
-    run: `AGENT=$(bun run .github/atoma/tools/scripts/match_trigger.ts 2>/dev/null || true)
+    run: `AGENT=$(${scriptCommand("../scripts/match_trigger.ts")} 2>/dev/null || true)
 if [ -n "\${AGENT}" ]; then
   echo "Matched agent: \${AGENT}"
   echo "agent=\${AGENT}" >> "$GITHUB_OUTPUT"
@@ -77,17 +84,19 @@ const routeJob = new NormalJob("route", {
   },
 }).addSteps([checkoutStep, setupBunStep, contextStep, notifyStep, matchStep]);
 
-const runJob = new ReusableWorkflowCallJob("run", {
-  if: `needs.${routeJob.name}.outputs.agent != ''`,
-  uses: "./.github/workflows/atoma-runner.yml",
+const routeOutputs = new TypedJobOutputs(routeJob, ["agent", "number", "type", "notify"] as const);
+
+const runJob = atomaRunnerWorkflow.call("run", {
+  needs: [routeJob],
+  if: `${routeOutputs.rawOutputs.agent} != ''`,
   with: {
-    agent: `\${{ needs.${routeJob.name}.outputs.agent }}`,
-    number: `\${{ needs.${routeJob.name}.outputs.number }}`,
-    type: `\${{ needs.${routeJob.name}.outputs.type }}`,
-    notify: `\${{ needs.${routeJob.name}.outputs.notify }}`,
+    agent: routeOutputs.outputs.agent,
+    number: routeOutputs.outputs.number,
+    type: routeOutputs.outputs.type,
+    notify: routeOutputs.outputs.notify,
   },
   secrets: "inherit",
-}).needs([routeJob]);
+});
 
 export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
   name: "Atoma Auto Trigger",

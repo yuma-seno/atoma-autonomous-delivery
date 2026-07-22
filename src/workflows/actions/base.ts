@@ -50,6 +50,31 @@ export class TypedOutputsStep<TOutputs extends string = never> extends Step {
 }
 
 /**
+ * Typed `needs.<job>.outputs.<name>` reference helper -- the job-level
+ * counterpart to `TypedOutputsStep`'s `steps.<id>.outputs.<name>`. Wrap a
+ * `NormalJob` once with the same output names it declares in its own
+ * `outputs:` map, and every consumer gets typo-checked, refactor-safe
+ * references (`.outputs.foo` / `.rawOutputs.foo`) instead of hand-building
+ * `` `needs.${job.name}.outputs.foo` `` strings at each use site. Same
+ * `.outputs` (`${{ }}`-wrapped, for `with:`/`env:`/`run:`) vs `.rawOutputs`
+ * (bare, for `if:`) split as `TypedOutputsStep`, for the same reason.
+ */
+export class TypedJobOutputs<TOutputs extends string = never> {
+  readonly outputs: Record<TOutputs, string>;
+  readonly rawOutputs: Record<TOutputs, string>;
+
+  constructor(job: { name: string }, outputNames: readonly TOutputs[]) {
+    this.outputs = {} as Record<TOutputs, string>;
+    this.rawOutputs = {} as Record<TOutputs, string>;
+    for (const name of outputNames) {
+      const ref = `needs.${job.name}.outputs.${name}`;
+      this.outputs[name] = `\${{ ${ref} }}`;
+      this.rawOutputs[name] = ref;
+    }
+  }
+}
+
+/**
  * Typed wrapper for GitHub composite actions that aren't in the public
  * `@github-actions-workflow-ts/actions` registry (i.e. Atoma's own composite
  * actions under `yuma-seno/atoma/github/actions/*`).
