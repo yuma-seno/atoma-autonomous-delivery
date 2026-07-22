@@ -31,13 +31,8 @@ jobs:
         id: context
         shell: bash
         run: |
-          if [ -n "${{ github.event.pull_request.number }}" ]; then
-            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "type=pr" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "type=issue" >> "$GITHUB_OUTPUT"
-          fi
+          echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          echo "type=pr" >> "$GITHUB_OUTPUT"
       - name: Resolve notify login from PR body tag
         id: notify
         shell: bash

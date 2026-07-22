@@ -8,6 +8,9 @@
  * $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 function main(): void {
   const body = process.env.PR_BODY ?? "";

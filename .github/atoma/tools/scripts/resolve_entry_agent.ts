@@ -10,6 +10,9 @@
  * downstream `if: steps.resolve.outputs.agent != ''` naturally stays false.
  */
 import { readFileSync, appendFileSync } from "node:fs";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 interface GithubIssueOpenedEvent {
   issue?: { body?: string };

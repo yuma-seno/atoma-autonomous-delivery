@@ -11,11 +11,14 @@
  */
 import { parseArgs } from "node:util";
 import { gh, ghGraphql } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
 
 export interface ResolveOrchestratorParentArgs {
   repo: string;
   sub: string | number;
 }
+
+export const ref = defineScript<ResolveOrchestratorParentArgs>(import.meta.url);
 
 function main(): void {
   const { values } = parseArgs({

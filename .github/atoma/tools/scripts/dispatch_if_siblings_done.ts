@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gh } from "./lib/gh.ts";
+import { defineScript } from "./lib/script-ref.ts";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +24,8 @@ export interface DispatchIfSiblingsDoneArgs {
   repo: string;
   parent: string | number;
 }
+
+export const ref = defineScript<DispatchIfSiblingsDoneArgs>(import.meta.url);
 
 function main(): void {
   const { values } = parseArgs({

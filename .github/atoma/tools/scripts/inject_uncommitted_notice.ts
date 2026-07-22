@@ -13,6 +13,9 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 interface Session {
   messages: { role: string; content: string }[];

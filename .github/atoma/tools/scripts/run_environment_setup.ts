@@ -9,6 +9,9 @@
  * failing command aborts immediately with its exit code.
  */
 import { loadConfig } from "./lib/config.ts";
+import { defineScript } from "./lib/script-ref.ts";
+
+export const ref = defineScript(import.meta.url);
 
 function main(): void {
   const commands = loadConfig().environment?.setup_commands ?? [];
