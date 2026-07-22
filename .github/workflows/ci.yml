@@ -69,12 +69,16 @@ jobs:
       - name: Commit and push if the generated output changed
         shell: bash
         run: |
-          if git diff --quiet -- dist .github; then
+          git add dist .github
+          # `git diff` (unstaged) silently ignores untracked files, which is
+          # exactly what every file under dist/.github/atoma/** and the
+          # deployed .github/workflows/*.yml was on the very first sync --
+          # check the *staged* diff instead, which correctly includes them.
+          if git diff --cached --quiet; then
             echo "Nothing to sync -- dist/ and .github/ already match src/**."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dist .github
           git commit -m "chore: sync generated dist/ and .github/ [skip ci]"
           git push
