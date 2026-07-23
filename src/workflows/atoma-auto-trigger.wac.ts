@@ -106,22 +106,23 @@ const routeJob = new DefinedJob(
   ],
 );
 
-const runJob = atomaRunnerWorkflow.call("run", {
-  needs: [routeJob],
-  if: `${routeJob.rawOutputs.agent} != ''`,
-  with: {
-    agent: routeJob.outputs.agent,
-    number: routeJob.outputs.number,
-    type: routeJob.outputs.type,
-    notify: routeJob.outputs.notify,
-  },
-  secrets: "inherit",
-});
-
 export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
   name: "Atoma Auto Trigger",
   on: {
     pull_request_target: { types: ["opened", "synchronize", "ready_for_review"] },
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-}).addJobs([routeJob, runJob]);
+}).addJobs([
+  routeJob,
+  atomaRunnerWorkflow.call("run", {
+    needs: [routeJob],
+    if: `${routeJob.rawOutputs.agent} != ''`,
+    with: {
+      agent: routeJob.outputs.agent,
+      number: routeJob.outputs.number,
+      type: routeJob.outputs.type,
+      notify: routeJob.outputs.notify,
+    },
+    secrets: "inherit",
+  }),
+]);

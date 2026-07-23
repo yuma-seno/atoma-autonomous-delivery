@@ -83,23 +83,25 @@ const routeJob = new DefinedJob(
   ],
 );
 
-// NOTE: preserved verbatim from the original hand-written YAML -- unlike the
-// other routing workflows, this job intentionally has no `secrets: inherit`.
-const runJob = atomaRunnerWorkflow.call("run", {
-  needs: [routeJob],
-  if: `${routeJob.rawOutputs.agent} != ''`,
-  with: {
-    agent: routeJob.outputs.agent,
-    number: routeJob.outputs.number,
-    type: routeJob.outputs.type,
-    notify: routeJob.outputs.notify,
-  },
-});
-
 export const atomaPrReview = new Workflow("atoma-pr-review", {
   name: "Atoma PR Review",
   on: {
     pull_request_review: { types: ["submitted"] },
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-}).addJobs([routeJob, runJob]);
+}).addJobs([
+  routeJob,
+  // NOTE: preserved verbatim from the original hand-written YAML -- unlike
+  // the other routing workflows, this job intentionally has no
+  // `secrets: inherit`.
+  atomaRunnerWorkflow.call("run", {
+    needs: [routeJob],
+    if: `${routeJob.rawOutputs.agent} != ''`,
+    with: {
+      agent: routeJob.outputs.agent,
+      number: routeJob.outputs.number,
+      type: routeJob.outputs.type,
+      notify: routeJob.outputs.notify,
+    },
+  }),
+]);

@@ -60,22 +60,23 @@ const parseJob = new DefinedJob(
   [parseCommandStep, targetStep],
 );
 
-const runJob = atomaRunnerWorkflow.call("run", {
-  needs: [parseJob],
-  if: `${parseJob.rawOutputs.agent} != ''`,
-  with: {
-    agent: parseJob.outputs.agent,
-    number: parseJob.outputs.number,
-    type: parseJob.outputs.type,
-    notify: parseJob.outputs.notify,
-  },
-  secrets: "inherit",
-});
-
 export const atomaManualComment = new Workflow("atoma-manual-comment", {
   name: "Atoma Manual Comment",
   on: {
     issue_comment: { types: ["created"] },
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-}).addJobs([parseJob, runJob]);
+}).addJobs([
+  parseJob,
+  atomaRunnerWorkflow.call("run", {
+    needs: [parseJob],
+    if: `${parseJob.rawOutputs.agent} != ''`,
+    with: {
+      agent: parseJob.outputs.agent,
+      number: parseJob.outputs.number,
+      type: parseJob.outputs.type,
+      notify: parseJob.outputs.notify,
+    },
+    secrets: "inherit",
+  }),
+]);

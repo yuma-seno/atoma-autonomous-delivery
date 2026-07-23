@@ -81,67 +81,68 @@ const resolveParentJob = new DefinedJob(
   [parseJob],
 );
 
-const notifyParentJob = new DefinedJob(
-  "notify-parent",
-  {
-    "runs-on": "ubuntu-latest",
-    if: `${resolveParentJob.rawOutputs.parent_issue} != ''`,
-  },
-  [
-    new TypedOutputsStep({
-      name: "Comment on parent issue",
-      shell: "bash",
-      env: {
-        GH_TOKEN: "${{ github.token }}",
-        REPO: "${{ github.repository }}",
-        PARENT: resolveParentJob.outputs.parent_issue,
-        PR_NUMBER: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.number),
-        PR_TITLE: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.title),
-        PR_URL: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.html_url),
-      },
-      run: `gh issue comment "$PARENT" --repo "$REPO" --body \\
-  "PR #\${PR_NUMBER} merged: \${PR_TITLE} (\${PR_URL})"
-`,
-    }),
-  ],
-  [resolveParentJob, parseJob],
-);
-
-const aggregateSubIssuesJob = new DefinedJob(
-  "aggregate-sub-issues",
-  {
-    "runs-on": "ubuntu-latest",
-    if: `${resolveParentJob.rawOutputs.parent_issue} != ''`,
-    env: {
-      GH_TOKEN: "${{ github.token }}",
-    },
-  },
-  [
-    new ActionsCheckoutV4({}),
-    // Required below: aggregate_sub_issues.ts (which in turn shells out to
-    // check_open_siblings.ts / inject_sub_results.ts / resolve_notify.ts) is
-    // run via `bun run` -- not preinstalled on GitHub-hosted runners.
-    new SetupBunAction(),
-    new TypedOutputsStep({
-      name: "Aggregate sub-issue results",
-      shell: "bash",
-      env: {
-        OWNER: "${{ github.repository_owner }}",
-        REPO: githubEvent<PullRequestClosedEvent>((e) => e.repository.name),
-        PARENT: resolveParentJob.outputs.parent_issue,
-        CLOSED_NUM: parseJob.outputs.sub_issue,
-      },
-      run: `${scriptCommandWithArgs(aggregateSubIssuesRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" })}
-`,
-    }),
-  ],
-  [resolveParentJob, parseJob],
-);
-
 export const atomaPrMerged = new Workflow("atoma-pr-merged", {
   name: "Atoma PR Merged",
   on: {
     pull_request_target: { types: ["closed"] },
   },
   permissions: { ...ATOMA_WORKFLOW_PERMISSIONS, "pull-requests": "read" },
-}).addJobs([parseJob, resolveParentJob, notifyParentJob, aggregateSubIssuesJob]);
+}).addJobs([
+  parseJob,
+  resolveParentJob,
+  new DefinedJob(
+    "notify-parent",
+    {
+      "runs-on": "ubuntu-latest",
+      if: `${resolveParentJob.rawOutputs.parent_issue} != ''`,
+    },
+    [
+      new TypedOutputsStep({
+        name: "Comment on parent issue",
+        shell: "bash",
+        env: {
+          GH_TOKEN: "${{ github.token }}",
+          REPO: "${{ github.repository }}",
+          PARENT: resolveParentJob.outputs.parent_issue,
+          PR_NUMBER: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.number),
+          PR_TITLE: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.title),
+          PR_URL: githubEvent<PullRequestClosedEvent>((e) => e.pull_request.html_url),
+        },
+        run: `gh issue comment "$PARENT" --repo "$REPO" --body \\
+  "PR #\${PR_NUMBER} merged: \${PR_TITLE} (\${PR_URL})"
+`,
+      }),
+    ],
+    [resolveParentJob, parseJob],
+  ),
+  new DefinedJob(
+    "aggregate-sub-issues",
+    {
+      "runs-on": "ubuntu-latest",
+      if: `${resolveParentJob.rawOutputs.parent_issue} != ''`,
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+      },
+    },
+    [
+      new ActionsCheckoutV4({}),
+      // Required below: aggregate_sub_issues.ts (which in turn shells out to
+      // check_open_siblings.ts / inject_sub_results.ts / resolve_notify.ts)
+      // is run via `bun run` -- not preinstalled on GitHub-hosted runners.
+      new SetupBunAction(),
+      new TypedOutputsStep({
+        name: "Aggregate sub-issue results",
+        shell: "bash",
+        env: {
+          OWNER: "${{ github.repository_owner }}",
+          REPO: githubEvent<PullRequestClosedEvent>((e) => e.repository.name),
+          PARENT: resolveParentJob.outputs.parent_issue,
+          CLOSED_NUM: parseJob.outputs.sub_issue,
+        },
+        run: `${scriptCommandWithArgs(aggregateSubIssuesRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" })}
+`,
+      }),
+    ],
+    [resolveParentJob, parseJob],
+  ),
+]);
