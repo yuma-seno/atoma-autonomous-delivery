@@ -80,24 +80,31 @@ async function resolveIssueId(number: number): Promise<string> {
   return d.repository.issue.id;
 }
 
+/** Shared `inputSchema` for tools that take a single required `number` (issue/PR number) argument. */
+const NUMBER_ARG_SCHEMA: Tool["inputSchema"] = {
+  type: "object",
+  properties: { number: { type: "integer" } },
+  required: ["number"],
+};
+
 const TOOLS: Tool[] = [
   { name: "create_issue", description: "Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.", inputSchema: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, labels: { type: "array", items: { type: "string" } }, sub_issue: { type: "boolean", description: "Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true." } }, required: ["title"] } },
-  { name: "get_issue", description: "Get an issue by number.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
+  { name: "get_issue", description: "Get an issue by number.", inputSchema: NUMBER_ARG_SCHEMA },
   { name: "list_issues", description: "List issues.", inputSchema: { type: "object", properties: { state: { type: "string", enum: ["open", "closed", "all"] }, labels: { type: "array", items: { type: "string" } }, limit: { type: "integer" } } } },
-  { name: "get_issue_comments", description: "Get issue comments.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
-  { name: "close_issue", description: "Close an issue. Refuses to close issues opened by humans.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
+  { name: "get_issue_comments", description: "Get issue comments.", inputSchema: NUMBER_ARG_SCHEMA },
+  { name: "close_issue", description: "Close an issue. Refuses to close issues opened by humans.", inputSchema: NUMBER_ARG_SCHEMA },
   { name: "create_pr", description: "Create a pull request from the current branch.", inputSchema: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, base: { type: "string" } }, required: ["title"] } },
-  { name: "get_pr", description: "Get a PR by number.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
-  { name: "get_pr_diff", description: "Get PR diff.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
+  { name: "get_pr", description: "Get a PR by number.", inputSchema: NUMBER_ARG_SCHEMA },
+  { name: "get_pr_diff", description: "Get PR diff.", inputSchema: NUMBER_ARG_SCHEMA },
   { name: "list_prs", description: "List PRs.", inputSchema: { type: "object", properties: { state: { type: "string", enum: ["open", "closed", "merged", "all"] }, limit: { type: "integer" } } } },
   { name: "search_code", description: "Search code.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
   { name: "get_branch", description: "Get branch info.", inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
   { name: "get_check_runs", description: "Get check runs for a ref.", inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] } },
-  { name: "get_pr_reviews", description: "Get PR reviews.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
-  { name: "list_pr_review_comments", description: "List PR review comments.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
+  { name: "get_pr_reviews", description: "Get PR reviews.", inputSchema: NUMBER_ARG_SCHEMA },
+  { name: "list_pr_review_comments", description: "List PR review comments.", inputSchema: NUMBER_ARG_SCHEMA },
   { name: "submit_pr_review", description: "Submit a PR review (comment or request changes). Note: APPROVE is not usable — Atoma agents share a single bot identity, and GitHub refuses to let an account approve its own pull request.", inputSchema: { type: "object", properties: { number: { type: "integer" }, event: { type: "string", enum: ["COMMENT", "REQUEST_CHANGES"] }, body: { type: "string" } }, required: ["number", "event"] } },
   { name: "commit_and_push", description: "Stage all changes, commit with a message, and push to the current branch.", inputSchema: { type: "object", properties: { message: { type: "string", description: "Commit message." } }, required: ["message"] } },
-  { name: "merge_pr", description: "Merge a PR if config.json's merge_policy is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.", inputSchema: { type: "object", properties: { number: { type: "integer" } }, required: ["number"] } },
+  { name: "merge_pr", description: "Merge a PR if config.json's merge_policy is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else — call this after posting your LGTM comment and it will decide for you.", inputSchema: NUMBER_ARG_SCHEMA },
 ];
 
 function notifyTagPrefix(): string {
