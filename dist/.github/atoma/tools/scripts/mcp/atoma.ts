@@ -90,22 +90,20 @@ interface ToolTextResult {
   _meta?: { session_ends?: boolean };
 }
 
-function mcpError(code: number, message: string): never {
-  const err = new Error(message) as Error & { code: number };
-  err.code = code;
-  throw err;
+function mcpFail(message: string): never {
+  throw new Error(message);
 }
 
 function handleLaunchSubAgent(args: Record<string, unknown>): ToolTextResult {
   const tasks = args.tasks;
   if (!Array.isArray(tasks) || tasks.length === 0) {
-    mcpError(-32602, `tasks must be a non-empty list of {issue, agent} objects, got: ${JSON.stringify(tasks)}`);
+    mcpFail(`tasks must be a non-empty list of {issue, agent} objects, got: ${JSON.stringify(tasks)}`);
   }
   for (const t of tasks as unknown[]) {
-    if (typeof t !== "object" || t === null) mcpError(-32602, `Each task must be an object, got: ${JSON.stringify(t)}`);
+    if (typeof t !== "object" || t === null) mcpFail(`Each task must be an object, got: ${JSON.stringify(t)}`);
     const { issue, agent } = t as Record<string, unknown>;
-    if (typeof issue !== "number" || issue <= 0) mcpError(-32602, `Each task.issue must be a positive integer, got: ${issue}`);
-    if (typeof agent !== "string" || !agent) mcpError(-32602, `Each task.agent must be a string, got: ${agent}`);
+    if (typeof issue !== "number" || issue <= 0) mcpFail(`Each task.issue must be a positive integer, got: ${issue}`);
+    if (typeof agent !== "string" || !agent) mcpFail(`Each task.agent must be a string, got: ${agent}`);
   }
   const validTasks = tasks as SubAgentTask[];
 
@@ -147,7 +145,7 @@ function handleLaunchSubAgent(args: Record<string, unknown>): ToolTextResult {
   }
 
   if (errors.length && !dispatched.length) {
-    mcpError(-32603, `All dispatches failed: ${errors.join("; ")}`);
+    mcpFail(`All dispatches failed: ${errors.join("; ")}`);
   }
 
   const summaryLines = [`Dispatch comments posted for ${dispatched.length} sub-issue(s): ${dispatched.join(", ")}.`];
@@ -167,10 +165,10 @@ function handleRequestCloseIssue(args: Record<string, unknown>): ToolTextResult 
   const reason = String(args.reason ?? "").trim();
   const summary = String(args.summary ?? "").trim();
 
-  if (!reason) mcpError(-32602, "reason must be a non-empty string");
+  if (!reason) mcpFail("reason must be a non-empty string");
 
   const issueNumber = (process.env.ISSUE_NUMBER ?? "").trim();
-  if (!issueNumber) mcpError(-32603, "ISSUE_NUMBER is not set in the environment");
+  if (!issueNumber) mcpFail("ISSUE_NUMBER is not set in the environment");
 
   const script = join(SCRIPTS_DIR, "request_close_issue.ts");
   const cmd = ["bun", "run", script, "--issue", issueNumber, "--reason", reason];
@@ -182,7 +180,7 @@ function handleRequestCloseIssue(args: Record<string, unknown>): ToolTextResult 
   if (result.exitCode !== 0) {
     const stderr = result.stderr.toString("utf8").trim();
     log(`request_close_issue.ts failed for #${issueNumber} (exit ${result.exitCode}): ${stderr}`);
-    mcpError(-32603, `Failed to conclude issue #${issueNumber}: ${stderr || "unknown error"}`);
+    mcpFail(`Failed to conclude issue #${issueNumber}: ${stderr || "unknown error"}`);
   }
 
   const output = result.stdout.toString("utf8").trim();
@@ -211,12 +209,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     if (name === "launch_sub_agent") return handleLaunchSubAgent(args);
     if (name === "request_close_issue") return handleRequestCloseIssue(args);
-    mcpError(-32601, `Unknown tool: ${name}`);
+    return { content: [{ type: "text", text: `Unknown: ${name}` }], isError: true };
   } catch (e) {
-    const err = e as Error & { code?: number };
-    log(`Handler error for ${name}: ${err.message}`);
-    if (typeof err.code === "number") throw err;
-    throw mcpError(-32603, `Internal error: ${err.message}`);
+    log(`Handler error for ${name}: ${(e as Error).message}`);
+    return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], isError: true };
   }
 });
 
