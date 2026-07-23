@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toArgv } from "./lib/cli.ts";
 import { buildArgv } from "./get_config_value.ts";
+import { makeConfigDir, runWithFakeGh } from "./testing/harness.ts";
 
 const SCRIPTS_DIR = "src/scripts";
 
@@ -181,5 +182,377 @@ describe("resolve_entry_agent.ts", () => {
     const out = await Bun.file(outputFile).text();
     expect(out.trim()).toBe("");
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("check_open_siblings.ts", () => {
+  test("counts open siblings via gh issue list", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_open_siblings.ts"), ["--repo", "owner/repo", "--parent", "5"], {
+        cwd: configDir,
+        rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 10 }, { number: 11 }]) }],
+      });
+      expect(r.stdout.trim()).toBe("2");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  test("prints 0 when no siblings are open", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_open_siblings.ts"), ["--repo", "owner/repo", "--parent", "5"], {
+        cwd: configDir,
+        rules: [{ match: ["issue", "list"], stdout: "[]" }],
+      });
+      expect(r.stdout.trim()).toBe("0");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("manage_in_progress_label.ts", () => {
+  test("adds the in_progress label", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "manage_in_progress_label.ts"), ["--action", "add", "--number", "42"], {
+        cwd: configDir,
+        rules: [{ match: ["label"] }, { match: ["issue", "edit"] }],
+      });
+      expect(r.status).toBe(0);
+      const editCall = r.ghCalls.find((c) => c.includes("edit"));
+      expect(editCall).toContain("--add-label");
+      expect(editCall).toContain("atoma/in-progress");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  test("removes the in_progress label", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "manage_in_progress_label.ts"), ["--action", "remove", "--number", "42"], {
+        cwd: configDir,
+        rules: [{ match: ["issue", "edit"] }],
+      });
+      expect(r.status).toBe(0);
+      const editCall = r.ghCalls.find((c) => c.includes("edit"));
+      expect(editCall).toContain("--remove-label");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("notify_max_iterations.ts", () => {
+  test("mentions the notify login when given", () => {
+    const r = runWithFakeGh(
+      join(process.cwd(), SCRIPTS_DIR, "notify_max_iterations.ts"),
+      ["--number", "7", "--agent", "engineer", "--notify", "octocat"],
+      { rules: [{ match: ["issue", "comment"] }] },
+    );
+    expect(r.status).toBe(0);
+    const commentCall = r.ghCalls.find((c) => c.includes("comment"));
+    expect(commentCall?.join(" ")).toContain("@octocat");
+    expect(commentCall?.join(" ")).toContain("engineer");
+  });
+
+  test("omits the mention when notify is not given", () => {
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "notify_max_iterations.ts"), ["--number", "7", "--agent", "engineer"], {
+      rules: [{ match: ["issue", "comment"] }],
+    });
+    expect(r.status).toBe(0);
+    const commentCall = r.ghCalls.find((c) => c.includes("comment"));
+    expect(commentCall?.join(" ")).not.toContain("@");
+  });
+});
+
+describe("resolve_notify.ts", () => {
+  test("returns the atoma:notify tag when present", () => {
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_notify.ts"), ["--repo", "owner/repo", "--number", "5"], {
+      rules: [{ match: ["issues/5"], stdout: JSON.stringify({ body: "<!-- atoma:notify=octocat -->", login: "some-bot", type: "Bot" }) }],
+    });
+    expect(r.stdout.trim()).toBe("octocat");
+  });
+
+  test("falls back to the human author when no tag is present", () => {
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_notify.ts"), ["--repo", "owner/repo", "--number", "5"], {
+      rules: [{ match: ["issues/5"], stdout: JSON.stringify({ body: "no tag", login: "alice", type: "User" }) }],
+    });
+    expect(r.stdout.trim()).toBe("alice");
+  });
+
+  test("walks the atoma:parent chain when neither a tag nor a human author is available", () => {
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_notify.ts"), ["--repo", "owner/repo", "--number", "5"], {
+      rules: [
+        { match: ["issues/5"], stdout: JSON.stringify({ body: "<!-- atoma:parent=#2 -->", login: "some-bot", type: "Bot" }) },
+        { match: ["issues/2"], stdout: JSON.stringify({ body: "no tag", login: "bob", type: "User" }) },
+      ],
+    });
+    expect(r.stdout.trim()).toBe("bob");
+  });
+});
+
+describe("resolve_orchestrator_parent.ts", () => {
+  test("resolves the parent via the GraphQL sub-issues API", () => {
+    // gh api graphql wraps the real GraphQL response in a top-level "data"
+    // envelope -- lib/gh.ts's ghGraphql() unwraps `.data`, so the fake gh's
+    // canned stdout must match that shape too.
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_orchestrator_parent.ts"), ["--repo", "owner/repo", "--sub", "9"], {
+      rules: [{ match: ["graphql"], stdout: JSON.stringify({ data: { repository: { issue: { parent: { number: 3 } } } } }) }],
+    });
+    expect(r.stdout.trim()).toBe("3");
+  });
+
+  test("falls back to the atoma:parent body comment when GraphQL has no parent", () => {
+    const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_orchestrator_parent.ts"), ["--repo", "owner/repo", "--sub", "9"], {
+      rules: [
+        { match: ["graphql"], stdout: JSON.stringify({ data: { repository: { issue: { parent: null } } } }) },
+        { match: ["issue", "view"], stdout: "<!-- atoma:parent=#4 -->" },
+      ],
+    });
+    expect(r.stdout.trim()).toBe("4");
+  });
+});
+
+describe("check_sub_issue_closure.ts", () => {
+  test("detects a sub-issue and reports closed_via_pr=false when not closed via PR", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const eventFile = join(dir, "event.json");
+      const outputFile = join(dir, "out");
+      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=#3 -->\nsome body" } }));
+      writeFileSync(outputFile, "");
+      runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_sub_issue_closure.ts"), [], {
+        env: { GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, CLOSED_NUM: "9", OWNER: "owner", REPO: "repo" },
+        // gh api graphql wraps its response in a top-level "data" envelope --
+        // ghGraphql() unwraps `.data`, so the fake gh's canned stdout must too.
+        rules: [
+          {
+            match: ["graphql"],
+            stdout: JSON.stringify({ data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [] } } } } }),
+          },
+        ],
+      });
+      const out = parseGithubOutput(readFileSync(outputFile, "utf8"));
+      expect(out.is_sub_issue).toBe("true");
+      expect(out.parent_number).toBe("3");
+      expect(out.closed_via_pr).toBe("false");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports closed_via_pr=true when the sub-issue was already closed by a merged PR", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const eventFile = join(dir, "event.json");
+      const outputFile = join(dir, "out");
+      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=#3 -->\nsome body" } }));
+      writeFileSync(outputFile, "");
+      runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_sub_issue_closure.ts"), [], {
+        env: { GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, CLOSED_NUM: "9", OWNER: "owner", REPO: "repo" },
+        rules: [
+          {
+            match: ["graphql"],
+            stdout: JSON.stringify({
+              data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [{ number: 12 }] } } } },
+            }),
+          },
+        ],
+      });
+      const out = parseGithubOutput(readFileSync(outputFile, "utf8"));
+      expect(out.closed_via_pr).toBe("true");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports is_sub_issue=false when there is no atoma:parent tag", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const eventFile = join(dir, "event.json");
+      const outputFile = join(dir, "out");
+      writeFileSync(eventFile, JSON.stringify({ issue: { body: "just a regular issue" } }));
+      writeFileSync(outputFile, "");
+      runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_sub_issue_closure.ts"), [], {
+        env: { GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, CLOSED_NUM: "9", OWNER: "owner", REPO: "repo" },
+      });
+      const out = parseGithubOutput(readFileSync(outputFile, "utf8"));
+      expect(out.is_sub_issue).toBe("false");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("inject_sub_results.ts", () => {
+  test("replaces the last tool message with an aggregated summary", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const sessionFile = join(dir, "session.json");
+      const outFile = join(dir, "out.json");
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          messages: [
+            { role: "user", content: "go" },
+            { role: "tool", content: "launched" },
+          ],
+        }),
+      );
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "inject_sub_results.ts"),
+        ["--session", sessionFile, "--repo", "owner/repo", "--parent", "1", "--sub-issues", "2,3", "--out", outFile],
+        {
+          rules: [
+            { match: ["issue", "view", "2"], stdout: JSON.stringify({ title: "Fix A", state: "CLOSED" }) },
+            { match: ["issue", "view", "3"], stdout: JSON.stringify({ title: "Fix B", state: "CLOSED" }) },
+            { match: ["pr", "list", "merged"], stdout: JSON.stringify([{ number: 10, title: "Fix A", url: "http://x/10" }]) },
+            { match: ["pr", "list", "open"], stdout: "[]" },
+          ],
+        },
+      );
+      expect(r.status).toBe(0);
+      const session = JSON.parse(readFileSync(outFile, "utf8")) as { messages: { role: string; content: string }[] };
+      const toolMsg = session.messages.find((m) => m.role === "tool");
+      expect(toolMsg?.content).toContain("Fix A");
+      expect(toolMsg?.content).toContain("Fix B");
+      expect(toolMsg?.content).toContain("PR #10");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("run_environment_setup.ts", () => {
+  test("runs configured setup commands in order", () => {
+    const dir = makeConfigDir({ environment: { setup_commands: ["echo one", "echo two"] } });
+    try {
+      const r = spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, "run_environment_setup.ts")], { encoding: "utf8", cwd: dir });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("one");
+      expect(r.stdout).toContain("two");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("aborts with the failing command's exit code", () => {
+    const dir = makeConfigDir({ environment: { setup_commands: ["exit 3"] } });
+    try {
+      const r = spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, "run_environment_setup.ts")], { encoding: "utf8", cwd: dir });
+      expect(r.status).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no-ops quietly when no setup_commands are configured", () => {
+    const dir = makeConfigDir({});
+    try {
+      const r = spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, "run_environment_setup.ts")], { encoding: "utf8", cwd: dir });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("skipping");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("inject_uncommitted_notice.ts", () => {
+  test("appends a commit-and-push notice to the given session file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const sessionFile = join(dir, "session.json");
+      writeFileSync(sessionFile, JSON.stringify({ messages: [{ role: "user", content: "hi" }] }));
+      const r = spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, "inject_uncommitted_notice.ts"), sessionFile], {
+        encoding: "utf8",
+      });
+      expect(r.status).toBe(0);
+      const session = JSON.parse(readFileSync(sessionFile, "utf8")) as { messages: { role: string; content: string }[] };
+      expect(session.messages.at(-1)?.content).toContain("github__commit_and_push");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no-ops quietly when no session.json can be found", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const r = spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, "inject_uncommitted_notice.ts")], { encoding: "utf8", cwd: dir });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("nothing to do");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("dispatch_if_siblings_done.ts", () => {
+  test("dispatches the orchestrator once all siblings are done", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "dispatch_if_siblings_done.ts"),
+        ["--repo", "owner/repo", "--parent", "5"],
+        {
+          cwd: configDir,
+          rules: [{ match: ["issue", "list"], stdout: "[]" }, { match: ["issue", "comment"] }, { match: ["workflow", "run"] }],
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("comment"))).toBe(true);
+      expect(r.ghCalls.some((c) => c[0] === "workflow" && c[1] === "run")).toBe(true);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does nothing when siblings are still open", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "dispatch_if_siblings_done.ts"),
+        ["--repo", "owner/repo", "--parent", "5"],
+        { cwd: configDir, rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 1 }]) }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("comment"))).toBe(false);
+      expect(r.ghCalls.some((c) => c[0] === "workflow")).toBe(false);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("aggregate_sub_issues.ts", () => {
+  test("posts a progress comment and returns early when siblings remain open", () => {
+    // Needs BOTH a real git repo (the gitRun("config", ...) calls at the top
+    // of main() need one) AND a .github/atoma/config.json (the nested
+    // check_open_siblings.ts call inherits this same cwd and reads config.json
+    // via getLabel()) in the SAME directory.
+    const dir = makeConfigDir({});
+    spawnSync("git", ["init"], { cwd: dir });
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "aggregate_sub_issues.ts"),
+        ["--repo", "owner/repo", "--parent", "5", "--closed-num", "9"],
+        { cwd: dir, rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 1 }]) }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("Not all sub-tasks done yet");
+      const commentCall = r.ghCalls.find((c) => c.includes("comment"));
+      expect(commentCall?.join(" ")).toContain("atoma:sub-result:#9");
+      // The full aggregation path (siblingCount === 0) additionally performs
+      // real `git` operations against an `atoma-data` branch/remote
+      // (checkout --orphan, commit, push-with-retry-on-race) -- deliberately
+      // not covered here; it would need a full git remote fixture for
+      // comparatively low additional confidence over this early-return path.
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,0 +1,44 @@
+#!/usr/bin/env bun
+/**
+ * fake `gh` CLI for src/scripts/*.test.ts, driven entirely by env vars so
+ * one fixture works for every script under test. Its directory is prepended
+ * to PATH (as literally "gh") by testing/harness.ts's `runWithFakeGh`.
+ *
+ *   FAKE_GH_RESPONSES = JSON array of { match: string[]; stdout?: string; code?: number }.
+ *     A rule matches a real invocation when EVERY string in `match` is a
+ *     substring of at least one argv element (order-independent, and works
+ *     for combined tokens like "repos/owner/repo/issues/5"). The first
+ *     matching rule (in array order) wins -- list more specific rules
+ *     first when multiple calls could otherwise collide.
+ *   FAKE_GH_LOG = path this appends one JSON line (the full argv array) to
+ *     per invocation, so tests can assert on exact commands issued (e.g.
+ *     the body of a posted comment), not just the script's own stdout.
+ */
+const args = process.argv.slice(2);
+
+const logPath = process.env.FAKE_GH_LOG;
+if (logPath) {
+  const { appendFileSync } = await import("node:fs");
+  appendFileSync(logPath, JSON.stringify(args) + "\n");
+}
+
+interface Rule {
+  match: string[];
+  stdout?: string;
+  code?: number;
+}
+
+const rules: Rule[] = process.env.FAKE_GH_RESPONSES ? JSON.parse(process.env.FAKE_GH_RESPONSES) : [];
+
+function matches(rule: Rule): boolean {
+  return rule.match.every((needle) => args.some((a) => a.includes(needle)));
+}
+
+const found = rules.find(matches);
+if (found) {
+  console.log(found.stdout ?? "");
+  process.exit(found.code ?? 0);
+}
+
+console.error(`fake gh: no matching rule for: gh ${args.join(" ")}`);
+process.exit(1);
