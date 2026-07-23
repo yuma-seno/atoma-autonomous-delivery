@@ -1,10 +1,10 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
 import { ParseCommentCommandAction } from "./actions/atoma.ts";
-import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { chainJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
-import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
+import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
 
 // Invoke agents via /agent-name slash command in issue/PR comments.
 // Restricted to OWNER/MEMBER/COLLABORATOR.
@@ -39,44 +39,32 @@ echo "notify=\${NOTIFY}" >> "$GITHUB_OUTPUT"
   ["number", "type", "notify"] as const,
 );
 
-const parseJob = new DefinedJob(
-  "parse",
-  {
-    "runs-on": "ubuntu-latest",
-    if:
-      `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
-      ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
-      `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
-      ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
-      `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
-      `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`,
-    outputs: {
-      agent: parseCommandStep.outputs.agent,
-      number: targetStep.outputs.number,
-      type: targetStep.outputs.type,
-      notify: targetStep.outputs.notify,
-    },
-  },
-  [parseCommandStep, targetStep],
-);
-
 export const atomaManualComment = new Workflow("atoma-manual-comment", {
   name: "Atoma Manual Comment",
   on: {
     issue_comment: { types: ["created"] },
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-}).addJobs([
-  parseJob,
-  atomaRunnerWorkflow.call("run", {
-    needs: [parseJob],
-    if: `${parseJob.rawOutputs.agent} != ''`,
-    with: {
-      agent: parseJob.outputs.agent,
-      number: parseJob.outputs.number,
-      type: parseJob.outputs.type,
-      notify: parseJob.outputs.notify,
+}).addJobs(
+  chainJob(
+    "parse",
+    {
+      "runs-on": "ubuntu-latest",
+      if:
+        `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
+        ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
+        `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
+        ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
+        `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
+        `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`,
+      outputs: {
+        agent: parseCommandStep.outputs.agent,
+        number: targetStep.outputs.number,
+        type: targetStep.outputs.type,
+        notify: targetStep.outputs.notify,
+      },
     },
-    secrets: "inherit",
-  }),
-]);
+    [parseCommandStep, targetStep],
+    (parseJob) => dispatchToAtomaRunner(parseJob, "inherit"),
+  ),
+);

@@ -1,12 +1,12 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestOpenedEvent, PullRequestReadyForReviewEvent, PullRequestSynchronizeEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { chainJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
-import { atomaRunnerWorkflow } from "./atoma-runner.wac.ts";
+import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
 import { ref as extractNotifyTagRef } from "../scripts/extract_notify_tag.ts";
 import { ref as matchTriggerRef, type MatchTriggerEnv } from "../scripts/match_trigger.ts";
 
@@ -83,46 +83,34 @@ fi
   ["agent", "number", "type"] as const,
 );
 
-const routeJob = new DefinedJob(
-  "route",
-  {
-    "runs-on": "ubuntu-latest",
-    outputs: {
-      agent: matchStep.outputs.agent,
-      number: matchStep.outputs.number,
-      type: matchStep.outputs.type,
-      notify: notifyStep.outputs.notify,
-    },
-  },
-  [
-    new ActionsCheckoutV4({}),
-    // Required by the "Match event to agent" step below, which runs
-    // match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted
-    // runners.
-    new SetupBunAction(),
-    contextStep,
-    notifyStep,
-    matchStep,
-  ],
-);
-
 export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
   name: "Atoma Auto Trigger",
   on: {
     pull_request_target: { types: ["opened", "synchronize", "ready_for_review"] },
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-}).addJobs([
-  routeJob,
-  atomaRunnerWorkflow.call("run", {
-    needs: [routeJob],
-    if: `${routeJob.rawOutputs.agent} != ''`,
-    with: {
-      agent: routeJob.outputs.agent,
-      number: routeJob.outputs.number,
-      type: routeJob.outputs.type,
-      notify: routeJob.outputs.notify,
+}).addJobs(
+  chainJob(
+    "route",
+    {
+      "runs-on": "ubuntu-latest",
+      outputs: {
+        agent: matchStep.outputs.agent,
+        number: matchStep.outputs.number,
+        type: matchStep.outputs.type,
+        notify: notifyStep.outputs.notify,
+      },
     },
-    secrets: "inherit",
-  }),
-]);
+    [
+      new ActionsCheckoutV4({}),
+      // Required by the "Match event to agent" step below, which runs
+      // match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted
+      // runners.
+      new SetupBunAction(),
+      contextStep,
+      notifyStep,
+      matchStep,
+    ],
+    (routeJob) => dispatchToAtomaRunner(routeJob, "inherit"),
+  ),
+);

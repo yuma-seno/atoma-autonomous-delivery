@@ -8,7 +8,7 @@ import {
   RunAgentAction,
   SetupRuntimeAction,
 } from "./actions/atoma.ts";
-import { TypedOutputsStep } from "./actions/base.ts";
+import { TypedOutputsStep, type DefinedJob } from "./actions/base.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
@@ -354,3 +354,33 @@ export interface AtomaRunnerInputs {
 
 /** Type-safe `workflow_call` invocation of this workflow from other `*.wac.ts` files. */
 export const atomaRunnerWorkflow = defineCallableWorkflow<AtomaRunnerInputs>(atomaRunner);
+
+/**
+ * Every caller of this workflow (`atoma-entry`, `atoma-auto-trigger`,
+ * `atoma-manual-comment`, `atoma-pr-review`) follows the exact same shape:
+ * a "route" job resolves `agent`/`number`/`type`/`notify` as its own job
+ * outputs, then hands off to `atoma-runner` gated on `agent` being non-empty.
+ * That `needs:`/`if:`/`with:` wiring was near-identically hand-copied 4
+ * times -- this collapses it to one call. The route job itself still needs
+ * a name at the call site (GitHub Actions' own job graph requires a stable
+ * reference to appear in both the `jobs:` map and any `needs:`/output read
+ * -- no TS wrapper can make that indirection disappear, it isn't a styling
+ * choice), but everything *after* that reference is now one line instead of
+ * eight.
+ */
+export function dispatchToAtomaRunner(
+  routeJob: DefinedJob<Record<"agent" | "number" | "type" | "notify", string>>,
+  secrets?: "inherit" | Record<string, string>,
+): ReturnType<typeof atomaRunnerWorkflow.call> {
+  return atomaRunnerWorkflow.call("run", {
+    needs: [routeJob],
+    if: `${routeJob.rawOutputs.agent} != ''`,
+    with: {
+      agent: routeJob.outputs.agent,
+      number: routeJob.outputs.number,
+      type: routeJob.outputs.type,
+      notify: routeJob.outputs.notify,
+    },
+    secrets,
+  });
+}

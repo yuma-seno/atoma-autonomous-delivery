@@ -102,6 +102,50 @@ export class DefinedJob<TOutputsMap extends Record<string, string> = Record<neve
 }
 
 /**
+ * Express a "producer job -> consumer(s)" dependency as an actual chain of
+ * calls, instead of a named `const producerJob = ...` the caller has to
+ * declare, pass to `needs:`/read `.outputs` from, AND separately remember to
+ * list in `addJobs([...])`.
+ *
+ * `chainJob(name, props, steps, next)` builds the producer job, immediately
+ * hands it to `next(job)` (which builds whatever depends on it -- one job,
+ * or an array for a terminal fan-out), and returns `[producerJob,
+ * ...next's result]` -- ready to spread straight into `.addJobs([...])`, no
+ * intermediate variable required at the call site:
+ *
+ *   .addJobs(
+ *     chainJob("parse", { ...outputs: {...} }, [step1, step2], (parseJob) =>
+ *       dispatchToAtomaRunner(parseJob, "inherit"),
+ *     ),
+ *   )
+ *
+ * `job` still exists as a real value (GitHub Actions' own job graph requires
+ * a stable reference to appear in both the `jobs:` map and any `needs:`/
+ * output read -- no wrapper can remove that indirection, it's inherent to
+ * the model, not a styling choice) -- it just lives only inside `next`'s
+ * parameter scope instead of a caller-visible top-level `const`.
+ *
+ * Only fits a genuinely LINEAR producer -> consumer(s) relationship where
+ * every consumer's dependency is exactly `job` (nothing needs to reach back
+ * further than the immediately preceding job). A real multi-hop DAG (e.g.
+ * atoma-pr-merged.wac.ts, where two downstream jobs each need both their
+ * immediate predecessor AND its predecessor) still needs actual named
+ * handles -- that's an honest reflection of a real graph, not something a
+ * chain-of-calls can flatten away.
+ */
+export function chainJob<TOutputsMap extends Record<string, string>, TNext>(
+  name: string,
+  jobProps: Omit<GWT.NormalJob, "outputs"> & { outputs?: TOutputsMap },
+  steps: Step[],
+  next: (job: DefinedJob<TOutputsMap>) => TNext,
+): [DefinedJob<TOutputsMap>, ...(TNext extends unknown[] ? TNext : [TNext])] {
+  const job = new DefinedJob(name, jobProps, steps);
+  const nextResult = next(job);
+  const nextArray = (Array.isArray(nextResult) ? nextResult : [nextResult]) as TNext extends unknown[] ? TNext : [TNext];
+  return [job, ...nextArray];
+}
+
+/**
  * Typed wrapper for GitHub composite actions that aren't in the public
  * `@github-actions-workflow-ts/actions` registry (i.e. Atoma's own composite
  * actions under `yuma-seno/atoma/github/actions/*`).
