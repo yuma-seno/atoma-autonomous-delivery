@@ -1,33 +1,43 @@
 #!/usr/bin/env bun
 /**
  * fake `gh` CLI — a minimal stand-in used only by the E2E test harness
- * (tests/e2e/). This directory is prepended to PATH for the MCP server
- * subprocess under test, so THIS file (not the real `gh`) is what
- * lib/gh.ts's `Bun.spawnSync(["gh", ...])` calls resolve to. It understands
- * just enough invocations to satisfy mcp/github.ts's real business logic
- * without ever touching the real GitHub API. Extend as new E2E scenarios
- * need more `gh` subcommands.
+ * (tests/e2e/). This directory is prepended to PATH for the atoma binary
+ * itself (see run-agent.e2e.test.ts), so every spawned MCP server AND every
+ * script THEY spawn in turn (they all inherit env down the chain) resolves
+ * `gh` to this file instead of the real CLI.
+ *
+ * Configurable via env vars (same design as src/scripts/testing/bin/gh):
+ *   FAKE_GH_RESPONSES = JSON array of { match: string[]; stdout?: string; code?: number }.
+ *     A rule matches when EVERY string in `match` is a substring of at
+ *     least one argv element. First matching rule (in array order) wins.
+ *   FAKE_GH_LOG = path this appends one JSON line (the full argv array) to
+ *     per invocation, so tests can assert on exact commands issued.
  */
-
 const args = process.argv.slice(2);
 
-if (args[0] === "issue" && args[1] === "view") {
-  const number = Number(args[2]);
-  console.log(
-    JSON.stringify({
-      number,
-      title: `Fake issue #${number}`,
-      body: "This is a fake issue body for E2E testing.",
-      state: "OPEN",
-      labels: [],
-      createdAt: "2026-01-01T00:00:00Z",
-      closedAt: null,
-      comments: [],
-      author: { id: "1", is_bot: false, login: "fake-human", name: "Fake Human" },
-    }),
-  );
-  process.exit(0);
+const logPath = process.env.FAKE_GH_LOG;
+if (logPath) {
+  const { appendFileSync } = await import("node:fs");
+  appendFileSync(logPath, JSON.stringify(args) + "\n");
 }
 
-console.error(`fake gh: unhandled invocation: gh ${args.join(" ")}`);
+interface Rule {
+  match: string[];
+  stdout?: string;
+  code?: number;
+}
+
+const rules: Rule[] = process.env.FAKE_GH_RESPONSES ? JSON.parse(process.env.FAKE_GH_RESPONSES) : [];
+
+function matches(rule: Rule): boolean {
+  return rule.match.every((needle) => args.some((a) => a.includes(needle)));
+}
+
+const found = rules.find(matches);
+if (found) {
+  console.log(found.stdout ?? "");
+  process.exit(found.code ?? 0);
+}
+
+console.error(`fake gh: no matching rule for: gh ${args.join(" ")}`);
 process.exit(1);
