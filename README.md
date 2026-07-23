@@ -112,11 +112,10 @@ The orchestrator will:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `atoma-entry.yml` | Issue opened | Start agent from issue body `/agent-name` slash command |
-| `atoma-manual-comment.yml` | Issue/PR comment | Manually invoke any agent via `/agent-name` in a comment |
+| `atoma-manual-comment.yml` | Issue/PR comment | Manually invoke any agent via `/agent-name`, or dispatch via `<!-- atoma:dispatch=AGENT -->` |
 | `atoma-auto-trigger.yml` | PR/review events | Read `config.json` auto_triggers, dispatch matching agents |
-| `atoma-dispatch.yml` | Comment with `<!-- atoma:dispatch=AGENT -->` | Dispatch agent on the issue the comment belongs to |
 | `atoma-sub-issue-closed.yml` | Issue closed | Detect sub-issue completion; inject results into session and re-invoke orchestrator |
-| `atoma-runner.yml` | (reusable) | Core executor: setup → prepare → run → post-result |
+| `atoma-runner.yml` | (reusable) | Core executor: prepare → run → post-result |
 
 ## Agent Definitions
 
@@ -268,7 +267,7 @@ The actual deliverable lives entirely under `dist/.github/` and is fully generat
 ```
 src/
 ├── workflows/*.wac.ts        # workflow-as-code source (github-actions-workflow-ts)
-│   └── actions/               # typed Action/Step wrappers (Atoma's own composite actions + 3rd-party)
+│   └── actions/               # typed Action/Step wrappers (base.ts's CustomAction for third-party actions like oven-sh/setup-bun, plus workflow-authoring helpers)
 └── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ shared lib/)
 
 dist/.github/                 # THE DELIVERABLE -- copy this into your own repo as .github/

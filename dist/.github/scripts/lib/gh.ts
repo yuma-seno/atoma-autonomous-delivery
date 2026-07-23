@@ -61,3 +61,62 @@ export function ghGraphql<T = unknown>(
 export function gitRun(...args: string[]): RunResult {
   return run(["git", ...args]);
 }
+
+/**
+ * Splits a string of one or more back-to-back, complete top-level JSON
+ * values (objects or arrays, no separator between them) into an array of
+ * parsed values -- what `gh api ... --paginate` (without `--jq`) actually
+ * emits on stdout: each page's whole response body written in sequence, not
+ * a single valid JSON document.
+ */
+function splitConcatenatedJson(text: string): unknown[] {
+  const results: unknown[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === "{" || c === "[") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        results.push(JSON.parse(text.slice(start, i + 1)));
+        start = -1;
+      }
+    }
+  }
+  return results;
+}
+
+/**
+ * Run `gh api <path> --paginate` and flatten the concatenated per-page JSON
+ * arrays into a single array -- the TS equivalent of the common
+ * `gh api ... --paginate | jq -s 'add // []'` bash idiom. Throws on
+ * non-zero exit.
+ */
+export function ghPaginated<T = unknown>(...args: string[]): T[] {
+  const { code, stdout, stderr } = gh(...args, "--paginate");
+  if (code !== 0) {
+    throw new Error(`gh ${args.join(" ")} --paginate: ${stderr || stdout}`);
+  }
+  if (!stdout.trim()) return [];
+  const flat: T[] = [];
+  for (const page of splitConcatenatedJson(stdout)) {
+    if (Array.isArray(page)) flat.push(...(page as T[]));
+  }
+  return flat;
+}

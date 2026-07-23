@@ -1,14 +1,13 @@
 /**
  * base.ts — A minimal, typed wrapper for GitHub composite actions
  * that aren't in the public `@github-actions-workflow-ts/actions` registry
- * (i.e. Atoma's own composite actions under `yuma-seno/atoma/github/actions/*`).
+ * (e.g. third-party actions like `oven-sh/setup-bun`, see `third-party.ts`).
  *
  * Unlike `@github-actions-workflow-ts/actions`'s `BaseAction`, this does NOT
  * attempt marketplace semver-tag validation (that machinery assumes a public
- * `owner/repo@vX` action pinned to a released version; our actions are
- * internal, path-nested (`owner/repo/path/to/action@ref`), and pinned to
- * `@main`, not a semver tag). What it DOES give us, matching the same idea
- * as `BaseAction`:
+ * `owner/repo@vX` action pinned to a released version; some third-party
+ * actions are pinned to a branch like `@main`, not a semver tag). What it
+ * DOES give us, matching the same idea as `BaseAction`:
  *   - A typed `with` object -- the input keys/types are checked at the call
  *     site, so a typo'd or missing required input is a compile error.
  *   - A typed `outputs` object -- each key resolves to the
@@ -178,15 +177,14 @@ export function startJob<TOutputsMap extends Record<string, string> = Record<nev
 
 /**
  * Typed wrapper for GitHub composite actions that aren't in the public
- * `@github-actions-workflow-ts/actions` registry (i.e. Atoma's own composite
- * actions under `yuma-seno/atoma/github/actions/*`).
+ * `@github-actions-workflow-ts/actions` registry (e.g. third-party actions
+ * like `oven-sh/setup-bun`, see `third-party.ts`).
  *
  * Unlike that package's `BaseAction`, this does NOT attempt marketplace
  * semver-tag validation (that machinery assumes a public `owner/repo@vX`
- * action pinned to a released version; our actions are internal,
- * path-nested (`owner/repo/path/to/action@ref`), and pinned to `@main`, not
- * a semver tag). What it DOES give us, matching the same idea as
- * `BaseAction`:
+ * action pinned to a released version; some third-party actions are pinned
+ * to a branch like `@main`, not a semver tag). What it DOES give us,
+ * matching the same idea as `BaseAction`:
  *   - A typed `with` object -- a typo'd or missing required input is a
  *     compile error.
  *   - A typed `outputs` object (via `TypedOutputsStep`) -- referencing a

@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toArgv } from "./lib/cli.ts";
 import { buildArgv } from "./get_config_value.ts";
+import { buildContextSession } from "./build_context_session.ts";
+import { extractDirective } from "./extract_directive.ts";
+import { manageDispatchLoop } from "./manage_dispatch_loop.ts";
+import { parseAgent } from "./parse_comment_command.ts";
+import { buildCommentBody } from "./post_result_comment.ts";
 import { makeConfigDir, runWithFakeGh } from "./testing/harness.ts";
 
 const SCRIPTS_DIR = "src/scripts";
@@ -77,6 +82,288 @@ describe("get_config_value.ts buildArgv", () => {
   });
   test("omits fallback when not given", () => {
     expect(buildArgv("labels.in_progress")).toEqual(['"labels.in_progress"']);
+  });
+});
+
+describe("parse_comment_command.ts", () => {
+  test("parses the agent from the first line", () => {
+    expect(parseAgent("/engineer fix it\nextra")).toBe("engineer");
+  });
+
+  test("parses the agent from a later line", () => {
+    expect(parseAgent("some text\n/engineer fix it")).toBe("engineer");
+  });
+
+  test("parses the first command when multiple are present", () => {
+    expect(parseAgent("/engineer do this\n/orchestrator ignore")).toBe("engineer");
+  });
+
+  test("parses the atoma:dispatch= comment form", () => {
+    expect(parseAgent("<!-- atoma:dispatch=engineer -->")).toBe("engineer");
+  });
+
+  test("ignores a non-command comment", () => {
+    expect(parseAgent("please help")).toBe("");
+  });
+
+  test("ignores an invalid (uppercase) agent name", () => {
+    expect(parseAgent("/Engineer uppercase")).toBe("");
+  });
+});
+
+describe("build_context_session.ts", () => {
+  test("filters out only the current agent's own result comments", () => {
+    const session = {
+      messages: [
+        {
+          role: "assistant",
+          content: "done",
+          atoma_metadata: { github_comment_id: 101, agent: "orchestrator" },
+        },
+      ],
+    };
+    const events = [
+      {
+        id: 101,
+        event_type: "issue_comment",
+        content: "<!-- atoma:agent=orchestrator -->\n/orchestrator handled",
+        author: "github-actions[bot]",
+        created_at: "2026-05-27T10:00:00Z",
+      },
+      {
+        id: 102,
+        event_type: "issue_comment",
+        content: "<!-- atoma:agent=engineer -->\n/engineer please implement",
+        author: "github-actions[bot]",
+        created_at: "2026-05-27T10:01:00Z",
+      },
+      {
+        id: 103,
+        event_type: "issue_comment",
+        content: "<!-- atoma:sub-result:#7 -->\n/orchestrator sub-task #7 completed.",
+        author: "github-actions[bot]",
+        created_at: "2026-05-27T10:02:00Z",
+      },
+    ];
+
+    const { contextSession, changedCount } = buildContextSession(session, events, "orchestrator");
+
+    const keptIds = contextSession.messages.map((m) => m.atoma_metadata.id);
+    expect(keptIds).toEqual([102, 103]);
+    expect(changedCount).toBeGreaterThan(0);
+  });
+
+  test("reuses the snapshot hash to skip unchanged context", () => {
+    const events = [
+      { id: "issue-1", event_type: "issue_opened", content: "Issue #1: test", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+    ];
+
+    const initial = buildContextSession({ messages: [] }, events, "engineer");
+
+    const nextSession = {
+      messages: [],
+      metadata: { github_context: { snapshot_hash: initial.snapshotHash } },
+    };
+    const next = buildContextSession(nextSession, events, "engineer");
+
+    expect(next.changedCount).toBe(0);
+    expect(next.snapshotHash).toBe(initial.snapshotHash);
+    expect(next.eventCount).toBe(1);
+    expect(next.contextSession.metadata.snapshot_hash).toBe(initial.snapshotHash);
+  });
+
+  test("a human comment containing an agent marker is not filtered", () => {
+    const events = [
+      {
+        id: 301,
+        event_type: "issue_comment",
+        content: "<!-- atoma:agent=orchestrator -->\nComment copied by a human",
+        author: "alice",
+        created_at: "2026-05-27T12:00:00Z",
+      },
+    ];
+
+    const { contextSession, eventCount } = buildContextSession({ messages: [] }, events, "orchestrator");
+
+    expect(eventCount).toBe(1);
+    expect(contextSession.messages[0]?.atoma_metadata.id).toBe(301);
+  });
+
+  test("applies the agent's configured shared_context include/exclude policy", () => {
+    const events = [
+      { id: "pr-1", event_type: "pr_opened", content: "PR body", author: "alice", created_at: "2026-05-27T12:00:00Z" },
+      { id: "pr-1-diff", event_type: "pr_diff", content: "diff", author: "github", created_at: "2026-05-27T12:01:00Z" },
+      { id: 401, event_type: "pr_review", content: "needs work", author: "bob", created_at: "2026-05-27T12:02:00Z" },
+    ];
+    const config = {
+      agents: {
+        "test-writer": {
+          shared_context: { include_event_types: ["pr_opened", "pr_review"], exclude_event_types: ["pr_diff"] },
+        },
+      },
+    };
+
+    const { contextSession, eventCount } = buildContextSession({ messages: [] }, events, "test-writer", config);
+
+    const keptTypes = contextSession.messages.map((m) => m.atoma_metadata.event_type);
+    expect(eventCount).toBe(2);
+    expect(keptTypes).toEqual(["pr_opened", "pr_review"]);
+  });
+});
+
+describe("extract_directive.ts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "atoma-defdir-"));
+  writeFileSync(join(dir, "reviewer.md"), "---\nname: reviewer\n---\n");
+  writeFileSync(join(dir, "engineer.md"), "---\nname: engineer\n---\n");
+
+  test("extracts a plain slash-command directive", () => {
+    expect(extractDirective("Done.\n/reviewer please check this.", dir)).toBe("reviewer");
+  });
+
+  test("extracts a markdown-mangled backtick-wrapped directive", () => {
+    expect(extractDirective("All set.\n/`engineer`", dir)).toBe("engineer");
+  });
+
+  test("ignores a directive that names a non-existent agent", () => {
+    expect(extractDirective("/agent reviewer", dir)).toBe("");
+  });
+
+  test("returns empty when there is no directive at all", () => {
+    expect(extractDirective("Just a plain summary.", dir)).toBe("");
+  });
+});
+
+describe("fetch_events.ts", () => {
+  test("fetches issue events (body + comments) sorted by created_at", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const outFile = join(dir, "events.json");
+      const outputFile = join(dir, "out");
+      writeFileSync(outputFile, "");
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "fetch_events.ts"),
+        ["--type", "issue", "--number", "5", "--out", outFile],
+        {
+          env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: outputFile },
+          rules: [
+            {
+              // More specific match listed first: "issues/5/comments" is
+              // also a substring-superset of "issues/5", so it must be
+              // checked before the plain issue-lookup rule below or that
+              // one would win instead.
+              match: ["issues/5/comments"],
+              stdout: JSON.stringify([{ id: 1, body: "on it", user: { login: "bob" }, created_at: "2026-01-02T00:00:00Z" }]),
+            },
+            {
+              match: ["issues/5"],
+              stdout: JSON.stringify({
+                number: 5,
+                title: "Fix the bug",
+                body: "Please fix it.",
+                labels: [{ name: "bug" }],
+                user: { login: "alice" },
+                created_at: "2026-01-01T00:00:00Z",
+              }),
+            },
+          ],
+        },
+      );
+
+      expect(r.status).toBe(0);
+      const events = JSON.parse(readFileSync(outFile, "utf8")) as { event_type: string; content: string }[];
+      expect(events.map((e) => e.event_type)).toEqual(["issue_opened", "issue_comment"]);
+      expect(events[0]?.content).toContain("Fix the bug");
+      expect(events[0]?.content).toContain("**Labels:** bug");
+      expect(events[1]?.content).toBe("on it");
+      const out = parseGithubOutput(readFileSync(outputFile, "utf8"));
+      expect(out.resolved_number).toBe("5");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("post_result_comment.ts buildCommentBody", () => {
+  test("mentions notify when there is no directive and the chain does not continue", () => {
+    const body = buildCommentBody({
+      agent: "orchestrator",
+      notify: "octocat",
+      runUrl: "http://example.com/run/1",
+      output: "All done.",
+      usageLines: [],
+    });
+    expect(body).toContain("<!-- atoma:agent=orchestrator -->");
+    expect(body).toContain("All done.");
+    expect(body).toContain("@octocat");
+    expect(body).toContain("_run by [orchestrator](http://example.com/run/1)_");
+  });
+
+  test("omits the mention when a directive is present", () => {
+    const body = buildCommentBody({
+      agent: "orchestrator",
+      notify: "octocat",
+      directive: "engineer",
+      runUrl: "http://example.com/run/1",
+      output: "Handing off.",
+      usageLines: [],
+    });
+    expect(body).not.toContain("@octocat");
+  });
+
+  test("omits the mention when the chain already continues", () => {
+    const body = buildCommentBody({
+      agent: "orchestrator",
+      notify: "octocat",
+      chainContinues: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Dispatched.",
+      usageLines: [],
+    });
+    expect(body).not.toContain("@octocat");
+  });
+
+  test("appends the max-iterations warning", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      maxIterationsReached: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Still working.",
+      usageLines: [],
+    });
+    expect(body).toContain("Max iterations reached");
+    expect(body).toContain("`/engineer`");
+  });
+});
+
+describe("manage_dispatch_loop.ts", () => {
+  test("resets the counter when new events are present", () => {
+    const { autoDispatchCount, loopLimitReached } = manageDispatchLoop(
+      { metadata: { github_context: { auto_dispatch_count: 4 } } },
+      1,
+      "engineer",
+    );
+    expect(autoDispatchCount).toBe(0);
+    expect(loopLimitReached).toBe(false);
+  });
+
+  test("increments the counter on a no-new-event auto-dispatch", () => {
+    const { session, autoDispatchCount } = manageDispatchLoop(
+      { metadata: { github_context: { auto_dispatch_count: 2 } } },
+      0,
+      "engineer",
+    );
+    expect(autoDispatchCount).toBe(3);
+    expect(session.metadata?.github_context?.auto_dispatch_count).toBe(3);
+  });
+
+  test("does not increment when there is no directive", () => {
+    const { autoDispatchCount } = manageDispatchLoop({ metadata: { github_context: { auto_dispatch_count: 2 } } }, 0, "");
+    expect(autoDispatchCount).toBe(2);
+  });
+
+  test("reports loop_limit_reached once the count hits 5", () => {
+    const { loopLimitReached } = manageDispatchLoop({ metadata: { github_context: { auto_dispatch_count: 4 } } }, 0, "engineer");
+    expect(loopLimitReached).toBe(true);
   });
 });
 

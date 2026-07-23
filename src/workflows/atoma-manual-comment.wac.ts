@@ -1,21 +1,29 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
-import { ParseCommentCommandAction } from "./actions/atoma.ts";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
+import { scriptCommand } from "./actions/script-call.ts";
 import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
+import { ref as parseCommentCommandRef } from "../scripts/parse_comment_command.ts";
 
 // Invoke agents via /agent-name slash command in issue/PR comments.
 // Restricted to OWNER/MEMBER/COLLABORATOR.
 //
 // Job graph:
 //   parse --> run (atoma-runner.yml, reusable)
-const parseCommandStep = new ParseCommentCommandAction({
-  name: "Parse slash command",
-  id: "command",
-  with: { body: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.body) },
-});
+const parseCommandStep = new TypedOutputsStep(
+  {
+    name: "Parse slash command",
+    id: "command",
+    shell: "bash",
+    env: {
+      ATOMA_COMMENT_BODY: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.body),
+    },
+    run: `${scriptCommand(parseCommentCommandRef)}\n`,
+  },
+  ["matched", "agent"] as const,
+);
 
 const targetStep = new TypedOutputsStep(
   {
