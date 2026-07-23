@@ -79,6 +79,7 @@ describe("mcp/atoma.ts", () => {
       jsonrpc: "2.0", id: 3, method: "tools/call",
       params: { name: "launch_sub_agent", arguments: { tasks: [] } },
     });
-    expect(r.error.code).toBe(-32602);
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("tasks must be a non-empty list");
   });
 });
