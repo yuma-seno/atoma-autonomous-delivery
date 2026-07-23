@@ -81,6 +81,11 @@ const resolveParentJob = new DefinedJob(
   [parseJob],
 );
 
+// Both terminal jobs below depend on the exact same pair -- resolve-parent
+// (for the resolved parent issue number) and parse (for the raw sub-issue
+// number) -- so this is the one place that lists that dependency.
+const NOTIFY_AND_AGGREGATE_NEEDS = [resolveParentJob, parseJob];
+
 export const atomaPrMerged = new Workflow("atoma-pr-merged", {
   name: "Atoma PR Merged",
   on: {
@@ -113,7 +118,7 @@ export const atomaPrMerged = new Workflow("atoma-pr-merged", {
 `,
       }),
     ],
-    [resolveParentJob, parseJob],
+    NOTIFY_AND_AGGREGATE_NEEDS,
   ),
   new DefinedJob(
     "aggregate-sub-issues",
@@ -143,6 +148,6 @@ export const atomaPrMerged = new Workflow("atoma-pr-merged", {
 `,
       }),
     ],
-    [resolveParentJob, parseJob],
+    NOTIFY_AND_AGGREGATE_NEEDS,
   ),
 ]);
