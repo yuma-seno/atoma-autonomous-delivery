@@ -10,6 +10,7 @@
     "synth:check": "bun run synth && git diff --exit-code -- dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src/scripts ./dist/.github/atoma/tools/scripts/mcp ./dist/.github/atoma/tools/scripts/hooks",
+    "test:e2e": "bun test ./tests/e2e",
     "lint": "bun run typecheck && bun run synth:check"
   },
   "devDependencies": {
