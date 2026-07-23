@@ -24,7 +24,7 @@ name: Atoma Runner
         type: string
         default: ''
       atoma_version:
-        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
         required: false
         type: string
         default: source
@@ -51,7 +51,7 @@ name: Atoma Runner
         type: string
         default: ''
       atoma_version:
-        description: Atoma CLI version tag to install, or `source` to build from the checked-out action repository
+        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
         required: false
         type: string
         default: source
@@ -84,9 +84,6 @@ jobs:
         shell: bash
         run: |
           echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
-      - name: Setup runtime
-        with: {}
-        uses: yuma-seno/atoma/github/actions/setup-runtime@main
       - name: Setup Bun
         with:
           bun-version: latest
@@ -119,14 +116,24 @@ jobs:
             [ -n "$EFFECTIVE" ] && echo "Resolved notify fallback: ${EFFECTIVE}"
           fi
           echo "notify=${EFFECTIVE}" >> "$GITHUB_OUTPUT"
-      - name: Prepare shared context
-        id: prep
-        with:
-          type: ${{ inputs.type }}
-          number: ${{ inputs.number }}
-          agent_name: ${{ inputs.agent }}
-          orchestration_file: .github/atoma/config.json
-        uses: yuma-seno/atoma/github/actions/prepare@main
+      - name: Fetch GitHub events
+        id: fetch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bun run .github/scripts/fetch_events.ts --type "${{ inputs.type }}" --number "${{ inputs.number }}" --out "events.json"
+      - name: Restore agent session from atoma-data
+        id: restore-session
+        shell: bash
+        run: |
+          bun run .github/scripts/restore_agent_session.ts --type "${{ inputs.type }}" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --out "session.json"
+      - name: Build context session
+        id: context
+        shell: bash
+        run: |
+          bun run .github/scripts/build_context_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "context-session.json"
       - name: Read max_iterations from config
         id: cfg
         shell: bash
@@ -137,30 +144,145 @@ jobs:
           echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
           echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
       - name: Add atoma/in-progress label
-        if: steps.prep.outputs.new_event_count != '0'
+        if: steps.context.outputs.new_event_count != '0'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
         run: |
           bun run .github/scripts/manage_in_progress_label.ts --action "add" --number "${NUMBER}"
+      - name: 'Checkout Atoma source (for atoma_version: source)'
+        uses: actions/checkout@v4
+        with:
+          repository: yuma-seno/atoma
+          path: atoma-src
+        if: inputs.atoma_version == 'source'
+      - name: Install Atoma CLI
+        shell: bash
+        run: |
+          VERSION="${{ inputs.atoma_version }}"
+          if [ "$VERSION" = "source" ]; then
+            echo "Building Atoma from source (atoma-src/) ..."
+            cargo install --path atoma-src --force --locked
+          elif [ "$VERSION" = "latest" ]; then
+            URL="https://github.com/yuma-seno/atoma/releases/latest/download/atoma-linux-x86_64"
+            echo "Downloading Atoma ${VERSION} ..."
+            curl -fsSL "$URL" -o /usr/local/bin/atoma
+            chmod +x /usr/local/bin/atoma
+          else
+            URL="https://github.com/yuma-seno/atoma/releases/download/${VERSION}/atoma-linux-x86_64"
+            echo "Downloading Atoma ${VERSION} ..."
+            curl -fsSL "$URL" -o /usr/local/bin/atoma
+            chmod +x /usr/local/bin/atoma
+          fi
+          atoma --version
       - name: Run agent
         id: atoma
-        if: steps.prep.outputs.new_event_count != '0'
-        with:
-          agent_name: ${{ inputs.agent }}
-          agent_def_dir: .github/atoma/agent-definitions
-          tools_file: .github/atoma/tools/tools.yaml
-          issue_number: ${{ steps.prep.outputs.resolved_number }}
-          orchestration_file: .github/atoma/config.json
-          atoma_version: ${{ inputs.atoma_version }}
-          max_iterations: ${{ steps.cfg.outputs.max_iterations }}
-          notify_login: ${{ steps.notify.outputs.notify }}
-          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          openai_base_url: ${{ vars.OPENAI_BASE_URL }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          atoma_provider: ${{ vars.ATOMA_PROVIDER }}
-        uses: yuma-seno/atoma/github/actions/run@main
+        if: steps.context.outputs.new_event_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
+          ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
+        shell: bash
+        run: |
+          AGENT="${{ inputs.agent }}"
+          # Exported (not just a local shell var) so MCP tool-server subprocesses
+          # spawned by `atoma run` below can read the current agent's name, e.g. to
+          # tag artifacts they create (PRs, issues) with their origin agent.
+          export AGENT
+
+          TOOLS_ARG=""
+          if [ -f ".github/atoma/tools/tools.yaml" ]; then
+            TOOLS_ARG="--tools-file .github/atoma/tools/tools.yaml"
+          fi
+
+          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+            export OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
+          fi
+          if [ -n "${{ vars.OPENAI_BASE_URL }}" ]; then
+            export OPENAI_BASE_URL="${{ vars.OPENAI_BASE_URL }}"
+          fi
+          # Optional: Anthropic API key (only export when non-empty to avoid breaking auto-detection)
+          if [ -n "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            export ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}"
+          fi
+          # Optional: force a specific provider (only export when non-empty)
+          if [ -n "${{ vars.ATOMA_PROVIDER }}" ]; then
+            export ATOMA_PROVIDER="${{ vars.ATOMA_PROVIDER }}"
+          fi
+
+          CONTEXT_ARG=""
+          if [ -f "context-session.json" ]; then
+            CONTEXT_ARG="--context-session context-session.json"
+          fi
+
+          # Note: no --prompt-file. The cached session contains agent-local state
+          # (assistant replies, tool calls, working memory), and context-session.json
+          # supplies the current shared GitHub conversation for this run only.
+          EXIT_CODE=0
+          atoma run \
+            --agent-def ".github/atoma/agent-definitions/${AGENT}.md" \
+            --in-session session.json \
+            --out-session session.json \
+            --max-iterations ${{ steps.cfg.outputs.max_iterations }} \
+            ${CONTEXT_ARG} \
+            ${TOOLS_ARG} \
+            > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
+
+          echo "=== Atoma Logs ===" >&2
+          cat atoma_logs.txt >&2
+
+          if [ "$EXIT_CODE" = "2" ]; then
+            echo "::notice::Max iterations reached — session saved for next run"
+            echo "max_iterations_reached=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EXIT_CODE" != "0" ]; then
+            exit $EXIT_CODE
+          fi
+
+          # Store multiline result as a step output.
+          # Use a random delimiter to prevent early termination if the agent
+          # output happens to contain the delimiter string on its own line.
+          RESULT_EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "result<<${RESULT_EOF}"
+            cat atoma_output.txt
+            echo "${RESULT_EOF}"
+          } >> "$GITHUB_OUTPUT"
+
+          bun run .github/scripts/extract_directive.ts --output-file "atoma_output.txt" --def-dir ".github/atoma/agent-definitions"
+
+          # Detect whether a tool call already triggered an automatic follow-up
+          # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
+          # reviewer, github__merge_pr -> orchestrator-or-wait), as opposed to the
+          # agent genuinely finishing with nothing further happening. Both MCP
+          # servers log these dispatch decisions to stderr (captured in
+          # atoma_logs.txt) unconditionally, independent of whatever text (if any)
+          # the agent wrote -- this is a purpose-built signal, unlike the text-based
+          # directive above which cannot see tool-triggered chains.
+          CHAIN_CONTINUES=false
+          if grep -qE '(dispatched: agent=|_dispatch_post_pr_agent: dispatched|_dispatch_orchestrator_if_ready:)' atoma_logs.txt; then
+            CHAIN_CONTINUES=true
+          fi
+          echo "chain_continues=${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
+      - name: Write token usage summary
+        if: always() && hashFiles('atoma_logs.txt') != ''
+        shell: bash
+        run: |
+          USAGE_LINE=$(grep -m1 "ATOMA_TOKEN_USAGE:" atoma_logs.txt 2>/dev/null || true)
+          if [ -z "$USAGE_LINE" ]; then
+            exit 0
+          fi
+          PROMPT=$(echo "$USAGE_LINE"     | grep -oP 'prompt=\K[0-9]+')
+          COMPLETION=$(echo "$USAGE_LINE" | grep -oP 'completion=\K[0-9]+')
+          TOTAL=$(echo "$USAGE_LINE"      | grep -oP 'total=\K[0-9]+')
+          {
+            echo "## Atoma Token Usage"
+            echo "| Agent | Prompt | Completion | Total |"
+            echo "|------------|--------|------------|-------|"
+            echo "| ${{ inputs.agent }} | ${PROMPT:-—} | ${COMPLETION:-—} | ${TOTAL:-—} |"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Remove atoma/in-progress label on completion
         if: always()
         shell: bash
@@ -169,23 +291,68 @@ jobs:
           NUMBER: ${{ inputs.number }}
         run: |
           bun run .github/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
-      - name: Post result
-        if: always()
-        with:
-          agent_name: ${{ inputs.agent }}
-          number: ${{ inputs.number }}
-          type: ${{ inputs.type }}
-          notify: ${{ steps.notify.outputs.notify }}
-          job_status: ${{ job.status }}
-          atoma_outcome: ${{ steps.atoma.outcome }}
-          new_event_count: ${{ steps.prep.outputs.new_event_count }}
-          context_snapshot_hash: ${{ steps.prep.outputs.context_snapshot_hash }}
-          context_event_count: ${{ steps.prep.outputs.context_event_count }}
-          resolved_number: ${{ steps.prep.outputs.resolved_number }}
-          directive: ${{ steps.atoma.outputs.directive }}
-          max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
-          chain_continues: ${{ steps.atoma.outputs.chain_continues }}
-        uses: yuma-seno/atoma/github/actions/post-result@main
+      - name: Post result comment
+        id: post-result
+        if: steps.atoma.outcome == 'success' && steps.context.outputs.new_event_count != '0'
+        shell: bash
+        run: |
+          bun run .github/scripts/post_result_comment.ts --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Add eyes reaction on agent handoff
+        if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != '' && steps.atoma.outputs.directive != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ steps.post-result.outputs.comment_id }}
+        run: |
+          gh api --method POST \
+            "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content="eyes" 2>/dev/null || true
+      - name: Record run metadata
+        if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
+        shell: bash
+        run: |
+          bun run .github/scripts/record_run_metadata.ts --session "session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ inputs.type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
+      - name: Save session to atoma-data branch
+        if: steps.atoma.outcome == 'success'
+        shell: bash
+        run: |
+          bun run .github/scripts/save_agent_session.ts --session "session.json" --type "${{ inputs.type }}" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}"
+      - name: Report failure
+        if: always() && job.status != 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          AGENT: ${{ inputs.agent }}
+          NOTIFY: ${{ steps.notify.outputs.notify }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NUMBER" ]; then
+            echo "::error::Cannot post failure comment: issue/PR number unknown."
+            exit 0
+          fi
+          AGENT_LABEL="${AGENT:+${AGENT} }Atoma"
+          ERR_MSG=""
+          if [ -f atoma_logs.txt ]; then
+            ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' atoma_logs.txt | head -n 5 || true)
+          fi
+          MENTION=""
+          if [ -n "$NOTIFY" ]; then
+            MENTION="@${NOTIFY} - "
+          fi
+          BD=$(mktemp)
+          echo "${MENTION}Warning: ${AGENT_LABEL} encountered an error." > "$BD"
+          echo "Please check the reason and retry if necessary." >> "$BD"
+          echo "Workflow logs: ${RUN_URL}" >> "$BD"
+          if [ -n "$ERR_MSG" ]; then
+            echo "" >> "$BD"
+            echo "Error messages detected from logs (excerpt):" >> "$BD"
+            printf '```\n' >> "$BD"
+            echo "${ERR_MSG}" >> "$BD"
+            printf '```\n' >> "$BD"
+          fi
+          gh issue comment "$NUMBER" --body-file "$BD"
+          rm -f "$BD"
       - name: Check for uncommitted changes
         id: dirty
         if: steps.atoma.outcome == 'success'
@@ -209,16 +376,55 @@ jobs:
           AGENT: ${{ inputs.agent }}
         run: |
           bun run .github/scripts/notify_max_iterations.ts --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}"
-      - name: Dispatch next agent
+      - name: Manage auto-dispatch loop control
+        id: loop-control
         if: steps.atoma.outcome == 'success'
-        with:
-          agent_name: ${{ inputs.agent }}
-          number: ${{ inputs.number }}
-          type: ${{ inputs.type }}
-          notify: ${{ steps.notify.outputs.notify }}
-          directive: ${{ steps.atoma.outputs.directive }}
-          max_iterations_reached: ${{ steps.atoma.outputs.max_iterations_reached }}
-          new_event_count: ${{ steps.prep.outputs.new_event_count }}
-          atoma_outcome: ${{ steps.atoma.outcome }}
-          orchestration_file: .github/atoma/config.json
-        uses: yuma-seno/atoma/github/actions/dispatch-next@main
+        shell: bash
+        run: |
+          bun run .github/scripts/manage_dispatch_loop.ts --session "session.json" --new-event-count "${{ steps.context.outputs.new_event_count }}" --directive "${{ steps.atoma.outputs.directive }}"
+      - name: Dispatch next agent
+        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.max_iterations_reached != 'true' && steps.loop-control.outputs.loop_limit_reached != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIRECTIVE: ${{ steps.atoma.outputs.directive }}
+          NUMBER: ${{ inputs.number }}
+          TYPE: ${{ inputs.type }}
+          NOTIFY: ${{ steps.notify.outputs.notify }}
+        run: |
+          if ! [[ "$DIRECTIVE" =~ ^[a-z][a-z0-9-]*$ ]]; then
+            echo "::error::Invalid directive value: ${DIRECTIVE}"
+            exit 1
+          fi
+
+          echo "Dispatching '${DIRECTIVE}' on ${TYPE} #${NUMBER} via atoma-runner.yml ..."
+          # Use gh workflow run with the current GH_TOKEN (caller's token, e.g. from issue_comment event).
+          # This preserves the caller's token permissions (PR creation OK for issue_comment events).
+          gh workflow run atoma-runner.yml \
+            --field agent="$DIRECTIVE" \
+            --field number="$NUMBER" \
+            --field type="$TYPE" \
+            --field notify="$NOTIFY"
+      - name: Comment on loop limit reached
+        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.max_iterations_reached != 'true' && steps.loop-control.outputs.loop_limit_reached == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          DIRECTIVE: ${{ steps.atoma.outputs.directive }}
+          NOTIFY: ${{ steps.notify.outputs.notify }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$NUMBER" ]; then
+            MENTION=""
+            if [ -n "$NOTIFY" ]; then
+              MENTION="@${NOTIFY} - "
+            fi
+            BD=$(mktemp)
+            echo "${MENTION}Auto-dispatch loop limit (5 consecutive runs) reached." > "$BD"
+            echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: ${DIRECTIVE}) has been safely suppressed." >> "$BD"
+            echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
+            echo "See the workflow run for details: ${RUN_URL}." >> "$BD"
+            gh issue comment "$NUMBER" --body-file "$BD"
+            rm -f "$BD"
+          fi
