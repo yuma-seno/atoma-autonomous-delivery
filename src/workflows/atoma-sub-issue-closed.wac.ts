@@ -1,7 +1,7 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssuesClosedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { chainJob, DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { DefinedJob, startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
@@ -39,7 +39,7 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs(
-  chainJob(
+  startJob(
     "check",
     {
       "runs-on": "ubuntu-latest",
@@ -50,30 +50,33 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
       },
     },
     [new SetupBunAction(), checkStep],
-    (checkJob) =>
-      new DefinedJob(
-        "aggregate",
-        {
-          "runs-on": "ubuntu-latest",
-          if: `${checkJob.rawOutputs.is_sub_issue} == 'true' && ${checkJob.rawOutputs.closed_via_pr} != 'true'`,
-        },
-        [
-          new ActionsCheckoutV4({}),
-          new SetupBunAction(),
-          new TypedOutputsStep({
-            name: "Check siblings and re-trigger orchestrator",
-            shell: "bash",
-            env: {
-              GH_TOKEN: "${{ github.token }}",
-              OWNER: "${{ github.repository_owner }}",
-              REPO: githubEvent<IssuesClosedEvent>((e) => e.repository.name),
-              PARENT: checkJob.outputs.parent_number,
-            },
-            run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}" })}
+  )
+    .then(
+      (checkJob) =>
+        new DefinedJob(
+          "aggregate",
+          {
+            "runs-on": "ubuntu-latest",
+            if: `${checkJob.rawOutputs.is_sub_issue} == 'true' && ${checkJob.rawOutputs.closed_via_pr} != 'true'`,
+          },
+          [
+            new ActionsCheckoutV4({}),
+            new SetupBunAction(),
+            new TypedOutputsStep({
+              name: "Check siblings and re-trigger orchestrator",
+              shell: "bash",
+              env: {
+                GH_TOKEN: "${{ github.token }}",
+                OWNER: "${{ github.repository_owner }}",
+                REPO: githubEvent<IssuesClosedEvent>((e) => e.repository.name),
+                PARENT: checkJob.outputs.parent_number,
+              },
+              run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}" })}
 `,
-          }),
-        ],
-        [checkJob],
-      ),
-  ),
+            }),
+          ],
+          [checkJob],
+        ),
+    )
+    .jobs(),
 );

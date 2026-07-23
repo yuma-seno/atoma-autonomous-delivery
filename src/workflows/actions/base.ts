@@ -102,48 +102,79 @@ export class DefinedJob<TOutputsMap extends Record<string, string> = Record<neve
 }
 
 /**
- * Express a "producer job -> consumer(s)" dependency as an actual chain of
- * calls, instead of a named `const producerJob = ...` the caller has to
- * declare, pass to `needs:`/read `.outputs` from, AND separately remember to
- * list in `addJobs([...])`.
- *
- * `chainJob(name, props, steps, next)` builds the producer job, immediately
- * hands it to `next(job)` (which builds whatever depends on it -- one job,
- * or an array for a terminal fan-out), and returns `[producerJob,
- * ...next's result]` -- ready to spread straight into `.addJobs([...])`, no
- * intermediate variable required at the call site:
+ * Express a "producer job -> consumer job -> ..." dependency as an actual
+ * fluent chain of calls -- each link sits at the same indentation level,
+ * reading top to bottom, instead of a named `const producerJob = ...` the
+ * caller has to declare purely so it can be passed to the next job AND
+ * separately remembered in `addJobs([...])`:
  *
  *   .addJobs(
- *     chainJob("parse", { ...outputs: {...} }, [step1, step2], (parseJob) =>
- *       dispatchToAtomaRunner(parseJob, "inherit"),
- *     ),
+ *     startJob("parse", { ...outputs: {...} }, [step1, step2])
+ *       .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
+ *       .jobs(),
  *   )
  *
- * `job` still exists as a real value (GitHub Actions' own job graph requires
- * a stable reference to appear in both the `jobs:` map and any `needs:`/
- * output read -- no wrapper can remove that indirection, it's inherent to
- * the model, not a styling choice) -- it just lives only inside `next`'s
- * parameter scope instead of a caller-visible top-level `const`.
+ * An EARLIER version of this expressed the same idea as a single function
+ * call, `chainJob(name, props, steps, next)`, with `next` as a positional
+ * argument -- that reads fine when `next` is a one-liner (as above), but
+ * once `next` itself builds a whole multi-line job (see
+ * atoma-sub-issue-closed.wac.ts), it degenerates into a callback buried
+ * inside another call's argument list -- nested callback-pyramid style, not
+ * an actual chain. `.then(...)` fixes that: it's a real method call that
+ * can be stacked one after another, each one visually independent.
  *
- * Only fits a genuinely LINEAR producer -> consumer(s) relationship where
- * every consumer's dependency is exactly `job` (nothing needs to reach back
- * further than the immediately preceding job). A real multi-hop DAG (e.g.
- * atoma-pr-merged.wac.ts, where two downstream jobs each need both their
- * immediate predecessor AND its predecessor) still needs actual named
+ * Each job still exists as a real value (GitHub Actions' own job graph
+ * requires a stable reference to appear in both the `jobs:` map and any
+ * `needs:`/output read -- no wrapper can remove that indirection, it's
+ * inherent to the model, not a styling choice) -- it just lives only inside
+ * `.then()`'s callback parameter scope instead of a caller-visible
+ * top-level `const`.
+ *
+ * Only fits a genuinely LINEAR producer -> consumer chain, where each link
+ * depends on exactly the one immediately before it. A real multi-hop DAG
+ * (e.g. atoma-pr-merged.wac.ts, where two downstream jobs each need both
+ * their immediate predecessor AND its predecessor) still needs actual named
  * handles -- that's an honest reflection of a real graph, not something a
- * chain-of-calls can flatten away.
+ * linear chain can flatten away.
  */
-export function chainJob<TOutputsMap extends Record<string, string>, TNext>(
+export class JobChain<TCurrent extends NormalJob | ReusableWorkflowCallJob> {
+  private constructor(
+    private readonly allJobs: readonly (NormalJob | ReusableWorkflowCallJob)[],
+    /** The most recently added job/reusable-workflow-call in this chain. */
+    readonly current: TCurrent,
+  ) {}
+
+  /** Start a chain with a freshly-defined job. */
+  static start<TOutputsMap extends Record<string, string> = Record<never, string>>(
+    name: string,
+    jobProps: Omit<GWT.NormalJob, "outputs"> & { outputs?: TOutputsMap },
+    steps: Step[] = [],
+  ): JobChain<DefinedJob<TOutputsMap>> {
+    const job = new DefinedJob(name, jobProps, steps);
+    return new JobChain([job], job);
+  }
+
+  /** Build the next link from the current one, without ever naming it. */
+  then<TNext extends NormalJob | ReusableWorkflowCallJob>(next: (current: TCurrent) => TNext): JobChain<TNext> {
+    const nextJob = next(this.current);
+    return new JobChain([...this.allJobs, nextJob], nextJob);
+  }
+
+  /** Every job/reusable-workflow-call added so far, in order -- pass this straight to `.addJobs(...)`. */
+  jobs(): (NormalJob | ReusableWorkflowCallJob)[] {
+    return [...this.allJobs];
+  }
+}
+
+/** Start a `JobChain` -- see `JobChain`'s own doc comment for the full rationale. */
+export function startJob<TOutputsMap extends Record<string, string> = Record<never, string>>(
   name: string,
   jobProps: Omit<GWT.NormalJob, "outputs"> & { outputs?: TOutputsMap },
-  steps: Step[],
-  next: (job: DefinedJob<TOutputsMap>) => TNext,
-): [DefinedJob<TOutputsMap>, ...(TNext extends unknown[] ? TNext : [TNext])] {
-  const job = new DefinedJob(name, jobProps, steps);
-  const nextResult = next(job);
-  const nextArray = (Array.isArray(nextResult) ? nextResult : [nextResult]) as TNext extends unknown[] ? TNext : [TNext];
-  return [job, ...nextArray];
+  steps: Step[] = [],
+): JobChain<DefinedJob<TOutputsMap>> {
+  return JobChain.start(name, jobProps, steps);
 }
+
 
 /**
  * Typed wrapper for GitHub composite actions that aren't in the public

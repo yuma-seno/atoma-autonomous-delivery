@@ -1,7 +1,7 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
 import { ParseCommentCommandAction } from "./actions/atoma.ts";
-import { chainJob, TypedOutputsStep } from "./actions/base.ts";
+import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
@@ -46,7 +46,7 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs(
-  chainJob(
+  startJob(
     "parse",
     {
       "runs-on": "ubuntu-latest",
@@ -65,6 +65,7 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
       },
     },
     [parseCommandStep, targetStep],
-    (parseJob) => dispatchToAtomaRunner(parseJob, "inherit"),
-  ),
+  )
+    .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
+    .jobs(),
 );

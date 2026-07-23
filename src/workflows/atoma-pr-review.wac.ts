@@ -1,7 +1,7 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestReviewSubmittedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { chainJob, TypedOutputsStep } from "./actions/base.ts";
+import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
@@ -67,7 +67,7 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs(
-  chainJob(
+  startJob(
     "route",
     {
       "runs-on": "ubuntu-latest",
@@ -88,9 +88,10 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
       notifyStep,
       matchStep,
     ],
+  )
     // NOTE: preserved verbatim from the original hand-written YAML -- unlike
     // the other routing workflows, this job intentionally has no
     // `secrets: inherit` (no 2nd argument to dispatchToAtomaRunner).
-    (routeJob) => dispatchToAtomaRunner(routeJob),
-  ),
+    .then((routeJob) => dispatchToAtomaRunner(routeJob))
+    .jobs(),
 );

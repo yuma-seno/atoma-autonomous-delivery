@@ -1,7 +1,7 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestOpenedEvent, PullRequestReadyForReviewEvent, PullRequestSynchronizeEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { chainJob, TypedOutputsStep } from "./actions/base.ts";
+import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
@@ -90,7 +90,7 @@ export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs(
-  chainJob(
+  startJob(
     "route",
     {
       "runs-on": "ubuntu-latest",
@@ -111,6 +111,7 @@ export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
       notifyStep,
       matchStep,
     ],
-    (routeJob) => dispatchToAtomaRunner(routeJob, "inherit"),
-  ),
+  )
+    .then((routeJob) => dispatchToAtomaRunner(routeJob, "inherit"))
+    .jobs(),
 );

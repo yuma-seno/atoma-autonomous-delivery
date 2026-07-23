@@ -1,6 +1,6 @@
 import { Workflow, Step } from "@github-actions-workflow-ts/lib";
 import type { IssuesOpenedEvent } from "@octokit/webhooks-types";
-import { chainJob, TypedOutputsStep } from "./actions/base.ts";
+import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
@@ -36,7 +36,7 @@ export const atomaEntry = new Workflow("atoma-entry", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addJobs(
-  chainJob(
+  startJob(
     "route",
     {
       "runs-on": "ubuntu-latest",
@@ -65,6 +65,7 @@ export const atomaEntry = new Workflow("atoma-entry", {
 `,
       }),
     ],
-    (routeJob) => dispatchToAtomaRunner(routeJob, "inherit"),
-  ),
+  )
+    .then((routeJob) => dispatchToAtomaRunner(routeJob, "inherit"))
+    .jobs(),
 );
