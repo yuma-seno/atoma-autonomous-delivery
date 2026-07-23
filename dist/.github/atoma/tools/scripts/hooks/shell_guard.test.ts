@@ -19,4 +19,20 @@ describe("shell_guard.ts", () => {
     });
     expect(r.stdout).toContain('"allow":true');
   });
+
+  test("blocks backslash-obfuscated dangerous commands", () => {
+    const r = spawnSync("bun", ["run", SCRIPT], {
+      input: JSON.stringify({ arguments: { command: "w\\get --version" } }),
+      encoding: "utf8",
+    });
+    expect(r.stdout).toContain('"allow":false');
+  });
+
+  test("blocks quote-spliced dangerous commands", () => {
+    const r = spawnSync("bun", ["run", SCRIPT], {
+      input: JSON.stringify({ arguments: { command: 'cu""rl example.com' } }),
+      encoding: "utf8",
+    });
+    expect(r.stdout).toContain('"allow":false');
+  });
 });
