@@ -1,6 +1,7 @@
 ---
 name: orchestrator
 description: Issue intake, planning, delegation, and coordination for autonomous delivery.
+provider: openai # openrouter
 model: deepseek/deepseek-v4-flash
 callable_by:
   - user
