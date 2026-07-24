@@ -20,6 +20,7 @@ import { ref as postResultCommentRef } from "../scripts/post_result_comment.ts";
 import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
+import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
 
 // The shared reusable workflow every entry-point workflow (atoma-entry,
 // atoma-auto-trigger, atoma-manual-comment, atoma-pr-review) hands off to via
@@ -449,30 +450,35 @@ const loopControlStep = new TypedOutputsStep(
   ["auto_dispatch_count", "loop_limit_reached"] as const,
 );
 
-// Only remove the atoma/in-progress label when this run has reached a
-// genuine stopping point for THIS issue/PR, per the 3 cases work should
-// actually hand back to a human (or the run failed outright, needing
-// cleanup regardless):
-//   1. the run failed (cleanup)
-//   2. max_iterations was reached (explicit hand-back to a human)
-//   3. the auto-dispatch loop limit was reached (also an explicit,
-//      loop-limit-driven hand-back to a human -- see loopLimitCommentStep)
-//   4. nothing further is happening at all: no tool call triggered a
-//      follow-up dispatch (chain_continues) AND no text directive handed
-//      off to another agent -- this covers both a genuine final
-//      completion/close AND an agent escalating a question to a human.
-// In every other case (a sub-agent was launched, a PR was created and
-// dispatched to review, a text directive handed off to the next agent,
-// etc.) the label stays, since work is still actively continuing --
-// possibly on a different issue/PR entirely -- under this one.
-const REMOVE_LABEL_GUARD =
-  `steps.atoma.outcome != 'success' || ${runAgentStep.rawOutputs.max_iterations_reached} == 'true' || ` +
-  `${loopControlStep.rawOutputs.loop_limit_reached} == 'true' || ` +
-  `(${runAgentStep.rawOutputs.chain_continues} != 'true' && ${runAgentStep.rawOutputs.directive} == '')`;
+// Whether the atoma/in-progress SerializationGuard should be released after
+// this run is a real domain decision (see domain/serialization-guard.ts's
+// shouldReleaseGuard() for the actual rule + rationale), not something to
+// express as a hand-built GitHub Actions `if:` boolean expression. This
+// step computes that decision once via the shared, unit-tested domain
+// function and exposes it as a single `should_release` output -- it must
+// run with `always()` since the decision (rule 1: any non-success outcome
+// releases the guard) needs to fire even when "Run agent" itself failed or
+// was skipped.
+const decideGuardReleaseStep = new TypedOutputsStep(
+  {
+    name: "Decide whether to release the in-progress guard",
+    id: "decide-guard-release",
+    if: "always()",
+    shell: "bash",
+    run: `${scriptCommandWithArgs(decideGuardReleaseRef, {
+      outcome: "\${{ steps.atoma.outcome }}",
+      "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
+      "loop-limit-reached": loopControlStep.outputs.loop_limit_reached,
+      "chain-continues": runAgentStep.outputs.chain_continues,
+      directive: runAgentStep.outputs.directive,
+    })}\n`,
+  },
+  ["should_release"] as const,
+);
 
 const removeLabelStep = new TypedOutputsStep({
   name: "Remove atoma/in-progress label on completion",
-  if: `always() && (${REMOVE_LABEL_GUARD})`,
+  if: `always() && ${decideGuardReleaseStep.rawOutputs.should_release} == 'true'`,
   shell: "bash",
   env: {
     GH_TOKEN: "${{ github.token }}",
@@ -666,6 +672,7 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
 `,
   }),
   loopControlStep,
+  decideGuardReleaseStep,
   removeLabelStep,
   dispatchNextAgentStep,
   loopLimitCommentStep,

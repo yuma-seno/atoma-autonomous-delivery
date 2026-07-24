@@ -9,7 +9,7 @@
     "synth": "gwf build && bun run src/build-dist.ts",
     "synth:check": "bun run synth && git diff --exit-code -- dist",
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./src/lib ./src/scripts ./src/atoma/tools/scripts/mcp ./src/atoma/tools/scripts/hooks",
+    "test": "bun test ./src/domain ./src/lib ./src/scripts ./src/atoma/tools/scripts/mcp ./src/atoma/tools/scripts/hooks",
     "test:e2e": "bun test ./tests/e2e",
     "lint": "bun run typecheck && bun run synth:check"
   },

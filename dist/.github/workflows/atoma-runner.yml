@@ -381,8 +381,14 @@ jobs:
         shell: bash
         run: |
           bun run .github/scripts/manage_dispatch_loop.ts --session "session.json" --new-event-count "${{ steps.context.outputs.new_event_count }}" --directive "${{ steps.atoma.outputs.directive }}"
+      - name: Decide whether to release the in-progress guard
+        id: decide-guard-release
+        if: always()
+        shell: bash
+        run: |
+          bun run .github/scripts/decide_guard_release.ts --outcome "${{ steps.atoma.outcome }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --loop-limit-reached "${{ steps.loop-control.outputs.loop_limit_reached }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --directive "${{ steps.atoma.outputs.directive }}"
       - name: Remove atoma/in-progress label on completion
-        if: always() && (steps.atoma.outcome != 'success' || steps.atoma.outputs.max_iterations_reached == 'true' || steps.loop-control.outputs.loop_limit_reached == 'true' || (steps.atoma.outputs.chain_continues != 'true' && steps.atoma.outputs.directive == ''))
+        if: always() && steps.decide-guard-release.outputs.should_release == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
