@@ -1,10 +1,9 @@
 /**
- * config.ts — shared helper for reading .github/atoma/config.json.
+ * config.ts — shared helper for reading .github/atoma/config.json. The one
+ * canonical copy used by every script and MCP server in this repo.
  *
- * Assumes the current working directory is the repository root, matching how
- * all Atoma workflow steps invoke these scripts.
- *
- * Self-contained: do not import anything outside `.github/`.
+ * Assumes the current working directory is the repository root, matching
+ * how every Atoma workflow step and MCP server invocation runs.
  */
 import { readFileSync } from "node:fs";
 import type { AtomaConfig } from "./types.ts";

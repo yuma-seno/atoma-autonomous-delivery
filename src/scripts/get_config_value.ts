@@ -2,6 +2,10 @@
 /**
  * Print a dotted-path value from .github/atoma/config.json.
  *
+ * Thin CLI wrapper around lib/config.ts's loadConfig(), invoked as a
+ * workflow step (via `scriptCommand` from atoma-runner.wac.ts). Every
+ * other caller (launch_sub_agent.ts) imports loadConfig() directly.
+ *
  * Usage:
  *   bun run get_config_value.ts <dotted.path> [default]
  *
@@ -9,7 +13,7 @@
  *   bun run get_config_value.ts agents.engineer.max_iterations 30
  *   bun run get_config_value.ts labels.in_progress atoma/in-progress
  */
-import { loadConfig } from "./lib/config.ts";
+import { loadConfig } from "../lib/config.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);

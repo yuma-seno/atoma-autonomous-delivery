@@ -3,7 +3,7 @@
  * match_trigger.ts — Match a GitHub event to an agent from config.json
  * auto_triggers.
  */
-import { loadConfig } from "./lib/config.ts";
+import { loadConfig } from "../lib/config.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);

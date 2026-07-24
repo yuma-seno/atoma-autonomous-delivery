@@ -3,19 +3,62 @@ import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
-import { scriptCommand } from "./actions/script-call.ts";
+import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
+import { SetupBunAction } from "./actions/third-party.ts";
 import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
 import { ref as parseCommentCommandRef } from "../scripts/parse_comment_command.ts";
+import { ref as guardCommentRef } from "../scripts/guard_comment_during_run.ts";
 
 // Invoke agents via /agent-name slash command in issue/PR comments.
-// Restricted to OWNER/MEMBER/COLLABORATOR.
+// Slash-command DISPATCH is restricted to OWNER/MEMBER/COLLABORATOR (see
+// parseCommandStep's own `if:` below), but the in-progress GUARD (see
+// guardStep) runs for every human comment regardless of association --
+// nobody's comment should sit unseen (or race a dispatch) while an Atoma
+// run is actively working on this issue/PR.
 //
 // Job graph:
 //   parse --> run (atoma-runner.yml, reusable)
+
+// Bot comments are never guarded (Atoma's own comments, e.g. dispatch
+// confirmations, must never be self-deleted) -- only ever relevant for a
+// human-authored comment.
+const IS_HUMAN_COMMENT = `${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot'`;
+
+const guardStep = new TypedOutputsStep(
+  {
+    name: "Guard: reject comment while atoma/in-progress",
+    id: "guard",
+    if: IS_HUMAN_COMMENT,
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      NUMBER: githubEvent<IssueCommentCreatedEvent>((e) => e.issue.number),
+      COMMENT_ID: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.id),
+      COMMENTER: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.user.login),
+    },
+    run: `${scriptCommandWithArgs(guardCommentRef, { number: "\${NUMBER}", "comment-id": "\${COMMENT_ID}", commenter: "\${COMMENTER}" })}\n`,
+  },
+  ["blocked"] as const,
+);
+
+// Original OWNER/MEMBER/COLLABORATOR-or-bot-dispatch-tag restriction on
+// actually DISPATCHING a slash command (unchanged from before) -- the job
+// itself now also runs for non-qualifying humans (see the job's own `if:`
+// below), but only to let guardStep do its job; this step still refuses to
+// parse/dispatch for them.
+const PARSE_ALLOWED =
+  `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
+  ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
+  `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
+  ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
+  `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
+  `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`;
+
 const parseCommandStep = new TypedOutputsStep(
   {
     name: "Parse slash command",
     id: "command",
+    if: `(${PARSE_ALLOWED}) && steps.guard.outputs.blocked != 'true'`,
     shell: "bash",
     env: {
       ATOMA_COMMENT_BODY: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.body),
@@ -58,13 +101,12 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
     "parse",
     {
       "runs-on": "ubuntu-latest",
-      if:
-        `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
-        ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
-        `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
-        ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
-        `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
-        `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`,
+      // Broader than PARSE_ALLOWED on purpose: this job now also needs to
+      // run for ANY human comment (regardless of association) so guardStep
+      // can reject it while atoma/in-progress is active -- actual
+      // parsing/dispatch stays restricted to PARSE_ALLOWED via
+      // parseCommandStep's own `if:` above.
+      if: `(${IS_HUMAN_COMMENT}) || (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' && contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch'))`,
       outputs: {
         agent: parseCommandStep.outputs.agent,
         number: targetStep.outputs.number,
@@ -72,7 +114,7 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
         notify: targetStep.outputs.notify,
       },
     },
-    [parseCommandStep, targetStep],
+    [new SetupBunAction(), guardStep, parseCommandStep, targetStep],
   )
     .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
     .jobs(),

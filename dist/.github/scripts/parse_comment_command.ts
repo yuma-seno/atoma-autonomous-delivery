@@ -1,44 +1,50 @@
 #!/usr/bin/env bun
-/**
- * parse_comment_command.ts — Parse a GitHub comment and extract a
- * slash-command agent name from any line, not just the first.
- *
- * Accepts both a plain slash command (`/engineer fix it`) and the internal
- * dispatch-comment format (`<!-- atoma:dispatch=engineer -->`) posted by
- * other automation.
- *
- * Env: ATOMA_COMMENT_BODY
- * Writes `matched=true|false` and `agent=<name-or-empty>` to $GITHUB_OUTPUT.
- */
-import { appendFileSync } from "node:fs";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-export const ref = defineScript(import.meta.url);
+// src/scripts/parse_comment_command.ts
+import { appendFileSync } from "fs";
 
-const COMMAND_RE = /^\/([a-z][a-z0-9-]*)/;
-const DISPATCH_RE = /^<!--\s*atoma:dispatch\s*=\s*([a-z][a-z0-9-]*)\s*-->/;
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
 
-export function parseAgent(body: string): string {
-  if (!body) return "";
-  for (const rawLine of body.split("\n")) {
+// src/scripts/parse_comment_command.ts
+var ref = defineScript(import.meta.url);
+var COMMAND_RE = /^\/([a-z][a-z0-9-]*)/;
+var DISPATCH_RE = /^<!--\s*atoma:dispatch\s*=\s*([a-z][a-z0-9-]*)\s*-->/;
+function parseAgent(body) {
+  if (!body)
+    return "";
+  for (const rawLine of body.split(`
+`)) {
     const line = rawLine.trim();
     const commandMatch = COMMAND_RE.exec(line);
-    if (commandMatch) return commandMatch[1]!;
+    if (commandMatch)
+      return commandMatch[1];
     const dispatchMatch = DISPATCH_RE.exec(line);
-    if (dispatchMatch) return dispatchMatch[1]!;
+    if (dispatchMatch)
+      return dispatchMatch[1];
   }
   return "";
 }
-
-function main(): void {
+function main() {
   const body = process.env.ATOMA_COMMENT_BODY ?? "";
   const agent = parseAgent(body);
   const matched = agent ? "true" : "false";
-
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
-    appendFileSync(githubOutput, `matched=${matched}\nagent=${agent}\n`);
+    appendFileSync(githubOutput, `matched=${matched}
+agent=${agent}
+`);
   }
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref,
+  parseAgent
+};

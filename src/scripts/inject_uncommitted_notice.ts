@@ -14,13 +14,9 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { defineScript } from "./lib/script-ref.ts";
+import type { Session } from "../lib/session.ts";
 
 export const ref = defineScript(import.meta.url);
-
-interface Session {
-  messages: { role: string; content: string }[];
-  [key: string]: unknown;
-}
 
 /** Depth-limited search for the first `session.json`, mirroring `find . -maxdepth 3 -name session.json`. */
 function findSessionFile(dir = ".", depth = 3): string | undefined {
@@ -58,10 +54,12 @@ function main(): void {
     return;
   }
   const session = JSON.parse(readFileSync(path, "utf8")) as Session;
-  session.messages.push({
+  const messages = session.messages ?? [];
+  messages.push({
     role: "user",
     content: "Uncommitted changes exist. Use github__commit_and_push.",
   });
+  session.messages = messages;
   writeFileSync(path, JSON.stringify(session, null, 2));
   console.error(`inject_uncommitted_notice: appended notice to ${path}`);
 }

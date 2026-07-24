@@ -30,6 +30,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
 import type { GithubEvent } from "./fetch_events.ts";
+import type { Session, SessionMessage } from "../lib/session.ts";
 
 export interface BuildContextSessionArgs {
   events: string;
@@ -43,19 +44,6 @@ export const ref = defineScript<BuildContextSessionArgs>(import.meta.url);
 
 const GITHUB_CONTEXT_LAYER = "github-context";
 const AGENT_MARKER_RE = /^<!--\s*atoma:agent=([a-z][a-z0-9-]*)\s*-->$/;
-
-interface SessionMessage {
-  role: string;
-  content?: string;
-  atoma_metadata?: { github_comment_id?: string | number; agent?: string };
-  [key: string]: unknown;
-}
-
-interface Session {
-  messages: SessionMessage[];
-  metadata?: { github_context?: { snapshot_hash?: string } };
-  [key: string]: unknown;
-}
 
 interface SharedContextConfig {
   agents?: Record<string, { shared_context?: { include_event_types?: string[]; exclude_event_types?: string[] } }>;

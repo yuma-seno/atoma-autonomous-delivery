@@ -10,7 +10,7 @@
  * Prints the resolved parent issue number (possibly empty) to stdout.
  */
 import { parseArgs } from "node:util";
-import { gh, ghGraphql } from "./lib/gh.ts";
+import { gh, ghGraphql } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface ResolveOrchestratorParentArgs {

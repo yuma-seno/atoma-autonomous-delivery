@@ -262,42 +262,41 @@ This repository's own `.github/workflows/ci.yml` is **hand-written YAML** — in
 
 > **Required for the dogfooding sync step:** add a `WORKFLOW_PAT` repository secret — a PAT with the `repo` + `workflow` scopes. Empirically confirmed: the default `GITHUB_TOKEN` cannot push changes to files under `.github/workflows/` ("refusing to allow a GitHub App to create or update workflow ... without `workflows` permission") — a hard GitHub restriction with no `permissions:` YAML equivalent. This repo also needs the same secrets/variables and "Allow GitHub Actions to create and approve pull requests" setting described in Quick Start above, since its own `.github/workflows/` will start running for real.
 
-The actual deliverable lives entirely under `dist/.github/` and is fully generated/copied from `src/`; nothing under `dist/` is ever hand-edited directly.
+The actual deliverable lives entirely under `dist/.github/` and is fully generated from `src/`; nothing under `dist/` is ever hand-edited directly.
 
 ```
 src/
 ├── workflows/*.wac.ts        # workflow-as-code source (github-actions-workflow-ts)
 │   └── actions/               # typed Action/Step wrappers (base.ts's CustomAction for third-party actions like oven-sh/setup-bun, plus workflow-authoring helpers)
-├── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ shared lib/)
+├── lib/                       # shared kernel used by EVERY script/MCP server below (gh.ts, config.ts, types.ts, tags.ts, notify.ts, sibling-check.ts, aggregation.ts, ops-log.ts, inject-sub-results.ts, session.ts, mcp-tool.ts)
+├── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ workflow-authoring-only helpers under lib/: cli.ts, script-ref.ts, atoma-data.ts)
 └── atoma/                     # source for ATOMA'S OWN tool/hook implementations + config/agent content
     ├── config.json, prompt-template.md, agent-definitions/*.md, tools/tools.yaml
-    └── tools/scripts/         # MCP servers, before_tool hook, and the scripts they shell out to
-        ├── lib/                # hand-authored duplicate of src/scripts/lib/{gh,config,types}.ts
+    └── tools/scripts/         # MCP servers, before_tool hook, and the scripts they call
         ├── mcp/                # MCP stdio servers (tools.yaml's tool_servers)
         ├── hooks/              # before_tool hook
-        ├── launch_sub_agent.ts, request_close_issue.ts, dispatch_orchestrator_if_ready.ts
-        └── get_config_value.ts, check_open_siblings.ts, resolve_notify.ts   # DUPLICATED from ../../scripts/ -- see note below
+        └── launch_sub_agent.ts, request_close_issue.ts  # each exports a plain function (called directly, in-process, by mcp/atoma.ts) + a thin main() CLI wrapper for manual invocation
 
 dist/.github/                 # THE DELIVERABLE -- copy this into your own repo as .github/
 ├── workflows/*.yml            # generated from src/workflows/*.wac.ts
-├── scripts/                    # copied verbatim from src/scripts/ (never hand-edit here)
-└── atoma/                      # copied verbatim from src/atoma/ (never hand-edit here)
+├── scripts/                    # bundled from src/scripts/** (never hand-edit here)
+└── atoma/                      # bundled from src/atoma/** (never hand-edit here)
 ```
 
-Scripts are sorted into two independent trees by **who invokes them**, not by topic:
-- `src/scripts/` (→ `dist/.github/scripts/`) — invoked directly from a `*.wac.ts` workflow step (via `scriptCommand()`/`scriptCommandWithArgs()` in `src/workflows/actions/script-call.ts`). This is this repo's own CI/automation glue, not Atoma tooling.
-- `src/atoma/tools/scripts/` (→ `dist/.github/atoma/tools/scripts/`) — invoked by Atoma's own tool-calling machinery (`mcp/*.ts`'s MCP tools, `hooks/*.ts`'s `before_tool` hook, and the handful of scripts they shell out to).
+`src/scripts/**` and `src/atoma/tools/scripts/**` freely import from the shared `src/lib/` kernel and from each other's exported functions -- no hand-duplicated files, no subprocess-spawning one script from another. `build-dist.ts` reconciles this with the "each deployed script must be a single self-contained file, no `node_modules`, no cross-file imports" requirement by **bundling** every entry-point script individually via `Bun.build()` (target `bun`, one entry point per build call -- batching multiple together miscompiles `import.meta.main` for any script that's both its own entry point and imported by another, see that file's own doc comment): all of its imports, including npm dependencies like `@modelcontextprotocol/sdk`/`shell-quote`, get inlined into one file. Verified: a bundled `mcp/github.ts` runs standalone with zero `node_modules` nearby -- so the deployed `.github/atoma/tools/scripts/**` needs no `package.json`/`bun install` step at all. Bundled output keeps a `.ts` extension (Bun runs plain JS through a `.ts`-named file just fine) so every `bun run .github/.../foo.ts` reference elsewhere needs no change.
 
-Three scripts (`get_config_value.ts`, `check_open_siblings.ts`, `resolve_notify.ts`) are used by BOTH a workflow step AND Atoma's own tool-calling code, and are **deliberately duplicated** — one copy under `src/scripts/` (deployed to `dist/.github/scripts/`), one independent copy under `src/atoma/tools/scripts/` (deployed to `dist/.github/atoma/tools/scripts/`) — rather than having either tree reach across into the other. This keeps `.github/atoma/**` and `.github/scripts/**` each fully self-contained with zero cross-references between them at *runtime* (a consumer can copy just one subtree and it still works), at the cost of ~3 small files needing to be kept in sync by hand if their logic ever changes (each copy's doc comment points at its sibling).
+Every MCP tool (`mcp/github.ts`, `mcp/atoma.ts`) is defined once via `lib/mcp-tool.ts`'s `defineMcpTool({name, description, schema, handler})`: a single Zod schema (imported from `"zod/v3"` -- required for `zod-to-json-schema` compatibility, see that file's doc comment) is both compiled to the `inputSchema` JSON Schema advertised to the LLM AND used to validate + parse incoming arguments into a properly-typed object before the handler runs. There used to be two independent, hand-written descriptions of every tool's arguments (a JSON Schema literal, plus a handler full of unchecked `a.title as string` casts on a bare `Record<string, unknown>`) that could silently drift apart; now there's exactly one. A malformed call from the LLM is rejected up front with a readable `field: reason` message instead of failing deep inside a `gh` call. Handlers that need the response to carry `_meta` fields (e.g. `session_ends: true`, replacing what used to be a module-level `pendingSessionEnd` mutable flag in `mcp/github.ts`) just return `{text, meta}` instead of a plain string.
 
-Because the deliverable must work when copied alone (no root-level `package.json`/`node_modules` from this repo), `src/atoma/tools/scripts/package.json` (→ `dist/.github/atoma/tools/scripts/package.json`) declares the one runtime dependency the MCP servers need (`@modelcontextprotocol/sdk`, `shell-quote`), and `atoma-runner.yml` installs it (scoped to that directory) before running the agent.
+**Two invariants matter for anything that ends up running in-process inside an MCP server** (`mcp/atoma.ts`/`mcp/github.ts`, and any plain function they import and call directly, e.g. `launch_sub_agent.ts`'s `dispatchSubAgent()`):
+- Never `console.log()` — only `console.error()`. The MCP server's `process.stdout` IS the JSON-RPC stdio transport stream; a stray `console.log()` corrupts it and breaks the real tool call with an opaque "Failed to call tool" error (this bug was caught once, in `request_close_issue.ts`, while converting it from a subprocess to an in-process call -- subprocess `stdout` used to be its own separate pipe, so this never mattered before).
+- `if (import.meta.main) main();` guards (used throughout so every script stays safely importable) rely on Bun correctly resolving `import.meta.main` to a build-time-constant `false` for an inlined, non-entry copy of a file -- which only happens reliably when each entry point is bundled in its OWN separate `Bun.build()` call (see build-dist.ts).
 
 ```bash
 bun install          # install this repo's own dev dependencies
-bun run synth        # regenerate dist/.github/workflows/*.yml + copy src/scripts/** and src/atoma/** into dist/.github/ (gwf build + build-dist.ts)
+bun run synth        # regenerate dist/.github/workflows/*.yml + bundle src/scripts/** and src/atoma/** into dist/.github/ (gwf build + build-dist.ts)
 bun run synth:check  # verify dist/ matches its src/ source (used by .github/workflows/ci.yml)
 bun run typecheck    # tsc --noEmit across all of src/ (including src/atoma/tools/scripts/**)
-bun run test         # bun:test — script & MCP server behavior tests
+bun run test         # bun:test — script, lib, & MCP server behavior tests
 bun run lint         # typecheck + synth:check
 ```
 

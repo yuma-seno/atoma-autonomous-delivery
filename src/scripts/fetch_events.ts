@@ -26,7 +26,7 @@
  */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { gh, ghPaginated } from "./lib/gh.ts";
+import { gh, ghPaginated } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface FetchEventsArgs {

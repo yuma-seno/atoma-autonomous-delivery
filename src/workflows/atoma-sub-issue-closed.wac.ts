@@ -70,8 +70,9 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
                 OWNER: "${{ github.repository_owner }}",
                 REPO: githubEvent<IssuesClosedEvent>((e) => e.repository.name),
                 PARENT: checkJob.outputs.parent_number,
+                CLOSED_NUM: githubEvent<IssuesClosedEvent>((e) => e.issue.number),
               },
-              run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}" })}
+              run: `${scriptCommandWithArgs(dispatchIfSiblingsDoneRef, { repo: "\${OWNER}/\${REPO}", parent: "\${PARENT}", "closed-num": "\${CLOSED_NUM}" })}
 `,
             }),
           ],

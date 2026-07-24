@@ -1,41 +1,66 @@
 #!/usr/bin/env bun
-/**
- * restore_agent_session.ts — Restore a per-agent session.json from the
- * `atoma-data` branch (if one exists yet for this type/number/agent),
- * without disturbing the current checkout.
- *
- * Usage: restore_agent_session.ts --type issue|pr --number N --agent NAME --out session.json
- * No-ops quietly (does not create --out) if no prior session is found.
- */
-import { writeFileSync } from "node:fs";
-import { parseArgs } from "node:util";
-import { restoreSession, sessionTargetPath } from "./lib/atoma-data.ts";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-export interface RestoreAgentSessionArgs {
-  type: string;
-  number: string | number;
-  agent: string;
-  out: string;
+// src/scripts/restore_agent_session.ts
+import { writeFileSync } from "fs";
+import { parseArgs } from "util";
+
+// src/lib/gh.ts
+function run(cmd) {
+  const proc = Bun.spawnSync({
+    cmd,
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  return {
+    code: proc.exitCode ?? 1,
+    stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "",
+    stderr: proc.stderr ? proc.stderr.toString("utf8").trim() : ""
+  };
+}
+function gitRun(...args) {
+  return run(["git", ...args]);
 }
 
-export const ref = defineScript<RestoreAgentSessionArgs>(import.meta.url);
+// src/scripts/lib/atoma-data.ts
+function sessionTargetPath(type, number, agent) {
+  return `sessions/${type}-${number}-${agent}.json`;
+}
+function restoreSession(targetPath) {
+  if (gitRun("fetch", "origin", "atoma-data", "--depth=1").code !== 0) {
+    return;
+  }
+  if (gitRun("cat-file", "-e", `origin/atoma-data:${targetPath}`).code !== 0) {
+    return;
+  }
+  const shown = gitRun("show", `origin/atoma-data:${targetPath}`);
+  return shown.code === 0 ? shown.stdout : undefined;
+}
 
-function main(): void {
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
+
+// src/scripts/restore_agent_session.ts
+var ref = defineScript(import.meta.url);
+function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
       type: { type: "string" },
       number: { type: "string" },
       agent: { type: "string" },
-      out: { type: "string" },
-    },
+      out: { type: "string" }
+    }
   });
   if (!values.type || !values.number || !values.agent || !values.out) {
     console.error("usage: restore_agent_session.ts --type issue|pr --number N --agent NAME --out session.json");
     process.exit(2);
   }
-
   const target = sessionTargetPath(values.type, values.number, values.agent);
   const content = restoreSession(target);
   if (content !== undefined) {
@@ -45,5 +70,8 @@ function main(): void {
     console.error(`No existing session at ${target}, starting fresh.`);
   }
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref
+};

@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
+import type { Session } from "../lib/session.ts";
 
 export interface RecordRunMetadataArgs {
   session: string;
@@ -31,19 +32,6 @@ export interface RecordRunMetadataArgs {
 }
 
 export const ref = defineScript<RecordRunMetadataArgs>(import.meta.url);
-
-interface SessionMessage {
-  role: string;
-  content?: string;
-  atoma_metadata?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-interface Session {
-  messages: SessionMessage[];
-  metadata?: Record<string, unknown>;
-  [key: string]: unknown;
-}
 
 function main(): void {
   const { values } = parseArgs({
@@ -68,8 +56,9 @@ function main(): void {
 
   if (values["comment-id"] !== undefined) {
     const commentId = Number(values["comment-id"]);
-    for (let i = session.messages.length - 1; i >= 0; i--) {
-      const msg = session.messages[i]!;
+    const messages = session.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]!;
       if (msg.role === "assistant" && msg.content) {
         msg.atoma_metadata = { ...msg.atoma_metadata, github_comment_id: commentId, agent: values.agent };
         break;

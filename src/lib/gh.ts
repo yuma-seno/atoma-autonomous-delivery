@@ -1,7 +1,9 @@
 /**
- * gh.ts — thin wrappers around the `gh` CLI and `git`, used by every script
- * in this directory. Self-contained: do not import anything outside
- * `.github/`.
+ * gh.ts — thin wrappers around the `gh` CLI and `git`. The one canonical
+ * copy shared by every script and MCP server in this repo (workflow-invoked
+ * `src/scripts/**` and Atoma-tool-invoked `src/atoma/tools/scripts/**`
+ * alike) -- see build-dist.ts for how this stays true in the deployed
+ * output despite living in one shared place at dev time.
  */
 
 export interface RunResult {

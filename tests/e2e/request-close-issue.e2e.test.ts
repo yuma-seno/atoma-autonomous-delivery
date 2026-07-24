@@ -4,14 +4,15 @@
  * `atoma` binary, its real inference loop and real MCP client, against the
  * REAL, compiled `dist/.github/atoma/tools/scripts/mcp/atoma.ts` MCP server,
  * with a fake `gh` CLI so the real chain (mcp/atoma.ts ->
- * request_close_issue.ts -> resolve_notify.ts -> gh) runs without touching
- * the real GitHub API.
+ * request_close_issue.ts -> lib/notify.ts's resolveNotify() -> gh) runs
+ * without touching the real GitHub API.
  *
  * Covers only the human-authored branch (escalate via comment, do NOT
  * close): the bot-authored branch additionally cascades into
- * dispatch_orchestrator_if_ready.ts's own retry/sibling-check logic, which
- * would need its own dedicated fixture -- left as a further opportunity,
- * not implemented here (see run-agent.e2e.test.ts for the general design).
+ * lib/aggregation.ts's `dispatchOrchestratorIfSubIssueReady()` (its own
+ * retry/sibling-check logic), which would need its own dedicated fixture --
+ * left as a further opportunity, not implemented here (see
+ * run-agent.e2e.test.ts for the general design).
  */
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

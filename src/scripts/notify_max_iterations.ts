@@ -6,7 +6,7 @@
  * Usage: notify_max_iterations.ts --number N --agent AGENT [--notify LOGIN]
  */
 import { parseArgs } from "node:util";
-import { gh } from "./lib/gh.ts";
+import { gh } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface NotifyMaxIterationsArgs {

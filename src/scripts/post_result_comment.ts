@@ -15,7 +15,7 @@
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { gh } from "./lib/gh.ts";
+import { gh } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
@@ -96,6 +96,21 @@ function main(): void {
   }
 
   const output = existsSync("atoma_output.txt") ? readFileSync("atoma_output.txt", "utf8") : "";
+
+  // `atoma_output.txt` is empty whenever the run ended via a session-ending
+  // tool call (launch_sub_agent, request_close_issue, create_pr -- see
+  // src/atoma/tools/scripts/mcp/{atoma,github}.ts's `_meta.session_ends`):
+  // atoma's own inference loop stops immediately in that case, before the
+  // model ever gets a further turn to produce text. Each of those tools
+  // already posts its OWN dedicated, meaningful comment (e.g. "Launched
+  // sub-agent(s): ...", "PR #N created..."), so posting a second, essentially
+  // content-free "run by [agent](url)" comment here on top of that would
+  // just be noise -- skip entirely rather than post an empty wrapper.
+  if (!output.trim()) {
+    console.error("atoma_output.txt is empty (session ended via a tool call) -- skipping result comment.");
+    return;
+  }
+
   const body = buildCommentBody({
     agent: values.agent,
     notify: values.notify,

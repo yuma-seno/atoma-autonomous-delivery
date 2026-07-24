@@ -1,10 +1,6 @@
 /**
- * Shared type definitions for the Atoma tools/scripts subtree.
- *
- * NOTE: Everything under `.github/atoma/**` must stay self-contained (no
- * imports reaching outside `.github/`) -- the README instructs users to copy
- * just the `.github/` directory into their own repository, so this whole
- * subtree is the distributable unit.
+ * types.ts — shared type definitions, the one canonical copy used by every
+ * script and MCP server in this repo.
  */
 
 export interface AutoTrigger {

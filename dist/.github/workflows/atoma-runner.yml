@@ -88,11 +88,6 @@ jobs:
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
-      - name: Install MCP server dependencies
-        shell: bash
-        working-directory: .github/atoma/tools/scripts
-        run: |
-          bun install
       - name: Run configured environment setup
         shell: bash
         run: |
@@ -151,6 +146,14 @@ jobs:
           NUMBER: ${{ inputs.number }}
         run: |
           bun run .github/scripts/manage_in_progress_label.ts --action "add" --number "${NUMBER}"
+      - name: Post reviewer-start comment
+        if: steps.context.outputs.new_event_count != '0' && inputs.agent == 'reviewer' && inputs.type == 'pr'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          gh issue comment "$NUMBER" --body "Atoma: reviewer starting review."
       - name: 'Checkout Atoma source (for atoma_version: source)'
         uses: actions/checkout@v4
         with:
@@ -185,6 +188,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
+          ATOMA_OPS_LOG: atoma_ops.log
         shell: bash
         run: |
           AGENT="${{ inputs.agent }}"
@@ -255,14 +259,17 @@ jobs:
 
           # Detect whether a tool call already triggered an automatic follow-up
           # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
-          # reviewer, github__merge_pr -> orchestrator-or-wait), as opposed to the
-          # agent genuinely finishing with nothing further happening. Both MCP
-          # servers log these dispatch decisions to stderr (captured in
-          # atoma_logs.txt) unconditionally, independent of whatever text (if any)
-          # the agent wrote -- this is a purpose-built signal, unlike the text-based
-          # directive above which cannot see tool-triggered chains.
+          # reviewer, github__merge_pr -> orchestrator-or-re-invoked-agent), as
+          # opposed to the agent genuinely finishing with nothing further happening.
+          # Every dispatch site writes a structured `{"op":"dispatch",...}` entry to
+          # the ops log (see lib/ops-log.ts's logDispatch()) -- checking for that one
+          # stable, documented JSON field is far more robust than the previous
+          # approach (grepping atoma_logs.txt's raw stderr TEXT for hand-written
+          # strings like "dispatched: agent=..."), which silently broke once already
+          # when a refactor changed a log message's wording without updating the grep
+          # pattern to match.
           CHAIN_CONTINUES=false
-          if grep -qE '(dispatched: agent=|_dispatch_post_pr_agent: dispatched|_dispatch_orchestrator_if_ready:)' atoma_logs.txt; then
+          if [ -f atoma_ops.log ] && grep -q '"op":"dispatch"' atoma_ops.log; then
             CHAIN_CONTINUES=true
           fi
           echo "chain_continues=${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
@@ -283,14 +290,6 @@ jobs:
             echo "|------------|--------|------------|-------|"
             echo "| ${{ inputs.agent }} | ${PROMPT:-—} | ${COMPLETION:-—} | ${TOTAL:-—} |"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove atoma/in-progress label on completion
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ inputs.number }}
-        run: |
-          bun run .github/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
       - name: Post result comment
         id: post-result
         if: steps.atoma.outcome == 'success' && steps.context.outputs.new_event_count != '0'
@@ -382,6 +381,14 @@ jobs:
         shell: bash
         run: |
           bun run .github/scripts/manage_dispatch_loop.ts --session "session.json" --new-event-count "${{ steps.context.outputs.new_event_count }}" --directive "${{ steps.atoma.outputs.directive }}"
+      - name: Remove atoma/in-progress label on completion
+        if: always() && (steps.atoma.outcome != 'success' || steps.atoma.outputs.max_iterations_reached == 'true' || steps.loop-control.outputs.loop_limit_reached == 'true' || (steps.atoma.outputs.chain_continues != 'true' && steps.atoma.outputs.directive == ''))
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          bun run .github/scripts/manage_in_progress_label.ts --action "remove" --number "${NUMBER}"
       - name: Dispatch next agent
         if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.max_iterations_reached != 'true' && steps.loop-control.outputs.loop_limit_reached != 'true'
         shell: bash

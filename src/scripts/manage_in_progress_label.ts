@@ -9,8 +9,8 @@
  * Usage: manage_in_progress_label.ts --action add|remove --number N
  */
 import { parseArgs } from "node:util";
-import { gh } from "./lib/gh.ts";
-import { getLabel } from "./lib/config.ts";
+import { gh } from "../lib/gh.ts";
+import { getLabel } from "../lib/config.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface ManageInProgressLabelArgs {

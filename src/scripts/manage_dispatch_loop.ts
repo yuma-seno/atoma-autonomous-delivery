@@ -12,6 +12,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
+import type { Session } from "../lib/session.ts";
 
 export interface ManageDispatchLoopArgs {
   session: string;
@@ -22,11 +23,6 @@ export interface ManageDispatchLoopArgs {
 export const ref = defineScript<ManageDispatchLoopArgs>(import.meta.url);
 
 const LOOP_LIMIT = 5;
-
-interface Session {
-  metadata?: { github_context?: { auto_dispatch_count?: number } };
-  [key: string]: unknown;
-}
 
 export function manageDispatchLoop(
   session: Session,

@@ -131,9 +131,9 @@ export const atomaPrMerged = new Workflow("atoma-pr-merged", {
     },
     [
       new ActionsCheckoutV4({}),
-      // Required below: aggregate_sub_issues.ts (which in turn shells out to
-      // check_open_siblings.ts / inject_sub_results.ts / resolve_notify.ts)
-      // is run via `bun run` -- not preinstalled on GitHub-hosted runners.
+      // Required below: aggregate_sub_issues.ts (which uses shared logic
+      // from lib/aggregation.ts, lib/sibling-check.ts, lib/notify.ts) is
+      // run via `bun run` -- not preinstalled on GitHub-hosted runners.
       new SetupBunAction(),
       new TypedOutputsStep({
         name: "Aggregate sub-issue results",

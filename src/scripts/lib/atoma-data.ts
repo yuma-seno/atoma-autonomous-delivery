@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { gitRun } from "./gh.ts";
+import { gitRun } from "../../lib/gh.ts";
 
 /** Path of a given agent's session file on the atoma-data branch. */
 export function sessionTargetPath(type: string, number: string | number, agent: string): string {

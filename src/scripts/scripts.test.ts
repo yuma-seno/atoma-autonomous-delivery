@@ -335,6 +335,55 @@ describe("post_result_comment.ts buildCommentBody", () => {
   });
 });
 
+describe("post_result_comment.ts main", () => {
+  test("skips posting entirely when atoma_output.txt is missing (session ended via a tool call)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "post_result_comment.ts"),
+        ["--number", "5", "--agent", "orchestrator", "--notify", "octocat", "--run-url", "http://example.com/run/1"],
+        { cwd: dir, rules: [{ match: ["api", "comments"] }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.length).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("skips posting entirely when atoma_output.txt is blank", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    writeFileSync(join(dir, "atoma_output.txt"), "   \n");
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "post_result_comment.ts"),
+        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1"],
+        { cwd: dir, rules: [{ match: ["api", "comments"] }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.length).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("posts normally when atoma_output.txt has real content", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    writeFileSync(join(dir, "atoma_output.txt"), "All done.");
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "post_result_comment.ts"),
+        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1"],
+        { cwd: dir, env: { GITHUB_REPOSITORY: "owner/repo" }, rules: [{ match: ["api", "comments"], stdout: "42" }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.join(" ").includes("comments"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("manage_dispatch_loop.ts", () => {
   test("resets the counter when new events are present", () => {
     const { autoDispatchCount, loopLimitReached } = manageDispatchLoop(
@@ -472,34 +521,6 @@ describe("resolve_entry_agent.ts", () => {
   });
 });
 
-describe("check_open_siblings.ts", () => {
-  test("counts open siblings via gh issue list", () => {
-    const configDir = makeConfigDir({});
-    try {
-      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_open_siblings.ts"), ["--repo", "owner/repo", "--parent", "5"], {
-        cwd: configDir,
-        rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 10 }, { number: 11 }]) }],
-      });
-      expect(r.stdout.trim()).toBe("2");
-    } finally {
-      rmSync(configDir, { recursive: true, force: true });
-    }
-  });
-
-  test("prints 0 when no siblings are open", () => {
-    const configDir = makeConfigDir({});
-    try {
-      const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_open_siblings.ts"), ["--repo", "owner/repo", "--parent", "5"], {
-        cwd: configDir,
-        rules: [{ match: ["issue", "list"], stdout: "[]" }],
-      });
-      expect(r.stdout.trim()).toBe("0");
-    } finally {
-      rmSync(configDir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("manage_in_progress_label.ts", () => {
   test("adds the in_progress label", () => {
     const configDir = makeConfigDir({});
@@ -527,6 +548,53 @@ describe("manage_in_progress_label.ts", () => {
       expect(r.status).toBe(0);
       const editCall = r.ghCalls.find((c) => c.includes("edit"));
       expect(editCall).toContain("--remove-label");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("guard_comment_during_run.ts", () => {
+  test("deletes the comment and notifies the commenter when in_progress is set", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "guard_comment_during_run.ts"),
+        ["--number", "9", "--comment-id", "123", "--commenter", "octocat"],
+        {
+          cwd: configDir,
+          env: { GITHUB_REPOSITORY: "owner/repo" },
+          rules: [
+            { match: ["issue", "view", "labels"], stdout: "true" },
+            { match: ["api", "DELETE"] },
+            { match: ["issue", "comment"] },
+          ],
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("DELETE") && c.join(" ").includes("comments/123"))).toBe(true);
+      const commentCall = r.ghCalls.find((c) => c.includes("comment"));
+      expect(commentCall?.join(" ")).toContain("@octocat");
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves the comment alone when the issue is not in_progress", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "guard_comment_during_run.ts"),
+        ["--number", "9", "--comment-id", "123", "--commenter", "octocat"],
+        {
+          cwd: configDir,
+          env: { GITHUB_REPOSITORY: "owner/repo" },
+          rules: [{ match: ["issue", "view", "labels"], stdout: "false" }],
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("DELETE"))).toBe(false);
+      expect(r.ghCalls.some((c) => c.includes("comment"))).toBe(false);
     } finally {
       rmSync(configDir, { recursive: true, force: true });
     }
@@ -675,45 +743,6 @@ describe("check_sub_issue_closure.ts", () => {
   });
 });
 
-describe("inject_sub_results.ts", () => {
-  test("replaces the last tool message with an aggregated summary", () => {
-    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
-    try {
-      const sessionFile = join(dir, "session.json");
-      const outFile = join(dir, "out.json");
-      writeFileSync(
-        sessionFile,
-        JSON.stringify({
-          messages: [
-            { role: "user", content: "go" },
-            { role: "tool", content: "launched" },
-          ],
-        }),
-      );
-      const r = runWithFakeGh(
-        join(process.cwd(), SCRIPTS_DIR, "inject_sub_results.ts"),
-        ["--session", sessionFile, "--repo", "owner/repo", "--parent", "1", "--sub-issues", "2,3", "--out", outFile],
-        {
-          rules: [
-            { match: ["issue", "view", "2"], stdout: JSON.stringify({ title: "Fix A", state: "CLOSED" }) },
-            { match: ["issue", "view", "3"], stdout: JSON.stringify({ title: "Fix B", state: "CLOSED" }) },
-            { match: ["pr", "list", "merged"], stdout: JSON.stringify([{ number: 10, title: "Fix A", url: "http://x/10" }]) },
-            { match: ["pr", "list", "open"], stdout: "[]" },
-          ],
-        },
-      );
-      expect(r.status).toBe(0);
-      const session = JSON.parse(readFileSync(outFile, "utf8")) as { messages: { role: string; content: string }[] };
-      const toolMsg = session.messages.find((m) => m.role === "tool");
-      expect(toolMsg?.content).toContain("Fix A");
-      expect(toolMsg?.content).toContain("Fix B");
-      expect(toolMsg?.content).toContain("PR #10");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("run_environment_setup.ts", () => {
   test("runs configured setup commands in order", () => {
     const dir = makeConfigDir({ environment: { setup_commands: ["echo one", "echo two"] } });
@@ -784,10 +813,15 @@ describe("dispatch_if_siblings_done.ts", () => {
     try {
       const r = runWithFakeGh(
         join(process.cwd(), SCRIPTS_DIR, "dispatch_if_siblings_done.ts"),
-        ["--repo", "owner/repo", "--parent", "5"],
+        ["--repo", "owner/repo", "--parent", "5", "--closed-num", "9"],
         {
           cwd: configDir,
-          rules: [{ match: ["issue", "list"], stdout: "[]" }, { match: ["issue", "comment"] }, { match: ["workflow", "run"] }],
+          rules: [
+            { match: ["issue", "list"], stdout: "[]" },
+            { match: ["issue", "view", "comments"], stdout: "" },
+            { match: ["issue", "comment"] },
+            { match: ["workflow", "run"] },
+          ],
         },
       );
       expect(r.status).toBe(0);
@@ -798,12 +832,34 @@ describe("dispatch_if_siblings_done.ts", () => {
     }
   });
 
+  test("skips dispatch when the aggregation marker is already present", () => {
+    const configDir = makeConfigDir({});
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "dispatch_if_siblings_done.ts"),
+        ["--repo", "owner/repo", "--parent", "5", "--closed-num", "9"],
+        {
+          cwd: configDir,
+          rules: [
+            { match: ["issue", "list"], stdout: "[]" },
+            { match: ["issue", "view", "comments"], stdout: "<!-- atoma:aggregated=9 -->\nAtoma: All sub-tasks completed." },
+          ],
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("comment"))).toBe(false);
+      expect(r.ghCalls.some((c) => c[0] === "workflow")).toBe(false);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
   test("does nothing when siblings are still open", () => {
     const configDir = makeConfigDir({});
     try {
       const r = runWithFakeGh(
         join(process.cwd(), SCRIPTS_DIR, "dispatch_if_siblings_done.ts"),
-        ["--repo", "owner/repo", "--parent", "5"],
+        ["--repo", "owner/repo", "--parent", "5", "--closed-num", "9"],
         { cwd: configDir, rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 1 }]) }] },
       );
       expect(r.status).toBe(0);
@@ -832,7 +888,7 @@ describe("aggregate_sub_issues.ts", () => {
       expect(r.status).toBe(0);
       expect(r.stdout).toContain("Not all sub-tasks done yet");
       const commentCall = r.ghCalls.find((c) => c.includes("comment"));
-      expect(commentCall?.join(" ")).toContain("atoma:sub-result:#9");
+      expect(commentCall?.join(" ")).toContain("atoma:sub-result=9");
       // The full aggregation path (siblingCount === 0) additionally performs
       // real `git` operations against an `atoma-data` branch/remote
       // (checkout --orphan, commit, push-with-retry-on-race) -- deliberately

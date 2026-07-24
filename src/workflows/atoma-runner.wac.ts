@@ -32,9 +32,12 @@ import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts
 //   3. run configured environment setup, set git identity
 //   4. resolve `notify` login + this agent's `max_iterations` from config
 //   5. add atoma/in-progress label, then RUN THE AGENT
-//   6. remove the label, post the agent's result as a comment
+//   6. post the agent's result as a comment
 //   7. handle follow-ups: uncommitted-changes notice, max-iterations notice,
-//      dispatch the next agent in the chain (if any)
+//      loop control, THEN remove the label (only if this run reached a
+//      genuine stopping point -- see removeLabelStep/REMOVE_LABEL_GUARD --
+//      otherwise it stays on while a sub-agent/PR/next-agent handoff is
+//      still in flight), dispatch the next agent in the chain (if any)
 
 const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
@@ -182,6 +185,10 @@ const runAgentStep = new TypedOutputsStep(
       GITHUB_RUN_ID: "${{ github.run_id }}",
       ISSUE_NUMBER: fetchEventsStep.outputs.resolved_number,
       ISSUE_NOTIFY: notifyStep.outputs.notify,
+      // Structured JSON-lines log every MCP tool mutation/dispatch decision
+      // is written to (see lib/ops-log.ts) -- read back below to determine
+      // chain_continues, and generally useful as a per-run audit trail.
+      ATOMA_OPS_LOG: "atoma_ops.log",
     },
     shell: "bash",
     run: `AGENT="\${{ inputs.agent }}"
@@ -252,14 +259,17 @@ ${scriptCommandWithArgs(extractDirectiveRef, { "output-file": "atoma_output.txt"
 
 # Detect whether a tool call already triggered an automatic follow-up
 # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
-# reviewer, github__merge_pr -> orchestrator-or-wait), as opposed to the
-# agent genuinely finishing with nothing further happening. Both MCP
-# servers log these dispatch decisions to stderr (captured in
-# atoma_logs.txt) unconditionally, independent of whatever text (if any)
-# the agent wrote -- this is a purpose-built signal, unlike the text-based
-# directive above which cannot see tool-triggered chains.
+# reviewer, github__merge_pr -> orchestrator-or-re-invoked-agent), as
+# opposed to the agent genuinely finishing with nothing further happening.
+# Every dispatch site writes a structured \`{"op":"dispatch",...}\` entry to
+# the ops log (see lib/ops-log.ts's logDispatch()) -- checking for that one
+# stable, documented JSON field is far more robust than the previous
+# approach (grepping atoma_logs.txt's raw stderr TEXT for hand-written
+# strings like "dispatched: agent=..."), which silently broke once already
+# when a refactor changed a log message's wording without updating the grep
+# pattern to match.
 CHAIN_CONTINUES=false
-if grep -qE '(dispatched: agent=|_dispatch_post_pr_agent: dispatched|_dispatch_orchestrator_if_ready:)' atoma_logs.txt; then
+if [ -f atoma_ops.log ] && grep -q '"op":"dispatch"' atoma_ops.log; then
   CHAIN_CONTINUES=true
 fi
 echo "chain_continues=\${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
@@ -439,6 +449,39 @@ const loopControlStep = new TypedOutputsStep(
   ["auto_dispatch_count", "loop_limit_reached"] as const,
 );
 
+// Only remove the atoma/in-progress label when this run has reached a
+// genuine stopping point for THIS issue/PR, per the 3 cases work should
+// actually hand back to a human (or the run failed outright, needing
+// cleanup regardless):
+//   1. the run failed (cleanup)
+//   2. max_iterations was reached (explicit hand-back to a human)
+//   3. the auto-dispatch loop limit was reached (also an explicit,
+//      loop-limit-driven hand-back to a human -- see loopLimitCommentStep)
+//   4. nothing further is happening at all: no tool call triggered a
+//      follow-up dispatch (chain_continues) AND no text directive handed
+//      off to another agent -- this covers both a genuine final
+//      completion/close AND an agent escalating a question to a human.
+// In every other case (a sub-agent was launched, a PR was created and
+// dispatched to review, a text directive handed off to the next agent,
+// etc.) the label stays, since work is still actively continuing --
+// possibly on a different issue/PR entirely -- under this one.
+const REMOVE_LABEL_GUARD =
+  `steps.atoma.outcome != 'success' || ${runAgentStep.rawOutputs.max_iterations_reached} == 'true' || ` +
+  `${loopControlStep.rawOutputs.loop_limit_reached} == 'true' || ` +
+  `(${runAgentStep.rawOutputs.chain_continues} != 'true' && ${runAgentStep.rawOutputs.directive} == '')`;
+
+const removeLabelStep = new TypedOutputsStep({
+  name: "Remove atoma/in-progress label on completion",
+  if: `always() && (${REMOVE_LABEL_GUARD})`,
+  shell: "bash",
+  env: {
+    GH_TOKEN: "${{ github.token }}",
+    NUMBER: "${{ inputs.number }}",
+  },
+  run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "remove", number: "\${NUMBER}" })}
+`,
+});
+
 const DISPATCH_NEXT_GUARD =
   `steps.atoma.outcome == 'success' && ${runAgentStep.rawOutputs.directive} != '' && ` +
   `${runAgentStep.rawOutputs.max_iterations_reached} != 'true'`;
@@ -497,6 +540,26 @@ fi
 `,
 });
 
+// Traceability + visibility: post an explicit "review starting" marker on
+// the PR as soon as the reviewer is about to run, regardless of what
+// dispatched it (github__create_pr's own dispatch, the pull_request auto-
+// trigger workflows, or a manual /reviewer comment) -- one single place
+// covering every path, rather than duplicating this in each dispatcher.
+// The atoma/in-progress label (added just above, before this step) already
+// gives ongoing at-a-glance status; this comment gives a concrete, timestamped
+// entry in the PR's own history of a review actually starting.
+const reviewerStartCommentStep = new TypedOutputsStep({
+  name: "Post reviewer-start comment",
+  if: `${buildContextStep.rawOutputs.new_event_count} != '0' && inputs.agent == 'reviewer' && inputs.type == 'pr'`,
+  shell: "bash",
+  env: {
+    GH_TOKEN: "${{ github.token }}",
+    NUMBER: "${{ inputs.number }}",
+  },
+  run: `gh issue comment "$NUMBER" --body "Atoma: reviewer starting review."
+`,
+});
+
 const runJob = new NormalJob("run", {
   "runs-on": "ubuntu-latest",
   "timeout-minutes": 60,
@@ -532,18 +595,11 @@ echo "BRANCH=$BRANCH" >> $GITHUB_ENV
   // (tools.yaml spawns the atoma MCP servers via `bun run ...`) --
   // GitHub-hosted runners do not ship Bun preinstalled.
   new SetupBunAction({ name: "Setup Bun" }),
-  // The MCP servers under .github/atoma/tools/scripts/mcp/ depend on
-  // @modelcontextprotocol/sdk. Installing it scoped to their own
-  // scripts/package.json (rather than relying on a repo-root package.json)
-  // keeps this whole workflow self-sufficient: copying just `.github/` into
-  // a project is enough for it to work, with no root-level Node project
-  // required.
-  new TypedOutputsStep({
-    name: "Install MCP server dependencies",
-    shell: "bash",
-    "working-directory": ".github/atoma/tools/scripts",
-    run: "bun install\n",
-  }),
+  // No separate "install MCP server dependencies" step needed: build-dist.ts
+  // bundles every script (via Bun.build) with all its imports -- including
+  // npm dependencies like @modelcontextprotocol/sdk/shell-quote -- inlined
+  // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
+  // needs no package.json/node_modules/bun install at all.
   new TypedOutputsStep({
     name: "Run configured environment setup",
     shell: "bash",
@@ -579,25 +635,11 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
     run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
 `,
   }),
+  reviewerStartCommentStep,
   checkoutAtomaSourceStep,
   installAtomaCliStep,
   runAgentStep,
   tokenUsageStep,
-  new TypedOutputsStep({
-    // Remove atoma/in-progress when the agent run finishes (success or
-    // failure). Sub-issues keep atoma/sub-issue label for tracking (never
-    // removed here). Applies to both issues and PRs, mirroring the Add step
-    // above.
-    name: "Remove atoma/in-progress label on completion",
-    if: "always()",
-    shell: "bash",
-    env: {
-      GH_TOKEN: "${{ github.token }}",
-      NUMBER: "${{ inputs.number }}",
-    },
-    run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "remove", number: "\${NUMBER}" })}
-`,
-  }),
   postResultCommentStep,
   eyesReactionStep,
   recordRunMetadataStep,
@@ -624,6 +666,7 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
 `,
   }),
   loopControlStep,
+  removeLabelStep,
   dispatchNextAgentStep,
   loopLimitCommentStep,
 ]);

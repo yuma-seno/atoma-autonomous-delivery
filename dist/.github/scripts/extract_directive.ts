@@ -1,36 +1,26 @@
 #!/usr/bin/env bun
-/**
- * extract_directive.ts — Extract the next-agent directive from the first
- * command-like line of the agent's final text output.
- *
- * Accepts both "/engineer" (with optional trailing args) and the common
- * markdown-mangled form "/`engineer`". A candidate is only accepted if it
- * names a real agent (a matching .md file exists in --def-dir) -- this
- * guards against false positives like a model writing "/agent reviewer"
- * (matching "agent", not a real agent name) instead of the expected
- * "/reviewer", which would otherwise dispatch a doomed-to-fail run for a
- * non-existent agent definition.
- *
- * Usage: extract_directive.ts --output-file atoma_output.txt --def-dir DIR
- * Writes `directive=<name-or-empty>` to $GITHUB_OUTPUT.
- */
-import { existsSync, readFileSync, appendFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseArgs } from "node:util";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-export interface ExtractDirectiveArgs {
-  "output-file": string;
-  "def-dir": string;
+// src/scripts/extract_directive.ts
+import { existsSync, readFileSync, appendFileSync } from "fs";
+import { join } from "path";
+import { parseArgs } from "util";
+
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-export const ref = defineScript<ExtractDirectiveArgs>(import.meta.url);
-
-const COMMAND_RE = /^\/([a-z][a-z0-9-]+)(?:\b|\s|$)/;
-
-function candidates(rawLine: string): string[] {
+// src/scripts/extract_directive.ts
+var ref = defineScript(import.meta.url);
+var COMMAND_RE = /^\/([a-z][a-z0-9-]+)(?:\b|\s|$)/;
+function candidates(rawLine) {
   let line = rawLine.trim();
-  if (!line) return [];
+  if (!line)
+    return [];
   line = line.replace(/^(?:[-*+]\s+|>\s*)+/, "");
   const variants = [line];
   if (line.startsWith("`") && line.endsWith("`") && line.length > 2) {
@@ -41,38 +31,42 @@ function candidates(rawLine: string): string[] {
   }
   return variants;
 }
-
-export function extractDirective(output: string, defDir: string): string {
-  for (const rawLine of output.split("\n")) {
+function extractDirective(output, defDir) {
+  for (const rawLine of output.split(`
+`)) {
     for (const candidate of candidates(rawLine)) {
       const match = COMMAND_RE.exec(candidate);
       if (match) {
-        const agent = match[1]!;
-        if (existsSync(join(defDir, `${agent}.md`))) return agent;
+        const agent = match[1];
+        if (existsSync(join(defDir, `${agent}.md`)))
+          return agent;
       }
     }
   }
   return "";
 }
-
-function main(): void {
+function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
       "output-file": { type: "string" },
-      "def-dir": { type: "string" },
-    },
+      "def-dir": { type: "string" }
+    }
   });
   if (!values["output-file"] || !values["def-dir"]) {
     console.error("usage: extract_directive.ts --output-file FILE --def-dir DIR");
     process.exit(2);
   }
-
   const output = existsSync(values["output-file"]) ? readFileSync(values["output-file"], "utf8") : "";
   const directive = extractDirective(output, values["def-dir"]);
-
   const githubOutput = process.env.GITHUB_OUTPUT;
-  if (githubOutput) appendFileSync(githubOutput, `directive=${directive}\n`);
+  if (githubOutput)
+    appendFileSync(githubOutput, `directive=${directive}
+`);
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref,
+  extractDirective
+};
