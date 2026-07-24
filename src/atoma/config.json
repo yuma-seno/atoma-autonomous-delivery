@@ -1,0 +1,50 @@
+{
+  "version": 4,
+  "merge_policy": "auto",
+  "environment": {
+    "description": "Tasks in this template are plain-stdlib Python tested with pytest; pytest is pre-installed by setup_commands below so agents never need to install it themselves mid-session.",
+    "setup_commands": [
+      "pip install --quiet pytest"
+    ]
+  },
+  "agents": {
+    "orchestrator": {
+      "max_iterations": 100
+    },
+    "engineer": {
+      "max_iterations": 200
+    },
+    "reviewer": {
+      "max_iterations": 30
+    }
+  },
+  "labels": {
+    "in_progress": "atoma/in-progress",
+    "sub_issue": "atoma/sub-issue",
+    "launched": "atoma/launched"
+  },
+  "auto_triggers": [
+    {
+      "event": "pull_request.opened",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request.synchronize",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request.ready_for_review",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request_review.submitted",
+      "agent": "engineer",
+      "condition": "changes_requested"
+    },
+    {
+      "event": "issue_comment.created",
+      "agent": "$dispatch_agent",
+      "condition": "atoma:dispatch"
+    }
+  ]
+}

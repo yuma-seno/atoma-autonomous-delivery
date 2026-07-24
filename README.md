@@ -262,44 +262,41 @@ This repository's own `.github/workflows/ci.yml` is **hand-written YAML** — in
 
 > **Required for the dogfooding sync step:** add a `WORKFLOW_PAT` repository secret — a PAT with the `repo` + `workflow` scopes. Empirically confirmed: the default `GITHUB_TOKEN` cannot push changes to files under `.github/workflows/` ("refusing to allow a GitHub App to create or update workflow ... without `workflows` permission") — a hard GitHub restriction with no `permissions:` YAML equivalent. This repo also needs the same secrets/variables and "Allow GitHub Actions to create and approve pull requests" setting described in Quick Start above, since its own `.github/workflows/` will start running for real.
 
-The actual deliverable lives entirely under `dist/.github/` and is fully generated/copied from `src/`; it is never hand-edited directly, with one deliberate exception (see below).
+The actual deliverable lives entirely under `dist/.github/` and is fully generated/copied from `src/`; nothing under `dist/` is ever hand-edited directly.
 
 ```
 src/
 ├── workflows/*.wac.ts        # workflow-as-code source (github-actions-workflow-ts)
 │   └── actions/               # typed Action/Step wrappers (base.ts's CustomAction for third-party actions like oven-sh/setup-bun, plus workflow-authoring helpers)
-└── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ shared lib/)
-
-dist/.github/                 # THE DELIVERABLE -- copy this into your own repo as .github/
-├── workflows/*.yml            # generated from src/workflows/*.wac.ts
-├── scripts/                   # THIS REPO'S OWN workflow-automation glue -- copied verbatim from src/scripts/
-│   ├── lib/                    # never hand-edit here
-│   └── *.ts
-└── atoma/
-    ├── config.json, prompt-template.md, agent-definitions/*.md, tools/tools.yaml   # hand-authored directly here (pure config/content, nothing to "build")
-    └── tools/scripts/         # ATOMA'S OWN tool/hook implementations -- entirely hand-authored, no src/ equivalent
+├── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ shared lib/)
+└── atoma/                     # source for ATOMA'S OWN tool/hook implementations + config/agent content
+    ├── config.json, prompt-template.md, agent-definitions/*.md, tools/tools.yaml
+    └── tools/scripts/         # MCP servers, before_tool hook, and the scripts they shell out to
         ├── lib/                # hand-authored duplicate of src/scripts/lib/{gh,config,types}.ts
         ├── mcp/                # MCP stdio servers (tools.yaml's tool_servers)
         ├── hooks/              # before_tool hook
         ├── launch_sub_agent.ts, request_close_issue.ts, dispatch_orchestrator_if_ready.ts
         └── get_config_value.ts, check_open_siblings.ts, resolve_notify.ts   # DUPLICATED from ../../scripts/ -- see note below
+
+dist/.github/                 # THE DELIVERABLE -- copy this into your own repo as .github/
+├── workflows/*.yml            # generated from src/workflows/*.wac.ts
+├── scripts/                    # copied verbatim from src/scripts/ (never hand-edit here)
+└── atoma/                      # copied verbatim from src/atoma/ (never hand-edit here)
 ```
 
 Scripts are sorted into two independent trees by **who invokes them**, not by topic:
-- `dist/.github/scripts/` — invoked directly from a `*.wac.ts` workflow step (via `scriptCommand()`/`scriptCommandWithArgs()` in `src/workflows/actions/script-call.ts`). This is this repo's own CI/automation glue, not Atoma tooling.
-- `dist/.github/atoma/tools/scripts/` — invoked by Atoma's own tool-calling machinery (`mcp/*.ts`'s MCP tools, `hooks/*.ts`'s `before_tool` hook, and the handful of scripts they shell out to). Entirely hand-authored directly here (same treatment as `mcp/`/`hooks/` always had) — there is no `src/` source for anything in this tree.
+- `src/scripts/` (→ `dist/.github/scripts/`) — invoked directly from a `*.wac.ts` workflow step (via `scriptCommand()`/`scriptCommandWithArgs()` in `src/workflows/actions/script-call.ts`). This is this repo's own CI/automation glue, not Atoma tooling.
+- `src/atoma/tools/scripts/` (→ `dist/.github/atoma/tools/scripts/`) — invoked by Atoma's own tool-calling machinery (`mcp/*.ts`'s MCP tools, `hooks/*.ts`'s `before_tool` hook, and the handful of scripts they shell out to).
 
-Three scripts (`get_config_value.ts`, `check_open_siblings.ts`, `resolve_notify.ts`) are used by BOTH a workflow step AND Atoma's own tool-calling code, and are **deliberately duplicated** — one source-tracked copy under `src/scripts/` (deployed to `dist/.github/scripts/`), one independent hand-authored copy directly under `dist/.github/atoma/tools/scripts/` — rather than having either tree reach across into the other. This keeps `.github/atoma/**` and `.github/scripts/**` each fully self-contained with zero cross-references between them, at the cost of ~3 small files needing to be kept in sync by hand if their logic ever changes (each copy's doc comment points at its sibling).
+Three scripts (`get_config_value.ts`, `check_open_siblings.ts`, `resolve_notify.ts`) are used by BOTH a workflow step AND Atoma's own tool-calling code, and are **deliberately duplicated** — one copy under `src/scripts/` (deployed to `dist/.github/scripts/`), one independent copy under `src/atoma/tools/scripts/` (deployed to `dist/.github/atoma/tools/scripts/`) — rather than having either tree reach across into the other. This keeps `.github/atoma/**` and `.github/scripts/**` each fully self-contained with zero cross-references between them at *runtime* (a consumer can copy just one subtree and it still works), at the cost of ~3 small files needing to be kept in sync by hand if their logic ever changes (each copy's doc comment points at its sibling).
 
-`dist/.github/atoma/tools/scripts/mcp/` and `hooks/` (and now the rest of that tree) are the one deliberate exception to "never hand-edit `dist/`": they're already in final, runnable form (Bun runs `.ts` directly, no compile step), tightly coupled to the equally-hand-authored `tools.yaml` beside them, so extracting them into `src/` and copying them back would add indirection with no benefit.
-
-Because the deliverable must work when copied alone (no root-level `package.json`/`node_modules` from this repo), `dist/.github/atoma/tools/scripts/package.json` declares the one runtime dependency the MCP servers need (`@modelcontextprotocol/sdk`), and `atoma-runner.yml` installs it (scoped to that directory) before running the agent.
+Because the deliverable must work when copied alone (no root-level `package.json`/`node_modules` from this repo), `src/atoma/tools/scripts/package.json` (→ `dist/.github/atoma/tools/scripts/package.json`) declares the one runtime dependency the MCP servers need (`@modelcontextprotocol/sdk`, `shell-quote`), and `atoma-runner.yml` installs it (scoped to that directory) before running the agent.
 
 ```bash
 bun install          # install this repo's own dev dependencies
-bun run synth        # regenerate dist/.github/workflows/*.yml + copy src/scripts/** into dist/.github/scripts/ (gwf build + build-dist.ts)
+bun run synth        # regenerate dist/.github/workflows/*.yml + copy src/scripts/** and src/atoma/** into dist/.github/ (gwf build + build-dist.ts)
 bun run synth:check  # verify dist/ matches its src/ source (used by .github/workflows/ci.yml)
-bun run typecheck    # tsc --noEmit across src/ and dist/.github/atoma/tools/scripts/**
+bun run typecheck    # tsc --noEmit across all of src/ (including src/atoma/tools/scripts/**)
 bun run test         # bun:test — script & MCP server behavior tests
 bun run lint         # typecheck + synth:check
 ```

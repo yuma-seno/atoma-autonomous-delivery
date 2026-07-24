@@ -20,7 +20,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "dist/.github/atoma/tools/scripts/**/*.ts",
     "tests/e2e/**/*.ts",
     "wac.config.ts"
   ]

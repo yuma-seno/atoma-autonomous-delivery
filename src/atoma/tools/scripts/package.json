@@ -1,0 +1,9 @@
+{
+  "name": "atoma-tools-scripts",
+  "private": true,
+  "description": "Runtime dependencies for the Atoma MCP servers (.github/atoma/tools/scripts/mcp/). Installed on-demand by atoma-runner.yml before the agent runs, so this directory is self-sufficient when copied into your own repository -- no root-level package.json/node_modules required.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "shell-quote": "^1.10.0"
+  }
+}

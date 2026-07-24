@@ -11,6 +11,7 @@ logs/
 
 # Dependencies
 node_modules/
-.package-lock.json
 dist/**/node_modules/
 dist/**/bun.lock*
+src/atoma/tools/scripts/node_modules/
+src/atoma/tools/scripts/bun.lock*
