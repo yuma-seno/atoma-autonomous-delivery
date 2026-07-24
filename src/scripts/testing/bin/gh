@@ -1,8 +1,13 @@
 #!/usr/bin/env bun
 /**
- * fake `gh` CLI for src/scripts/*.test.ts, driven entirely by env vars so
- * one fixture works for every script under test. Its directory is prepended
- * to PATH (as literally "gh") by testing/harness.ts's `runWithFakeGh`.
+ * fake `gh` CLI, driven entirely by env vars so one fixture works for every
+ * script under test. Shared by two consumers:
+ *   - src/scripts/*.test.ts: its directory is prepended to PATH (as
+ *     literally "gh") by testing/harness.ts's `runWithFakeGh`.
+ *   - tests/e2e/*.e2e.test.ts: via tests/e2e/fake-gh.ts, prepended to PATH
+ *     for the top-level `atoma` binary's own spawn env so every spawned MCP
+ *     server (and every script THEY spawn in turn) resolves `gh` to this
+ *     file instead of the real CLI.
  *
  *   FAKE_GH_RESPONSES = JSON array of { match: string[]; stdout?: string; code?: number }.
  *     A rule matches a real invocation when EVERY string in `match` is a

@@ -42,7 +42,7 @@ const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
-// dist/.github/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
+// src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
 // Referenced from three separate steps below (prepare/run/dispatch-next);
 // centralized here so they can't drift from each other by typo.
 const ORCHESTRATION_FILE = ".github/atoma/config.json";

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
-const SCRIPT = "dist/.github/atoma/tools/scripts/hooks/shell_guard.ts";
+const SCRIPT = "src/atoma/tools/scripts/hooks/shell_guard.ts";
 
 describe("shell_guard.ts", () => {
   test("blocks dangerous commands", () => {

@@ -6,8 +6,9 @@
  *   - the REAL, compiled `dist/.github/atoma/tools/scripts/mcp/github.ts`
  *     MCP server, spawned exactly like production does (via `bun run`),
  *     communicating over real stdio JSON-RPC;
- *   - a fake `gh` CLI stub (fake-gh.ts / fixtures/bin/gh) so mcp/github.ts's
- *     real business logic runs without hitting the real GitHub API.
+ *   - a fake `gh` CLI stub (fake-gh.ts, reusing src/scripts/testing/bin/gh)
+ *     so mcp/github.ts's real business logic runs without hitting the real
+ *     GitHub API.
  *
  * This is one of the only places in the test suite that exercises the real
  * agent-loop <-> MCP-protocol <-> script boundary end-to-end (see also

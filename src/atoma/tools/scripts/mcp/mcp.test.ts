@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 
-const SCRIPTS_DIR = "dist/.github/atoma/tools/scripts/mcp";
+const SCRIPTS_DIR = "src/atoma/tools/scripts/mcp";
 
 function sendRequest(script: string, request: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
