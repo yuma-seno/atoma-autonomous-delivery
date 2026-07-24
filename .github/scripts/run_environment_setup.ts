@@ -1,19 +1,28 @@
 #!/usr/bin/env bun
-/**
- * run_environment_setup.ts — Run each command in config.json's
- * `environment.setup_commands` (if any) via `bash -c`, before the agent
- * starts, so it never has to spend iterations/tool calls doing one-off
- * environment prep itself on a cold runner. No-ops quietly if unset/empty.
- *
- * Mirrors GitHub Actions' own default `bash -e {0}` semantics: the first
- * failing command aborts immediately with its exit code.
- */
-import { loadConfig } from "./lib/config.ts";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-export const ref = defineScript(import.meta.url);
+// src/lib/config.ts
+import { readFileSync } from "fs";
+var CONFIG_PATH = ".github/atoma/config.json";
+var cached;
+function loadConfig() {
+  if (!cached) {
+    cached = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  }
+  return cached;
+}
 
-function main(): void {
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
+
+// src/scripts/run_environment_setup.ts
+var ref = defineScript(import.meta.url);
+function main() {
   const commands = loadConfig().environment?.setup_commands ?? [];
   if (commands.length === 0) {
     console.log("No environment.setup_commands configured; skipping.");
@@ -28,5 +37,8 @@ function main(): void {
     }
   }
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref
+};

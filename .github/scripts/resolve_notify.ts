@@ -1,98 +1,117 @@
 #!/usr/bin/env bun
-/**
- * resolve_notify.ts — Resolve who to notify (a GitHub login) for a given
- * issue or PR.
- *
- * Looks for an `<!-- atoma:notify=LOGIN -->` tag in the body -- embedded by
- * mcp/github.ts when the agent that created the issue/PR knew
- * who the original human requester was.
- *
- * Falls back to the issue/PR's own author when no tag is present and the
- * author is a human. If neither is available, walks up the
- * `atoma:parent=#N` / `atoma:parent-issue=N` chain and retries on the
- * parent, since every sub-issue/PR is ultimately rooted in an issue a human
- * opened directly. Gives up after MAX_HOPS to guard against cycles.
- *
- * Usage:
- *   resolve_notify.ts --repo OWNER/REPO --number N
- *
- * Prints the resolved login (possibly empty) to stdout. Never throws for
- * missing data -- callers treat an empty result as "nobody to notify".
- */
-import { parseArgs } from "node:util";
-import { gh } from "./lib/gh.ts";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-/** CLI contract for this script, used by callers (e.g. src/workflows/*.wac.ts) to build a type-checked argv. */
-export interface ResolveNotifyArgs {
-  repo: string;
-  number: string | number;
+// src/scripts/resolve_notify.ts
+import { parseArgs } from "util";
+
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-export const ref = defineScript<ResolveNotifyArgs>(import.meta.url);
-
-const NOTIFY_RE = /<!--\s*atoma:notify=([A-Za-z0-9-]+)\s*-->/;
-const PARENT_RE = /<!--\s*atoma:parent(?:-issue)?=#?(\d+)\s*-->/;
-const MAX_HOPS = 10;
-
-interface IssueLookup {
-  body?: string;
-  login?: string;
-  type?: string;
+// src/lib/gh.ts
+function run(cmd) {
+  const proc = Bun.spawnSync({
+    cmd,
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  return {
+    code: proc.exitCode ?? 1,
+    stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "",
+    stderr: proc.stderr ? proc.stderr.toString("utf8").trim() : ""
+  };
+}
+function gh(...args) {
+  return run(["gh", ...args]);
 }
 
-function fetch(repo: string, number: number): IssueLookup {
-  const { code, stdout } = gh(
-    "api", `repos/${repo}/issues/${number}`,
-    "--jq", "{body: .body, login: .user.login, type: .user.type}",
-  );
-  if (code !== 0 || !stdout.trim()) return {};
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key, hashPrefix) {
+  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent", true);
+var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var AGGREGATED_TAG = numericTag("aggregated", false);
+var SUB_RESULT_TAG = numericTag("sub-result", false);
+function readAnyParentTag(text) {
+  return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
+}
+
+// src/lib/notify.ts
+var MAX_HOPS = 10;
+function fetchIssueLookup(repo, number) {
+  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
+  if (code !== 0 || !stdout.trim())
+    return {};
   try {
-    return JSON.parse(stdout) as IssueLookup;
+    return JSON.parse(stdout);
   } catch {
     return {};
   }
 }
-
-function resolve(repo: string, number: number): string {
-  const visited = new Set<number>();
+function resolveNotify(repo, number) {
+  const visited = new Set;
   let current = number;
-  for (let i = 0; i < MAX_HOPS; i++) {
-    if (visited.has(current)) break; // cycle guard
+  for (let i = 0;i < MAX_HOPS; i++) {
+    if (visited.has(current))
+      break;
     visited.add(current);
-
-    const d = fetch(repo, current);
+    const d = fetchIssueLookup(repo, current);
     const body = d.body ?? "";
-
-    const match = NOTIFY_RE.exec(body);
-    if (match) return match[1]!;
-
+    const tagged = NOTIFY_TAG.read(body);
+    if (tagged)
+      return tagged;
     if ((d.type ?? "").toLowerCase() === "user" && d.login) {
       return d.login;
     }
-
-    const parentMatch = PARENT_RE.exec(body);
-    if (!parentMatch) break;
-    current = Number(parentMatch[1]);
+    const parent = readAnyParentTag(body);
+    if (parent === undefined)
+      break;
+    current = parent;
   }
   return "";
 }
 
-function main(): void {
+// src/scripts/resolve_notify.ts
+var ref = defineScript(import.meta.url);
+function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
       repo: { type: "string" },
-      number: { type: "string" },
-    },
+      number: { type: "string" }
+    }
   });
-
   if (!values.repo || !values.number) {
     console.error("usage: resolve_notify.ts --repo OWNER/REPO --number N");
     process.exit(2);
   }
-
-  console.log(resolve(values.repo, Number(values.number)));
+  console.log(resolveNotify(values.repo, Number(values.number)));
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref
+};

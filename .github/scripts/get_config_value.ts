@@ -1,35 +1,40 @@
 #!/usr/bin/env bun
-/**
- * Print a dotted-path value from .github/atoma/config.json.
- *
- * Usage:
- *   bun run get_config_value.ts <dotted.path> [default]
- *
- * Examples:
- *   bun run get_config_value.ts agents.engineer.max_iterations 30
- *   bun run get_config_value.ts labels.in_progress atoma/in-progress
- */
-import { loadConfig } from "./lib/config.ts";
-import { defineScript } from "./lib/script-ref.ts";
+// @bun
 
-export const ref = defineScript(import.meta.url);
-
-/** Build the positional argv for this script, used by callers for a type-checked invocation. */
-export function buildArgv(path: string, fallback?: string): string[] {
-  return fallback === undefined ? [`"${path}"`] : [`"${path}"`, `"${fallback}"`];
+// src/lib/config.ts
+import { readFileSync } from "fs";
+var CONFIG_PATH = ".github/atoma/config.json";
+var cached;
+function loadConfig() {
+  if (!cached) {
+    cached = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  }
+  return cached;
 }
 
-function main(): void {
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
+
+// src/scripts/get_config_value.ts
+var ref = defineScript(import.meta.url);
+function buildArgv(path, fallback) {
+  return fallback === undefined ? [`"${path}"`] : [`"${path}"`, `"${fallback}"`];
+}
+function main() {
   const [path, fallback = ""] = Bun.argv.slice(2);
   if (!path) {
     console.error("usage: get_config_value.ts <dotted.path> [default]");
     process.exit(2);
   }
-
-  let node: unknown = loadConfig();
+  let node = loadConfig();
   for (const key of path.split(".")) {
     if (node && typeof node === "object" && key in node) {
-      node = (node as Record<string, unknown>)[key];
+      node = node[key];
     } else {
       console.log(fallback);
       return;
@@ -37,5 +42,9 @@ function main(): void {
   }
   console.log(node);
 }
-
-if (import.meta.main) main();
+if (import.meta.main)
+  main();
+export {
+  ref,
+  buildArgv
+};

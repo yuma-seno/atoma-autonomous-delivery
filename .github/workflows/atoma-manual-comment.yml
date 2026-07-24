@@ -15,21 +15,36 @@ permissions:
 jobs:
   parse:
     runs-on: ubuntu-latest
-    if: |-
-      (github.event.comment.user.type == 'Bot' &&
-       contains(github.event.comment.body, 'atoma:dispatch')) ||
-      (github.event.comment.user.type != 'Bot' &&
-       (github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR'))
+    if: (github.event.comment.user.type != 'Bot') || (github.event.comment.user.type == 'Bot' && contains(github.event.comment.body, 'atoma:dispatch'))
     outputs:
       agent: ${{ steps.command.outputs.agent }}
       number: ${{ steps.target.outputs.number }}
       type: ${{ steps.target.outputs.type }}
       notify: ${{ steps.target.outputs.notify }}
     steps:
+      - with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: 'Guard: reject comment while atoma/in-progress'
+        id: guard
+        if: github.event.comment.user.type != 'Bot'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          bun run .github/scripts/guard_comment_during_run.ts --number "${NUMBER}" --comment-id "${COMMENT_ID}" --commenter "${COMMENTER}"
       - name: Parse slash command
         id: command
+        if: |-
+          ((github.event.comment.user.type == 'Bot' &&
+           contains(github.event.comment.body, 'atoma:dispatch')) ||
+          (github.event.comment.user.type != 'Bot' &&
+           (github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'))) && steps.guard.outputs.blocked != 'true'
         shell: bash
         env:
           ATOMA_COMMENT_BODY: ${{ github.event.comment.body }}

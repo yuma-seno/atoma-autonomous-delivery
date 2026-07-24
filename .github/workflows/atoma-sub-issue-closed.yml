@@ -50,5 +50,6 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           PARENT: ${{ needs.check.outputs.parent_number }}
+          CLOSED_NUM: ${{ github.event.issue.number }}
         run: |
-          bun run .github/scripts/dispatch_if_siblings_done.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}"
+          bun run .github/scripts/dispatch_if_siblings_done.ts --repo "${OWNER}/${REPO}" --parent "${PARENT}" --closed-num "${CLOSED_NUM}"
