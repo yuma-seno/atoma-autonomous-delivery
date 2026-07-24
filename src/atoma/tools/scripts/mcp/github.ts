@@ -28,6 +28,7 @@ import { logDispatch, logOp } from "../../../../lib/ops-log.ts";
 import { NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-github] ${msg}`);
@@ -464,39 +465,44 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   if (code) mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
 
-  // GitHub's native "Closes #N" auto-close does not reliably fire when the
-  // merge is performed via the Actions GITHUB_TOKEN. Prefer re-invoking the
-  // PR's origin agent to close the sub-issue itself; only fall back to
-  // closing it directly here if there's no origin-agent tag to dispatch.
-  let closedIssue: number | null = null;
   const d = ghJsonOrThrow<{ body?: string }>("pr", "view", String(num), "--repo", REPO, "--json", "body");
   const body = d?.body ?? "";
-  const parentNum = PARENT_ISSUE_TAG.read(body);
-  if (parentNum !== undefined) {
-    // Native "Closes #N" auto-close sometimes DOES succeed even under the
-    // Actions GITHUB_TOKEN (it's merely unreliable, not universally broken).
-    // When it already has, re-invoking an agent just to close an
-    // already-closed issue would be a pointless extra LLM call AND (worse)
-    // risks racing lib/aggregation.ts's own idempotency marker against
-    // atoma-pr-merged.yml's independent event-driven aggregation for the
-    // exact same completion -- skip entirely in that case.
-    if (isIssueClosed(parentNum)) {
-      log(`mergePr: parent issue #${parentNum} already closed -- skipping post-merge re-invocation`);
+  const parentIssue = PARENT_ISSUE_TAG.read(body);
+
+  const handoff = decidePostMergeHandoff({
+    parentIssue,
+    parentAlreadyClosed: parentIssue !== undefined && isIssueClosed(parentIssue),
+    originAgent: ORIGIN_AGENT_TAG.read(body),
+  });
+
+  switch (handoff.kind) {
+    case "no-parent":
       return JSON.stringify({ merged: true, closed_issue: null });
-    }
-    const originAgent = ORIGIN_AGENT_TAG.read(body);
-    if (originAgent && dispatchPostMergeAgent(parentNum, originAgent)) {
-      return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: originAgent });
-    }
-    try {
-      // closeIssueAndDispatch also triggers phase-gating/aggregation itself.
-      await closeIssueAndDispatch({ number: parentNum });
-      closedIssue = parentNum;
-    } catch (e) {
-      log(`mergePr: could not close parent issue #${parentNum}: ${e}`);
-    }
+    case "already-closed":
+      log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
+      return JSON.stringify({ merged: true, closed_issue: null });
+    case "reinvoke-origin-agent":
+      if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
+        return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
+      }
+      // The preferred handoff (re-invoking the origin agent) failed to
+      // dispatch -- fall back to closing the parent directly ourselves,
+      // same as the "close-directly" case below.
+      return await closeParentAndReport(handoff.parentIssue);
+    case "close-directly":
+      return await closeParentAndReport(handoff.parentIssue);
   }
-  return JSON.stringify({ merged: true, closed_issue: closedIssue });
+}
+
+/** closeIssueAndDispatch also triggers phase-gating/aggregation itself. Shared by mergePr()'s "close-directly" case and its "reinvoke failed" fallback. */
+async function closeParentAndReport(parentIssue: number): Promise<string> {
+  try {
+    await closeIssueAndDispatch({ number: parentIssue });
+    return JSON.stringify({ merged: true, closed_issue: parentIssue });
+  } catch (e) {
+    log(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
+    return JSON.stringify({ merged: true, closed_issue: null });
+  }
 }
 
 const { tools: TOOLS, dispatch } = buildMcpTools([

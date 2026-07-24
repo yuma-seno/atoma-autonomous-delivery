@@ -18093,6 +18093,18 @@ function buildMcpTools(specs) {
   };
 }
 
+// src/domain/handoff.ts
+function decidePostMergeHandoff(signals) {
+  if (signals.parentIssue === undefined)
+    return { kind: "no-parent" };
+  if (signals.parentAlreadyClosed)
+    return { kind: "already-closed", parentIssue: signals.parentIssue };
+  if (signals.originAgent) {
+    return { kind: "reinvoke-origin-agent", parentIssue: signals.parentIssue, agent: signals.originAgent };
+  }
+  return { kind: "close-directly", parentIssue: signals.parentIssue };
+}
+
 // src/atoma/tools/scripts/mcp/github.ts
 function log(msg) {
   console.error(`[atoma-github] ${msg}`);
@@ -18427,27 +18439,37 @@ async function mergePr(a) {
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
-  let closedIssue = null;
   const d = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "body");
   const body = d?.body ?? "";
-  const parentNum = PARENT_ISSUE_TAG.read(body);
-  if (parentNum !== undefined) {
-    if (isIssueClosed(parentNum)) {
-      log(`mergePr: parent issue #${parentNum} already closed -- skipping post-merge re-invocation`);
+  const parentIssue = PARENT_ISSUE_TAG.read(body);
+  const handoff = decidePostMergeHandoff({
+    parentIssue,
+    parentAlreadyClosed: parentIssue !== undefined && isIssueClosed(parentIssue),
+    originAgent: ORIGIN_AGENT_TAG.read(body)
+  });
+  switch (handoff.kind) {
+    case "no-parent":
       return JSON.stringify({ merged: true, closed_issue: null });
-    }
-    const originAgent = ORIGIN_AGENT_TAG.read(body);
-    if (originAgent && dispatchPostMergeAgent(parentNum, originAgent)) {
-      return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: originAgent });
-    }
-    try {
-      await closeIssueAndDispatch({ number: parentNum });
-      closedIssue = parentNum;
-    } catch (e) {
-      log(`mergePr: could not close parent issue #${parentNum}: ${e}`);
-    }
+    case "already-closed":
+      log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
+      return JSON.stringify({ merged: true, closed_issue: null });
+    case "reinvoke-origin-agent":
+      if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
+        return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
+      }
+      return await closeParentAndReport(handoff.parentIssue);
+    case "close-directly":
+      return await closeParentAndReport(handoff.parentIssue);
   }
-  return JSON.stringify({ merged: true, closed_issue: closedIssue });
+}
+async function closeParentAndReport(parentIssue) {
+  try {
+    await closeIssueAndDispatch({ number: parentIssue });
+    return JSON.stringify({ merged: true, closed_issue: parentIssue });
+  } catch (e) {
+    log(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
+    return JSON.stringify({ merged: true, closed_issue: null });
+  }
 }
 var { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({
