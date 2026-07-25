@@ -18202,6 +18202,8 @@ ${body}`;
   if (code)
     mcpFail(stderr || stdout);
   const num = Number(stdout.trim().split("/").pop());
+  if (!Number.isFinite(num))
+    mcpFail(`gh issue create: unexpected output: ${stdout.slice(0, 300)}`);
   if (sub && parentNum) {
     try {
       const pid = await resolveIssueId(Number(parentNum));

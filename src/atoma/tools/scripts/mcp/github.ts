@@ -141,6 +141,7 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   const { code, stdout, stderr } = gh(...cmd);
   if (code) mcpFail(stderr || stdout);
   const num = Number(stdout.trim().split("/").pop());
+  if (!Number.isFinite(num)) mcpFail(`gh issue create: unexpected output: ${stdout.slice(0, 300)}`);
 
   if (sub && parentNum) {
     try {

@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { join } from "node:path";
 
 const SCRIPTS_DIR = "src/atoma/tools/scripts/mcp";
+const FAKE_GH_BIN_DIR = join(process.cwd(), "src/scripts/testing/bin");
 
-function sendRequest(script: string, request: Record<string, unknown>): Promise<any> {
+function sendRequest(
+  script: string,
+  request: Record<string, unknown>,
+  env: Record<string, string> = {},
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`], {
-      env: { ...process.env, GITHUB_REPOSITORY: "owner/repo" },
+      env: { ...process.env, GITHUB_REPOSITORY: "owner/repo", ...env },
     });
     let out = "";
     child.stdout.on("data", (d) => (out += d.toString()));
@@ -52,6 +58,22 @@ describe("mcp/github.ts", () => {
     for (const tool of ["create_issue", "create_pr", "get_issue", "search_code", "get_pr_diff"]) {
       expect(names).toContain(tool);
     }
+  });
+
+  test("create_issue rejects malformed gh output", async () => {
+    const r = await sendRequest(
+      "github.ts",
+      {
+        jsonrpc: "2.0", id: 3, method: "tools/call",
+        params: { name: "create_issue", arguments: { title: "Test", sub_issue: false } },
+      },
+      {
+        PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+        FAKE_GH_RESPONSES: JSON.stringify([{ match: ["issue", "create"], stdout: "not-a-url" }]),
+      },
+    );
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("gh issue create: unexpected output");
   });
 });
 
