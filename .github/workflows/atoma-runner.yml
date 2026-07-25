@@ -225,6 +225,8 @@ jobs:
             --agent-def ".github/atoma/agent-definitions/${AGENT}.md" \
             --in-session session.json \
             --out-session session.json \
+            --template ".github/atoma/prompt-template.md" \
+            --skills-dir ".github/atoma/skills" \
             --max-iterations ${{ steps.cfg.outputs.max_iterations }} \
             ${TOOLS_ARG} \
             > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
