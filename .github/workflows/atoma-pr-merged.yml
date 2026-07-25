@@ -21,7 +21,8 @@ jobs:
       sub_issue: ${{ steps.parse-metadata.outputs.sub_number }}
     steps:
       - uses: actions/checkout@v4
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Parse parent-issue / sub-issue metadata from PR body
@@ -40,7 +41,8 @@ jobs:
     needs:
       - parse
     steps:
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Resolve orchestrator parent via GraphQL parent field
@@ -82,7 +84,8 @@ jobs:
       - parse
     steps:
       - uses: actions/checkout@v4
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Aggregate sub-issue results

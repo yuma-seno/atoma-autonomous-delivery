@@ -22,7 +22,8 @@ jobs:
       type: ${{ steps.target.outputs.type }}
       notify: ${{ steps.target.outputs.notify }}
     steps:
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: 'Guard: reject comment while atoma/in-progress'
