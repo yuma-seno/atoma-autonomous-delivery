@@ -21,7 +21,8 @@ jobs:
       type: ${{ steps.resolve.outputs.type }}
       notify: ${{ steps.resolve.outputs.notify }}
     steps:
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Resolve agent and context

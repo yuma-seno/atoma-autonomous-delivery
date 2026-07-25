@@ -83,7 +83,7 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
       // Required by the "Match event to agent" step below, which runs
       // match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted
       // runners.
-      new SetupBunAction(),
+      new SetupBunAction({ name: "Setup Bun" }),
       contextStep,
       notifyStep,
       matchStep,

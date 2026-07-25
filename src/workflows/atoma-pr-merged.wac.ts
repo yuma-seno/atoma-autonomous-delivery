@@ -48,7 +48,7 @@ const parseJob = new DefinedJob(
       sub_issue: parseMetadataStep.outputs.sub_number,
     },
   },
-  [new ActionsCheckoutV4({}), new SetupBunAction(), parseMetadataStep],
+  [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), parseMetadataStep],
 );
 
 const resolveStep = new TypedOutputsStep(
@@ -77,7 +77,7 @@ const resolveParentJob = new DefinedJob(
       parent_issue: resolveStep.outputs.parent_issue,
     },
   },
-  [new SetupBunAction(), resolveStep],
+  [new SetupBunAction({ name: "Setup Bun" }), resolveStep],
   [parseJob],
 );
 
@@ -134,7 +134,7 @@ export const atomaPrMerged = new Workflow("atoma-pr-merged", {
       // Required below: aggregate_sub_issues.ts (which uses shared logic
       // from lib/aggregation.ts, lib/sibling-check.ts, lib/notify.ts) is
       // run via `bun run` -- not preinstalled on GitHub-hosted runners.
-      new SetupBunAction(),
+      new SetupBunAction({ name: "Setup Bun" }),
       new TypedOutputsStep({
         name: "Aggregate sub-issue results",
         shell: "bash",

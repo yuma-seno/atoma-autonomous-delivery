@@ -114,7 +114,7 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
         notify: targetStep.outputs.notify,
       },
     },
-    [new SetupBunAction(), guardStep, parseCommandStep, targetStep],
+    [new SetupBunAction({ name: "Setup Bun" }), guardStep, parseCommandStep, targetStep],
   )
     .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
     .jobs(),

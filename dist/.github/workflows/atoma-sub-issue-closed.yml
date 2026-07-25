@@ -20,7 +20,8 @@ jobs:
       parent_number: ${{ steps.check.outputs.parent_number }}
       closed_via_pr: ${{ steps.check.outputs.closed_via_pr }}
     steps:
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Check sub-issue closure (parent tag + already-handled-via-PR?)
@@ -40,7 +41,8 @@ jobs:
       - check
     steps:
       - uses: actions/checkout@v4
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Check siblings and re-trigger orchestrator

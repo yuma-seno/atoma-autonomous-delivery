@@ -49,7 +49,7 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
         closed_via_pr: checkStep.outputs.closed_via_pr,
       },
     },
-    [new SetupBunAction(), checkStep],
+    [new SetupBunAction({ name: "Setup Bun" }), checkStep],
   )
     .then(
       (checkJob) =>
@@ -61,7 +61,7 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
           },
           [
             new ActionsCheckoutV4({}),
-            new SetupBunAction(),
+            new SetupBunAction({ name: "Setup Bun" }),
             new TypedOutputsStep({
               name: "Check siblings and re-trigger orchestrator",
               shell: "bash",

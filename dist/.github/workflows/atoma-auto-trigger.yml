@@ -24,7 +24,8 @@ jobs:
       notify: ${{ steps.notify.outputs.notify }}
     steps:
       - uses: actions/checkout@v4
-      - with:
+      - name: Setup Bun
+        with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
       - name: Determine PR number from event context

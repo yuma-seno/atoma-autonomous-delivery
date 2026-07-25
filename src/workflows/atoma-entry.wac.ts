@@ -51,7 +51,7 @@ export const atomaEntry = new Workflow("atoma-entry", {
       // Required by the "Resolve agent and context" step below, which runs
       // resolve_entry_agent.ts via `bun run` -- not preinstalled on
       // GitHub-hosted runners.
-      new SetupBunAction(),
+      new SetupBunAction({ name: "Setup Bun" }),
       resolveStep,
       new Step({
         name: "Add reaction to issue",
