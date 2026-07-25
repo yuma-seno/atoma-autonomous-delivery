@@ -53,6 +53,7 @@ var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
 var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
 var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated", false);
 var SUB_RESULT_TAG = numericTag("sub-result", false);
 function readAnyParentTag(text) {

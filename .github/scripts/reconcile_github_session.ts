@@ -14,10 +14,37 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key, hashPrefix) {
+  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent", true);
+var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
+var AGGREGATED_TAG = numericTag("aggregated", false);
+var SUB_RESULT_TAG = numericTag("sub-result", false);
+
 // src/scripts/reconcile_github_session.ts
 var ref = defineScript(import.meta.url);
 var GITHUB_CONTEXT_LAYER = "github-context";
-var AGENT_MARKER_RE = /^<!--\s*atoma:agent=([a-z][a-z0-9-]*)\s*-->$/;
 function githubEventKey(message) {
   const metadata = message.atoma_metadata;
   if (metadata?.source !== "github" || metadata.layer !== GITHUB_CONTEXT_LAYER)
@@ -108,7 +135,7 @@ function extractResultCommentAgent(event) {
     return;
   const firstLine = event.content.split(`
 `)[0].trim();
-  return AGENT_MARKER_RE.exec(firstLine)?.[1];
+  return AGENT_TAG.read(firstLine);
 }
 function isSelfEvent(event, agentName, ownCommentIds) {
   const eventId = normalizeId(event.id);
@@ -129,6 +156,10 @@ function filterEventsForAgent(events, agentName, ownCommentIds, config) {
   const { include, exclude } = contextPolicy(config, agentName);
   const filtered = [];
   for (const event of events) {
+    if (event.author.endsWith("[bot]") && LLM_CONTEXT_TAG.read(event.content) === "exclude") {
+      console.error(`  Skipping operational notification from LLM context: id=${event.id}`);
+      continue;
+    }
     if (isSelfEvent(event, agentName, ownCommentIds)) {
       console.error(`  Skipping current agent comment from shared context: id=${event.id}`);
       continue;

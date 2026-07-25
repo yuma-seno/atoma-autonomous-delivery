@@ -51,6 +51,34 @@ function logDispatch(target, agent, extra = {}) {
   logOp("dispatch", { target, agent, ...extra });
 }
 
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key, hashPrefix) {
+  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent", true);
+var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
+var AGGREGATED_TAG = numericTag("aggregated", false);
+var SUB_RESULT_TAG = numericTag("sub-result", false);
+
 // src/atoma/tools/scripts/launch_sub_agent.ts
 function dispatchSubAgent(issue, agent, notify = "") {
   if (!Number.isInteger(issue) || issue <= 0) {
@@ -60,7 +88,8 @@ function dispatchSubAgent(issue, agent, notify = "") {
     throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
   }
   console.error(`Dispatching agent '${agent}' on sub-issue #${issue} ...`);
-  gh("issue", "comment", String(issue), "--body", `Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
+  gh("issue", "comment", String(issue), "--body", `${LLM_CONTEXT_TAG.write("exclude")}
+Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
   const launchedLabel = getLabel("launched", "atoma/launched");
   const { code: labelCode } = gh("issue", "edit", String(issue), "--add-label", launchedLabel);
   if (labelCode !== 0) {
