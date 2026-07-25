@@ -17908,29 +17908,6 @@ function logDispatch(target, agent, extra = {}) {
   logOp("dispatch", { target, agent, ...extra });
 }
 
-// src/atoma/tools/scripts/launch_sub_agent.ts
-function dispatchSubAgent(issue2, agent, notify = "") {
-  if (!Number.isInteger(issue2) || issue2 <= 0) {
-    throw new Error(`issue must be a positive integer, got: ${issue2}`);
-  }
-  if (!/^[a-z][a-z0-9-]*$/.test(agent)) {
-    throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
-  }
-  console.error(`Dispatching agent '${agent}' on sub-issue #${issue2} ...`);
-  gh("issue", "comment", String(issue2), "--body", `Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
-  const launchedLabel = getLabel("launched", "atoma/launched");
-  const { code: labelCode } = gh("issue", "edit", String(issue2), "--add-label", launchedLabel);
-  if (labelCode !== 0) {
-    console.error(`Warning: failed to add '${launchedLabel}' label to #${issue2}`);
-  }
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
-  gh("workflow", "run", dispatchWorkflow, "--field", `agent=${agent}`, "--field", `number=${issue2}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", agent, { number: issue2 });
-  return { issue: issue2, agent };
-}
-if (false)
-  ;
-
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse5, render) {
   const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
@@ -17955,11 +17932,36 @@ var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
 var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
 var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated", false);
 var SUB_RESULT_TAG = numericTag("sub-result", false);
 function readAnyParentTag(text) {
   return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
 }
+
+// src/atoma/tools/scripts/launch_sub_agent.ts
+function dispatchSubAgent(issue2, agent, notify = "") {
+  if (!Number.isInteger(issue2) || issue2 <= 0) {
+    throw new Error(`issue must be a positive integer, got: ${issue2}`);
+  }
+  if (!/^[a-z][a-z0-9-]*$/.test(agent)) {
+    throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
+  }
+  console.error(`Dispatching agent '${agent}' on sub-issue #${issue2} ...`);
+  gh("issue", "comment", String(issue2), "--body", `${LLM_CONTEXT_TAG.write("exclude")}
+Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
+  const launchedLabel = getLabel("launched", "atoma/launched");
+  const { code: labelCode } = gh("issue", "edit", String(issue2), "--add-label", launchedLabel);
+  if (labelCode !== 0) {
+    console.error(`Warning: failed to add '${launchedLabel}' label to #${issue2}`);
+  }
+  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+  gh("workflow", "run", dispatchWorkflow, "--field", `agent=${agent}`, "--field", `number=${issue2}`, "--field", "type=issue", "--field", `notify=${notify}`);
+  logDispatch("issue", agent, { number: issue2 });
+  return { issue: issue2, agent };
+}
+if (false)
+  ;
 
 // src/lib/notify.ts
 var MAX_HOPS = 10;
@@ -18024,7 +18026,8 @@ async function dispatchOrchestratorIfReady(opts) {
   }
   if (remaining > 0) {
     if (opts.progressMessage) {
-      gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${SUB_RESULT_TAG.write(opts.closedNum)}
+      gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
+${SUB_RESULT_TAG.write(opts.closedNum)}
 ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
@@ -18155,7 +18158,7 @@ function handleLaunchSubAgent(args) {
     }
   }
   if (dispatched.length && parentIssue) {
-    const bodyLines = ["Atoma: Launched sub-agent(s):", ...dispatched.map((d) => `- ${d}`)];
+    const bodyLines = [LLM_CONTEXT_TAG.write("exclude"), "Atoma: Launched sub-agent(s):", ...dispatched.map((d) => `- ${d}`)];
     gh("issue", "comment", parentIssue, "--body", bodyLines.join(`
 `));
   }

@@ -21,6 +21,7 @@ import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
+import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
 // The shared reusable workflow every entry-point workflow (atoma-entry,
 // atoma-auto-trigger, atoma-manual-comment, atoma-pr-review) hands off to via
@@ -555,7 +556,8 @@ const reviewerStartCommentStep = new TypedOutputsStep({
     GH_TOKEN: "${{ github.token }}",
     NUMBER: "${{ inputs.number }}",
   },
-  run: `gh issue comment "$NUMBER" --body "Atoma: reviewer starting review."
+  run: `gh issue comment "$NUMBER" --body "${LLM_CONTEXT_TAG.write("exclude")}
+Atoma: reviewer starting review."
 `,
 });
 

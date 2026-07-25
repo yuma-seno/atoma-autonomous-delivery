@@ -22,7 +22,7 @@
 import { gh } from "./gh.ts";
 import { countOpenSiblings } from "./sibling-check.ts";
 import { resolveNotify } from "./notify.ts";
-import { AGGREGATED_TAG, PARENT_TAG, SUB_RESULT_TAG } from "./tags.ts";
+import { AGGREGATED_TAG, LLM_CONTEXT_TAG, PARENT_TAG, SUB_RESULT_TAG } from "./tags.ts";
 import { logDispatch } from "./ops-log.ts";
 
 function sleep(ms: number): Promise<void> {
@@ -76,7 +76,7 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
     if (opts.progressMessage) {
       gh(
         "issue", "comment", String(opts.parent), "--repo", opts.repo,
-        "--body", `${SUB_RESULT_TAG.write(opts.closedNum)}\n${opts.progressMessage(remaining)}`,
+        "--body", `${LLM_CONTEXT_TAG.write("exclude")}\n${SUB_RESULT_TAG.write(opts.closedNum)}\n${opts.progressMessage(remaining)}`,
       );
     }
     return { ready: false, remaining, dispatched: false };

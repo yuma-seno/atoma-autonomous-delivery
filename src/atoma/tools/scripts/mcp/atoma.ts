@@ -24,6 +24,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { gh } from "../../../../lib/gh.ts";
 import { dispatchSubAgent } from "../launch_sub_agent.ts";
+import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
 import { concludeIssue } from "../request_close_issue.ts";
 import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 
@@ -79,7 +80,7 @@ function handleLaunchSubAgent(args: z.infer<typeof LAUNCH_SUB_AGENT_SCHEMA>): Mc
   // Best-effort comment on the PARENT issue so a human reading the parent's
   // thread has a full audit trail of what was dispatched.
   if (dispatched.length && parentIssue) {
-    const bodyLines = ["Atoma: Launched sub-agent(s):", ...dispatched.map((d) => `- ${d}`)];
+    const bodyLines = [LLM_CONTEXT_TAG.write("exclude"), "Atoma: Launched sub-agent(s):", ...dispatched.map((d) => `- ${d}`)];
     gh("issue", "comment", parentIssue, "--body", bodyLines.join("\n"));
   }
 

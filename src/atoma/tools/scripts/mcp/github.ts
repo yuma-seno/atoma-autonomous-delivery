@@ -25,7 +25,7 @@ import { getLabel, getMergePolicy, getTriggerAgent } from "../../../../lib/confi
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
 import { logDispatch, logOp } from "../../../../lib/ops-log.ts";
-import { NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
+import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
@@ -319,7 +319,10 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // launch_sub_agent.ts always confirms its own dispatch with a comment.
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
-    gh("issue", "comment", currentIssue, "--repo", REPO, "--body", `Atoma: PR #${num} created (${stdout.trim()}). Dispatching reviewer.`);
+    gh(
+      "issue", "comment", currentIssue, "--repo", REPO,
+      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). Dispatching reviewer.`,
+    );
   }
 
   // From the calling agent's (engineer's) perspective, create_pr should

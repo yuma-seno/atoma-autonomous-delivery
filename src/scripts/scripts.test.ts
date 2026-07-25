@@ -422,6 +422,40 @@ describe("reconcile_github_session.ts", () => {
     expect(mergedSession.messages?.[0]?.atoma_metadata?.id).toBe(301);
   });
 
+  test("excludes marked operational notices but keeps human-action notifications", () => {
+    const events = [
+      {
+        id: 302,
+        event_type: "issue_comment",
+        content: "<!-- atoma:llm-context=exclude -->\nAtoma: Agent `engineer` dispatched.",
+        author: "github-actions[bot]",
+        created_at: "2026-05-27T12:00:00Z",
+      },
+      {
+        id: 303,
+        event_type: "issue_comment",
+        content: "@alice Atoma reached the iteration limit. Please review and retry.",
+        author: "github-actions[bot]",
+        created_at: "2026-05-27T12:01:00Z",
+      },
+      {
+        id: 304,
+        event_type: "issue_comment",
+        content: "<!-- atoma:llm-context=exclude -->\nHuman instruction must still be visible.",
+        author: "alice",
+        created_at: "2026-05-27T12:02:00Z",
+      },
+    ];
+
+    const { mergedSession, eventCount } = reconcileGithubSession({ messages: [] }, events, "engineer");
+
+    expect(eventCount).toBe(2);
+    expect(mergedSession.messages?.map((message) => message.content)).toEqual([
+      "@alice Atoma reached the iteration limit. Please review and retry.",
+      "<!-- atoma:llm-context=exclude -->\nHuman instruction must still be visible.",
+    ]);
+  });
+
   test("applies the agent's configured shared_context include/exclude policy", () => {
     const events = [
       { id: "pr-1", event_type: "pr_opened", content: "PR body", author: "alice", created_at: "2026-05-27T12:00:00Z" },

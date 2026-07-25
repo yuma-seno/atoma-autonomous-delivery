@@ -22,6 +22,7 @@ import { parseArgs } from "node:util";
 import { gh } from "../../../lib/gh.ts";
 import { getLabel } from "../../../lib/config.ts";
 import { logDispatch } from "../../../lib/ops-log.ts";
+import { LLM_CONTEXT_TAG } from "../../../lib/tags.ts";
 
 /** CLI contract for this script, used by callers to build a type-checked argv. */
 export interface LaunchSubAgentArgs {
@@ -52,7 +53,10 @@ export function dispatchSubAgent(issue: number, agent: string, notify = ""): Dis
 
   console.error(`Dispatching agent '${agent}' on sub-issue #${issue} ...`);
 
-  gh("issue", "comment", String(issue), "--body", `Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
+  gh(
+    "issue", "comment", String(issue),
+    "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: Agent \`${agent}\` dispatched to work on this sub-task.`,
+  );
 
   const launchedLabel = getLabel("launched", "atoma/launched");
   const { code: labelCode } = gh("issue", "edit", String(issue), "--add-label", launchedLabel);

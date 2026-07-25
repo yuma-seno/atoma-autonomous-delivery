@@ -153,7 +153,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ inputs.number }}
         run: |
-          gh issue comment "$NUMBER" --body "Atoma: reviewer starting review."
+          gh issue comment "$NUMBER" --body "<!-- atoma:llm-context=exclude -->
+          Atoma: reviewer starting review."
       - name: 'Checkout Atoma source (for atoma_version: source)'
         uses: actions/checkout@v4
         with:

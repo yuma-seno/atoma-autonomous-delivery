@@ -30,6 +30,7 @@ import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
 import type { GithubEvent } from "./fetch_events.ts";
 import type { Session, SessionMessage, SessionMessageMetadata } from "../lib/session.ts";
+import { AGENT_TAG, LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
 export interface ReconcileGithubSessionArgs {
   events: string;
@@ -42,7 +43,6 @@ export interface ReconcileGithubSessionArgs {
 export const ref = defineScript<ReconcileGithubSessionArgs>(import.meta.url);
 
 const GITHUB_CONTEXT_LAYER = "github-context";
-const AGENT_MARKER_RE = /^<!--\s*atoma:agent=([a-z][a-z0-9-]*)\s*-->$/;
 
 interface SharedContextConfig {
   agents?: Record<string, { shared_context?: { include_event_types?: string[]; exclude_event_types?: string[] } }>;
@@ -176,7 +176,7 @@ function extractResultCommentAgent(event: GithubEvent): string | undefined {
   if (!event.author.endsWith("[bot]")) return undefined;
   if (!event.content) return undefined;
   const firstLine = event.content.split("\n")[0]!.trim();
-  return AGENT_MARKER_RE.exec(firstLine)?.[1];
+  return AGENT_TAG.read(firstLine);
 }
 
 function isSelfEvent(event: GithubEvent, agentName: string, ownCommentIds: Set<string>): boolean {
@@ -203,6 +203,10 @@ function filterEventsForAgent(
   const { include, exclude } = contextPolicy(config, agentName);
   const filtered: GithubEvent[] = [];
   for (const event of events) {
+    if (event.author.endsWith("[bot]") && LLM_CONTEXT_TAG.read(event.content) === "exclude") {
+      console.error(`  Skipping operational notification from LLM context: id=${event.id}`);
+      continue;
+    }
     if (isSelfEvent(event, agentName, ownCommentIds)) {
       console.error(`  Skipping current agent comment from shared context: id=${event.id}`);
       continue;

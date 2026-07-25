@@ -152,4 +152,11 @@ describe("tags.ts", () => {
     expect(AGGREGATED_TAG.has(`some comment\n${marker}`)).toBe(true);
     expect(AGGREGATED_TAG.has("some other comment")).toBe(false);
   });
+
+  test("LLM_CONTEXT_TAG marks human-visible notifications for exclusion", async () => {
+    const { LLM_CONTEXT_TAG } = await import("./tags.ts");
+    const marker = LLM_CONTEXT_TAG.write("exclude");
+    expect(marker).toBe("<!-- atoma:llm-context=exclude -->");
+    expect(LLM_CONTEXT_TAG.read(`${marker}\nAtoma: operation started.`)).toBe("exclude");
+  });
 });
