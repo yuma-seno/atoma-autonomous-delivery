@@ -119,7 +119,7 @@ const restoreSessionStep = new TypedOutputsStep({
 
 const buildContextStep = new TypedOutputsStep(
   {
-    name: "Build context session",
+    name: "Merge GitHub context into session",
     id: "context",
     shell: "bash",
     run: `${scriptCommandWithArgs(buildContextSessionRef, {
@@ -127,7 +127,7 @@ const buildContextStep = new TypedOutputsStep(
       "agent-name": "${{ inputs.agent }}",
       config: ORCHESTRATION_FILE,
       session: "session.json",
-      out: "context-session.json",
+      out: "session.json",
     })}\n`,
   },
   ["new_event_count", "context_snapshot_hash", "context_event_count"] as const,
@@ -218,21 +218,14 @@ if [ -n "\${{ vars.ATOMA_PROVIDER }}" ]; then
   export ATOMA_PROVIDER="\${{ vars.ATOMA_PROVIDER }}"
 fi
 
-CONTEXT_ARG=""
-if [ -f "context-session.json" ]; then
-  CONTEXT_ARG="--context-session context-session.json"
-fi
-
-# Note: no --prompt-file. The cached session contains agent-local state
-# (assistant replies, tool calls, working memory), and context-session.json
-# supplies the current shared GitHub conversation for this run only.
+# Note: no --prompt-file or --context-session. The cached session contains
+# both stable GitHub context and the agent's chronological working history.
 EXIT_CODE=0
 atoma run \\
   --agent-def "${AGENT_DEF_DIR}/\${AGENT}.md" \\
   --in-session session.json \\
   --out-session session.json \\
   --max-iterations ${cfgStep.outputs.max_iterations} \\
-  \${CONTEXT_ARG} \\
   \${TOOLS_ARG} \\
   > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 

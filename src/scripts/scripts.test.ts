@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toArgv } from "./lib/cli.ts";
 import { buildArgv } from "./get_config_value.ts";
-import { buildContextSession } from "./build_context_session.ts";
+import { buildContextSession, mergeGithubContext } from "./build_context_session.ts";
 import { extractDirective } from "./extract_directive.ts";
 import { manageDispatchLoop } from "./manage_dispatch_loop.ts";
 import { parseAgent } from "./parse_comment_command.ts";
@@ -112,6 +112,132 @@ describe("parse_comment_command.ts", () => {
 });
 
 describe("build_context_session.ts", () => {
+  test("persists stable GitHub context before history and appends only new events", () => {
+    const initial = buildContextSession(
+      { messages: [] },
+      [{ id: "issue-1", event_type: "issue_opened", content: "Original instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" }],
+      "engineer",
+    );
+    const afterFirstRun = mergeGithubContext({ messages: [] }, initial.contextSession.messages);
+    afterFirstRun.messages!.push({ role: "assistant", content: "Implemented the first change" });
+
+    const second = buildContextSession(
+      afterFirstRun,
+      [
+        { id: "issue-1", event_type: "issue_opened", content: "Original instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+        { id: 101, event_type: "issue_comment", content: "Please adjust it", author: "alice", created_at: "2026-05-27T10:00:00Z" },
+      ],
+      "engineer",
+    );
+    const afterSecondMerge = mergeGithubContext(afterFirstRun, second.contextSession.messages);
+
+    expect(afterSecondMerge.messages!.map((message) => message.content)).toEqual([
+      "Original instruction",
+      "Implemented the first change",
+      "Please adjust it",
+    ]);
+  });
+
+  test("updates existing GitHub events in place without duplicating them", () => {
+    const original = buildContextSession(
+      { messages: [] },
+      [{ id: "issue-1", event_type: "issue_opened", content: "Original", author: "alice", created_at: "2026-05-27T09:00:00Z" }],
+      "engineer",
+    );
+    const session = mergeGithubContext({ messages: [] }, original.contextSession.messages);
+    session.messages!.push({ role: "assistant", content: "Acknowledged" });
+    const edited = buildContextSession(
+      session,
+      [{ id: "issue-1", event_type: "issue_opened", content: "Edited", author: "alice", created_at: "2026-05-27T09:00:00Z" }],
+      "engineer",
+    );
+
+    expect(mergeGithubContext(session, edited.contextSession.messages).messages!.map((message) => message.content)).toEqual([
+      "Edited",
+      "Acknowledged",
+    ]);
+  });
+
+  test("stores the processed snapshot even when no result comment is posted", () => {
+    const events = [
+      { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+    ];
+    const first = buildContextSession({ messages: [] }, events, "engineer");
+    const second = buildContextSession(first.mergedSession, events, "engineer");
+
+    expect(first.mergedSession.metadata?.github_context?.snapshot_hash).toBe(first.snapshotHash);
+    expect(second.changedCount).toBe(0);
+  });
+
+  test("migrates an exact legacy snapshot before history and new events after it", () => {
+    const oldEvents = [
+      { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+      { id: 100, event_type: "issue_comment", content: "Earlier comment", author: "alice", created_at: "2026-05-27T10:00:00Z" },
+    ];
+    const oldBuild = buildContextSession({ messages: [] }, oldEvents, "engineer");
+    const legacySession = {
+      messages: [{ role: "assistant", content: "Earlier response" }],
+      metadata: { github_context: { snapshot_hash: oldBuild.snapshotHash, event_count: 2 } },
+    };
+    const migrated = buildContextSession(
+      legacySession,
+      [...oldEvents, { id: 101, event_type: "issue_comment", content: "New comment", author: "alice", created_at: "2026-05-27T11:00:00Z" }],
+      "engineer",
+    );
+
+    expect(migrated.mergedSession.messages!.map((message) => message.content)).toEqual([
+      "Instruction",
+      "Earlier comment",
+      "Earlier response",
+      "New comment",
+    ]);
+  });
+
+  test("keeps only opening instructions before legacy history when the old snapshot is not a prefix", () => {
+    const oldBuild = buildContextSession(
+      { messages: [] },
+      [
+        { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+        { id: 100, event_type: "issue_comment", content: "Deleted comment", author: "alice", created_at: "2026-05-27T10:00:00Z" },
+      ],
+      "engineer",
+    );
+    const migrated = buildContextSession(
+      {
+        messages: [{ role: "assistant", content: "Earlier response" }],
+        metadata: { github_context: { snapshot_hash: oldBuild.snapshotHash, event_count: 2 } },
+      },
+      [
+        { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
+        { id: 101, event_type: "issue_comment", content: "Replacement comment", author: "alice", created_at: "2026-05-27T11:00:00Z" },
+      ],
+      "engineer",
+    );
+
+    expect(migrated.mergedSession.messages!.map((message) => message.content)).toEqual([
+      "Instruction",
+      "Earlier response",
+      "Replacement comment",
+    ]);
+  });
+
+  test("removing a GitHub event preserves assistant-tool adjacency", () => {
+    const session = {
+      messages: [
+        {
+          role: "user",
+          content: "Deleted comment",
+          atoma_metadata: { source: "github", layer: "github-context", event_type: "issue_comment", id: 100 },
+        },
+        { role: "assistant", tool_calls: [{ id: "call-1", type: "function", function: { name: "read", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call-1", content: "result" },
+      ],
+    };
+
+    const merged = mergeGithubContext(session, []);
+    expect(merged.messages!.map((message) => message.role)).toEqual(["assistant", "tool"]);
+  });
+
   test("filters out only the current agent's own result comments", () => {
     const session = {
       messages: [

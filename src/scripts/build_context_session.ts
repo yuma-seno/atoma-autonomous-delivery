@@ -1,13 +1,12 @@
 #!/usr/bin/env bun
 /**
- * build_context_session.ts — Build a temporary context-session.json from
- * GitHub events.
+ * build_context_session.ts — Reconcile GitHub events into the durable
+ * per-agent session.
  *
- * Philosophy: GitHub conversation is shared context rebuilt on each run.
- * The cached session.json remains agent-local state: assistant replies,
- * tool calls, and per-agent working memory. This keeps orchestration
- * comments visible across agents while preserving each agent's own
- * tool-call history.
+ * GitHub messages are persisted in session.json so the original task remains
+ * a stable early prompt prefix. Existing events update in place and genuinely
+ * new events append after prior agent history, preserving cross-run chronology
+ * and provider prompt-cache reuse.
  *
  * Algorithm:
  *   1. Load the cached per-agent session (optional) to inspect:
@@ -17,20 +16,20 @@
  *        - keep issue/PR bodies, diffs, human comments, and other-agent comments
  *        - exclude this agent's own result comments
  *        - apply the agent's configured shared_context include/exclude policy, if any
- *   3. Convert the filtered events into context-session.json user messages.
+ *   3. Reconcile the filtered events into session.json by stable event ID.
  *   4. Compute a snapshot hash for change detection.
  *   5. Write new_event_count/context_snapshot_hash/context_event_count to $GITHUB_OUTPUT.
  *
  * Usage:
  *   build_context_session.ts --events events.json --agent-name orchestrator \
- *     [--session session.json] [--config config.json] --out context-session.json
+ *     --session session.json [--config config.json] --out session.json
  */
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
 import type { GithubEvent } from "./fetch_events.ts";
-import type { Session, SessionMessage } from "../lib/session.ts";
+import type { Session, SessionMessage, SessionMessageMetadata } from "../lib/session.ts";
 
 export interface BuildContextSessionArgs {
   events: string;
@@ -49,10 +48,10 @@ interface SharedContextConfig {
   agents?: Record<string, { shared_context?: { include_event_types?: string[]; exclude_event_types?: string[] } }>;
 }
 
-interface ContextSessionMessage {
+interface ContextSessionMessage extends SessionMessage {
   role: "user";
   content: string;
-  atoma_metadata: {
+  atoma_metadata: SessionMessageMetadata & {
     source: "github";
     layer: string;
     event_type: string;
@@ -68,9 +67,76 @@ export interface BuildContextSessionResult {
     messages: ContextSessionMessage[];
     metadata: { source: string; agent: string; snapshot_hash: string; event_count: number };
   };
+  mergedSession: Session;
   changedCount: number;
   snapshotHash: string;
   eventCount: number;
+}
+
+function githubEventKey(message: SessionMessage): string | undefined {
+  const metadata = message.atoma_metadata;
+  if (metadata?.source !== "github" || metadata.layer !== GITHUB_CONTEXT_LAYER) return undefined;
+  if (metadata.event_type === undefined || metadata.id === undefined) return undefined;
+  return `${String(metadata.event_type)}:${String(metadata.id)}`;
+}
+
+/**
+ * Reconcile the current GitHub snapshot into the durable agent session.
+ * Existing events keep their position, changed events update in place, and
+ * genuinely new events append after the agent history that preceded them.
+ */
+export function mergeGithubContext(
+  session: Session,
+  messages: ContextSessionMessage[],
+  legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0,
+): Session {
+  const incomingByKey = new Map(messages.map((message) => [githubEventKey(message)!, message]));
+  const existingMessages = session.messages ?? [];
+  const hasPersistedContext = existingMessages.some((message) => githubEventKey(message) !== undefined);
+
+  if (!hasPersistedContext) {
+    const baselineCount = Math.min(legacyBaselineCount, messages.length);
+    const baseline = messages.slice(0, baselineCount);
+    const newMessages = messages.slice(baselineCount);
+    const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
+    const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
+
+    return {
+      ...session,
+      messages: [
+        ...existingMessages.slice(0, insertionIndex),
+        ...baseline,
+        ...existingMessages.slice(insertionIndex),
+        ...newMessages,
+      ],
+    };
+  }
+
+  const seen = new Set<string>();
+  const reconciled: SessionMessage[] = [];
+  for (const message of existingMessages) {
+    const key = githubEventKey(message);
+    if (key === undefined) {
+      reconciled.push(message);
+      continue;
+    }
+
+    const replacement = incomingByKey.get(key);
+    if (replacement !== undefined && !seen.has(key)) {
+      reconciled.push(replacement);
+      seen.add(key);
+    }
+  }
+
+  for (const message of messages) {
+    const key = githubEventKey(message)!;
+    if (!seen.has(key)) {
+      reconciled.push(message);
+      seen.add(key);
+    }
+  }
+
+  return { ...session, messages: reconciled };
 }
 
 function normalizeId(val: string | number | undefined): string | undefined {
@@ -164,6 +230,23 @@ function previousSnapshotHash(session: Session): string | undefined {
   return session.metadata?.github_context?.snapshot_hash;
 }
 
+function legacyBaselineCount(events: GithubEvent[], previousHash: string | undefined): number {
+  if (previousHash === undefined) return events.length;
+
+  for (let end = events.length; end >= 0; end--) {
+    if (snapshotHashForEvents(events.slice(0, end)) === previousHash) return end;
+  }
+
+  // An edit/deletion means the old snapshot is not a prefix of the current
+  // event list. Keep only the immutable task-opening documents before legacy
+  // agent history; append the ambiguous comments/diff after it. This one-time
+  // migration favors instruction stability without pretending unknown event
+  // chronology can be reconstructed from the old hash alone.
+  let openingDocuments = 0;
+  while (events[openingDocuments]?.event_type.endsWith("_opened")) openingDocuments++;
+  return openingDocuments;
+}
+
 export function buildContextSession(
   session: Session,
   events: GithubEvent[],
@@ -174,15 +257,31 @@ export function buildContextSession(
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
   const currentHash = snapshotHashForEvents(filteredEvents);
   const previousHash = previousSnapshotHash(session);
+  const contextMessages = filteredEvents.map(eventToUserMessage);
 
   let changedCount: number;
   if (previousHash === currentHash) changedCount = 0;
   else if (previousHash === undefined) changedCount = filteredEvents.length;
   else changedCount = 1;
 
+  const mergedSession = mergeGithubContext(
+    session,
+    contextMessages,
+    legacyBaselineCount(filteredEvents, previousHash),
+  );
+  mergedSession.metadata = {
+    ...mergedSession.metadata,
+    github_context: {
+      ...mergedSession.metadata?.github_context,
+      snapshot_hash: currentHash,
+      event_count: filteredEvents.length,
+      agent: agentName,
+    },
+  };
+
   return {
     contextSession: {
-      messages: filteredEvents.map(eventToUserMessage),
+      messages: contextMessages,
       metadata: {
         source: GITHUB_CONTEXT_LAYER,
         agent: agentName,
@@ -190,6 +289,7 @@ export function buildContextSession(
         event_count: filteredEvents.length,
       },
     },
+    mergedSession,
     changedCount,
     snapshotHash: currentHash,
     eventCount: filteredEvents.length,
@@ -208,20 +308,20 @@ function main(): void {
     },
   });
 
-  if (!values.events || !values["agent-name"] || !values.out) {
+  if (!values.events || !values["agent-name"] || !values.session || !values.out) {
     console.error(
-      "usage: build_context_session.ts --events events.json --agent-name AGENT [--session session.json] [--config config.json] --out context-session.json",
+      "usage: build_context_session.ts --events events.json --agent-name AGENT --session session.json [--config config.json] --out session.json",
     );
     process.exit(2);
   }
 
-  const session: Session = values.session && existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
+  const session: Session = existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
   const events = JSON.parse(readFileSync(values.events, "utf8")) as GithubEvent[];
   const config: SharedContextConfig = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
 
-  const { contextSession, changedCount, snapshotHash, eventCount } = buildContextSession(session, events, values["agent-name"], config);
+  const { mergedSession, changedCount, snapshotHash, eventCount } = buildContextSession(session, events, values["agent-name"], config);
 
-  writeFileSync(values.out, JSON.stringify(contextSession, null, 2));
+  writeFileSync(values.out, JSON.stringify(mergedSession, null, 2) + "\n");
 
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
