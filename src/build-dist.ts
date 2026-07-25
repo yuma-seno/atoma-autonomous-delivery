@@ -55,20 +55,8 @@ async function bundleTree(srcDir: string, distDir: string, excludeDirs: Readonly
   const entrypoints = collectEntryPoints(srcDir, excludeDirs);
   rmSync(distDir, { recursive: true, force: true });
 
-  // One Bun.build() call PER entry point, not a single call with all of
-  // them: a script that is BOTH its own standalone entry point (e.g.
-  // launch_sub_agent.ts, deployed as a real runnable file) AND imported by
-  // ANOTHER entry point in the SAME build (e.g. mcp/atoma.ts) gets its
-  // `if (import.meta.main) main();` guard left as a live runtime check
-  // (instead of being resolved/dead-code-eliminated at build time) when
-  // multiple such entry points are bundled together in one call -- inlined
-  // into the OTHER entry point's bundle, that guard then incorrectly
-  // evaluates true too (there's only one real "main" module once bundled),
-  // running BOTH scripts' main() on startup. Bundling one entry point at a
-  // time avoids this entirely: verified by reproducing the failure with a
-  // batched call and confirming a per-entry-point call resolves
-  // `import.meta.main` to a build-time-constant `false` for any inlined,
-  // non-entry copy instead.
+  // Build each deployable entry point independently. Imported implementation
+  // modules live under excluded `lib/` directories and are inlined here.
   for (const entrypoint of entrypoints) {
     const result = await Bun.build({
       entrypoints: [entrypoint],
@@ -104,7 +92,11 @@ function copyStaticAtomaContent(): void {
 
 async function main(): Promise<void> {
   await bundleTree(join(SRC_DIR, "scripts"), join(DIST_GITHUB_DIR, "scripts"), new Set(["lib", "testing"]));
-  await bundleTree(join(SRC_DIR, "atoma", "tools", "scripts"), join(DIST_GITHUB_DIR, "atoma", "tools", "scripts"));
+  await bundleTree(
+    join(SRC_DIR, "atoma", "tools", "scripts"),
+    join(DIST_GITHUB_DIR, "atoma", "tools", "scripts"),
+    new Set(["lib"]),
+  );
   copyStaticAtomaContent();
 }
 

@@ -124,7 +124,7 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
  *
  * The one canonical "a sub-issue just closed -- is its parent ready?"
  * entry point, used identically by mcp/github.ts's closeIssue() and
- * request_close_issue.ts's bot-authored-issue branch (previously both
+ * concludeIssue's bot-authored-issue branch (previously both
  * spawned the now-removed dispatch_orchestrator_if_ready.ts script).
  */
 export async function dispatchOrchestratorIfSubIssueReady(repo: string, subIssueNum: number): Promise<DispatchGateResult> {

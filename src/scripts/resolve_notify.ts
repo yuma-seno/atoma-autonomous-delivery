@@ -3,7 +3,7 @@
  * resolve_notify.ts — Thin CLI wrapper around lib/notify.ts's
  * resolveNotify(), invoked as a workflow step (via `scriptCommand` from
  * atoma-runner.wac.ts, as a fallback when `inputs.notify` arrives empty).
- * Every other caller (mcp/github.ts, request_close_issue.ts,
+ * Every other caller (mcp/github.ts, concludeIssue,
  * lib/aggregation.ts) imports resolveNotify() directly -- see that
  * module's doc comment for the full resolution algorithm.
  *

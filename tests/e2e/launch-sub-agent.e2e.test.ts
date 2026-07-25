@@ -4,7 +4,7 @@
  * inference loop and real MCP client, driven against the REAL, compiled
  * `dist/.github/atoma/tools/scripts/mcp/atoma.ts` MCP server over real
  * stdio JSON-RPC, with a fake `gh` CLI so the real dispatch chain
- * (mcp/atoma.ts -> launch_sub_agent.ts -> get_config_value.ts -> gh)
+ * (mcp/atoma.ts -> dispatchSubAgent -> config/gh helpers)
  * runs without touching the real GitHub API or triggering a real
  * `gh workflow run`.
  *
@@ -31,12 +31,9 @@ describe.skipIf(!atomaAvailable)("E2E: real atoma binary + real mcp/atoma.ts", (
       },
     ]);
     // Real invocations the real dispatch chain makes, in order:
-    //   1. launch_sub_agent.ts: `gh issue comment 7 --body ...`
-    //   2. launch_sub_agent.ts spawns get_config_value.ts (no `gh` call --
-    //      reads .github/atoma/config.json directly, resolved relative to
-    //      the atoma binary's own cwd, which is this repo's checkout root).
-    //   3. launch_sub_agent.ts: `gh issue edit 7 --add-label atoma/launched`
-    //   4. launch_sub_agent.ts: `gh workflow run atoma-runner.yml ...`
+    //   1. dispatchSubAgent: `gh issue comment 7 --body ...`
+    //   2. dispatchSubAgent: `gh issue edit 7 --add-label atoma/launched`
+    //   3. dispatchSubAgent: `gh workflow run atoma-runner.yml ...`
     const fakeGh = setupFakeGh([
       { match: ["issue", "comment"] },
       { match: ["issue", "edit"] },
@@ -75,11 +72,8 @@ You are a test orchestrator agent.
         outSessionPath: join(dir, "session.json"),
         env: {
           ...fakeGh.env,
-          // launch_sub_agent.ts resolves .github/atoma/tools/scripts/get_config_value.ts
-          // and .github/atoma/config.json relative to cwd -- both spawned
-          // without an explicit cwd override, so they inherit whatever cwd
-          // this test itself runs with (this repo's checkout root, which
-          // already has a real, CI-synced .github/ copy of dist/.github/).
+          // dispatchSubAgent reads .github/atoma/config.json relative to this
+          // test's cwd (the repository root).
           OPENAI_BASE_URL: mock.url,
           OPENAI_API_KEY: "dummy-test-key",
           ATOMA_PROVIDER: "openai",

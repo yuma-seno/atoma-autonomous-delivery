@@ -221,8 +221,8 @@ if [ -n "\${{ vars.ATOMA_PROVIDER }}" ]; then
   export ATOMA_PROVIDER="\${{ vars.ATOMA_PROVIDER }}"
 fi
 
-# Note: no --prompt-file or --context-session. The cached session contains
-# both stable GitHub context and the agent's chronological working history.
+# No --prompt-file or stdin is needed: the cached session contains both stable
+# GitHub context and the agent's chronological working history.
 EXIT_CODE=0
 atoma run \\
   --agent-def "${AGENT_DEF_DIR}/\${AGENT}.md" \\

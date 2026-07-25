@@ -12,10 +12,7 @@
  * IMPORTANT: this process's `process.stdout` IS the JSON-RPC transport --
  * never `console.log()` anywhere in this file or in anything it calls
  * in-process (resolveNotify/dispatchOrchestratorIfSubIssueReady/etc.);
- * always `console.error()` (`log()` below) for logging. See
- * request_close_issue.ts's doc comment for the real incident this guards
- * against (a stray console.log corrupted the stdio stream and broke real
- * tool calls with an opaque "Failed to call tool" error).
+ * always `console.error()` (`log()` below) for logging.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -262,8 +259,8 @@ function injectParentIssue(body: string): string {
  * workflow-triggering events for actions performed with the default
  * GITHUB_TOKEN, so a bot-created PR does NOT reliably cause
  * atoma-auto-trigger.yml to fire. workflow_dispatch is exempt from that
- * restriction, so dispatch directly here, the same way launch_sub_agent.ts
- * does for orchestrator -> sub-agent handoffs. Best-effort: a dispatch
+ * restriction, so dispatch directly here, the same way dispatchSubAgent
+ * handles orchestrator -> sub-agent handoffs. Best-effort: a dispatch
  * failure does not fail PR creation itself.
  */
 function dispatchPostPrAgent(prNumber: number): void {
@@ -316,7 +313,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // this call now ends the session immediately, see the returned
   // meta.session_ends below) no further agent text will be posted on the
   // CURRENT issue about this -- record it here explicitly, the same way
-  // launch_sub_agent.ts always confirms its own dispatch with a comment.
+  // dispatchSubAgent always confirms its own dispatch with a comment.
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
     gh(

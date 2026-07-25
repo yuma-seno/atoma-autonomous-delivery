@@ -1,7 +1,7 @@
 /**
  * notify.ts — Resolve who to notify (a GitHub login) for a given issue or
  * PR. The one canonical implementation, used directly (no more subprocess
- * spawn) by every caller: mcp/github.ts, request_close_issue.ts,
+ * spawn) by every caller: mcp/github.ts, concludeIssue,
  * dispatch_orchestrator_if_ready-logic (lib/aggregation.ts), and
  * src/scripts/resolve_notify.ts's thin CLI wrapper (kept because
  * atoma-runner.wac.ts invokes it as a workflow step, via `scriptCommand`).

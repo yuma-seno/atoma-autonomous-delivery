@@ -4,7 +4,7 @@
  * `atoma` binary, its real inference loop and real MCP client, against the
  * REAL, compiled `dist/.github/atoma/tools/scripts/mcp/atoma.ts` MCP server,
  * with a fake `gh` CLI so the real chain (mcp/atoma.ts ->
- * request_close_issue.ts -> lib/notify.ts's resolveNotify() -> gh) runs
+ * concludeIssue -> lib/notify.ts's resolveNotify() -> gh) runs
  * without touching the real GitHub API.
  *
  * Covers only the human-authored branch (escalate via comment, do NOT
@@ -30,9 +30,9 @@ describe.skipIf(!atomaAvailable)("E2E: real atoma binary + real mcp/atoma.ts", (
       { toolCalls: [{ id: "call_1", name: "atoma__request_close_issue", arguments: { reason: "All done", summary: "Shipped it." } }] },
     ]);
     const fakeGh = setupFakeGh([
-      // request_close_issue.ts: `gh issue view 99 --repo ... --json author`
+      // concludeIssue: `gh issue view 99 --repo ... --json author`
       { match: ["issue", "view"], stdout: JSON.stringify({ author: { id: "1", is_bot: false, login: "alice", name: "Alice" } }) },
-      // resolve_notify.ts (spawned by request_close_issue.ts): `gh api repos/.../issues/99 --jq ...`
+      // resolveNotify: `gh api repos/.../issues/99 --jq ...`
       { match: ["issues/99"], stdout: JSON.stringify({ body: "no tag", login: "alice", type: "User" }) },
       { match: ["issue", "comment"] },
     ]);

@@ -4,7 +4,6 @@ __pycache__
 atoma_logs.txt
 atoma_output.txt
 atoma_ops.log
-context-session.json
 events.json
 session.json
 logs/

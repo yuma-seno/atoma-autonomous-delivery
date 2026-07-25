@@ -15,17 +15,15 @@
  * IMPORTANT: this process's `process.stdout` IS the JSON-RPC transport --
  * never `console.log()` anywhere in this file or in anything it calls
  * in-process (dispatchSubAgent/concludeIssue and whatever they import);
- * always `console.error()` (stderr) for logging. See
- * launch_sub_agent.ts/request_close_issue.ts's own doc comments for the
- * real incident this guards against.
+ * always `console.error()` (stderr) for logging.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { gh } from "../../../../lib/gh.ts";
-import { dispatchSubAgent } from "../launch_sub_agent.ts";
+import { dispatchSubAgent } from "../lib/dispatch_sub_agent.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
-import { concludeIssue } from "../request_close_issue.ts";
+import { concludeIssue } from "../lib/conclude_issue.ts";
 import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 
 function log(msg: string): void {

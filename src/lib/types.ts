@@ -10,7 +10,6 @@ export interface AutoTrigger {
 }
 
 export interface AtomaConfig {
-  version: number;
   merge_policy: "auto" | "manual" | string;
   environment?: {
     description?: string;
@@ -32,29 +31,12 @@ export interface SubAgentTask {
   agent: string;
 }
 
-/** JSON-RPC 2.0 request as received over MCP stdio transport. */
-export interface JsonRpcRequest<TParams = unknown> {
-  jsonrpc: "2.0";
-  id?: number | string | null;
-  method: string;
-  params?: TParams;
-}
-
-export interface McpToolCallParams {
-  name: string;
-  arguments?: Record<string, unknown>;
-}
-
 /** Minimal shape of `gh issue view --json author` (NOT the REST `.user.type` shape). */
 export interface GhIssueAuthor {
   author?: {
     is_bot?: boolean;
     login?: string;
   };
-}
-
-export interface GhIssueBody {
-  body?: string;
 }
 
 export interface GhIssueSummary {

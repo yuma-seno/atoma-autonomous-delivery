@@ -4,7 +4,7 @@
  *
  * Thin CLI wrapper around lib/config.ts's loadConfig(), invoked as a
  * workflow step (via `scriptCommand` from atoma-runner.wac.ts). Every
- * other caller (launch_sub_agent.ts) imports loadConfig() directly.
+ * other callers import loadConfig() directly.
  *
  * Usage:
  *   bun run get_config_value.ts <dotted.path> [default]
