@@ -11,6 +11,7 @@ import { manageDispatchLoop } from "./manage_dispatch_loop.ts";
 import { parseAgent } from "./parse_comment_command.ts";
 import { buildCommentBody } from "./post_result_comment.ts";
 import { updateRunMetadata } from "./record_run_metadata.ts";
+import { findAgentSession } from "./restore_agent_session.ts";
 import { makeConfigDir, runWithFakeGh } from "./testing/harness.ts";
 import type { Session } from "../lib/session.ts";
 
@@ -158,6 +159,35 @@ describe("reconcile_github_session.ts", () => {
       "Edited",
       "Acknowledged",
     ]);
+  });
+
+  test("normalizes legacy linked Issue event keys without duplicating canonical events", () => {
+    const legacySession: Session = {
+      metadata: { github_context: { version: 1 as const } },
+      messages: [{
+        role: "user",
+        content: "Legacy Issue body",
+        atoma_metadata: {
+          source: "github",
+          layer: "github-context",
+          event_type: "linked_issue_opened",
+          id: "issue-5",
+          author: "alice",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      }],
+    };
+
+    const result = reconcileGithubSession(legacySession, [{
+      id: "issue-5",
+      event_type: "issue_opened",
+      content: "Canonical Issue body",
+      author: "alice",
+      created_at: "2026-01-01T00:00:00Z",
+    }], "engineer");
+
+    expect(result.mergedSession.messages).toHaveLength(1);
+    expect(result.mergedSession.messages?.[0]?.content).toBe("Canonical Issue body");
   });
 
   test("keeps a coherent timeline across repeated turns, edits, and deletions", () => {
@@ -507,6 +537,26 @@ describe("record_run_metadata.ts", () => {
   });
 });
 
+describe("restore_agent_session.ts", () => {
+  test("prefers the canonical Issue session and falls back to the legacy PR session", () => {
+    const sessions = new Map([
+      ["sessions/pr-10-reviewer.json", "legacy-pr"],
+    ]);
+    const load = (target: string) => sessions.get(target);
+
+    expect(findAgentSession("issue", 5, "reviewer", "pr", 10, load)).toEqual({
+      target: "sessions/pr-10-reviewer.json",
+      content: "legacy-pr",
+    });
+
+    sessions.set("sessions/issue-5-reviewer.json", "canonical-issue");
+    expect(findAgentSession("issue", 5, "reviewer", "pr", 10, load)).toEqual({
+      target: "sessions/issue-5-reviewer.json",
+      content: "canonical-issue",
+    });
+  });
+});
+
 describe("extract_directive.ts", () => {
   const dir = mkdtempSync(join(tmpdir(), "atoma-defdir-"));
   writeFileSync(join(dir, "reviewer.md"), "---\nname: reviewer\n---\n");
@@ -542,6 +592,7 @@ describe("fetch_events.ts", () => {
         {
           env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: outputFile },
           rules: [
+            { match: ["pr", "list"], stdout: "[]" },
             {
               // More specific match listed first: "issues/5/comments" is
               // also a substring-superset of "issues/5", so it must be
@@ -572,7 +623,126 @@ describe("fetch_events.ts", () => {
       expect(events[0]?.content).toContain("**Labels:** bug");
       expect(events[1]?.content).toBe("on it");
       const out = parseGithubOutput(readFileSync(outputFile, "utf8"));
+      expect(out.resolved_type).toBe("issue");
       expect(out.resolved_number).toBe("5");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps Issue-local context when linked PR search fails", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-fetch-search-failure-"));
+    const eventsFile = join(dir, "events.json");
+    const outputFile = join(dir, "output.txt");
+    writeFileSync(outputFile, "");
+
+    try {
+      const result = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "fetch_events.ts"),
+        ["--type", "issue", "--number", "5", "--out", eventsFile],
+        {
+          env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: outputFile },
+          rules: [
+            { match: ["issues/5/comments"], stdout: "[]" },
+            {
+              match: ["issues/5"],
+              stdout: JSON.stringify({
+                number: 5,
+                title: "Fix the bug",
+                body: "Please fix it.",
+                labels: [],
+                user: { login: "alice" },
+                created_at: "2026-01-01T00:00:00Z",
+              }),
+            },
+          ],
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(eventsFile, "utf8"))).toHaveLength(1);
+      expect(result.stderr).toContain("Could not search linked PRs for Issue #5");
+      expect(parseGithubOutput(readFileSync(outputFile, "utf8"))).toMatchObject({ resolved_type: "issue", resolved_number: "5" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Issue and linked PR runs produce the same serial context and canonical key", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-fetch-linked-"));
+    const issueEventsFile = join(dir, "issue-events.json");
+    const prEventsFile = join(dir, "pr-events.json");
+    const issueOutput = join(dir, "issue-output.txt");
+    const prOutput = join(dir, "pr-output.txt");
+    writeFileSync(issueOutput, "");
+    writeFileSync(prOutput, "");
+    const rules = [
+      { match: ["pr", "list"], stdout: JSON.stringify([{ number: 10 }, { number: 11 }]) },
+      { match: ["pulls/10", "application/vnd.github.v3.diff"], stdout: "diff --git a/a b/a\n+change" },
+      { match: ["pulls/10/comments"], stdout: JSON.stringify([{ id: 1002, path: "a", line: 1, original_line: 1, body: "inline", user: { login: "carol" }, created_at: "2026-01-04T00:00:00Z" }]) },
+      { match: ["pulls/10/reviews"], stdout: JSON.stringify([{ id: 1001, body: "looks good", state: "APPROVED", user: { login: "bob" }, submitted_at: "2026-01-03T00:00:00Z" }]) },
+      { match: ["issues/10/comments"], stdout: JSON.stringify([{ id: 1000, body: "PR discussion", user: { login: "alice" }, created_at: "2026-01-02T12:00:00Z" }]) },
+      {
+        match: ["pulls/10"],
+        stdout: JSON.stringify({
+          number: 10,
+          title: "Implement fix",
+          body: "<!-- atoma:parent-issue=5 -->\nCloses #5",
+          user: { login: "engineer" },
+          created_at: "2026-01-02T00:00:00Z",
+          updated_at: "2026-01-02T06:00:00Z",
+          labels: [],
+          head: { sha: "1234567890" },
+        }),
+      },
+      { match: ["pulls/11", "application/vnd.github.v3.diff"], stdout: "" },
+      { match: ["pulls/11/comments"], stdout: "[]" },
+      { match: ["pulls/11/reviews"], stdout: "[]" },
+      { match: ["issues/11/comments"], stdout: "[]" },
+      {
+        match: ["pulls/11"],
+        stdout: JSON.stringify({
+          number: 11,
+          title: "Follow-up fix",
+          body: "<!-- atoma:parent-issue=5 -->\nFollow-up",
+          user: { login: "engineer" },
+          created_at: "2026-01-05T00:00:00Z",
+          updated_at: "2026-01-05T01:00:00Z",
+          labels: [],
+          head: { sha: "abcdefghij" },
+        }),
+      },
+      { match: ["issues/5/comments"], stdout: JSON.stringify([{ id: 500, body: "Issue discussion", user: { login: "alice" }, created_at: "2026-01-01T12:00:00Z" }]) },
+      {
+        match: ["issues/5"],
+        stdout: JSON.stringify({
+          number: 5,
+          title: "Fix the bug",
+          body: "Please fix it.",
+          labels: [],
+          user: { login: "alice" },
+          created_at: "2026-01-01T00:00:00Z",
+        }),
+      },
+    ];
+
+    try {
+      const issueRun = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "fetch_events.ts"),
+        ["--type", "issue", "--number", "5", "--out", issueEventsFile],
+        { env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: issueOutput }, rules },
+      );
+      const prRun = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "fetch_events.ts"),
+        ["--type", "pr", "--number", "10", "--out", prEventsFile],
+        { env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: prOutput }, rules },
+      );
+
+      expect(issueRun.status).toBe(0);
+      expect(prRun.status).toBe(0);
+      expect(JSON.parse(readFileSync(issueEventsFile, "utf8"))).toEqual(JSON.parse(readFileSync(prEventsFile, "utf8")));
+      expect(parseGithubOutput(readFileSync(issueOutput, "utf8"))).toMatchObject({ resolved_type: "issue", resolved_number: "5" });
+      expect(parseGithubOutput(readFileSync(prOutput, "utf8"))).toMatchObject({ resolved_type: "issue", resolved_number: "5" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

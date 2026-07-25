@@ -47,6 +47,17 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/restore_agent_session.ts
 var ref = defineScript(import.meta.url);
+function findAgentSession(type, number, agent, fallbackType, fallbackNumber, load = restoreSession) {
+  const target = sessionTargetPath(type, number, agent);
+  const content = load(target);
+  if (content !== undefined)
+    return { target, content };
+  if (fallbackType && fallbackNumber !== undefined && (fallbackType !== type || String(fallbackNumber) !== String(number))) {
+    const fallbackTarget = sessionTargetPath(fallbackType, fallbackNumber, agent);
+    return { target: fallbackTarget, content: load(fallbackTarget) };
+  }
+  return { target };
+}
 function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -54,15 +65,16 @@ function main() {
       type: { type: "string" },
       number: { type: "string" },
       agent: { type: "string" },
-      out: { type: "string" }
+      out: { type: "string" },
+      "fallback-type": { type: "string" },
+      "fallback-number": { type: "string" }
     }
   });
   if (!values.type || !values.number || !values.agent || !values.out) {
     console.error("usage: restore_agent_session.ts --type issue|pr --number N --agent NAME --out session.json");
     process.exit(2);
   }
-  const target = sessionTargetPath(values.type, values.number, values.agent);
-  const content = restoreSession(target);
+  const { target, content } = findAgentSession(values.type, values.number, values.agent, values["fallback-type"], values["fallback-number"]);
   if (content !== undefined) {
     writeFileSync(values.out, content);
     console.error(`Restored session: ${target}`);
@@ -73,5 +85,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref
+  ref,
+  findAgentSession
 };

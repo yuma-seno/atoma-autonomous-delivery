@@ -175,6 +175,8 @@ See `.github/atoma/tools/tools.yaml`:
 
 Agent memory is stored in an orphan Git branch called `atoma-data` within your repository. This branch is automatically created on first use and persists across workflow runs without relying on GitHub Cache (which expires after 7 days).
 
+A PR created for an Issue is a serial continuation of that Issue. Runs started from either the parent Issue or any linked PR reconcile the parent Issue and all linked PR events into the same GitHub context. For the same agent, they also restore and save the same canonical `sessions/issue-{number}-{agent}.json` session, preserving assistant and tool history across both surfaces. Unlinked PRs retain their own PR session.
+
 ## Resource Estimates
 
 | Model | ~Prompt tokens | ~Completion tokens | ~Cost |

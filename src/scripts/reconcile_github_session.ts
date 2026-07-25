@@ -73,7 +73,12 @@ function githubEventKey(message: SessionMessage): string | undefined {
   const metadata = message.atoma_metadata;
   if (metadata?.source !== "github" || metadata.layer !== GITHUB_CONTEXT_LAYER) return undefined;
   if (metadata.event_type === undefined || metadata.id === undefined) return undefined;
-  return `${String(metadata.event_type)}:${String(metadata.id)}`;
+  const eventType = metadata.event_type === "linked_issue_opened"
+    ? "issue_opened"
+    : metadata.event_type === "linked_issue_comment"
+      ? "issue_comment"
+      : String(metadata.event_type);
+  return `${eventType}:${String(metadata.id)}`;
 }
 
 function githubEventKeyFromEvent(event: GithubEvent): string {

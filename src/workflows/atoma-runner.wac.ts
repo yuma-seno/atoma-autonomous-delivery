@@ -103,7 +103,7 @@ const fetchEventsStep = new TypedOutputsStep(
       out: "events.json",
     })}\n`,
   },
-  ["resolved_number"] as const,
+  ["resolved_type", "resolved_number"] as const,
 );
 
 const restoreSessionStep = new TypedOutputsStep({
@@ -111,10 +111,12 @@ const restoreSessionStep = new TypedOutputsStep({
   id: "restore-session",
   shell: "bash",
   run: `${scriptCommandWithArgs(restoreAgentSessionRef, {
-    type: "${{ inputs.type }}",
-    number: "${{ inputs.number }}",
+    type: fetchEventsStep.outputs.resolved_type,
+    number: fetchEventsStep.outputs.resolved_number,
     agent: "${{ inputs.agent }}",
     out: "session.json",
+    "fallback-type": "${{ inputs.type }}",
+    "fallback-number": "${{ inputs.number }}",
   })}\n`,
 });
 
@@ -351,7 +353,7 @@ const recordRunMetadataStep = new TypedOutputsStep({
     agent: "${{ inputs.agent }}",
     "snapshot-hash": buildContextStep.outputs.context_snapshot_hash,
     "event-count": buildContextStep.outputs.context_event_count,
-    type: "${{ inputs.type }}",
+    type: fetchEventsStep.outputs.resolved_type,
     "resolved-number": fetchEventsStep.outputs.resolved_number,
   })}\n`,
 });
@@ -362,8 +364,8 @@ const saveSessionStep = new TypedOutputsStep({
   shell: "bash",
   run: `${scriptCommandWithArgs(saveAgentSessionRef, {
     session: "session.json",
-    type: "${{ inputs.type }}",
-    number: "${{ inputs.number }}",
+    type: fetchEventsStep.outputs.resolved_type,
+    number: fetchEventsStep.outputs.resolved_number,
     agent: "${{ inputs.agent }}",
   })}\n`,
 });

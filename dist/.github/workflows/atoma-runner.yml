@@ -123,7 +123,7 @@ jobs:
         id: restore-session
         shell: bash
         run: |
-          bun run .github/scripts/restore_agent_session.ts --type "${{ inputs.type }}" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --out "session.json"
+          bun run .github/scripts/restore_agent_session.ts --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}" --out "session.json" --fallback-type "${{ inputs.type }}" --fallback-number "${{ inputs.number }}"
       - name: Merge GitHub context into session
         id: context
         shell: bash
@@ -304,12 +304,12 @@ jobs:
         if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
         shell: bash
         run: |
-          bun run .github/scripts/record_run_metadata.ts --session "session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ inputs.type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
+          bun run .github/scripts/record_run_metadata.ts --session "session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ steps.fetch.outputs.resolved_type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
       - name: Save session to atoma-data branch
         if: steps.atoma.outcome == 'success'
         shell: bash
         run: |
-          bun run .github/scripts/save_agent_session.ts --session "session.json" --type "${{ inputs.type }}" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}"
+          bun run .github/scripts/save_agent_session.ts --session "session.json" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}"
       - name: Report failure
         if: always() && job.status != 'success'
         shell: bash

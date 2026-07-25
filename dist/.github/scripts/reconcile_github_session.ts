@@ -51,7 +51,8 @@ function githubEventKey(message) {
     return;
   if (metadata.event_type === undefined || metadata.id === undefined)
     return;
-  return `${String(metadata.event_type)}:${String(metadata.id)}`;
+  const eventType = metadata.event_type === "linked_issue_opened" ? "issue_opened" : metadata.event_type === "linked_issue_comment" ? "issue_comment" : String(metadata.event_type);
+  return `${eventType}:${String(metadata.id)}`;
 }
 function githubEventKeyFromEvent(event) {
   return `${event.event_type}:${String(event.id)}`;
