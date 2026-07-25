@@ -8,7 +8,8 @@
  *   - `src/atoma/tools/scripts/**` (Atoma's own MCP servers, `before_tool`
  *     hook, and the one-shot scripts they use) -> `dist/.github/atoma/tools/scripts/`.
  *   - Atoma's static, non-code content (`config.json`, `prompt-template.md`,
- *     `agent-definitions/*.md`, `tools/tools.yaml`) -> `dist/.github/atoma/`,
+ *     agent definitions, recursive skill Markdown, and `tools/tools.yaml`) ->
+ *     `dist/.github/atoma/`,
  *     copied verbatim (nothing to bundle).
  *
  * Every entry point is bundled with ALL of its imports inlined -- including
@@ -76,6 +77,11 @@ async function bundleTree(srcDir: string, distDir: string, excludeDirs: Readonly
   console.log(`build-dist: bundled ${entrypoints.length} script(s): ${srcDir} -> ${distDir}`);
 }
 
+function copyDirectoryFresh(source: string, destination: string): void {
+  rmSync(destination, { recursive: true, force: true });
+  cpSync(source, destination, { recursive: true });
+}
+
 function copyStaticAtomaContent(): void {
   const srcAtomaDir = join(SRC_DIR, "atoma");
   const distAtomaDir = join(DIST_GITHUB_DIR, "atoma");
@@ -83,7 +89,8 @@ function copyStaticAtomaContent(): void {
   for (const file of ["config.json", "prompt-template.md"]) {
     cpSync(join(srcAtomaDir, file), join(distAtomaDir, file));
   }
-  cpSync(join(srcAtomaDir, "agent-definitions"), join(distAtomaDir, "agent-definitions"), { recursive: true });
+  copyDirectoryFresh(join(srcAtomaDir, "agent-definitions"), join(distAtomaDir, "agent-definitions"));
+  copyDirectoryFresh(join(srcAtomaDir, "skills"), join(distAtomaDir, "skills"));
   mkdirSync(join(distAtomaDir, "tools"), { recursive: true });
   cpSync(join(srcAtomaDir, "tools", "tools.yaml"), join(distAtomaDir, "tools", "tools.yaml"));
 

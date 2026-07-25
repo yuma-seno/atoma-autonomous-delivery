@@ -52,6 +52,8 @@ const ATOMA_VERSION_DESC = "Atoma CLI version tag to install, or `source` to bui
 // centralized here so they can't drift from each other by typo.
 const ORCHESTRATION_FILE = ".github/atoma/config.json";
 const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
+const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
+const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
 
 // Referenced downstream by name only where a later step (or the job's own
@@ -228,6 +230,8 @@ atoma run \\
   --agent-def "${AGENT_DEF_DIR}/\${AGENT}.md" \\
   --in-session session.json \\
   --out-session session.json \\
+  --template "${PROMPT_TEMPLATE}" \\
+  --skills-dir "${SKILLS_DIR}" \\
   --max-iterations ${cfgStep.outputs.max_iterations} \\
   \${TOOLS_ARG} \\
   > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
