@@ -268,7 +268,8 @@ The actual deliverable lives entirely under `dist/.github/` and is fully generat
 src/
 ├── workflows/*.wac.ts        # workflow-as-code source (github-actions-workflow-ts)
 │   └── actions/               # typed Action/Step wrappers (base.ts's CustomAction for third-party actions like oven-sh/setup-bun, plus workflow-authoring helpers)
-├── lib/                       # shared kernel used by EVERY script/MCP server below (gh.ts, config.ts, types.ts, tags.ts, notify.ts, sibling-check.ts, aggregation.ts, ops-log.ts, inject-sub-results.ts, session.ts, mcp-tool.ts)
+├── lib/                       # shared INFRASTRUCTURE kernel used by EVERY script/MCP server below (gh.ts, config.ts, types.ts, tags.ts, notify.ts, sibling-check.ts, aggregation.ts, ops-log.ts, inject-sub-results.ts, session.ts, mcp-tool.ts)
+├── domain/                    # pure, dependency-free DECISION logic shared the same way (serialization-guard.ts, handoff.ts) -- no gh/git/filesystem calls, no I/O; see below
 ├── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ workflow-authoring-only helpers under lib/: cli.ts, script-ref.ts, atoma-data.ts)
 └── atoma/                     # source for ATOMA'S OWN tool/hook implementations + config/agent content
     ├── config.json, prompt-template.md, agent-definitions/*.md, tools/tools.yaml
@@ -282,6 +283,8 @@ dist/.github/                 # THE DELIVERABLE -- copy this into your own repo 
 ├── scripts/                    # bundled from src/scripts/** (never hand-edit here)
 └── atoma/                      # bundled from src/atoma/** (never hand-edit here)
 ```
+
+`src/domain/` holds genuine multi-signal business DECISIONS that used to live inline inside larger imperative functions (mixed with `gh`/git calls, or even as a raw GitHub Actions `if:` boolean expression) -- e.g. `serialization-guard.ts`'s `shouldReleaseGuard()` decides when the `atoma/in-progress` label should be released, `handoff.ts`'s `decidePostMergeHandoff()` decides what to do with a merged PR's linked parent issue. Each is a pure function, fully unit-tested with plain objects, with zero I/O -- the caller (a script or MCP tool handler) assembles the input signals, calls the domain function, then executes whatever it decided via `lib/`. Not everything pure gets promoted here: a pure function stays local to its own script file unless it expresses a genuine multi-branch decision AND has (or would gain) more than one real caller -- otherwise moving it would just be ceremony.
 
 `src/scripts/**` and `src/atoma/tools/scripts/**` freely import from the shared `src/lib/` kernel and from each other's exported functions -- no hand-duplicated files, no subprocess-spawning one script from another. `build-dist.ts` reconciles this with the "each deployed script must be a single self-contained file, no `node_modules`, no cross-file imports" requirement by **bundling** every entry-point script individually via `Bun.build()` (target `bun`, one entry point per build call -- batching multiple together miscompiles `import.meta.main` for any script that's both its own entry point and imported by another, see that file's own doc comment): all of its imports, including npm dependencies like `@modelcontextprotocol/sdk`/`shell-quote`, get inlined into one file. Verified: a bundled `mcp/github.ts` runs standalone with zero `node_modules` nearby -- so the deployed `.github/atoma/tools/scripts/**` needs no `package.json`/`bun install` step at all. Bundled output keeps a `.ts` extension (Bun runs plain JS through a `.ts`-named file just fine) so every `bun run .github/.../foo.ts` reference elsewhere needs no change.
 
