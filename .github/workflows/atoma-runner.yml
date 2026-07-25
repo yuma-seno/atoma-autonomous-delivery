@@ -128,7 +128,7 @@ jobs:
         id: context
         shell: bash
         run: |
-          bun run .github/scripts/build_context_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "session.json"
+          bun run .github/scripts/reconcile_github_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "session.json"
       - name: Read max_iterations from config
         id: cfg
         shell: bash

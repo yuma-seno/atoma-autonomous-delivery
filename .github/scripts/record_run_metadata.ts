@@ -15,6 +15,31 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/record_run_metadata.ts
 var ref = defineScript(import.meta.url);
+function updateRunMetadata(session, update) {
+  if (update.commentId !== undefined) {
+    const commentId = Number(update.commentId);
+    const messages = session.messages ?? [];
+    for (let index = messages.length - 1;index >= 0; index--) {
+      const message = messages[index];
+      if (message.role === "assistant" && message.content) {
+        message.atoma_metadata = { ...message.atoma_metadata, github_comment_id: commentId, agent: update.agent };
+        break;
+      }
+    }
+  }
+  if (update.snapshotHash !== undefined) {
+    const metadata = typeof session.metadata === "object" && session.metadata !== null ? session.metadata : {};
+    metadata.github_context = {
+      ...metadata.github_context,
+      snapshot_hash: update.snapshotHash,
+      event_count: Number(update.eventCount ?? 0),
+      agent: update.agent,
+      type: update.type,
+      resolved_number: update.resolvedNumber
+    };
+    session.metadata = metadata;
+  }
+}
 function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -33,28 +58,17 @@ function main() {
     process.exit(2);
   }
   const session = JSON.parse(readFileSync(values.session, "utf8"));
-  if (values["comment-id"] !== undefined) {
-    const commentId = Number(values["comment-id"]);
-    const messages = session.messages ?? [];
-    for (let i = messages.length - 1;i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role === "assistant" && msg.content) {
-        msg.atoma_metadata = { ...msg.atoma_metadata, github_comment_id: commentId, agent: values.agent };
-        break;
-      }
-    }
-    console.error(`Tagged last assistant message with github_comment_id=${commentId}`);
-  }
+  updateRunMetadata(session, {
+    commentId: values["comment-id"],
+    agent: values.agent,
+    snapshotHash: values["snapshot-hash"],
+    eventCount: values["event-count"],
+    type: values.type,
+    resolvedNumber: values["resolved-number"]
+  });
+  if (values["comment-id"] !== undefined)
+    console.error(`Tagged last assistant message with github_comment_id=${values["comment-id"]}`);
   if (values["snapshot-hash"] !== undefined) {
-    const metadata = typeof session.metadata === "object" && session.metadata !== null ? session.metadata : {};
-    metadata.github_context = {
-      snapshot_hash: values["snapshot-hash"],
-      event_count: Number(values["event-count"] ?? 0),
-      agent: values.agent,
-      type: values.type,
-      resolved_number: values["resolved-number"]
-    };
-    session.metadata = metadata;
     console.error(`Recorded shared context snapshot hash=${values["snapshot-hash"]} for agent=${values.agent}`);
   }
   writeFileSync(values.session, JSON.stringify(session, null, 2) + `
@@ -63,5 +77,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
+  updateRunMetadata,
   ref
 };
