@@ -209,6 +209,44 @@ describe("reconcile_github_session.ts", () => {
     expect(new Set(eventKeys).size).toBe(eventKeys.length);
   });
 
+  test("preserves tool history and appends every comment observed before slash-command dispatch", () => {
+    const issue = {
+      id: "issue-1",
+      event_type: "issue_opened",
+      content: "Original instruction",
+      author: "alice",
+      created_at: "2026-05-27T09:00:00Z",
+    };
+    const session = reconcileGithubSession({ messages: [] }, [issue], "engineer").mergedSession;
+    const agentHistory = [
+      {
+        role: "assistant",
+        tool_calls: [{ id: "call-1", type: "function", function: { name: "github__get_issue", arguments: "{\"number\":1}" } }],
+      },
+      { role: "tool", tool_call_id: "call-1", content: "Issue details" },
+      { role: "assistant", content: "Initial response" },
+    ];
+    session.messages!.push(...agentHistory);
+
+    const reconciled = reconcileGithubSession(
+      session,
+      [
+        issue,
+        { id: 101, event_type: "issue_comment", content: "Plain comment one", author: "alice", created_at: "2026-05-27T10:00:00Z" },
+        { id: 102, event_type: "issue_comment", content: "Plain comment two", author: "bob", created_at: "2026-05-27T10:01:00Z" },
+        { id: 103, event_type: "issue_comment", content: "/engineer please continue", author: "alice", created_at: "2026-05-27T10:02:00Z" },
+      ],
+      "engineer",
+    ).mergedSession;
+
+    expect(reconciled.messages?.slice(1, 4)).toEqual(agentHistory);
+    expect(reconciled.messages?.slice(4).map((message) => message.content)).toEqual([
+      "Plain comment one",
+      "Plain comment two",
+      "/engineer please continue",
+    ]);
+  });
+
   test("removes policy-excluded events instead of marking them deleted", () => {
     const events = [
       { id: "pr-1", event_type: "pr_opened", content: "PR body", author: "alice", created_at: "2026-05-27T09:00:00Z" },
