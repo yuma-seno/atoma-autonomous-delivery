@@ -17939,7 +17939,7 @@ function readAnyParentTag(text) {
   return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
 }
 
-// src/atoma/tools/scripts/launch_sub_agent.ts
+// src/atoma/tools/scripts/lib/dispatch_sub_agent.ts
 function dispatchSubAgent(issue2, agent, notify = "") {
   if (!Number.isInteger(issue2) || issue2 <= 0) {
     throw new Error(`issue must be a positive integer, got: ${issue2}`);
@@ -17960,8 +17960,6 @@ Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
   logDispatch("issue", agent, { number: issue2 });
   return { issue: issue2, agent };
 }
-if (false)
-  ;
 
 // src/lib/notify.ts
 var MAX_HOPS = 10;
@@ -18056,7 +18054,7 @@ async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
 }
 
-// src/atoma/tools/scripts/request_close_issue.ts
+// src/atoma/tools/scripts/lib/conclude_issue.ts
 async function concludeIssue(issue2, reason, summary) {
   const repo = process.env.GITHUB_REPOSITORY ?? "";
   const { stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "author");
@@ -18086,8 +18084,6 @@ This issue was opened directly by a human, so it will not be closed automaticall
   await dispatchOrchestratorIfSubIssueReady(repo, issue2);
   return { outcome: "closed" };
 }
-if (false)
-  ;
 
 // src/lib/mcp-tool.ts
 function normalizeResult(result) {
