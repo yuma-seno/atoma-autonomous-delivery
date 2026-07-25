@@ -23,7 +23,10 @@ export interface QueuedResponse {
 export interface MockLlmServer {
   url: string;
   /** Raw JSON bodies of every request received so far, in order. */
-  requests: { messages: { role: string; content?: unknown }[] }[];
+  requests: {
+    messages: { role: string; content?: unknown }[];
+    tools?: { function?: { name?: string } }[];
+  }[];
   stop(): void;
 }
 

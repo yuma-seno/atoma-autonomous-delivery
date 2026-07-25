@@ -129,7 +129,7 @@ See `.github/atoma/agent-definitions/`:
 
 `.github/atoma/config.json` centralizes all configuration:
 
-- **agents** — per-agent settings: `max_iterations`, `shared_context` event filters
+- **agents** — per-agent `max_iterations`
 - **auto_triggers** — GitHub events mapped to agents (no per-agent workflow files needed)
 - **dispatch.workflow** — which workflow to use for agent execution
 
@@ -151,7 +151,7 @@ The orchestrator follows a clean, natural lifecycle:
 2. orchestrator creates sub-issues via GitHub MCP
 3. orchestrator calls atoma__launch_sub_agent(tasks=[{issue: N, agent: "engineer"}, ...])
 4. Session ends; dispatch comments are posted on sub-issues
-5. atoma-dispatch.yml detects comments and dispatches agents
+5. `atoma__launch_sub_agent` directly dispatches the reusable runner workflow
 6. When every sub-issue is closed → session is updated with results → orchestrator re-invoked
 7. orchestrator aggregates results → reports completion
 ```
@@ -160,7 +160,16 @@ The orchestrator follows a clean, natural lifecycle:
 
 ## Prompt Template
 
-`.github/atoma/prompt-template.md` is a custom system prompt template. Pass it to Atoma via the `--template` CLI flag. It extends the built-in template with autonomous-delivery-specific guidance (GitHub workflow, PR conventions, etc.).
+`.github/atoma/prompt-template.md` is the custom system prompt template passed to Atoma by the runner workflow. It extends the built-in template with autonomous-delivery-specific guidance (GitHub workflow, PR conventions, etc.).
+
+## Skills
+
+`.github/atoma/skills/` contains reusable operating procedures. Every agent sees
+only each skill's name and description through `{{AVAILABLE_SKILLS}}`; it loads
+full instructions on demand with the always-available
+`atoma_builtin__load_skill` tool. Skill loads remain in the ordinary persisted
+session history. Skills are host-level capabilities and are not assigned in
+agent definitions or declared in `tools.yaml`.
 
 ## Tools
 
@@ -203,7 +212,7 @@ src/
 ├── domain/                    # pure, dependency-free DECISION logic shared the same way (serialization-guard.ts, handoff.ts) -- no gh/git/filesystem calls, no I/O; see below
 ├── scripts/*.ts               # source for scripts invoked DIRECTLY from a *.wac.ts step (+ workflow-authoring-only helpers under lib/: cli.ts, script-ref.ts, atoma-data.ts)
 └── atoma/                     # source for ATOMA'S OWN tool/hook implementations + config/agent content
-    ├── config.json, prompt-template.md, agent-definitions/*.md, tools/tools.yaml
+    ├── config.json, prompt-template.md, agent-definitions/*.md, skills/**/*.md, tools/tools.yaml
     └── tools/scripts/         # MCP servers, before_tool hook, and the scripts they call
         ├── mcp/                # MCP stdio servers (tools.yaml's tool_servers)
         ├── hooks/              # before_tool hook

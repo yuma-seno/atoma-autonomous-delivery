@@ -20,6 +20,8 @@ export interface RunAtomaOpts {
   toolsFilePath: string;
   promptFilePath: string;
   outSessionPath: string;
+  templatePath?: string;
+  skillsDir?: string;
   maxIterations?: number;
   env: Record<string, string>;
 }
@@ -38,6 +40,8 @@ export interface RunAtomaResult {
  * gets handled.
  */
 export async function runAtoma(opts: RunAtomaOpts): Promise<RunAtomaResult> {
+  const skillsArgs = opts.skillsDir ? ["--skills-dir", opts.skillsDir] : [];
+  const templateArgs = opts.templatePath ? ["--template", opts.templatePath] : [];
   const proc = Bun.spawn({
     cmd: [
       ATOMA_BIN,
@@ -50,6 +54,8 @@ export async function runAtoma(opts: RunAtomaOpts): Promise<RunAtomaResult> {
       opts.promptFilePath,
       "--out-session",
       opts.outSessionPath,
+      ...templateArgs,
+      ...skillsArgs,
       "--max-iterations",
       String(opts.maxIterations ?? 5),
     ],

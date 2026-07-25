@@ -29,6 +29,8 @@ import { startMockLlmServer } from "./mock-llm-server.ts";
 import { atomaAvailable, REPO_ROOT, runAtoma } from "./run-atoma.ts";
 
 const GITHUB_MCP_SCRIPT = join(REPO_ROOT, "dist/.github/atoma/tools/scripts/mcp/github.ts");
+const PROMPT_TEMPLATE = join(REPO_ROOT, "dist/.github/atoma/prompt-template.md");
+const SKILLS_DIR = join(REPO_ROOT, "dist/.github/atoma/skills");
 
 describe.skipIf(!atomaAvailable)("E2E: real atoma binary + real mcp/github.ts", () => {
   test("agent calls github__get_issue through the real MCP server", async () => {
@@ -106,6 +108,65 @@ You are a test agent.
       const toolMessage = secondRequestMessages.find((m) => m.role === "tool");
       expect(String(toolMessage?.content)).toContain("Fake issue #42");
       expect(fakeGh.calls().some((c) => c.includes("view"))).toBe(true);
+    } finally {
+      mock.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("agent dynamically loads a built-in skill into ordinary tool history", async () => {
+    const mock = startMockLlmServer([
+      {
+        toolCalls: [
+          {
+            id: "skill_1",
+            name: "atoma_builtin__load_skill",
+            arguments: { name: "engineering/tdd" },
+          },
+        ],
+      },
+      { content: "Done: applied the TDD skill." },
+    ]);
+
+    const dir = mkdtempSync(join(tmpdir(), "atoma-skill-e2e-"));
+    try {
+      writeFileSync(
+        join(dir, "agent.md"),
+        `---
+name: e2e-skill-agent
+description: Minimal skill-loading agent for E2E testing.
+model: test-model
+provider: openai
+---
+You are a test agent.
+`,
+      );
+      writeFileSync(join(dir, "tools.yaml"), "{}\n");
+      writeFileSync(join(dir, "prompt.txt"), "Use the TDD skill.");
+
+      const { exitCode, stderr } = await runAtoma({
+        agentDefPath: join(dir, "agent.md"),
+        toolsFilePath: join(dir, "tools.yaml"),
+        templatePath: PROMPT_TEMPLATE,
+        skillsDir: SKILLS_DIR,
+        promptFilePath: join(dir, "prompt.txt"),
+        outSessionPath: join(dir, "session.json"),
+        env: {
+          OPENAI_BASE_URL: mock.url,
+          OPENAI_API_KEY: "dummy-test-key",
+          ATOMA_PROVIDER: "openai",
+        },
+      });
+
+      if (exitCode !== 0) console.error("atoma stderr:", stderr);
+      expect(exitCode).toBe(0);
+      expect(mock.requests[0]!.tools?.some((tool) => tool.function?.name === "atoma_builtin__load_skill")).toBe(true);
+      expect(String(mock.requests[0]!.messages[0]?.content)).toContain("**atoma-autonomous-delivery** system");
+      expect(String(mock.requests[0]!.messages[0]?.content)).toContain("`engineering/tdd`");
+
+      const toolMessage = mock.requests[1]!.messages.find((message) => message.role === "tool");
+      expect(String(toolMessage?.content)).toContain("# Skill: engineering/tdd");
+      expect(String(toolMessage?.content)).toContain("Add or select one focused test");
     } finally {
       mock.stop();
       rmSync(dir, { recursive: true, force: true });
