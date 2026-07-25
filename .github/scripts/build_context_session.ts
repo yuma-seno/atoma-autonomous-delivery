@@ -18,6 +18,57 @@ function defineScript(importMetaUrl) {
 var ref = defineScript(import.meta.url);
 var GITHUB_CONTEXT_LAYER = "github-context";
 var AGENT_MARKER_RE = /^<!--\s*atoma:agent=([a-z][a-z0-9-]*)\s*-->$/;
+function githubEventKey(message) {
+  const metadata = message.atoma_metadata;
+  if (metadata?.source !== "github" || metadata.layer !== GITHUB_CONTEXT_LAYER)
+    return;
+  if (metadata.event_type === undefined || metadata.id === undefined)
+    return;
+  return `${String(metadata.event_type)}:${String(metadata.id)}`;
+}
+function mergeGithubContext(session, messages, legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0) {
+  const incomingByKey = new Map(messages.map((message) => [githubEventKey(message), message]));
+  const existingMessages = session.messages ?? [];
+  const hasPersistedContext = existingMessages.some((message) => githubEventKey(message) !== undefined);
+  if (!hasPersistedContext) {
+    const baselineCount = Math.min(legacyBaselineCount, messages.length);
+    const baseline = messages.slice(0, baselineCount);
+    const newMessages = messages.slice(baselineCount);
+    const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
+    const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
+    return {
+      ...session,
+      messages: [
+        ...existingMessages.slice(0, insertionIndex),
+        ...baseline,
+        ...existingMessages.slice(insertionIndex),
+        ...newMessages
+      ]
+    };
+  }
+  const seen = new Set;
+  const reconciled = [];
+  for (const message of existingMessages) {
+    const key = githubEventKey(message);
+    if (key === undefined) {
+      reconciled.push(message);
+      continue;
+    }
+    const replacement = incomingByKey.get(key);
+    if (replacement !== undefined && !seen.has(key)) {
+      reconciled.push(replacement);
+      seen.add(key);
+    }
+  }
+  for (const message of messages) {
+    const key = githubEventKey(message);
+    if (!seen.has(key)) {
+      reconciled.push(message);
+      seen.add(key);
+    }
+  }
+  return { ...session, messages: reconciled };
+}
 function normalizeId(val) {
   return val === undefined ? undefined : String(val);
 }
@@ -105,11 +156,24 @@ function snapshotHashForEvents(events) {
 function previousSnapshotHash(session) {
   return session.metadata?.github_context?.snapshot_hash;
 }
+function legacyBaselineCount(events, previousHash) {
+  if (previousHash === undefined)
+    return events.length;
+  for (let end = events.length;end >= 0; end--) {
+    if (snapshotHashForEvents(events.slice(0, end)) === previousHash)
+      return end;
+  }
+  let openingDocuments = 0;
+  while (events[openingDocuments]?.event_type.endsWith("_opened"))
+    openingDocuments++;
+  return openingDocuments;
+}
 function buildContextSession(session, events, agentName, config = {}) {
   const ownCommentIds = buildOwnCommentIds(session, agentName);
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
   const currentHash = snapshotHashForEvents(filteredEvents);
   const previousHash = previousSnapshotHash(session);
+  const contextMessages = filteredEvents.map(eventToUserMessage);
   let changedCount;
   if (previousHash === currentHash)
     changedCount = 0;
@@ -117,9 +181,19 @@ function buildContextSession(session, events, agentName, config = {}) {
     changedCount = filteredEvents.length;
   else
     changedCount = 1;
+  const mergedSession = mergeGithubContext(session, contextMessages, legacyBaselineCount(filteredEvents, previousHash));
+  mergedSession.metadata = {
+    ...mergedSession.metadata,
+    github_context: {
+      ...mergedSession.metadata?.github_context,
+      snapshot_hash: currentHash,
+      event_count: filteredEvents.length,
+      agent: agentName
+    }
+  };
   return {
     contextSession: {
-      messages: filteredEvents.map(eventToUserMessage),
+      messages: contextMessages,
       metadata: {
         source: GITHUB_CONTEXT_LAYER,
         agent: agentName,
@@ -127,6 +201,7 @@ function buildContextSession(session, events, agentName, config = {}) {
         event_count: filteredEvents.length
       }
     },
+    mergedSession,
     changedCount,
     snapshotHash: currentHash,
     eventCount: filteredEvents.length
@@ -143,15 +218,16 @@ function main() {
       out: { type: "string" }
     }
   });
-  if (!values.events || !values["agent-name"] || !values.out) {
-    console.error("usage: build_context_session.ts --events events.json --agent-name AGENT [--session session.json] [--config config.json] --out context-session.json");
+  if (!values.events || !values["agent-name"] || !values.session || !values.out) {
+    console.error("usage: build_context_session.ts --events events.json --agent-name AGENT --session session.json [--config config.json] --out session.json");
     process.exit(2);
   }
-  const session = values.session && existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
+  const session = existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
   const events = JSON.parse(readFileSync(values.events, "utf8"));
   const config = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
-  const { contextSession, changedCount, snapshotHash, eventCount } = buildContextSession(session, events, values["agent-name"], config);
-  writeFileSync(values.out, JSON.stringify(contextSession, null, 2));
+  const { mergedSession, changedCount, snapshotHash, eventCount } = buildContextSession(session, events, values["agent-name"], config);
+  writeFileSync(values.out, JSON.stringify(mergedSession, null, 2) + `
+`);
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
     appendFileSync(githubOutput, `new_event_count=${changedCount}
@@ -165,5 +241,6 @@ if (import.meta.main)
   main();
 export {
   ref,
+  mergeGithubContext,
   buildContextSession
 };

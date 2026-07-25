@@ -124,11 +124,11 @@ jobs:
         shell: bash
         run: |
           bun run .github/scripts/restore_agent_session.ts --type "${{ inputs.type }}" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --out "session.json"
-      - name: Build context session
+      - name: Merge GitHub context into session
         id: context
         shell: bash
         run: |
-          bun run .github/scripts/build_context_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "context-session.json"
+          bun run .github/scripts/build_context_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "session.json"
       - name: Read max_iterations from config
         id: cfg
         shell: bash
@@ -217,21 +217,14 @@ jobs:
             export ATOMA_PROVIDER="${{ vars.ATOMA_PROVIDER }}"
           fi
 
-          CONTEXT_ARG=""
-          if [ -f "context-session.json" ]; then
-            CONTEXT_ARG="--context-session context-session.json"
-          fi
-
-          # Note: no --prompt-file. The cached session contains agent-local state
-          # (assistant replies, tool calls, working memory), and context-session.json
-          # supplies the current shared GitHub conversation for this run only.
+          # Note: no --prompt-file or --context-session. The cached session contains
+          # both stable GitHub context and the agent's chronological working history.
           EXIT_CODE=0
           atoma run \
             --agent-def ".github/atoma/agent-definitions/${AGENT}.md" \
             --in-session session.json \
             --out-session session.json \
             --max-iterations ${{ steps.cfg.outputs.max_iterations }} \
-            ${CONTEXT_ARG} \
             ${TOOLS_ARG} \
             > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 
