@@ -21,6 +21,13 @@ function run(cmd) {
 function gh(...args) {
   return run(["gh", ...args]);
 }
+function ghJson(...args) {
+  const { code, stdout, stderr } = gh(...args);
+  if (code !== 0) {
+    throw new Error(`gh ${args.join(" ")}: ${stderr || stdout}`);
+  }
+  return stdout ? JSON.parse(stdout) : null;
+}
 function splitConcatenatedJson(text) {
   const results = [];
   let depth = 0;
@@ -71,6 +78,34 @@ function ghPaginated(...args) {
   return flat;
 }
 
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key, hashPrefix) {
+  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent", true);
+var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
+var AGGREGATED_TAG = numericTag("aggregated", false);
+var SUB_RESULT_TAG = numericTag("sub-result", false);
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -111,31 +146,14 @@ ${issue.body ?? ""}`,
   }));
   return [openedEvent, ...commentEvents];
 }
-function fetchEvents(type, number, maxDiffChars) {
-  const [owner, repo] = repoParts();
-  if (type === "issue") {
-    const events2 = fetchIssueEvents(owner, repo, number, "issue_opened", "issue_comment", "issue");
-    events2.sort((a, b) => a.created_at.localeCompare(b.created_at));
-    return { events: events2, resolvedNumber: number };
-  }
+function fetchPrEvents(owner, repo, number, maxDiffChars) {
   const pr = JSON.parse(gh("api", `repos/${owner}/${repo}/pulls/${number}`).stdout);
   const prBody = pr.body ?? "";
+  const parentIssue = PARENT_ISSUE_TAG.read(prBody);
   const headSha = pr.head.sha.slice(0, 8);
-  const linkedMatch = /<!--\s*atoma-linked-issue:\s*(\d+)\s*-->/.exec(prBody);
-  let linkedIssue = linkedMatch ? Number(linkedMatch[1]) : undefined;
-  let resolvedNumber = linkedIssue ?? number;
   const events = [];
-  if (linkedIssue) {
-    try {
-      events.push(...fetchIssueEvents(owner, repo, linkedIssue, "linked_issue_opened", "linked_issue_comment", "linked-issue"));
-    } catch {
-      console.error(`::warning::Linked Issue #${linkedIssue} not found or inaccessible \u2014 skipping.`);
-      linkedIssue = undefined;
-      resolvedNumber = number;
-    }
-  }
-  const labelsLine = pr.labels.length > 0 ? `**Labels:** ${pr.labels.map((l) => l.name).join(", ")}` : "";
-  const linkedLine = linkedIssue ? `**Linked Issue:** #${linkedIssue}` : "";
+  const labelsLine = pr.labels.length > 0 ? `**Labels:** ${pr.labels.map((label) => label.name).join(", ")}` : "";
+  const linkedLine = parentIssue ? `**Linked Issue:** #${parentIssue}` : "";
   const prContentLines = [`PR #${number}: ${pr.title}`, labelsLine, linkedLine].filter(Boolean);
   prContentLines.push("", prBody);
   events.push({
@@ -151,11 +169,10 @@ function fetchEvents(type, number, maxDiffChars) {
   if (diff) {
     const truncated = diff.slice(0, maxDiffChars);
     let diffContent = "```diff\n" + truncated + "\n```";
-    if (diff.length > maxDiffChars) {
+    if (diff.length > maxDiffChars)
       diffContent += `
 
 *[Diff truncated at ${maxDiffChars} characters due to size]*`;
-    }
     events.push({
       id: `pr-${number}-diff`,
       event_type: "pr_diff",
@@ -166,35 +183,91 @@ function fetchEvents(type, number, maxDiffChars) {
     });
   }
   const prComments = ghPaginated("api", `repos/${owner}/${repo}/issues/${number}/comments`);
-  events.push(...prComments.map((c) => ({
-    id: c.id,
+  events.push(...prComments.map((comment) => ({
+    id: comment.id,
     event_type: "pr_comment",
-    content: c.body,
-    author: c.user.login,
-    created_at: c.created_at
+    content: comment.body,
+    author: comment.user.login,
+    created_at: comment.created_at
   })));
   const reviews = ghPaginated("api", `repos/${owner}/${repo}/pulls/${number}/reviews`);
-  events.push(...reviews.filter((r) => r.submitted_at != null).map((r) => ({
-    id: `pr-review-${r.id}`,
+  events.push(...reviews.filter((review) => review.submitted_at != null).map((review) => ({
+    id: `pr-review-${review.id}`,
     event_type: "pr_review",
-    content: `Review state: ${r.state}
+    content: `Review state: ${review.state}
 
-${r.body ?? ""}`,
-    author: r.user.login,
-    created_at: r.submitted_at
+${review.body ?? ""}`,
+    author: review.user.login,
+    created_at: review.submitted_at
   })));
   const inlineComments = ghPaginated("api", `repos/${owner}/${repo}/pulls/${number}/comments`);
-  events.push(...inlineComments.map((c) => ({
-    id: c.id,
+  events.push(...inlineComments.map((comment) => ({
+    id: comment.id,
     event_type: "pr_review_comment",
-    content: `On \`${c.path}\` line ${c.line ?? c.original_line ?? "?"}:
+    content: `On \`${comment.path}\` line ${comment.line ?? comment.original_line ?? "?"}:
 
-${c.body}`,
-    author: c.user.login,
-    created_at: c.created_at
+${comment.body}`,
+    author: comment.user.login,
+    created_at: comment.created_at
   })));
+  return { events, parentIssue };
+}
+function linkedPrNumbers(owner, repo, issueNumber) {
+  const prs = ghJson("pr", "list", "--repo", `${owner}/${repo}`, "--state", "all", "--search", `atoma:parent-issue=${issueNumber} in:body`, "--limit", "1000", "--json", "number") ?? [];
+  if (prs.length === 1000) {
+    console.error(`::warning::Linked PR search for Issue #${issueNumber} reached GitHub's 1000-result search limit.`);
+  }
+  return prs.map((pr) => pr.number);
+}
+function tryLinkedPrNumbers(owner, repo, issueNumber) {
+  try {
+    return linkedPrNumbers(owner, repo, issueNumber);
+  } catch {
+    console.error(`::warning::Could not search linked PRs for Issue #${issueNumber}; using the available context.`);
+    return [];
+  }
+}
+function appendPrEvents(events, owner, repo, prNumber, maxDiffChars) {
+  try {
+    events.push(...fetchPrEvents(owner, repo, prNumber, maxDiffChars).events);
+  } catch {
+    console.error(`::warning::Could not fetch linked PR #${prNumber}; skipping it.`);
+  }
+}
+function fetchEvents(type, number, maxDiffChars) {
+  const [owner, repo] = repoParts();
+  if (type === "issue") {
+    const events2 = fetchIssueEvents(owner, repo, number, "issue_opened", "issue_comment", "issue");
+    for (const prNumber of tryLinkedPrNumbers(owner, repo, number)) {
+      appendPrEvents(events2, owner, repo, prNumber, maxDiffChars);
+    }
+    events2.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return { events: events2, resolvedType: "issue", resolvedNumber: number };
+  }
+  const prResult = fetchPrEvents(owner, repo, number, maxDiffChars);
+  let events = [...prResult.events];
+  if (prResult.parentIssue) {
+    try {
+      events = fetchIssueEvents(owner, repo, prResult.parentIssue, "issue_opened", "issue_comment", "issue");
+      const relatedPrNumbers = new Set([number, ...tryLinkedPrNumbers(owner, repo, prResult.parentIssue)]);
+      for (const relatedPrNumber of relatedPrNumbers) {
+        if (relatedPrNumber === number)
+          events.push(...prResult.events);
+        else
+          appendPrEvents(events, owner, repo, relatedPrNumber, maxDiffChars);
+      }
+    } catch {
+      console.error(`::warning::Linked Issue #${prResult.parentIssue} not found or inaccessible \u2014 using PR-local context.`);
+      events.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return { events, resolvedType: "pr", resolvedNumber: number };
+    }
+  }
   events.sort((a, b) => a.created_at.localeCompare(b.created_at));
-  return { events, resolvedNumber };
+  return {
+    events,
+    resolvedType: prResult.parentIssue ? "issue" : "pr",
+    resolvedNumber: prResult.parentIssue ?? number
+  };
 }
 function main() {
   const { values } = parseArgs({
@@ -211,11 +284,12 @@ function main() {
     process.exit(2);
   }
   const maxDiffChars = Number(values["max-diff-chars"] ?? 30000);
-  const { events, resolvedNumber } = fetchEvents(values.type, Number(values.number), maxDiffChars);
+  const { events, resolvedType, resolvedNumber } = fetchEvents(values.type, Number(values.number), maxDiffChars);
   writeFileSync(values.out, JSON.stringify(events, null, 2));
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput)
-    appendFileSync(githubOutput, `resolved_number=${resolvedNumber}
+    appendFileSync(githubOutput, `resolved_type=${resolvedType}
+resolved_number=${resolvedNumber}
 `);
   console.error(`Fetched ${events.length} events \u2192 ${values.out}`);
 }
