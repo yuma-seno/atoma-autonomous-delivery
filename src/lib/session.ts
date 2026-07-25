@@ -3,7 +3,7 @@
  * `session.json` files this repo reads and mutates at several points
  * (persisted on the orphan `atoma-data` branch, restored/saved via
  * `restore_agent_session.ts`/`save_agent_session.ts`, and read/mutated
- * in-place by `build_context_session.ts`, `record_run_metadata.ts`,
+ * in-place by `reconcile_github_session.ts`, `record_run_metadata.ts`,
  * `manage_dispatch_loop.ts`, `inject_uncommitted_notice.ts`, and
  * `lib/inject-sub-results.ts`). The one canonical definition, replacing 5
  * independently-hand-rolled (near-identical, slightly-narrowed-per-use)
@@ -18,9 +18,17 @@
  */
 
 export interface SessionMessageMetadata {
-  /** Set by record_run_metadata.ts, read by build_context_session.ts to exclude an agent's own past result comments from its own future shared context. */
+  /** Set by record_run_metadata.ts, read by reconcile_github_session.ts to exclude an agent's own past result comments from its own future shared context. */
   github_comment_id?: string | number;
   agent?: string;
+  source?: "github" | string;
+  layer?: "github-context" | string;
+  event_type?: string;
+  id?: string | number;
+  author?: string;
+  created_at?: string;
+  sha?: string;
+  deleted?: boolean;
   [key: string]: unknown;
 }
 
@@ -32,6 +40,7 @@ export interface SessionMessage {
 }
 
 export interface SessionGithubContext {
+  version?: 1;
   snapshot_hash?: string;
   event_count?: number;
   agent?: string;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * build_context_session.ts — Reconcile GitHub events into the durable
+ * reconcile_github_session.ts — Reconcile GitHub events into the durable
  * per-agent session.
  *
  * GitHub messages are persisted in session.json so the original task remains
@@ -21,7 +21,7 @@
  *   5. Write new_event_count/context_snapshot_hash/context_event_count to $GITHUB_OUTPUT.
  *
  * Usage:
- *   build_context_session.ts --events events.json --agent-name orchestrator \
+ *   reconcile_github_session.ts --events events.json --agent-name orchestrator \
  *     --session session.json [--config config.json] --out session.json
  */
 import { createHash } from "node:crypto";
@@ -31,7 +31,7 @@ import { defineScript } from "./lib/script-ref.ts";
 import type { GithubEvent } from "./fetch_events.ts";
 import type { Session, SessionMessage, SessionMessageMetadata } from "../lib/session.ts";
 
-export interface BuildContextSessionArgs {
+export interface ReconcileGithubSessionArgs {
   events: string;
   "agent-name": string;
   config?: string;
@@ -39,7 +39,7 @@ export interface BuildContextSessionArgs {
   out: string;
 }
 
-export const ref = defineScript<BuildContextSessionArgs>(import.meta.url);
+export const ref = defineScript<ReconcileGithubSessionArgs>(import.meta.url);
 
 const GITHUB_CONTEXT_LAYER = "github-context";
 const AGENT_MARKER_RE = /^<!--\s*atoma:agent=([a-z][a-z0-9-]*)\s*-->$/;
@@ -48,7 +48,7 @@ interface SharedContextConfig {
   agents?: Record<string, { shared_context?: { include_event_types?: string[]; exclude_event_types?: string[] } }>;
 }
 
-interface ContextSessionMessage extends SessionMessage {
+interface GithubEventMessage extends SessionMessage {
   role: "user";
   content: string;
   atoma_metadata: SessionMessageMetadata & {
@@ -62,11 +62,7 @@ interface ContextSessionMessage extends SessionMessage {
   };
 }
 
-export interface BuildContextSessionResult {
-  contextSession: {
-    messages: ContextSessionMessage[];
-    metadata: { source: string; agent: string; snapshot_hash: string; event_count: number };
-  };
+export interface ReconcileGithubSessionResult {
   mergedSession: Session;
   changedCount: number;
   snapshotHash: string;
@@ -80,41 +76,29 @@ function githubEventKey(message: SessionMessage): string | undefined {
   return `${String(metadata.event_type)}:${String(metadata.id)}`;
 }
 
-/**
- * Reconcile the current GitHub snapshot into the durable agent session.
- * Existing events keep their position, changed events update in place, and
- * genuinely new events append after the agent history that preceded them.
- */
-export function mergeGithubContext(
+function githubEventKeyFromEvent(event: GithubEvent): string {
+  return `${event.event_type}:${String(event.id)}`;
+}
+
+function deletedGithubMessage(message: SessionMessage): SessionMessage {
+  if (message.atoma_metadata?.deleted === true) return message;
+  return {
+    role: "user",
+    content: `[Deleted GitHub ${String(message.atoma_metadata?.event_type ?? "event")}]`,
+    atoma_metadata: { ...message.atoma_metadata, deleted: true },
+  };
+}
+
+function reconcilePersistedGithubContext(
   session: Session,
-  messages: ContextSessionMessage[],
-  legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0,
+  messages: GithubEventMessage[],
+  fetchedEventKeys: ReadonlySet<string>,
 ): Session {
   const incomingByKey = new Map(messages.map((message) => [githubEventKey(message)!, message]));
-  const existingMessages = session.messages ?? [];
-  const hasPersistedContext = existingMessages.some((message) => githubEventKey(message) !== undefined);
-
-  if (!hasPersistedContext) {
-    const baselineCount = Math.min(legacyBaselineCount, messages.length);
-    const baseline = messages.slice(0, baselineCount);
-    const newMessages = messages.slice(baselineCount);
-    const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
-    const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
-
-    return {
-      ...session,
-      messages: [
-        ...existingMessages.slice(0, insertionIndex),
-        ...baseline,
-        ...existingMessages.slice(insertionIndex),
-        ...newMessages,
-      ],
-    };
-  }
-
   const seen = new Set<string>();
   const reconciled: SessionMessage[] = [];
-  for (const message of existingMessages) {
+
+  for (const message of session.messages ?? []) {
     const key = githubEventKey(message);
     if (key === undefined) {
       reconciled.push(message);
@@ -124,6 +108,9 @@ export function mergeGithubContext(
     const replacement = incomingByKey.get(key);
     if (replacement !== undefined && !seen.has(key)) {
       reconciled.push(replacement);
+      seen.add(key);
+    } else if (!fetchedEventKeys.has(key) && !seen.has(key)) {
+      reconciled.push(deletedGithubMessage(message));
       seen.add(key);
     }
   }
@@ -137,6 +124,36 @@ export function mergeGithubContext(
   }
 
   return { ...session, messages: reconciled };
+}
+
+/**
+ * Reconcile the current GitHub snapshot into the durable agent session.
+ * Existing events keep their position, changed events update in place, and
+ * genuinely new events append after the agent history that preceded them.
+ */
+export function mergeGithubContext(
+  session: Session,
+  messages: GithubEventMessage[],
+  fetchedEventKeys: ReadonlySet<string> = new Set(messages.map((message) => githubEventKey(message)!)),
+  legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0,
+): Session {
+  const existingMessages = session.messages ?? [];
+  if (session.metadata?.github_context?.version === 1) {
+    return reconcilePersistedGithubContext(session, messages, fetchedEventKeys);
+  }
+
+  const baselineCount = Math.min(legacyBaselineCount, messages.length);
+  const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
+  const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
+  return {
+    ...session,
+    messages: [
+      ...existingMessages.slice(0, insertionIndex),
+      ...messages.slice(0, baselineCount),
+      ...existingMessages.slice(insertionIndex),
+      ...messages.slice(baselineCount),
+    ],
+  };
 }
 
 function normalizeId(val: string | number | undefined): string | undefined {
@@ -197,7 +214,7 @@ function filterEventsForAgent(
   return filtered;
 }
 
-function eventToUserMessage(event: GithubEvent): ContextSessionMessage {
+function eventToUserMessage(event: GithubEvent): GithubEventMessage {
   return {
     role: "user",
     content: event.content,
@@ -247,17 +264,18 @@ function legacyBaselineCount(events: GithubEvent[], previousHash: string | undef
   return openingDocuments;
 }
 
-export function buildContextSession(
+export function reconcileGithubSession(
   session: Session,
   events: GithubEvent[],
   agentName: string,
   config: SharedContextConfig = {},
-): BuildContextSessionResult {
+): ReconcileGithubSessionResult {
   const ownCommentIds = buildOwnCommentIds(session, agentName);
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
   const currentHash = snapshotHashForEvents(filteredEvents);
   const previousHash = previousSnapshotHash(session);
   const contextMessages = filteredEvents.map(eventToUserMessage);
+  const fetchedEventKeys = new Set(events.map(githubEventKeyFromEvent));
 
   let changedCount: number;
   if (previousHash === currentHash) changedCount = 0;
@@ -267,12 +285,14 @@ export function buildContextSession(
   const mergedSession = mergeGithubContext(
     session,
     contextMessages,
+    fetchedEventKeys,
     legacyBaselineCount(filteredEvents, previousHash),
   );
   mergedSession.metadata = {
     ...mergedSession.metadata,
     github_context: {
       ...mergedSession.metadata?.github_context,
+      version: 1,
       snapshot_hash: currentHash,
       event_count: filteredEvents.length,
       agent: agentName,
@@ -280,15 +300,6 @@ export function buildContextSession(
   };
 
   return {
-    contextSession: {
-      messages: contextMessages,
-      metadata: {
-        source: GITHUB_CONTEXT_LAYER,
-        agent: agentName,
-        snapshot_hash: currentHash,
-        event_count: filteredEvents.length,
-      },
-    },
     mergedSession,
     changedCount,
     snapshotHash: currentHash,
@@ -310,7 +321,7 @@ function main(): void {
 
   if (!values.events || !values["agent-name"] || !values.session || !values.out) {
     console.error(
-      "usage: build_context_session.ts --events events.json --agent-name AGENT --session session.json [--config config.json] --out session.json",
+      "usage: reconcile_github_session.ts --events events.json --agent-name AGENT --session session.json [--config config.json] --out session.json",
     );
     process.exit(2);
   }
@@ -319,7 +330,7 @@ function main(): void {
   const events = JSON.parse(readFileSync(values.events, "utf8")) as GithubEvent[];
   const config: SharedContextConfig = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
 
-  const { mergedSession, changedCount, snapshotHash, eventCount } = buildContextSession(session, events, values["agent-name"], config);
+  const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(session, events, values["agent-name"], config);
 
   writeFileSync(values.out, JSON.stringify(mergedSession, null, 2) + "\n");
 

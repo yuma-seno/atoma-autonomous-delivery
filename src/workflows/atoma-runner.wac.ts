@@ -14,7 +14,7 @@ import { ref as runEnvironmentSetupRef } from "../scripts/run_environment_setup.
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
-import { ref as buildContextSessionRef } from "../scripts/build_context_session.ts";
+import { ref as reconcileGithubSessionRef } from "../scripts/reconcile_github_session.ts";
 import { ref as extractDirectiveRef } from "../scripts/extract_directive.ts";
 import { ref as postResultCommentRef } from "../scripts/post_result_comment.ts";
 import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
@@ -122,7 +122,7 @@ const buildContextStep = new TypedOutputsStep(
     name: "Merge GitHub context into session",
     id: "context",
     shell: "bash",
-    run: `${scriptCommandWithArgs(buildContextSessionRef, {
+    run: `${scriptCommandWithArgs(reconcileGithubSessionRef, {
       events: "events.json",
       "agent-name": "${{ inputs.agent }}",
       config: ORCHESTRATION_FILE,
