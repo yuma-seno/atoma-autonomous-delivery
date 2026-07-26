@@ -588,7 +588,17 @@ const runJob = new NormalJob("run", {
     if: "inputs.type == 'issue'",
     shell: "bash",
     run: `BRANCH="atoma/issue-\${{ inputs.number }}"
-git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+  git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+  git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"
+else
+  STATUS=$?
+  if [[ "$STATUS" -ne 2 ]]; then
+    echo "Failed to inspect remote branch $BRANCH" >&2
+    exit "$STATUS"
+  fi
+  git checkout -b "$BRANCH"
+fi
 echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 `,
   }),

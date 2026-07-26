@@ -40,8 +40,9 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 ## Tool Constraints
 
 - Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.
+- If a push is rejected as non-fast-forward, call `github__sync_branch`. Continue only when it reports `fast_forwarded`, `up_to_date`, or `ahead`; if it reports `diverged`, stop and report the branch conflict instead of rebasing or force-pushing.
 - `filesystem__directory_tree` and `filesystem__search_files` are blocked. Use list/read operations or a targeted read-only shell command.
-- Use shell tools for tests, builds, linting, and focused inspection. `shell__shell_execute` has no `workdir` argument; use `cd <path> && ...` in `command`.
+- Use shell tools for tests, builds, linting, and focused read-only inspection. Raw Git mutations are blocked. `shell__shell_execute` has no `workdir` argument; use `cd <path> && ...` in `command`.
 - Prefer foreground execution with an explicit timeout for ordinary checks.
 - Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.
 

@@ -73,6 +73,18 @@ describe("config.json", () => {
 });
 
 describe("generated workflows", () => {
+  test("restores an existing remote issue branch before an agent run", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const step = workflow.jobs?.run?.steps?.find((candidate) => candidate.name === "Create feature branch for issue");
+    expect(step, "atoma-runner issue branch step").toBeDefined();
+    expect(step?.run).toContain("git ls-remote --exit-code --heads origin");
+    expect(step?.run).toContain("refs/heads/$BRANCH:refs/remotes/origin/$BRANCH");
+    expect(step?.run).toContain('git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"');
+  });
+
   test("checkout the repository before running repository scripts", () => {
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };

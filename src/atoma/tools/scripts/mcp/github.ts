@@ -103,6 +103,9 @@ const LIST_PRS_SCHEMA = z.object({
 const SEARCH_CODE_SCHEMA = z.object({ query: z.string() });
 const GET_BRANCH_SCHEMA = z.object({ name: z.string() });
 const GET_CHECK_RUNS_SCHEMA = z.object({ ref: z.string() });
+const SYNC_BRANCH_SCHEMA = z.object({
+  branch: z.string().optional().describe("Branch to synchronize. Defaults to the current Atoma branch."),
+});
 
 const SUBMIT_PR_REVIEW_SCHEMA = z.object({
   number: z.number().int(),
@@ -292,9 +295,25 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   const branch = resolveBranch();
   log(`createPr: resolved branch=${JSON.stringify(branch)}`);
 
-  const push = gitRun("push", "-u", "origin", branch);
-  log(`createPr: git push rc=${push.code}, err=${JSON.stringify(push.stderr)}`);
-  if (push.code) mcpFail(`git push failed (rc=${push.code}): ${push.stderr || push.stdout}`);
+  const worktree = gitRun("status", "--porcelain");
+  if (worktree.code) mcpFail(worktree.stderr || worktree.stdout);
+  if (worktree.stdout.trim()) {
+    mcpFail("Cannot create a PR with uncommitted changes. Call github__commit_and_push first.");
+  }
+  const head = gitRun("rev-parse", "HEAD");
+  if (head.code) mcpFail(`Cannot resolve local HEAD: ${head.stderr || head.stdout}`);
+  const remote = gitRun("ls-remote", "--heads", "origin", `refs/heads/${branch}`);
+  if (remote.code) mcpFail(`Cannot inspect remote branch '${branch}': ${remote.stderr || remote.stdout}`);
+  const remoteHead = remote.stdout.trim().split(/\s+/, 1)[0] ?? "";
+  if (!remoteHead) {
+    mcpFail(`Remote branch '${branch}' does not exist. Call github__commit_and_push before creating the PR.`);
+  }
+  if (remoteHead !== head.stdout.trim()) {
+    mcpFail(
+      `Remote branch '${branch}' is not at local HEAD. Call github__sync_branch and inspect its status; ` +
+      `if it reports 'ahead', call github__commit_and_push before creating the PR.`,
+    );
+  }
 
   const cmd = ["pr", "create", "--repo", REPO, "--title", title, "--head", branch];
   if (body) cmd.push("--body", body);
@@ -352,6 +371,50 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
   }
   logOp("commit_and_push", {});
   return JSON.stringify({ ok: true });
+}
+
+function syncBranch(a: z.infer<typeof SYNC_BRANCH_SCHEMA>): string {
+  const branch = a.branch?.trim() || resolveBranch();
+  const valid = gitRun("check-ref-format", "--branch", branch);
+  if (valid.code) mcpFail(`Invalid branch name '${branch}': ${valid.stderr || valid.stdout}`);
+  const current = gitRun("branch", "--show-current");
+  if (current.code) mcpFail(current.stderr || current.stdout);
+  if (current.stdout.trim() !== branch) {
+    mcpFail(`Cannot synchronize '${branch}' while '${current.stdout.trim() || "detached HEAD"}' is checked out.`);
+  }
+
+  const worktree = gitRun("status", "--porcelain");
+  if (worktree.code) mcpFail(worktree.stderr || worktree.stdout);
+  if (worktree.stdout.trim()) {
+    mcpFail("Cannot synchronize a branch with uncommitted changes. Commit or discard them first.");
+  }
+
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  const fetch = gitRun("fetch", "origin", `refs/heads/${branch}:${remoteRef}`);
+  if (fetch.code) {
+    if (/couldn't find remote ref|not our ref/i.test(fetch.stderr)) {
+      return JSON.stringify({ branch, status: "remote_missing", ahead: 0, behind: 0 });
+    }
+    mcpFail(`Failed to fetch remote branch '${branch}': ${fetch.stderr || fetch.stdout}`);
+  }
+
+  const counts = gitRun("rev-list", "--left-right", "--count", `HEAD...${remoteRef}`);
+  if (counts.code) mcpFail(`Failed to compare branch '${branch}': ${counts.stderr || counts.stdout}`);
+  const [ahead, behind] = counts.stdout.trim().split(/\s+/).map(Number);
+  if (!Number.isFinite(ahead) || !Number.isFinite(behind)) {
+    mcpFail(`Unexpected rev-list output for branch '${branch}': ${counts.stdout}`);
+  }
+
+  if (ahead === 0 && behind! > 0) {
+    const fastForward = gitRun("merge", "--ff-only", remoteRef);
+    if (fastForward.code) mcpFail(`Failed to fast-forward branch '${branch}': ${fastForward.stderr || fastForward.stdout}`);
+    logOp("sync_branch", { branch, status: "fast_forwarded", ahead, behind });
+    return JSON.stringify({ branch, status: "fast_forwarded", ahead, behind });
+  }
+
+  const status = ahead! > 0 && behind! > 0 ? "diverged" : ahead! > 0 ? "ahead" : "up_to_date";
+  logOp("sync_branch", { branch, status, ahead, behind });
+  return JSON.stringify({ branch, status, ahead, behind });
 }
 
 function getPr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
@@ -523,6 +586,12 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({ name: "list_prs", description: "List PRs.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
   defineMcpTool({ name: "search_code", description: "Search code.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
   defineMcpTool({ name: "get_branch", description: "Get branch info.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
+  defineMcpTool({
+    name: "sync_branch",
+    description: "Fetch and safely fast-forward the current branch from its remote counterpart. Reports diverged branches without rebasing or force-pushing.",
+    schema: SYNC_BRANCH_SCHEMA,
+    handler: syncBranch,
+  }),
   defineMcpTool({ name: "get_check_runs", description: "Get check runs for a ref.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
   defineMcpTool({ name: "get_pr_reviews", description: "Get PR reviews.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
   defineMcpTool({ name: "list_pr_review_comments", description: "List PR review comments.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),

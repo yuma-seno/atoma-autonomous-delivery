@@ -361,6 +361,53 @@ var BLOCKED = [
   [/\bzsh\s+(?:-[a-zA-Z]+\s+)*-c\b/, "zsh -c is disabled."],
   [/\bdash\s+(?:-[a-zA-Z]+\s+)*-c\b/, "dash -c is disabled."]
 ];
+var MUTATING_GIT_COMMANDS = new Set([
+  "add",
+  "am",
+  "apply",
+  "bisect",
+  "branch",
+  "checkout",
+  "cherry-pick",
+  "clean",
+  "commit",
+  "config",
+  "fetch",
+  "init",
+  "merge",
+  "mv",
+  "pull",
+  "push",
+  "rebase",
+  "remote",
+  "reset",
+  "restore",
+  "revert",
+  "rm",
+  "stash",
+  "switch",
+  "tag",
+  "worktree"
+]);
+function findMutatingGitCommand(command) {
+  for (const segment of command.split(/\s*(?:&&|\|\||[;|])\s*/)) {
+    const tokens = segment.trim().split(/\s+/);
+    const gitIndex = tokens.findIndex((token) => token === "git" || token.endsWith("/git"));
+    if (gitIndex === -1)
+      continue;
+    let index = gitIndex + 1;
+    while (index < tokens.length && tokens[index].startsWith("-")) {
+      const option = tokens[index++];
+      if (["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"].includes(option)) {
+        index++;
+      }
+    }
+    const subcommand = tokens[index];
+    if (subcommand && MUTATING_GIT_COMMANDS.has(subcommand))
+      return subcommand;
+  }
+  return;
+}
 function normalizeCommand(command) {
   let tokens;
   try {
@@ -385,6 +432,13 @@ function normalizeCommand(command) {
 }
 function checkCommand(command) {
   const normalized = normalizeCommand(command);
+  const gitCommand = findMutatingGitCommand(normalized);
+  if (gitCommand) {
+    return {
+      allow: false,
+      reason: `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.`
+    };
+  }
   for (const [pattern, reason] of BLOCKED) {
     if (pattern.test(normalized))
       return { allow: false, reason };
