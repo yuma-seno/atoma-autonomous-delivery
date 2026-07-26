@@ -317,6 +317,7 @@ const postResultCommentStep = new TypedOutputsStep(
     id: "post-result",
     if: `steps.atoma.outcome == 'success' && ${buildContextStep.rawOutputs.new_event_count} != '0'`,
     shell: "bash",
+    env: { GH_TOKEN: "${{ github.token }}" },
     run: `${scriptCommandWithArgs(postResultCommentRef, {
       number: "${{ inputs.number }}",
       agent: "${{ inputs.agent }}",

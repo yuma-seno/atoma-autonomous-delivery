@@ -91,6 +91,16 @@ describe("generated workflows", () => {
       }
     }
   });
+
+  test("authenticate the result-comment GitHub CLI call", () => {
+    type WorkflowStep = { id?: string; env?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const step = workflow.jobs?.run?.steps?.find((candidate) => candidate.id === "post-result");
+    expect(step, "atoma-runner post-result step").toBeDefined();
+    expect(step?.env?.GH_TOKEN).toBe("${{ github.token }}");
+  });
 });
 
 describe("skill catalog", () => {
