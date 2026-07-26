@@ -34,14 +34,6 @@ jobs:
           SENDER: ${{ github.event.sender.login }}
         run: |
           bun run .github/scripts/resolve_entry_agent.ts
-      - name: Add reaction to issue
-        if: steps.resolve.outputs.agent != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ github.event.issue.number }}
-        run: |
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/reactions" -f content="eyes" 2>/dev/null || true
   run:
     if: needs.route.outputs.agent != ''
     uses: ./.github/workflows/atoma-runner.yml

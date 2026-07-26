@@ -317,16 +317,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           bun run .github/scripts/post_result_comment.ts --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-      - name: Add eyes reaction on agent handoff
-        if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != '' && steps.atoma.outputs.directive != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMMENT_ID: ${{ steps.post-result.outputs.comment_id }}
-        run: |
-          gh api --method POST \
-            "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
-            -f content="eyes" 2>/dev/null || true
       - name: Record run metadata
         if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
         shell: bash
