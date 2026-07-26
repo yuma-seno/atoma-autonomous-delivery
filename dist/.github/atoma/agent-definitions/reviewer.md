@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews one pull request for concrete merge-blocking defects and applies the configured merge policy.
 provider: openai # openrouter
-model: deepseek/deepseek-v4-flash
+model: xiaomi/mimo-v2.5
 callable_by:
   - user
   - agent
