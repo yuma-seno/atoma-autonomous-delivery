@@ -29,6 +29,7 @@ Then commit in your target repository.
 Required before first run:
 
 - GitHub Actions enabled in the target repository.
+- In the target repository, open **Settings > Actions > General > Workflow permissions** and enable **Allow GitHub Actions to create and approve pull requests**. Without this repository-level permission, the engineer agent cannot create pull requests.
 - Repository secret for at least one model path:
   - `OPENAI_API_KEY` (OpenAI-compatible path), or
   - `ANTHROPIC_API_KEY` (Anthropic path).
@@ -37,7 +38,7 @@ Required before first run:
   - `OPENAI_BASE_URL`
   - `ATOMA_PROVIDER` (`openai` or `anthropic` with the credentials wired by this template)
 
-Workflow permissions are already declared in the generated workflows (`actions`, `issues`, `pull-requests`, `contents` set to write where needed).
+Workflow permissions are already declared in the generated workflows (`actions`, `issues`, `pull-requests`, `contents` set to write where needed), but they do not override the repository-level setting above.
 
 ## First issue and success criteria
 
