@@ -29,10 +29,68 @@ import { startMockLlmServer } from "./mock-llm-server.ts";
 import { atomaAvailable, REPO_ROOT, runAtoma } from "./run-atoma.ts";
 
 const GITHUB_MCP_SCRIPT = join(REPO_ROOT, "dist/.github/atoma/tools/scripts/mcp/github.ts");
+const SHELL_MCP_SCRIPT = join(REPO_ROOT, "dist/.github/atoma/tools/scripts/mcp/shell.ts");
 const PROMPT_TEMPLATE = join(REPO_ROOT, "dist/.github/atoma/prompt-template.md");
 const SKILLS_DIR = join(REPO_ROOT, "dist/.github/atoma/skills");
 
 describe.skipIf(!atomaAvailable)("E2E: real atoma binary + real mcp/github.ts", () => {
+  test("agent executes a command through the real shell MCP server", async () => {
+    const mock = startMockLlmServer([
+      {
+        toolCalls: [{
+          id: "shell_1",
+          name: "shell__shell_execute",
+          arguments: { command: "printf shell-ok", execution_mode: "foreground", timeout_seconds: 5 },
+        }],
+      },
+      { content: "Done: shell command completed." },
+    ]);
+    const dir = mkdtempSync(join(tmpdir(), "atoma-shell-e2e-"));
+    try {
+      writeFileSync(
+        join(dir, "agent.md"),
+        `---
+name: e2e-shell-agent
+description: Minimal shell agent for E2E testing.
+model: test-model
+provider: openai
+mcp_servers: ["shell"]
+---
+You are a test agent.
+`,
+      );
+      writeFileSync(
+        join(dir, "tools.yaml"),
+        `shell:
+  command: bun
+  args: ["run", "${SHELL_MCP_SCRIPT}"]
+`,
+      );
+      writeFileSync(join(dir, "prompt.txt"), "Run the test command.");
+
+      const { exitCode, stderr } = await runAtoma({
+        agentDefPath: join(dir, "agent.md"),
+        toolsFilePath: join(dir, "tools.yaml"),
+        promptFilePath: join(dir, "prompt.txt"),
+        outSessionPath: join(dir, "session.json"),
+        env: {
+          OPENAI_BASE_URL: mock.url,
+          OPENAI_API_KEY: "dummy-test-key",
+          ATOMA_PROVIDER: "openai",
+        },
+      });
+
+      if (exitCode !== 0) console.error("atoma stderr:", stderr);
+      expect(exitCode).toBe(0);
+      const toolMessage = mock.requests[1]!.messages.find((message) => message.role === "tool");
+      const result = JSON.parse(String(toolMessage?.content));
+      expect(result).toMatchObject({ status: "completed", exit_code: 0, stdout: "shell-ok" });
+    } finally {
+      mock.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("agent calls github__get_issue through the real MCP server", async () => {
     const mock = startMockLlmServer([
       { toolCalls: [{ id: "call_1", name: "github__get_issue", arguments: { number: 42 } }] },

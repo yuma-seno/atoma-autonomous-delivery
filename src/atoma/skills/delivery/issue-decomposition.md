@@ -16,5 +16,6 @@ Use this skill when deciding whether work is ready for implementation or needs a
 7. Launch independent roots together; keep dependent tasks pending until prerequisites land.
 8. Avoid plan-only, coordination-only, or duplicate documentation issues. The executable sub-issues are the plan.
 9. On re-entry, verify current GitHub state before launching or aggregating; do not rely on remembered phase state.
+10. Preserve the decomposition when repository metadata is missing. Child creation owns provisioning its required label; retry recoverable tool failures instead of collapsing a multi-child plan into sequential engineer work on the parent issue.
 
 If the current issue already satisfies every engineer-leaf condition, hand it directly to `engineer` instead of creating a redundant child issue.

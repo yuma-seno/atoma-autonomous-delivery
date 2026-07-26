@@ -142,6 +142,14 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   if (sub) {
     if (parentNum) body = `${PARENT_TAG.write(Number(parentNum))}\n${body}`;
     const subIssueLabel = getLabel("sub_issue", "atoma/sub-issue");
+    const ensured = gh(
+      "label", "create", subIssueLabel,
+      "--repo", REPO,
+      "--force",
+      "--color", "8250df",
+      "--description", "Child delivery task managed by Atoma",
+    );
+    if (ensured.code) mcpFail(`Failed to ensure sub-issue label '${subIssueLabel}': ${ensured.stderr || ensured.stdout}`);
     if (!labels.includes(subIssueLabel)) labels = [...labels, subIssueLabel];
   }
 

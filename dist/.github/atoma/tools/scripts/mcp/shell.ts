@@ -17861,206 +17861,6 @@ class StdioServerTransport {
   }
 }
 
-// src/lib/gh.ts
-function run(cmd) {
-  const proc = Bun.spawnSync({
-    cmd,
-    stdout: "pipe",
-    stderr: "pipe"
-  });
-  return {
-    code: proc.exitCode ?? 1,
-    stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "",
-    stderr: proc.stderr ? proc.stderr.toString("utf8").trim() : ""
-  };
-}
-function gh(...args) {
-  return run(["gh", ...args]);
-}
-function ghGraphql(query, variables = {}) {
-  const args = ["api", "graphql", "-f", `query=${query}`];
-  for (const [key, value] of Object.entries(variables)) {
-    args.push("-F", `${key}=${value}`);
-  }
-  const { code, stdout, stderr } = gh(...args);
-  if (code !== 0) {
-    throw new Error(`GraphQL query failed: ${stderr || stdout.slice(0, 200)}`);
-  }
-  const result = JSON.parse(stdout);
-  if (result.errors) {
-    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-  }
-  return result.data;
-}
-function gitRun(...args) {
-  return run(["git", ...args]);
-}
-
-// src/lib/config.ts
-import { readFileSync } from "fs";
-var CONFIG_PATH = ".github/atoma/config.json";
-var cached2;
-function loadConfig() {
-  if (!cached2) {
-    cached2 = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-  }
-  return cached2;
-}
-function getLabel(key, fallback) {
-  return loadConfig().labels?.[key] ?? fallback;
-}
-function getMergePolicy(fallback = "manual") {
-  return loadConfig().merge_policy ?? fallback;
-}
-function getTriggerAgent(event, fallback = "") {
-  for (const trigger of loadConfig().auto_triggers ?? []) {
-    if (trigger.event === event && !trigger.condition) {
-      return trigger.agent || fallback;
-    }
-  }
-  return fallback;
-}
-
-// src/lib/tags.ts
-function makeTag(key, valuePattern, parse5, render) {
-  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
-  return {
-    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
-    read: (text) => {
-      const m = re.exec(text);
-      return m ? parse5(m[1]) : undefined;
-    },
-    has: (text) => re.test(text)
-  };
-}
-function numericTag(key) {
-  return makeTag(key, "\\d+", Number, String);
-}
-function stringTag(key, valuePattern) {
-  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
-}
-var PARENT_TAG = numericTag("parent");
-var PARENT_ISSUE_TAG = numericTag("parent-issue");
-var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
-var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
-var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
-var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
-var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
-var AGGREGATED_TAG = numericTag("aggregated");
-var SUB_RESULT_TAG = numericTag("sub-result");
-function readAnyParentTag(text) {
-  return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
-}
-
-// src/lib/notify.ts
-var MAX_HOPS = 10;
-function fetchIssueLookup(repo, number4) {
-  const { code, stdout } = gh("api", `repos/${repo}/issues/${number4}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
-  if (code !== 0 || !stdout.trim())
-    return {};
-  try {
-    return JSON.parse(stdout);
-  } catch {
-    return {};
-  }
-}
-function resolveNotify(repo, number4) {
-  const visited = new Set;
-  let current = number4;
-  for (let i = 0;i < MAX_HOPS; i++) {
-    if (visited.has(current))
-      break;
-    visited.add(current);
-    const d = fetchIssueLookup(repo, current);
-    const body = d.body ?? "";
-    const tagged = NOTIFY_TAG.read(body);
-    if (tagged)
-      return tagged;
-    if ((d.type ?? "").toLowerCase() === "user" && d.login) {
-      return d.login;
-    }
-    const parent = readAnyParentTag(body);
-    if (parent === undefined)
-      break;
-    current = parent;
-  }
-  return "";
-}
-
-// src/lib/sibling-check.ts
-function countOpenSiblings(opts) {
-  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
-  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
-  if (code !== 0) {
-    throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
-  }
-  const siblings = stdout ? JSON.parse(stdout) : [];
-  const remaining = opts.exclude !== undefined ? siblings.filter((s) => s.number !== opts.exclude) : siblings;
-  return remaining.length;
-}
-
-// src/lib/ops-log.ts
-import { appendFileSync } from "fs";
-var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
-function logOp(op, payload = {}) {
-  const entry = { ts: new Date().toISOString(), op, ...payload };
-  try {
-    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
-`);
-  } catch (e) {
-    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
-  }
-}
-function logDispatch(target, agent, extra = {}) {
-  logOp("dispatch", { target, agent, ...extra });
-}
-
-// src/lib/aggregation.ts
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-async function dispatchOrchestratorIfReady(opts) {
-  const excludeNum = opts.exclude ? opts.closedNum : undefined;
-  let remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
-  if (opts.retry) {
-    for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
-      await sleep(2000 * attempt);
-      remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
-    }
-  }
-  if (remaining > 0) {
-    if (opts.progressMessage) {
-      gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
-${SUB_RESULT_TAG.write(opts.closedNum)}
-${opts.progressMessage(remaining)}`);
-    }
-    return { ready: false, remaining, dispatched: false };
-  }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
-  if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
-    return { ready: true, remaining: 0, dispatched: false };
-  }
-  if (opts.beforeDispatch)
-    await opts.beforeDispatch();
-  gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
-Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
-  const notify = resolveNotify(opts.repo, opts.parent);
-  gh("workflow", "run", opts.dispatchWorkflow ?? "atoma-runner.yml", "--repo", opts.repo, "--field", "agent=orchestrator", "--field", `number=${opts.parent}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", "orchestrator", { number: opts.parent });
-  return { ready: true, remaining: 0, dispatched: true };
-}
-async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
-  const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
-  if (parent === undefined) {
-    console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
-    return { ready: false, remaining: 0, dispatched: false };
-  }
-  return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
-}
-
 // src/lib/mcp-tool.ts
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
@@ -18095,524 +17895,77 @@ function buildMcpTools(specs) {
   };
 }
 
-// src/domain/handoff.ts
-function decidePostMergeHandoff(signals) {
-  if (signals.parentIssue === undefined)
-    return { kind: "no-parent" };
-  if (signals.parentAlreadyClosed)
-    return { kind: "already-closed", parentIssue: signals.parentIssue };
-  if (signals.originAgent) {
-    return { kind: "reinvoke-origin-agent", parentIssue: signals.parentIssue, agent: signals.originAgent };
-  }
-  return { kind: "close-directly", parentIssue: signals.parentIssue };
-}
-
-// src/atoma/tools/scripts/mcp/github.ts
-function log(msg) {
-  console.error(`[atoma-github] ${msg}`);
-}
-var REPO = process.env.GITHUB_REPOSITORY ?? "";
-if (!REPO) {
-  try {
-    const { code, stdout } = gitRun("remote", "get-url", "origin");
-    if (code === 0 && stdout) {
-      const url = stdout.trim();
-      for (const prefix of ["https://github.com/", "git@github.com:"]) {
-        if (url.startsWith(prefix)) {
-          const suffix = url.slice(prefix.length);
-          REPO = suffix.endsWith(".git") ? suffix.slice(0, -4) : suffix;
-          break;
-        }
-      }
-    }
-  } catch {}
-}
-function mcpFail(message) {
-  throw new Error(message);
-}
-function ghJsonOrThrow(...args) {
-  const { code, stdout, stderr } = gh(...args);
-  if (code)
-    mcpFail(stderr || stdout);
-  return stdout ? JSON.parse(stdout) : null;
-}
-async function resolveIssueId(number4) {
-  const [owner, repo] = REPO.split("/", 2);
-  const d = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){id}}}", { owner, repo, num: number4 });
-  return d.repository.issue.id;
-}
-var NUMBER_ARG_SCHEMA = exports_external.object({
-  number: exports_external.number().int().positive().describe("Positive GitHub issue or pull request number, without a leading '#'.")
+// src/atoma/tools/scripts/mcp/shell.ts
+var MAX_OUTPUT_BYTES = 1e6;
+var SHELL_EXECUTE_SCHEMA = exports_external.object({
+  command: exports_external.string().min(1).describe("Shell command to execute with bash."),
+  working_directory: exports_external.string().optional().describe("Directory in which to run the command. Defaults to the server working directory."),
+  environment_variables: exports_external.record(exports_external.string()).optional().describe("Environment variables to add or override for this command."),
+  input_data: exports_external.string().optional().describe("Text to provide on standard input."),
+  timeout_seconds: exports_external.number().int().min(1).max(3600).optional().default(300).describe("Maximum foreground execution time in seconds. Defaults to 300."),
+  execution_mode: exports_external.literal("foreground").optional().default("foreground").describe("Only foreground execution is supported.")
 });
-var CREATE_ISSUE_SCHEMA = exports_external.object({
-  title: exports_external.string().min(1).describe("Concise issue title."),
-  body: exports_external.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
-  labels: exports_external.array(exports_external.string()).optional().describe("Existing repository label names to apply. Defaults to no extra labels."),
-  sub_issue: exports_external.boolean().optional().describe("Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true.")
-});
-var LIST_ISSUES_SCHEMA = exports_external.object({
-  state: exports_external.enum(["open", "closed", "all"]).optional().describe("Issue state filter. Defaults to 'open'."),
-  labels: exports_external.array(exports_external.string()).optional().describe("Return only issues matching these repository labels."),
-  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum issues to return. Defaults to 30; maximum 100.")
-});
-var CREATE_PR_SCHEMA = exports_external.object({
-  title: exports_external.string().min(1).describe("Concise pull request title."),
-  body: exports_external.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
-  base: exports_external.string().optional().describe("Target branch name. Omit to use the repository default branch.")
-});
-var LIST_PRS_SCHEMA = exports_external.object({
-  state: exports_external.enum(["open", "closed", "merged", "all"]).optional().describe("Pull request state filter. Defaults to 'open'."),
-  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum pull requests to return. Defaults to 30; maximum 100.")
-});
-var SEARCH_CODE_SCHEMA = exports_external.object({
-  query: exports_external.string().min(1).describe("GitHub code-search query scoped automatically to the current repository.")
-});
-var GET_BRANCH_SCHEMA = exports_external.object({
-  name: exports_external.string().min(1).describe("Repository branch name, for example 'main' or 'atoma/issue-42'.")
-});
-var GET_CHECK_RUNS_SCHEMA = exports_external.object({
-  ref: exports_external.string().min(1).describe("Commit SHA, branch name, or tag whose GitHub check runs should be returned.")
-});
-var SYNC_BRANCH_SCHEMA = exports_external.object({
-  branch: exports_external.string().optional().describe("Branch to synchronize. Defaults to the current Atoma branch.")
-});
-var SUBMIT_PR_REVIEW_SCHEMA = exports_external.object({
-  number: exports_external.number().int().positive().describe("Positive pull request number, without a leading '#'."),
-  event: exports_external.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
-  body: exports_external.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES.")
-});
-var COMMIT_AND_PUSH_SCHEMA = exports_external.object({
-  message: exports_external.string().describe("Commit message.")
-});
-function notifyTagPrefix() {
-  const login = (process.env.ISSUE_NOTIFY ?? "").trim();
-  return login ? `${NOTIFY_TAG.write(login)}
-` : "";
-}
-async function createIssue(a) {
-  const title = a.title;
-  let body = a.body ?? "";
-  let labels = a.labels ?? [];
-  const sub = a.sub_issue ?? true;
-  const parentNum = (process.env.ISSUE_NUMBER ?? "").trim();
-  body = notifyTagPrefix() + body;
-  if (sub) {
-    if (parentNum)
-      body = `${PARENT_TAG.write(Number(parentNum))}
-${body}`;
-    const subIssueLabel = getLabel("sub_issue", "atoma/sub-issue");
-    const ensured = gh("label", "create", subIssueLabel, "--repo", REPO, "--force", "--color", "8250df", "--description", "Child delivery task managed by Atoma");
-    if (ensured.code)
-      mcpFail(`Failed to ensure sub-issue label '${subIssueLabel}': ${ensured.stderr || ensured.stdout}`);
-    if (!labels.includes(subIssueLabel))
-      labels = [...labels, subIssueLabel];
-  }
-  const cmd = ["issue", "create", "--repo", REPO, "--title", title];
-  if (body)
-    cmd.push("--body", body);
-  for (const l of labels)
-    cmd.push("--label", l);
-  const { code, stdout, stderr } = gh(...cmd);
-  if (code)
-    mcpFail(stderr || stdout);
-  const num = Number(stdout.trim().split("/").pop());
-  if (!Number.isFinite(num))
-    mcpFail(`gh issue create: unexpected output: ${stdout.slice(0, 300)}`);
-  if (sub && parentNum) {
-    try {
-      const pid = await resolveIssueId(Number(parentNum));
-      const sid = await resolveIssueId(num);
-      ghGraphql("mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}", { parent: pid, sub: sid });
-      log(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
-    } catch (e) {
-      log(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
-    }
-  }
-  logOp("create_issue", { number: num, title, sub_issue: sub });
-  return JSON.stringify({ number: num, url: stdout.trim() });
-}
-function getIssue(a) {
-  return JSON.stringify(ghJsonOrThrow("issue", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
-}
-function listIssues(a) {
-  const state = a.state ?? "open";
-  const limit = a.limit ?? 30;
-  const labels = a.labels ?? [];
-  const cmd = ["issue", "list", "--repo", REPO, "--state", state, "--limit", String(limit), "--json", "number,title,state,labels"];
-  for (const l of labels)
-    cmd.push("--label", l);
-  return JSON.stringify(ghJsonOrThrow(...cmd) ?? []);
-}
-function getIssueComments(a) {
-  const d = ghJsonOrThrow("issue", "view", String(a.number), "--repo", REPO, "--json", "comments");
-  return JSON.stringify(d?.comments ?? []);
-}
-function closeIssue(a) {
-  const num = a.number;
-  log(`closeIssue: #${num}`);
-  const d = ghJsonOrThrow("issue", "view", String(num), "--repo", REPO, "--json", "author");
-  const isBot = Boolean(d?.author?.is_bot);
-  log(`closeIssue: author.is_bot=${isBot}`);
-  if (!isBot)
-    mcpFail(`Refusing to close issue #${num}: opened by a human, not a bot`);
-  const { code, stdout, stderr } = gh("issue", "close", String(num), "--repo", REPO);
-  if (code)
-    mcpFail(stderr || stdout);
-  logOp("close_issue", { number: num });
-  return JSON.stringify({ ok: true });
-}
-async function closeIssueAndDispatch(a) {
-  const result = closeIssue(a);
-  const num = a.number;
-  try {
-    await dispatchOrchestratorIfSubIssueReady(REPO, num);
-  } catch (e) {
-    log(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
-  }
-  return result;
-}
-function resolveBranch() {
-  const br = (process.env.BRANCH ?? "").trim();
-  if (br && br !== "HEAD")
-    return br;
-  {
-    const { code, stdout } = gitRun("rev-parse", "--abbrev-ref", "HEAD");
-    if (code === 0 && stdout && stdout !== "HEAD")
-      return stdout;
-  }
-  {
-    const { code, stdout } = gitRun("branch", "--format=%(refname:short)", "--points-at=HEAD");
-    if (code === 0 && stdout)
-      return stdout.split(`
-`)[0];
-  }
-  mcpFail("Cannot determine branch name; set BRANCH env");
-}
-function injectParentIssue(body) {
-  const parent = (process.env.ISSUE_NUMBER ?? "").trim();
-  if (NOTIFY_TAG.has(body))
-    mcpFail("PR body already contains a notify tag; refusing to add another");
-  body = notifyTagPrefix() + body;
-  if (!parent)
-    return body;
-  if (PARENT_ISSUE_TAG.has(body)) {
-    mcpFail("PR body already contains a parent-issue tag; refusing to add another");
-  }
-  let closesLine = "";
-  if (!new RegExp(`\\bcloses\\s+#${parent}\\b`, "i").test(body)) {
-    closesLine = `Closes #${parent}
-`;
-  }
-  const originAgent = (process.env.AGENT ?? "").trim();
-  const originLine = originAgent ? `${ORIGIN_AGENT_TAG.write(originAgent)}
-` : "";
-  return `${PARENT_ISSUE_TAG.write(Number(parent))}
-${originLine}${closesLine}${body}`;
-}
-function dispatchPostPrAgent(prNumber) {
-  const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW ?? "atoma-runner.yml";
-  const { code, stdout, stderr } = gh("workflow", "run", dispatchWorkflow, "--field", `agent=${agent}`, "--field", `number=${prNumber}`, "--field", "type=pr", "--field", `notify=${(process.env.ISSUE_NOTIFY ?? "").trim()}`);
-  if (code) {
-    log(`dispatchPostPrAgent: WARN failed to dispatch ${agent} for PR #${prNumber}: ${stderr || stdout}`);
-  } else {
-    log(`dispatchPostPrAgent: dispatched ${agent} for PR #${prNumber}`);
-    logDispatch("pr", agent, { number: prNumber });
-  }
-}
-function createPr(a) {
-  const title = a.title;
-  let body = a.body ?? "";
-  const base = a.base;
-  body = injectParentIssue(body);
-  log(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
-  const branch = resolveBranch();
-  log(`createPr: resolved branch=${JSON.stringify(branch)}`);
-  const worktree = gitRun("status", "--porcelain");
-  if (worktree.code)
-    mcpFail(worktree.stderr || worktree.stdout);
-  if (worktree.stdout.trim()) {
-    mcpFail("Cannot create a PR with uncommitted changes. Call github__commit_and_push first.");
-  }
-  const head = gitRun("rev-parse", "HEAD");
-  if (head.code)
-    mcpFail(`Cannot resolve local HEAD: ${head.stderr || head.stdout}`);
-  const remote = gitRun("ls-remote", "--heads", "origin", `refs/heads/${branch}`);
-  if (remote.code)
-    mcpFail(`Cannot inspect remote branch '${branch}': ${remote.stderr || remote.stdout}`);
-  const remoteHead = remote.stdout.trim().split(/\s+/, 1)[0] ?? "";
-  if (!remoteHead) {
-    mcpFail(`Remote branch '${branch}' does not exist. Call github__commit_and_push before creating the PR.`);
-  }
-  if (remoteHead !== head.stdout.trim()) {
-    mcpFail(`Remote branch '${branch}' is not at local HEAD. Call github__sync_branch and inspect its status; ` + `if it reports 'ahead', call github__commit_and_push before creating the PR.`);
-  }
-  const cmd = ["pr", "create", "--repo", REPO, "--title", title, "--head", branch];
-  if (body)
-    cmd.push("--body", body);
-  if (base)
-    cmd.push("--base", base);
-  log(`createPr: running gh ${cmd.join(" ")}`);
-  const { code, stdout, stderr } = gh(...cmd);
-  log(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
-  if (code)
-    mcpFail(`gh pr create failed (rc=${code}): ${stderr || stdout}`);
-  const num = Number(stdout.trim().split("/").pop());
-  if (!Number.isFinite(num))
-    mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
-  logOp("create_pr", { number: num, title });
-  dispatchPostPrAgent(num);
-  const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
-  if (currentIssue) {
-    gh("issue", "comment", currentIssue, "--repo", REPO, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
-Atoma: PR #${num} created (${stdout.trim()}). Dispatching reviewer.`);
-  }
-  return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
-}
-function commitAndPush(a) {
-  const message = a.message;
-  {
-    const { code, stdout, stderr } = gitRun("add", "-A");
-    if (code)
-      mcpFail(stderr || stdout);
-  }
-  {
-    const { code, stdout, stderr } = gitRun("commit", "-m", message);
-    if (code)
-      mcpFail(stderr || stdout);
-  }
-  const branch = resolveBranch();
-  {
-    const { code, stdout, stderr } = gitRun("push", "-u", "origin", branch);
-    if (code)
-      mcpFail(stderr || stdout);
-  }
-  logOp("commit_and_push", {});
-  return JSON.stringify({ ok: true });
-}
-function syncBranch(a) {
-  const branch = a.branch?.trim() || resolveBranch();
-  const valid = gitRun("check-ref-format", "--branch", branch);
-  if (valid.code)
-    mcpFail(`Invalid branch name '${branch}': ${valid.stderr || valid.stdout}`);
-  const current = gitRun("branch", "--show-current");
-  if (current.code)
-    mcpFail(current.stderr || current.stdout);
-  if (current.stdout.trim() !== branch) {
-    mcpFail(`Cannot synchronize '${branch}' while '${current.stdout.trim() || "detached HEAD"}' is checked out.`);
-  }
-  const worktree = gitRun("status", "--porcelain");
-  if (worktree.code)
-    mcpFail(worktree.stderr || worktree.stdout);
-  if (worktree.stdout.trim()) {
-    mcpFail("Cannot synchronize a branch with uncommitted changes. Commit or discard them first.");
-  }
-  const remoteRef = `refs/remotes/origin/${branch}`;
-  const fetch = gitRun("fetch", "origin", `refs/heads/${branch}:${remoteRef}`);
-  if (fetch.code) {
-    if (/couldn't find remote ref|not our ref/i.test(fetch.stderr)) {
-      return JSON.stringify({ branch, status: "remote_missing", ahead: 0, behind: 0 });
-    }
-    mcpFail(`Failed to fetch remote branch '${branch}': ${fetch.stderr || fetch.stdout}`);
-  }
-  const counts = gitRun("rev-list", "--left-right", "--count", `HEAD...${remoteRef}`);
-  if (counts.code)
-    mcpFail(`Failed to compare branch '${branch}': ${counts.stderr || counts.stdout}`);
-  const [ahead, behind] = counts.stdout.trim().split(/\s+/).map(Number);
-  if (!Number.isFinite(ahead) || !Number.isFinite(behind)) {
-    mcpFail(`Unexpected rev-list output for branch '${branch}': ${counts.stdout}`);
-  }
-  if (ahead === 0 && behind > 0) {
-    const fastForward = gitRun("merge", "--ff-only", remoteRef);
-    if (fastForward.code)
-      mcpFail(`Failed to fast-forward branch '${branch}': ${fastForward.stderr || fastForward.stdout}`);
-    logOp("sync_branch", { branch, status: "fast_forwarded", ahead, behind });
-    return JSON.stringify({ branch, status: "fast_forwarded", ahead, behind });
-  }
-  const status = ahead > 0 && behind > 0 ? "diverged" : ahead > 0 ? "ahead" : "up_to_date";
-  logOp("sync_branch", { branch, status, ahead, behind });
-  return JSON.stringify({ branch, status, ahead, behind });
-}
-function getPr(a) {
-  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt"));
-}
-function getPrDiff(a) {
-  const { code, stdout, stderr } = gh("pr", "diff", String(a.number), "--repo", REPO);
-  if (code)
-    mcpFail(stderr || stdout);
-  return stdout.slice(0, 50000);
-}
-function listPrs(a) {
-  const state = a.state ?? "open";
-  const limit = a.limit ?? 30;
-  return JSON.stringify(ghJsonOrThrow("pr", "list", "--repo", REPO, "--state", state, "--limit", String(limit), "--json", "number,title,state,headRefName,baseRefName") ?? []);
-}
-function searchCode(a) {
-  const { code, stdout, stderr } = gh("search", "code", a.query, "--repo", REPO, "--limit", "30");
-  if (code)
-    mcpFail(stderr || stdout);
-  return stdout.slice(0, 50000);
-}
-function getBranch(a) {
-  return JSON.stringify(ghJsonOrThrow("api", `repos/${REPO}/branches/${a.name}`));
-}
-function getCheckRuns(a) {
-  const d = ghJsonOrThrow("api", `repos/${REPO}/commits/${a.ref}/check-runs`);
-  return JSON.stringify(d?.check_runs ?? []);
-}
-function getPrReviews(a) {
-  const d = ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "reviews");
-  return JSON.stringify(d?.reviews ?? []);
-}
-function listPrReviewComments(a) {
-  return JSON.stringify(ghJsonOrThrow(`api`, `repos/${REPO}/pulls/${a.number}/comments`) ?? []);
-}
-function submitPrReview(a) {
-  let event = a.event;
-  if (event === "APPROVE") {
-    log(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
-    event = "COMMENT";
-  }
-  const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
-  if (a.body)
-    cmd.push("--body", a.body);
-  const { code, stdout, stderr } = gh(...cmd);
-  if (code)
-    mcpFail(stderr || stdout);
-  logOp("submit_pr_review", { number: a.number, event });
-  return JSON.stringify({ ok: true });
-}
-function isIssueClosed(number4) {
-  const d = ghJsonOrThrow("issue", "view", String(number4), "--repo", REPO, "--json", "state");
-  return (d?.state ?? "").toUpperCase() === "CLOSED";
-}
-function dispatchPostMergeAgent(subIssueNum, agent) {
-  const notify = resolveNotify(REPO, subIssueNum);
-  {
-    const { code: code2, stdout: stdout2, stderr: stderr2 } = gh("issue", "comment", String(subIssueNum), "--repo", REPO, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
-    if (code2) {
-      log(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr2 || stdout2}`);
-      return false;
-    }
-  }
-  const { code, stdout, stderr } = gh("workflow", "run", "atoma-runner.yml", "--repo", REPO, "--field", `agent=${agent}`, "--field", `number=${subIssueNum}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  if (code) {
-    log(`dispatchPostMergeAgent: gh workflow run failed for #${subIssueNum} (rc=${code}): ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchPostMergeAgent: re-invoked ${agent} on #${subIssueNum} to confirm and close`);
-  logDispatch("issue", agent, { number: subIssueNum });
-  return true;
-}
-async function mergePr(a) {
-  const num = a.number;
-  const policy = getMergePolicy();
-  if (policy !== "auto") {
-    log(`mergePr: merge_policy=${JSON.stringify(policy)}, not 'auto' \u2014 skipping merge for PR #${num}`);
-    return JSON.stringify({ merged: false, reason: `merge_policy is '${policy}', not 'auto'` });
-  }
-  const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
-  log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
-  if (code)
-    mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
-  logOp("merge_pr", { number: num });
-  const d = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "body");
-  const body = d?.body ?? "";
-  const parentIssue = PARENT_ISSUE_TAG.read(body);
-  const handoff = decidePostMergeHandoff({
-    parentIssue,
-    parentAlreadyClosed: parentIssue !== undefined && isIssueClosed(parentIssue),
-    originAgent: ORIGIN_AGENT_TAG.read(body)
+async function executeShell(args) {
+  const startedAt = Date.now();
+  const child = Bun.spawn(["bash", "-lc", args.command], {
+    cwd: args.working_directory ?? process.cwd(),
+    env: { ...process.env, ...args.environment_variables },
+    stdin: args.input_data === undefined ? "ignore" : "pipe",
+    stdout: "pipe",
+    stderr: "pipe"
   });
-  switch (handoff.kind) {
-    case "no-parent":
-      return JSON.stringify({ merged: true, closed_issue: null });
-    case "already-closed":
-      log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
-      return JSON.stringify({ merged: true, closed_issue: null });
-    case "reinvoke-origin-agent":
-      if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
-        return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
-      }
-      return await closeParentAndReport(handoff.parentIssue);
-    case "close-directly":
-      return await closeParentAndReport(handoff.parentIssue);
+  if (args.input_data !== undefined) {
+    if (!child.stdin)
+      throw new Error("Shell process stdin is unavailable");
+    child.stdin.write(args.input_data);
+    child.stdin.end();
   }
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, args.timeout_seconds * 1000);
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text()
+  ]).finally(() => clearTimeout(timer));
+  const truncate = (value) => {
+    const bytes = Buffer.from(value);
+    return bytes.length <= MAX_OUTPUT_BYTES ? { text: value, truncated: false } : { text: bytes.subarray(0, MAX_OUTPUT_BYTES).toString("utf8"), truncated: true };
+  };
+  const out = truncate(stdout);
+  const err = truncate(stderr);
+  return JSON.stringify({
+    status: timedOut ? "timeout" : exitCode === 0 ? "completed" : "failed",
+    exit_code: exitCode,
+    stdout: out.text,
+    stderr: err.text,
+    output_truncated: out.truncated || err.truncated,
+    execution_time_ms: Date.now() - startedAt
+  });
 }
-async function closeParentAndReport(parentIssue) {
-  try {
-    await closeIssueAndDispatch({ number: parentIssue });
-    return JSON.stringify({ merged: true, closed_issue: parentIssue });
-  } catch (e) {
-    log(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
-    return JSON.stringify({ merged: true, closed_issue: null });
-  }
-}
-var { tools: TOOLS, dispatch } = buildMcpTools([
+var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
-    name: "create_issue",
-    description: "Create a GitHub issue in the current repository and return its number and URL. Use this for durable work items, especially delegated child tasks; sub_issue defaults to true and links the new issue to the current issue. This mutates GitHub and records the operation in Atoma's audit log.",
-    schema: CREATE_ISSUE_SCHEMA,
-    handler: createIssue
-  }),
-  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssue }),
-  defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssueComments }),
-  defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
-  defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
-  defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
-  defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request, truncated to 50,000 characters. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
-  defineMcpTool({ name: "list_prs", description: "List pull request summaries in the current repository, optionally filtered by state. Use this to discover PRs; use get_pr for full metadata. Returns a JSON array and does not mutate GitHub.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
-  defineMcpTool({ name: "search_code", description: "Search code through GitHub within the current repository. Use this for remote repository text or symbol discovery when local filesystem search is unavailable; do not use it for uncommitted changes. Returns GitHub CLI search text, truncated to 50,000 characters.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
-  defineMcpTool({ name: "get_branch", description: "Retrieve GitHub's branch metadata for an exact branch name. Use this to inspect remote branch identity and protection information, not local worktree state. Returns a JSON branch object and does not mutate GitHub.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
-  defineMcpTool({
-    name: "sync_branch",
-    description: "Synchronize the checked-out branch with its remote counterpart and report ahead/behind status. Use this after a non-fast-forward push failure or before retrying branch publication; it fast-forwards only when safe. It never rebases or force-pushes, and reports diverged branches for explicit resolution.",
-    schema: SYNC_BRANCH_SCHEMA,
-    handler: syncBranch
-  }),
-  defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
-  defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
-  defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
-  defineMcpTool({
-    name: "submit_pr_review",
-    description: "Submit a pull request review as either a general COMMENT or REQUEST_CHANGES. Use this after inspecting the diff and checks; APPROVE is intentionally unavailable because all Atoma agents share the PR author's bot identity. This mutates GitHub and returns JSON success status.",
-    schema: SUBMIT_PR_REVIEW_SCHEMA,
-    handler: submitPrReview
-  }),
-  defineMcpTool({
-    name: "commit_and_push",
-    description: "Stage all worktree changes, create one commit, and push the checked-out branch to origin. Use this after validation and before create_pr; do not call it with unrelated or unreviewed changes present. Returns JSON success status and fails rather than rewriting remote history.",
-    schema: COMMIT_AND_PUSH_SCHEMA,
-    handler: commitAndPush
-  }),
-  defineMcpTool({
-    name: "merge_pr",
-    description: "Merge a pull request only when config.json sets merge_policy to 'auto', then continue Atoma's issue handoff. Call this after review feedback is posted and checks are acceptable; under manual or unknown policy it performs no merge and returns merged:false. This may merge the PR, close its linked issue, and dispatch follow-up work.",
-    schema: NUMBER_ARG_SCHEMA,
-    handler: mergePr
+    name: "shell_execute",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Git and GitHub mutations remain blocked by the configured hook.",
+    schema: SHELL_EXECUTE_SCHEMA,
+    handler: executeShell
   })
 ]);
-var server = new Server({ name: "atoma-github-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+var server = new Server({ name: "atoma-shell-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
   try {
-    const { text, meta } = await dispatch(name, args);
-    return {
-      content: [{ type: "text", text }],
-      isError: false,
-      ...meta ? { _meta: meta } : {}
-    };
-  } catch (e) {
-    log(`Tool error: ${e}`);
-    return { content: [{ type: "text", text: `Error: ${e.message ?? e}` }], isError: true };
+    const { text } = await dispatch(name, args);
+    return { content: [{ type: "text", text }], isError: false };
+  } catch (error2) {
+    return { content: [{ type: "text", text: `Error: ${error2.message ?? error2}` }], isError: true };
   }
 });
 async function main() {
-  log(`Starting for ${REPO}`);
-  const transport = new StdioServerTransport;
-  await server.connect(transport);
+  await server.connect(new StdioServerTransport);
 }
 if (import.meta.main)
   main();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -178,6 +178,54 @@ describe("mcp/github.ts", () => {
     );
     expect(r.result.isError).toBe(true);
     expect(r.result.content[0].text).toContain("gh issue create: unexpected output");
+  });
+
+  test("create_issue provisions the sub-issue label before creating a child", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-create-sub-issue-"));
+    const log = join(dir, "gh.log");
+    try {
+      const response = await sendRequest(
+        "github.ts",
+        {
+          jsonrpc: "2.0", id: 4, method: "tools/call",
+          params: { name: "create_issue", arguments: { title: "Child task" } },
+        },
+        {
+          PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+          FAKE_GH_LOG: log,
+          FAKE_GH_RESPONSES: JSON.stringify([
+            { match: ["label", "create", "atoma/sub-issue"] },
+            { match: ["issue", "create"], stdout: "https://github.com/owner/repo/issues/12" },
+          ]),
+        },
+      );
+      expect(response.result.isError).toBe(false);
+      const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+      expect(calls[0]).toContain("--force");
+      expect(calls[1]).toContain("atoma/sub-issue");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("mcp/shell.ts", () => {
+  test("executes a foreground command and returns its output", async () => {
+    const response = await sendRequest("shell.ts", {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "shell_execute", arguments: { command: "printf hello", timeout_seconds: 5 } },
+    });
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result).toMatchObject({ status: "completed", exit_code: 0, stdout: "hello", stderr: "" });
+  });
+
+  test("terminates commands that exceed their timeout", async () => {
+    const response = await sendRequest("shell.ts", {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "shell_execute", arguments: { command: "sleep 2", timeout_seconds: 1 } },
+    });
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result.status).toBe("timeout");
   });
 });
 

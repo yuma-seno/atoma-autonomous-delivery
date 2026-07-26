@@ -40,10 +40,11 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 ## Tool Constraints
 
 - Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.
+- The runner has already checked out the correct `atoma/issue-N` branch. Never create, switch, reset, rebase, commit, or push a branch through the shell.
 - If a push is rejected as non-fast-forward, call `github__sync_branch`. Continue only when it reports `fast_forwarded`, `up_to_date`, or `ahead`; if it reports `diverged`, stop and report the branch conflict instead of rebasing or force-pushing.
 - `filesystem__directory_tree` and `filesystem__search_files` are blocked. Use list/read operations or a targeted read-only shell command.
-- Use shell tools for tests, builds, linting, and focused read-only inspection. Raw Git mutations are blocked. `shell__shell_execute` has no `workdir` argument; use `cd <path> && ...` in `command`.
-- Prefer foreground execution with an explicit timeout for ordinary checks.
+- Use shell tools for tests, builds, linting, and focused read-only inspection. Set `working_directory` instead of prefixing commands with `cd`, and set `timeout_seconds` for potentially long checks. Only foreground execution is supported.
+- A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.
 - Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.
 
 ## Re-entry

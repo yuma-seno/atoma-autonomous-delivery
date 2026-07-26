@@ -49,6 +49,8 @@ Every recursive decomposition must reduce ambiguity or scope. Do not create a ch
 4. Choose each assignee using the leaf conditions: `engineer` only for a proven leaf; otherwise `orchestrator`.
 5. Launch all currently independent children in one `atoma__launch_sub_agent` call. Keep dependent children pending until their prerequisites land.
 
+Repository setup gaps such as a missing Atoma label are not product decisions and must not change the decomposition. `github__create_issue` provisions the required sub-issue label. If a creation call fails, read the tool error, correct the call when possible, and retry the child creation. Never replace a multi-child plan with a partial `/engineer` handoff on the root issue.
+
 `atoma__launch_sub_agent` ends the session. Do not call another tool or write a follow-up response after it.
 
 For a current issue that already satisfies every leaf condition, do not manufacture a child issue. Return `/engineer` on its own line, followed by the scope, acceptance criteria, constraints, and required validation.
@@ -72,3 +74,4 @@ On re-entry:
 - Prefer parallel launch only when children are genuinely independent.
 - A test or consumer that depends on another task's final interface is dependent work, not a parallel task.
 - Ask the human only when an unresolved decision materially changes the contract or architecture.
+- Operational metadata or repository setup failures are not reasons to ask the human or skip decomposition; use the available tools to repair them or report the exact unrecoverable permission error.
