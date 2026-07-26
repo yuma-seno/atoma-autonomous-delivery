@@ -18141,37 +18141,45 @@ async function resolveIssueId(number4) {
   const d = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){id}}}", { owner, repo, num: number4 });
   return d.repository.issue.id;
 }
-var NUMBER_ARG_SCHEMA = exports_external.object({ number: exports_external.number().int() });
+var NUMBER_ARG_SCHEMA = exports_external.object({
+  number: exports_external.number().int().positive().describe("Positive GitHub issue or pull request number, without a leading '#'.")
+});
 var CREATE_ISSUE_SCHEMA = exports_external.object({
-  title: exports_external.string(),
-  body: exports_external.string().optional(),
-  labels: exports_external.array(exports_external.string()).optional(),
+  title: exports_external.string().min(1).describe("Concise issue title."),
+  body: exports_external.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
+  labels: exports_external.array(exports_external.string()).optional().describe("Existing repository label names to apply. Defaults to no extra labels."),
   sub_issue: exports_external.boolean().optional().describe("Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true.")
 });
 var LIST_ISSUES_SCHEMA = exports_external.object({
-  state: exports_external.enum(["open", "closed", "all"]).optional(),
-  labels: exports_external.array(exports_external.string()).optional(),
-  limit: exports_external.number().int().optional()
+  state: exports_external.enum(["open", "closed", "all"]).optional().describe("Issue state filter. Defaults to 'open'."),
+  labels: exports_external.array(exports_external.string()).optional().describe("Return only issues matching these repository labels."),
+  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum issues to return. Defaults to 30; maximum 100.")
 });
 var CREATE_PR_SCHEMA = exports_external.object({
-  title: exports_external.string(),
-  body: exports_external.string().optional(),
-  base: exports_external.string().optional()
+  title: exports_external.string().min(1).describe("Concise pull request title."),
+  body: exports_external.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
+  base: exports_external.string().optional().describe("Target branch name. Omit to use the repository default branch.")
 });
 var LIST_PRS_SCHEMA = exports_external.object({
-  state: exports_external.enum(["open", "closed", "merged", "all"]).optional(),
-  limit: exports_external.number().int().optional()
+  state: exports_external.enum(["open", "closed", "merged", "all"]).optional().describe("Pull request state filter. Defaults to 'open'."),
+  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum pull requests to return. Defaults to 30; maximum 100.")
 });
-var SEARCH_CODE_SCHEMA = exports_external.object({ query: exports_external.string() });
-var GET_BRANCH_SCHEMA = exports_external.object({ name: exports_external.string() });
-var GET_CHECK_RUNS_SCHEMA = exports_external.object({ ref: exports_external.string() });
+var SEARCH_CODE_SCHEMA = exports_external.object({
+  query: exports_external.string().min(1).describe("GitHub code-search query scoped automatically to the current repository.")
+});
+var GET_BRANCH_SCHEMA = exports_external.object({
+  name: exports_external.string().min(1).describe("Repository branch name, for example 'main' or 'atoma/issue-42'.")
+});
+var GET_CHECK_RUNS_SCHEMA = exports_external.object({
+  ref: exports_external.string().min(1).describe("Commit SHA, branch name, or tag whose GitHub check runs should be returned.")
+});
 var SYNC_BRANCH_SCHEMA = exports_external.object({
   branch: exports_external.string().optional().describe("Branch to synchronize. Defaults to the current Atoma branch.")
 });
 var SUBMIT_PR_REVIEW_SCHEMA = exports_external.object({
-  number: exports_external.number().int(),
-  event: exports_external.enum(["COMMENT", "REQUEST_CHANGES"]),
-  body: exports_external.string().optional()
+  number: exports_external.number().int().positive().describe("Positive pull request number, without a leading '#'."),
+  event: exports_external.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
+  body: exports_external.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES.")
 });
 var COMMIT_AND_PUSH_SCHEMA = exports_external.object({
   message: exports_external.string().describe("Commit message.")
@@ -18540,44 +18548,44 @@ async function closeParentAndReport(parentIssue) {
 var { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "create_issue",
-    description: "Create a new GitHub issue. Set sub_issue=true to automatically link it to the current issue as a child task.",
+    description: "Create a GitHub issue in the current repository and return its number and URL. Use this for durable work items, especially delegated child tasks; sub_issue defaults to true and links the new issue to the current issue. This mutates GitHub and records the operation in Atoma's audit log.",
     schema: CREATE_ISSUE_SCHEMA,
     handler: createIssue
   }),
-  defineMcpTool({ name: "get_issue", description: "Get an issue by number.", schema: NUMBER_ARG_SCHEMA, handler: getIssue }),
-  defineMcpTool({ name: "list_issues", description: "List issues.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Get issue comments.", schema: NUMBER_ARG_SCHEMA, handler: getIssueComments }),
-  defineMcpTool({ name: "close_issue", description: "Close an issue. Refuses to close issues opened by humans.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
-  defineMcpTool({ name: "create_pr", description: "Create a pull request from the current branch.", schema: CREATE_PR_SCHEMA, handler: createPr }),
-  defineMcpTool({ name: "get_pr", description: "Get a PR by number.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
-  defineMcpTool({ name: "get_pr_diff", description: "Get PR diff.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
-  defineMcpTool({ name: "list_prs", description: "List PRs.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
-  defineMcpTool({ name: "search_code", description: "Search code.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
-  defineMcpTool({ name: "get_branch", description: "Get branch info.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
+  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssue }),
+  defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
+  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssueComments }),
+  defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
+  defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
+  defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
+  defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request, truncated to 50,000 characters. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
+  defineMcpTool({ name: "list_prs", description: "List pull request summaries in the current repository, optionally filtered by state. Use this to discover PRs; use get_pr for full metadata. Returns a JSON array and does not mutate GitHub.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
+  defineMcpTool({ name: "search_code", description: "Search code through GitHub within the current repository. Use this for remote repository text or symbol discovery when local filesystem search is unavailable; do not use it for uncommitted changes. Returns GitHub CLI search text, truncated to 50,000 characters.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
+  defineMcpTool({ name: "get_branch", description: "Retrieve GitHub's branch metadata for an exact branch name. Use this to inspect remote branch identity and protection information, not local worktree state. Returns a JSON branch object and does not mutate GitHub.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
   defineMcpTool({
     name: "sync_branch",
-    description: "Fetch and safely fast-forward the current branch from its remote counterpart. Reports diverged branches without rebasing or force-pushing.",
+    description: "Synchronize the checked-out branch with its remote counterpart and report ahead/behind status. Use this after a non-fast-forward push failure or before retrying branch publication; it fast-forwards only when safe. It never rebases or force-pushes, and reports diverged branches for explicit resolution.",
     schema: SYNC_BRANCH_SCHEMA,
     handler: syncBranch
   }),
-  defineMcpTool({ name: "get_check_runs", description: "Get check runs for a ref.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
-  defineMcpTool({ name: "get_pr_reviews", description: "Get PR reviews.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
-  defineMcpTool({ name: "list_pr_review_comments", description: "List PR review comments.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
+  defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
+  defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
+  defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
   defineMcpTool({
     name: "submit_pr_review",
-    description: "Submit a PR review (comment or request changes). Note: APPROVE is not usable \u2014 Atoma agents share a single bot identity, and GitHub refuses to let an account approve its own pull request.",
+    description: "Submit a pull request review as either a general COMMENT or REQUEST_CHANGES. Use this after inspecting the diff and checks; APPROVE is intentionally unavailable because all Atoma agents share the PR author's bot identity. This mutates GitHub and returns JSON success status.",
     schema: SUBMIT_PR_REVIEW_SCHEMA,
     handler: submitPrReview
   }),
   defineMcpTool({
     name: "commit_and_push",
-    description: "Stage all changes, commit with a message, and push to the current branch.",
+    description: "Stage all worktree changes, create one commit, and push the checked-out branch to origin. Use this after validation and before create_pr; do not call it with unrelated or unreviewed changes present. Returns JSON success status and fails rather than rewriting remote history.",
     schema: COMMIT_AND_PUSH_SCHEMA,
     handler: commitAndPush
   }),
   defineMcpTool({
     name: "merge_pr",
-    description: "Merge a PR if config.json's merge_policy is 'auto'. No-op (returns merged:false) when the policy is 'manual' or anything else \u2014 call this after posting your LGTM comment and it will decide for you.",
+    description: "Merge a pull request only when config.json sets merge_policy to 'auto', then continue Atoma's issue handoff. Call this after review feedback is posted and checks are acceptable; under manual or unknown policy it performs no merge and returns merged:false. This may merge the PR, close its linked issue, and dispatch follow-up work.",
     schema: NUMBER_ARG_SCHEMA,
     handler: mergePr
   })
