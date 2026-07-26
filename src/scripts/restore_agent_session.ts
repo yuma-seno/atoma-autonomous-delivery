@@ -5,12 +5,11 @@
  * without disturbing the current checkout.
  *
  * Usage: restore_agent_session.ts --type issue|pr --number N --agent NAME --out session.json
- *   [--fallback-type issue|pr --fallback-number N]
  * No-ops quietly (does not create --out) if no prior session is found.
  */
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { restoreSession, sessionTargetPath } from "./lib/atoma-data.ts";
+import { archiveSession, restoreSession, sessionTargetPath } from "./lib/atoma-data.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface RestoreAgentSessionArgs {
@@ -18,8 +17,7 @@ export interface RestoreAgentSessionArgs {
   number: string | number;
   agent: string;
   out: string;
-  "fallback-type"?: string;
-  "fallback-number"?: string | number;
+  "session-mode"?: string;
 }
 
 export const ref = defineScript<RestoreAgentSessionArgs>(import.meta.url);
@@ -33,20 +31,10 @@ export function findAgentSession(
   type: string,
   number: string | number,
   agent: string,
-  fallbackType?: string,
-  fallbackNumber?: string | number,
   load: (target: string) => string | undefined = restoreSession,
 ): RestoredAgentSession {
   const target = sessionTargetPath(type, number, agent);
-  const content = load(target);
-  if (content !== undefined) return { target, content };
-
-  if (fallbackType && fallbackNumber !== undefined && (fallbackType !== type || String(fallbackNumber) !== String(number))) {
-    const fallbackTarget = sessionTargetPath(fallbackType, fallbackNumber, agent);
-    return { target: fallbackTarget, content: load(fallbackTarget) };
-  }
-
-  return { target };
+  return { target, content: load(target) };
 }
 
 function main(): void {
@@ -57,8 +45,7 @@ function main(): void {
       number: { type: "string" },
       agent: { type: "string" },
       out: { type: "string" },
-      "fallback-type": { type: "string" },
-      "fallback-number": { type: "string" },
+      "session-mode": { type: "string" },
     },
   });
   if (!values.type || !values.number || !values.agent || !values.out) {
@@ -70,9 +57,17 @@ function main(): void {
     values.type,
     values.number,
     values.agent,
-    values["fallback-type"],
-    values["fallback-number"],
   );
+  if (values["session-mode"] === "recover") {
+    if (content === undefined) {
+      console.error(`No existing session at ${target}; recovery will start fresh without an archive.`);
+      return;
+    }
+    const archivedPath = archiveSession(values.type, values.number, values.agent, content);
+    if (!archivedPath) throw new Error(`Failed to archive existing session before recovery: ${target}`);
+    console.error(`Archived session to atoma-data:${archivedPath}; starting fresh.`);
+    return;
+  }
   if (content !== undefined) {
     writeFileSync(values.out, content);
     console.error(`Restored session: ${target}`);

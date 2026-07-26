@@ -26,21 +26,21 @@ function makeTag(key, valuePattern, parse, render) {
     has: (text) => re.test(text)
   };
 }
-function numericTag(key, hashPrefix) {
-  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+function numericTag(key) {
+  return makeTag(key, "\\d+", Number, String);
 }
 function stringTag(key, valuePattern) {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
-var PARENT_TAG = numericTag("parent", true);
-var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var PARENT_TAG = numericTag("parent");
+var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
 var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
 var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
-var AGGREGATED_TAG = numericTag("aggregated", false);
-var SUB_RESULT_TAG = numericTag("sub-result", false);
+var AGGREGATED_TAG = numericTag("aggregated");
+var SUB_RESULT_TAG = numericTag("sub-result");
 
 // src/scripts/reconcile_github_session.ts
 var ref = defineScript(import.meta.url);
@@ -51,8 +51,7 @@ function githubEventKey(message) {
     return;
   if (metadata.event_type === undefined || metadata.id === undefined)
     return;
-  const eventType = metadata.event_type === "linked_issue_opened" ? "issue_opened" : metadata.event_type === "linked_issue_comment" ? "issue_comment" : String(metadata.event_type);
-  return `${eventType}:${String(metadata.id)}`;
+  return `${String(metadata.event_type)}:${String(metadata.id)}`;
 }
 function githubEventKeyFromEvent(event) {
   return `${event.event_type}:${String(event.id)}`;
@@ -94,21 +93,19 @@ function reconcilePersistedGithubContext(session, messages, fetchedEventKeys) {
   }
   return { ...session, messages: reconciled };
 }
-function mergeGithubContext(session, messages, fetchedEventKeys = new Set(messages.map((message) => githubEventKey(message))), legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0) {
+function mergeGithubContext(session, messages, fetchedEventKeys = new Set(messages.map((message) => githubEventKey(message)))) {
   const existingMessages = session.messages ?? [];
   if (session.metadata?.github_context?.version === 1) {
     return reconcilePersistedGithubContext(session, messages, fetchedEventKeys);
   }
-  const baselineCount = Math.min(legacyBaselineCount, messages.length);
   const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
   const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
   return {
     ...session,
     messages: [
       ...existingMessages.slice(0, insertionIndex),
-      ...messages.slice(0, baselineCount),
-      ...existingMessages.slice(insertionIndex),
-      ...messages.slice(baselineCount)
+      ...messages,
+      ...existingMessages.slice(insertionIndex)
     ]
   };
 }
@@ -203,18 +200,6 @@ function snapshotHashForEvents(events) {
 function previousSnapshotHash(session) {
   return session.metadata?.github_context?.snapshot_hash;
 }
-function legacyBaselineCount(events, previousHash) {
-  if (previousHash === undefined)
-    return events.length;
-  for (let end = events.length;end >= 0; end--) {
-    if (snapshotHashForEvents(events.slice(0, end)) === previousHash)
-      return end;
-  }
-  let openingDocuments = 0;
-  while (events[openingDocuments]?.event_type.endsWith("_opened"))
-    openingDocuments++;
-  return openingDocuments;
-}
 function reconcileGithubSession(session, events, agentName, config = {}) {
   const ownCommentIds = buildOwnCommentIds(session, agentName);
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
@@ -229,7 +214,7 @@ function reconcileGithubSession(session, events, agentName, config = {}) {
     changedCount = filteredEvents.length;
   else
     changedCount = 1;
-  const mergedSession = mergeGithubContext(session, contextMessages, fetchedEventKeys, legacyBaselineCount(filteredEvents, previousHash));
+  const mergedSession = mergeGithubContext(session, contextMessages, fetchedEventKeys);
   mergedSession.metadata = {
     ...mergedSession.metadata,
     github_context: {

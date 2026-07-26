@@ -8,12 +8,13 @@ import { buildArgv } from "./get_config_value.ts";
 import { mergeGithubContext, reconcileGithubSession } from "./reconcile_github_session.ts";
 import { extractDirective } from "./extract_directive.ts";
 import { manageDispatchLoop } from "./manage_dispatch_loop.ts";
-import { parseAgent } from "./parse_comment_command.ts";
+import { parseCommentCommand } from "./parse_comment_command.ts";
 import { buildCommentBody } from "./post_result_comment.ts";
 import { updateRunMetadata } from "./record_run_metadata.ts";
 import { findAgentSession } from "./restore_agent_session.ts";
 import { makeConfigDir, runWithFakeGh } from "./testing/harness.ts";
 import type { Session } from "../lib/session.ts";
+import { nextArchiveSessionPath, sessionTargetPath } from "./lib/atoma-data.ts";
 
 const SCRIPTS_DIR = "src/scripts";
 
@@ -73,6 +74,24 @@ describe("config.json", () => {
 });
 
 describe("generated workflows", () => {
+  test("routes recover mode and reports invalid command syntax", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = {
+      on?: { workflow_call?: { inputs?: Record<string, unknown> } };
+      jobs?: Record<string, { outputs?: Record<string, string>; with?: Record<string, string>; steps?: WorkflowStep[] }>;
+    };
+
+    const manual = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-manual-comment.yml", "utf8")) as WorkflowDocument;
+    expect(manual.jobs?.parse?.outputs?.session_mode).toContain("session_mode");
+    expect(manual.jobs?.run?.with?.session_mode).toContain("session_mode");
+    expect(manual.jobs?.parse?.steps?.some((step) => step.name === "Report invalid slash command")).toBe(true);
+
+    const runner = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    expect(runner.on?.workflow_call?.inputs?.session_mode).toBeDefined();
+    const restore = runner.jobs?.run?.steps?.find((step) => step.name === "Restore agent session from atoma-data");
+    expect(restore?.run).toContain('--session-mode "${{ inputs.session_mode }}"');
+  });
+
   test("restores an existing remote issue branch before an agent run", () => {
     type WorkflowStep = { name?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
@@ -166,6 +185,13 @@ describe("agent prompt contracts", () => {
     expect(prompt).toContain("Reason privately");
     expect(prompt).not.toContain("Before taking action or generating final output, always use the `<thought>` tag");
   });
+
+  test("requires agent handoff directives to occupy their own line", () => {
+    const prompt = readFileSync("src/atoma/prompt-template.md", "utf8");
+    const orchestrator = readFileSync("src/atoma/agent-definitions/orchestrator.md", "utf8");
+    expect(prompt).toContain("directive line must contain only `/agent-name`");
+    expect(orchestrator).toContain("Return `/engineer` on its own line");
+  });
 });
 
 describe("lib/cli.ts toArgv", () => {
@@ -184,28 +210,42 @@ describe("get_config_value.ts buildArgv", () => {
 });
 
 describe("parse_comment_command.ts", () => {
-  test("parses the agent from the first line", () => {
-    expect(parseAgent("/engineer fix it\nextra")).toBe("engineer");
+  test("accepts a standalone agent command followed by instructions", () => {
+    expect(parseCommentCommand("/engineer\n作業をお願いします")).toEqual({
+      agent: "engineer",
+      sessionMode: "continue",
+      error: "",
+    });
   });
 
-  test("parses the agent from a later line", () => {
-    expect(parseAgent("some text\n/engineer fix it")).toBe("engineer");
+  test("accepts recover as the only command-line modifier", () => {
+    expect(parseCommentCommand("/engineer recover\n作業を続けてください")).toEqual({
+      agent: "engineer",
+      sessionMode: "recover",
+      error: "",
+    });
   });
 
-  test("parses the first command when multiple are present", () => {
-    expect(parseAgent("/engineer do this\n/orchestrator ignore")).toBe("engineer");
+  test("rejects instructions on the command line", () => {
+    const result = parseCommentCommand("/engineer 作業をお願いします");
+    expect(result.agent).toBe("");
+    expect(result.error).toContain("Unknown command syntax");
   });
 
   test("parses the atoma:dispatch= comment form", () => {
-    expect(parseAgent("<!-- atoma:dispatch=engineer -->")).toBe("engineer");
+    expect(parseCommentCommand("<!-- atoma:dispatch=engineer -->")).toEqual({
+      agent: "engineer",
+      sessionMode: "continue",
+      error: "",
+    });
   });
 
   test("ignores a non-command comment", () => {
-    expect(parseAgent("please help")).toBe("");
+    expect(parseCommentCommand("please help").agent).toBe("");
   });
 
   test("ignores an invalid (uppercase) agent name", () => {
-    expect(parseAgent("/Engineer uppercase")).toBe("");
+    expect(parseCommentCommand("/Engineer uppercase").agent).toBe("");
   });
 });
 
@@ -254,35 +294,6 @@ describe("reconcile_github_session.ts", () => {
       "Edited",
       "Acknowledged",
     ]);
-  });
-
-  test("normalizes legacy linked Issue event keys without duplicating canonical events", () => {
-    const legacySession: Session = {
-      metadata: { github_context: { version: 1 as const } },
-      messages: [{
-        role: "user",
-        content: "Legacy Issue body",
-        atoma_metadata: {
-          source: "github",
-          layer: "github-context",
-          event_type: "linked_issue_opened",
-          id: "issue-5",
-          author: "alice",
-          created_at: "2026-01-01T00:00:00Z",
-        },
-      }],
-    };
-
-    const result = reconcileGithubSession(legacySession, [{
-      id: "issue-5",
-      event_type: "issue_opened",
-      content: "Canonical Issue body",
-      author: "alice",
-      created_at: "2026-01-01T00:00:00Z",
-    }], "engineer");
-
-    expect(result.mergedSession.messages).toHaveLength(1);
-    expect(result.mergedSession.messages?.[0]?.content).toBe("Canonical Issue body");
   });
 
   test("keeps a coherent timeline across repeated turns, edits, and deletions", () => {
@@ -394,58 +405,6 @@ describe("reconcile_github_session.ts", () => {
 
     expect(first.mergedSession.metadata?.github_context?.snapshot_hash).toBe(first.snapshotHash);
     expect(second.changedCount).toBe(0);
-  });
-
-  test("migrates an exact legacy snapshot before history and new events after it", () => {
-    const oldEvents = [
-      { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
-      { id: 100, event_type: "issue_comment", content: "Earlier comment", author: "alice", created_at: "2026-05-27T10:00:00Z" },
-    ];
-    const oldBuild = reconcileGithubSession({ messages: [] }, oldEvents, "engineer");
-    const legacySession = {
-      messages: [{ role: "assistant", content: "Earlier response" }],
-      metadata: { github_context: { snapshot_hash: oldBuild.snapshotHash, event_count: 2 } },
-    };
-    const migrated = reconcileGithubSession(
-      legacySession,
-      [...oldEvents, { id: 101, event_type: "issue_comment", content: "New comment", author: "alice", created_at: "2026-05-27T11:00:00Z" }],
-      "engineer",
-    );
-
-    expect(migrated.mergedSession.messages!.map((message) => message.content)).toEqual([
-      "Instruction",
-      "Earlier comment",
-      "Earlier response",
-      "New comment",
-    ]);
-  });
-
-  test("keeps only opening instructions before legacy history when the old snapshot is not a prefix", () => {
-    const oldBuild = reconcileGithubSession(
-      { messages: [] },
-      [
-        { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
-        { id: 100, event_type: "issue_comment", content: "Deleted comment", author: "alice", created_at: "2026-05-27T10:00:00Z" },
-      ],
-      "engineer",
-    );
-    const migrated = reconcileGithubSession(
-      {
-        messages: [{ role: "assistant", content: "Earlier response" }],
-        metadata: { github_context: { snapshot_hash: oldBuild.snapshotHash, event_count: 2 } },
-      },
-      [
-        { id: "issue-1", event_type: "issue_opened", content: "Instruction", author: "alice", created_at: "2026-05-27T09:00:00Z" },
-        { id: 101, event_type: "issue_comment", content: "Replacement comment", author: "alice", created_at: "2026-05-27T11:00:00Z" },
-      ],
-      "engineer",
-    );
-
-    expect(migrated.mergedSession.messages!.map((message) => message.content)).toEqual([
-      "Instruction",
-      "Earlier response",
-      "Replacement comment",
-    ]);
   });
 
   test("removing a GitHub event preserves assistant-tool adjacency", () => {
@@ -633,21 +592,26 @@ describe("record_run_metadata.ts", () => {
 });
 
 describe("restore_agent_session.ts", () => {
-  test("prefers the canonical Issue session and falls back to the legacy PR session", () => {
-    const sessions = new Map([
-      ["sessions/pr-10-reviewer.json", "legacy-pr"],
-    ]);
+  test("uses context directories and allocates per-agent archive sequence numbers", () => {
+    expect(sessionTargetPath("issue", 42, "engineer")).toBe("sessions/issue-42/engineer.json");
+    expect(nextArchiveSessionPath("issue", 42, "engineer", [])).toBe("sessions/issue-42/archive/engineer-1.json");
+    expect(nextArchiveSessionPath("issue", 42, "engineer", ["engineer-1.json", "reviewer-9.json", "engineer-3.json"]))
+      .toBe("sessions/issue-42/archive/engineer-4.json");
+  });
+
+  test("restores only the canonical context-scoped session", () => {
+    const sessions = new Map<string, string>();
     const load = (target: string) => sessions.get(target);
 
-    expect(findAgentSession("issue", 5, "reviewer", "pr", 10, load)).toEqual({
-      target: "sessions/pr-10-reviewer.json",
-      content: "legacy-pr",
+    expect(findAgentSession("issue", 5, "reviewer", load)).toEqual({
+      target: "sessions/issue-5/reviewer.json",
+      content: undefined,
     });
 
-    sessions.set("sessions/issue-5-reviewer.json", "canonical-issue");
-    expect(findAgentSession("issue", 5, "reviewer", "pr", 10, load)).toEqual({
-      target: "sessions/issue-5-reviewer.json",
-      content: "canonical-issue",
+    sessions.set("sessions/issue-5/reviewer.json", "hierarchical-issue");
+    expect(findAgentSession("issue", 5, "reviewer", load)).toEqual({
+      target: "sessions/issue-5/reviewer.json",
+      content: "hierarchical-issue",
     });
   });
 });
@@ -658,7 +622,11 @@ describe("extract_directive.ts", () => {
   writeFileSync(join(dir, "engineer.md"), "---\nname: engineer\n---\n");
 
   test("extracts a plain slash-command directive", () => {
-    expect(extractDirective("Done.\n/reviewer please check this.", dir)).toBe("reviewer");
+    expect(extractDirective("Done.\n/reviewer", dir)).toBe("reviewer");
+  });
+
+  test("rejects instructions on the directive line", () => {
+    expect(extractDirective("Done.\n/reviewer please check this.", dir)).toBe("");
   });
 
   test("extracts a markdown-mangled backtick-wrapped directive", () => {
@@ -1252,7 +1220,7 @@ describe("resolve_notify.ts", () => {
   test("walks the atoma:parent chain when neither a tag nor a human author is available", () => {
     const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_notify.ts"), ["--repo", "owner/repo", "--number", "5"], {
       rules: [
-        { match: ["issues/5"], stdout: JSON.stringify({ body: "<!-- atoma:parent=#2 -->", login: "some-bot", type: "Bot" }) },
+        { match: ["issues/5"], stdout: JSON.stringify({ body: "<!-- atoma:parent=2 -->", login: "some-bot", type: "Bot" }) },
         { match: ["issues/2"], stdout: JSON.stringify({ body: "no tag", login: "bob", type: "User" }) },
       ],
     });
@@ -1275,7 +1243,7 @@ describe("resolve_orchestrator_parent.ts", () => {
     const r = runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "resolve_orchestrator_parent.ts"), ["--repo", "owner/repo", "--sub", "9"], {
       rules: [
         { match: ["graphql"], stdout: JSON.stringify({ data: { repository: { issue: { parent: null } } } }) },
-        { match: ["issue", "view"], stdout: "<!-- atoma:parent=#4 -->" },
+        { match: ["issue", "view"], stdout: "<!-- atoma:parent=4 -->" },
       ],
     });
     expect(r.stdout.trim()).toBe("4");
@@ -1288,7 +1256,7 @@ describe("check_sub_issue_closure.ts", () => {
     try {
       const eventFile = join(dir, "event.json");
       const outputFile = join(dir, "out");
-      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=#3 -->\nsome body" } }));
+      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=3 -->\nsome body" } }));
       writeFileSync(outputFile, "");
       runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_sub_issue_closure.ts"), [], {
         env: { GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, CLOSED_NUM: "9", OWNER: "owner", REPO: "repo" },
@@ -1315,7 +1283,7 @@ describe("check_sub_issue_closure.ts", () => {
     try {
       const eventFile = join(dir, "event.json");
       const outputFile = join(dir, "out");
-      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=#3 -->\nsome body" } }));
+      writeFileSync(eventFile, JSON.stringify({ issue: { body: "<!-- atoma:parent=3 -->\nsome body" } }));
       writeFileSync(outputFile, "");
       runWithFakeGh(join(process.cwd(), SCRIPTS_DIR, "check_sub_issue_closure.ts"), [], {
         env: { GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, CLOSED_NUM: "9", OWNER: "owner", REPO: "repo" },

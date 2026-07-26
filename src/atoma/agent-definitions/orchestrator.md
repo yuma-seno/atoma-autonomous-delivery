@@ -51,7 +51,7 @@ Every recursive decomposition must reduce ambiguity or scope. Do not create a ch
 
 `atoma__launch_sub_agent` ends the session. Do not call another tool or write a follow-up response after it.
 
-For a current issue that already satisfies every leaf condition, do not manufacture a child issue. Return a concise `/engineer` directive containing the scope, acceptance criteria, constraints, and required validation.
+For a current issue that already satisfies every leaf condition, do not manufacture a child issue. Return `/engineer` on its own line, followed by the scope, acceptance criteria, constraints, and required validation.
 
 ## Re-entry and Aggregation
 

@@ -125,23 +125,19 @@ describe("inject-sub-results.ts injectSubResultsFile", () => {
 
 describe("tags.ts", () => {
   // Pure, no `gh` involved -- safe to test in-process directly.
-  test("PARENT_TAG round-trips with the historical #-prefixed format", async () => {
+  test("PARENT_TAG round-trips with the canonical numeric format", async () => {
     const { PARENT_TAG } = await import("./tags.ts");
     const written = PARENT_TAG.write(42);
-    // Written with a literal "#" on purpose -- matches createIssue()'s
-    // existing behavior and the GitHub search query string in
-    // sibling-check.ts, both predating this module.
-    expect(written).toBe("<!-- atoma:parent=#42 -->");
+    expect(written).toBe("<!-- atoma:parent=42 -->");
     expect(PARENT_TAG.read(`intro\n${written}\nmore text`)).toBe(42);
-    // Also tolerates a hypothetical non-#-prefixed form on read.
-    expect(PARENT_TAG.read("<!-- atoma:parent=42 -->")).toBe(42);
+    expect(PARENT_TAG.read("<!-- atoma:parent=#42 -->")).toBeUndefined();
   });
 
   test("PARENT_ISSUE_TAG and readAnyParentTag", async () => {
     const { PARENT_ISSUE_TAG, readAnyParentTag } = await import("./tags.ts");
     expect(PARENT_ISSUE_TAG.write(7)).toBe("<!-- atoma:parent-issue=7 -->");
     expect(readAnyParentTag("<!-- atoma:parent-issue=7 -->")).toBe(7);
-    expect(readAnyParentTag("<!-- atoma:parent=#8 -->")).toBe(8);
+    expect(readAnyParentTag("<!-- atoma:parent=8 -->")).toBe(8);
     expect(readAnyParentTag("no tags here")).toBeUndefined();
   });
 

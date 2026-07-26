@@ -73,12 +73,7 @@ function githubEventKey(message: SessionMessage): string | undefined {
   const metadata = message.atoma_metadata;
   if (metadata?.source !== "github" || metadata.layer !== GITHUB_CONTEXT_LAYER) return undefined;
   if (metadata.event_type === undefined || metadata.id === undefined) return undefined;
-  const eventType = metadata.event_type === "linked_issue_opened"
-    ? "issue_opened"
-    : metadata.event_type === "linked_issue_comment"
-      ? "issue_comment"
-      : String(metadata.event_type);
-  return `${eventType}:${String(metadata.id)}`;
+  return `${String(metadata.event_type)}:${String(metadata.id)}`;
 }
 
 function githubEventKeyFromEvent(event: GithubEvent): string {
@@ -140,23 +135,20 @@ export function mergeGithubContext(
   session: Session,
   messages: GithubEventMessage[],
   fetchedEventKeys: ReadonlySet<string> = new Set(messages.map((message) => githubEventKey(message)!)),
-  legacyBaselineCount = session.metadata?.github_context?.snapshot_hash === undefined ? messages.length : 0,
 ): Session {
   const existingMessages = session.messages ?? [];
   if (session.metadata?.github_context?.version === 1) {
     return reconcilePersistedGithubContext(session, messages, fetchedEventKeys);
   }
 
-  const baselineCount = Math.min(legacyBaselineCount, messages.length);
   const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
   const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
   return {
     ...session,
     messages: [
       ...existingMessages.slice(0, insertionIndex),
-      ...messages.slice(0, baselineCount),
+      ...messages,
       ...existingMessages.slice(insertionIndex),
-      ...messages.slice(baselineCount),
     ],
   };
 }
@@ -256,23 +248,6 @@ function previousSnapshotHash(session: Session): string | undefined {
   return session.metadata?.github_context?.snapshot_hash;
 }
 
-function legacyBaselineCount(events: GithubEvent[], previousHash: string | undefined): number {
-  if (previousHash === undefined) return events.length;
-
-  for (let end = events.length; end >= 0; end--) {
-    if (snapshotHashForEvents(events.slice(0, end)) === previousHash) return end;
-  }
-
-  // An edit/deletion means the old snapshot is not a prefix of the current
-  // event list. Keep only the immutable task-opening documents before legacy
-  // agent history; append the ambiguous comments/diff after it. This one-time
-  // migration favors instruction stability without pretending unknown event
-  // chronology can be reconstructed from the old hash alone.
-  let openingDocuments = 0;
-  while (events[openingDocuments]?.event_type.endsWith("_opened")) openingDocuments++;
-  return openingDocuments;
-}
-
 export function reconcileGithubSession(
   session: Session,
   events: GithubEvent[],
@@ -291,12 +266,7 @@ export function reconcileGithubSession(
   else if (previousHash === undefined) changedCount = filteredEvents.length;
   else changedCount = 1;
 
-  const mergedSession = mergeGithubContext(
-    session,
-    contextMessages,
-    fetchedEventKeys,
-    legacyBaselineCount(filteredEvents, previousHash),
-  );
+  const mergedSession = mergeGithubContext(session, contextMessages, fetchedEventKeys);
   mergedSession.metadata = {
     ...mergedSession.metadata,
     github_context: {

@@ -3,7 +3,7 @@
  * extract_directive.ts — Extract the next-agent directive from the first
  * command-like line of the agent's final text output.
  *
- * Accepts both "/engineer" (with optional trailing args) and the common
+ * Accepts a standalone "/engineer" line and the common
  * markdown-mangled form "/`engineer`". A candidate is only accepted if it
  * names a real agent (a matching .md file exists in --def-dir) -- this
  * guards against false positives like a model writing "/agent reviewer"
@@ -26,7 +26,7 @@ export interface ExtractDirectiveArgs {
 
 export const ref = defineScript<ExtractDirectiveArgs>(import.meta.url);
 
-const COMMAND_RE = /^\/([a-z][a-z0-9-]+)(?:\b|\s|$)/;
+const COMMAND_RE = /^\/([a-z][a-z0-9-]+)$/;
 
 function candidates(rawLine: string): string[] {
   let line = rawLine.trim();

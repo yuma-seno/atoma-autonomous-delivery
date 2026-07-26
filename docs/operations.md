@@ -19,9 +19,28 @@ Shared executor:
 
 ## Session persistence (`atoma-data` branch)
 
-- Session files are stored as `sessions/<type>-<number>-<agent>.json`.
+- Active sessions are stored by context and agent: `sessions/<type>-<number>/<agent>.json`.
+- Recovery archives are stored beside the active sessions as `sessions/<type>-<number>/archive/<agent>-N.json`, where `N` is the next per-agent sequence number.
 - Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.
 - Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.
+
+## Manual commands and recovery
+
+An agent command must occupy its own line. Put instructions on following lines:
+
+```text
+/engineer
+Implement the remaining acceptance criteria.
+```
+
+Text after an agent name on the command line is rejected as invalid syntax. The only supported modifier is `recover`:
+
+```text
+/engineer recover
+Continue from the current Issue, repository, pull request, and CI state.
+```
+
+Recovery archives the previous agent session, does not restore its assistant/tool history, rebuilds a fresh session from current GitHub events, and then runs the named agent. Repository branches and GitHub state are not reset. Internal automation dispatches continue existing sessions by default.
 
 ## Serialization guard and in-progress label
 
@@ -49,6 +68,8 @@ Shared executor:
 | Review-submitted dispatch starts without provider credentials | `atoma-pr-review.yml` currently calls the reusable runner without forwarding secrets | Add explicit secret forwarding or `secrets: inherit` in the workflow source, regenerate, and deploy |
 | `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |
 | Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |
+| Agent repeatedly reproduces stale or invalid tool behavior | Persisted conversation history is no longer useful | Run `/<agent> recover` on its own line, with any new instruction on following lines |
+| Manual command reports invalid syntax | Instruction text was placed on the `/agent` line, or an unsupported modifier was used | Use a standalone `/<agent>` line, or `/<agent> recover`; put instructions below it |
 | Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |
 | Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |
 

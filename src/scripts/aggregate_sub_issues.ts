@@ -20,6 +20,7 @@ import { gh, gitRun } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 import { dispatchOrchestratorIfReady } from "../lib/aggregation.ts";
 import { injectSubResults, type Session } from "../lib/inject-sub-results.ts";
+import { sessionTargetPath } from "./lib/atoma-data.ts";
 
 export interface AggregateSubIssuesArgs {
   repo: string;
@@ -48,12 +49,12 @@ async function injectResultsIntoOrchestratorSession(repo: string, parent: string
   const { stdout: allSubsOut } = gh(
     "issue", "list", "--repo", repo, "--state", "all",
     "--json", "number,title,body",
-    "--jq", `[.[] | select(.body | contains("atoma:parent=#${parent}")) | .number] | join(",")`,
+    "--jq", `[.[] | select(.body | contains("atoma:parent=${parent}")) | .number] | join(",")`,
   );
   const subIssues = allSubsOut.trim().split(",").filter(Boolean).map(Number);
   console.log(`All sub-issues for parent #${parent}: ${subIssues.join(",")}`);
 
-  const sessionPath = `sessions/issue-${parent}-orchestrator.json`;
+  const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
 
   gitRun("config", "user.email", "action@github.com");
   gitRun("config", "user.name", "GitHub Actions");
@@ -67,10 +68,9 @@ async function injectResultsIntoOrchestratorSession(repo: string, parent: string
       gitRun("rm", "-rf", ".");
     }
 
-    const session: Session =
-      gitRun("cat-file", "-e", `HEAD:${sessionPath}`).code === 0
-        ? (JSON.parse(gitRun("show", `HEAD:${sessionPath}`).stdout) as Session)
-        : { messages: [] };
+    const session: Session = gitRun("cat-file", "-e", `HEAD:${sessionPath}`).code === 0
+      ? (JSON.parse(gitRun("show", `HEAD:${sessionPath}`).stdout) as Session)
+      : { messages: [] };
 
     const updated = injectSubResults(session, repo, subIssues);
 

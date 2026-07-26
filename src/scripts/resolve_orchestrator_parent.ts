@@ -2,9 +2,8 @@
 /**
  * resolve_orchestrator_parent.ts — Resolve a sub-issue's orchestrator
  * parent: prefer the official GitHub sub-issues GraphQL `parent` field;
- * fall back to parsing the `<!-- atoma:parent=#N -->` HTML comment from the
- * sub-issue's body (for issues created before the official sub-issues API
- * was used).
+ * fall back to the canonical `<!-- atoma:parent=N -->` metadata embedded by
+ * issue creation when the GraphQL parent lookup is unavailable.
  *
  * Usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N
  * Prints the resolved parent issue number (possibly empty) to stdout.
@@ -12,6 +11,7 @@
 import { parseArgs } from "node:util";
 import { gh, ghGraphql } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
+import { PARENT_TAG } from "../lib/tags.ts";
 
 export interface ResolveOrchestratorParentArgs {
   repo: string;
@@ -52,9 +52,9 @@ function main(): void {
 
   const { code, stdout } = gh("issue", "view", String(values.sub), "--repo", values.repo, "--json", "body", "--jq", ".body");
   const body = code === 0 ? stdout : "";
-  const parent = /<!--\s*atoma:parent=#(\d+)\s*-->/.exec(body)?.[1] ?? "";
+  const parent = PARENT_TAG.read(body);
   if (parent) console.error(`Resolved via fallback: sub-issue #${values.sub} → parent #${parent}`);
-  console.log(parent);
+  console.log(parent ?? "");
 }
 
 if (import.meta.main) main();

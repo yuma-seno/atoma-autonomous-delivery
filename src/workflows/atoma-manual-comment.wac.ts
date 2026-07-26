@@ -66,7 +66,7 @@ const parseCommandStep = new TypedOutputsStep(
     },
     run: `${scriptCommand(parseCommentCommandRef)}\n`,
   },
-  ["matched", "agent"] as const,
+  ["matched", "agent", "session_mode", "error"] as const,
 );
 
 const targetStep = new TypedOutputsStep(
@@ -91,6 +91,19 @@ echo "notify=\${NOTIFY}" >> "$GITHUB_OUTPUT"
   ["number", "type", "notify"] as const,
 );
 
+const commandErrorStep = new TypedOutputsStep({
+  name: "Report invalid slash command",
+  if: `${parseCommandStep.rawOutputs.error} != ''`,
+  shell: "bash",
+  env: {
+    GH_TOKEN: "${{ github.token }}",
+    NUMBER: targetStep.outputs.number,
+    ERROR: parseCommandStep.outputs.error,
+  },
+  run: `gh issue comment "\${NUMBER}" --body "Atoma command error: \${ERROR}"
+`,
+});
+
 export const atomaManualComment = new Workflow("atoma-manual-comment", {
   name: "Atoma Manual Comment",
   on: {
@@ -110,13 +123,14 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
       if: `(${IS_HUMAN_COMMENT}) || (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' && contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch'))`,
       outputs: {
         agent: parseCommandStep.outputs.agent,
+        session_mode: parseCommandStep.outputs.session_mode,
         number: targetStep.outputs.number,
         type: targetStep.outputs.type,
         notify: targetStep.outputs.notify,
       },
     },
-    [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), guardStep, parseCommandStep, targetStep],
+    [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), guardStep, parseCommandStep, targetStep, commandErrorStep],
   )
-    .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
+    .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit", parseJob.outputs.session_mode))
     .jobs(),
 );

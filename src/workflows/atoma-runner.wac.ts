@@ -44,6 +44,7 @@ import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
+const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
@@ -117,8 +118,7 @@ const restoreSessionStep = new TypedOutputsStep({
     number: fetchEventsStep.outputs.resolved_number,
     agent: "${{ inputs.agent }}",
     out: "session.json",
-    "fallback-type": "${{ inputs.type }}",
-    "fallback-number": "${{ inputs.number }}",
+    "session-mode": "${{ inputs.session_mode }}",
   })}\n`,
 });
 
@@ -704,6 +704,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         number: { description: NUMBER_INPUT_DESC, required: true, type: "string" },
         type: { description: "Context type", required: true, type: "string" },
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
+        session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "string", default: "continue" },
         atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: "source" },
       },
     },
@@ -713,6 +714,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         number: { description: NUMBER_INPUT_DESC, required: true, type: "string" },
         type: { description: "Context type", required: true, type: "choice", options: ["issue", "pr"] },
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
+        session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "choice", options: ["continue", "recover"], default: "continue" },
         atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: "source" },
       },
     },
@@ -732,6 +734,7 @@ export interface AtomaRunnerInputs {
   number: string;
   type: string;
   notify?: string;
+  session_mode?: string;
   atoma_version?: string;
 }
 
@@ -751,9 +754,10 @@ export const atomaRunnerWorkflow = defineCallableWorkflow<AtomaRunnerInputs>(ato
  * choice), but everything *after* that reference is now one line instead of
  * eight.
  */
-export function dispatchToAtomaRunner(
-  routeJob: DefinedJob<Record<"agent" | "number" | "type" | "notify", string>>,
+export function dispatchToAtomaRunner<TOutputs extends Record<"agent" | "number" | "type" | "notify", string>>(
+  routeJob: DefinedJob<TOutputs>,
   secrets?: "inherit" | Record<string, string>,
+  sessionMode = "continue",
 ): ReturnType<typeof atomaRunnerWorkflow.call> {
   return atomaRunnerWorkflow.call("run", {
     needs: [routeJob],
@@ -763,6 +767,7 @@ export function dispatchToAtomaRunner(
       number: routeJob.outputs.number,
       type: routeJob.outputs.type,
       notify: routeJob.outputs.notify,
+      session_mode: sessionMode,
     },
     secrets,
   });

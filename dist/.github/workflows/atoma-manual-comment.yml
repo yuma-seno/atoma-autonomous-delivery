@@ -18,6 +18,7 @@ jobs:
     if: (github.event.comment.user.type != 'Bot') || (github.event.comment.user.type == 'Bot' && contains(github.event.comment.body, 'atoma:dispatch'))
     outputs:
       agent: ${{ steps.command.outputs.agent }}
+      session_mode: ${{ steps.command.outputs.session_mode }}
       number: ${{ steps.target.outputs.number }}
       type: ${{ steps.target.outputs.type }}
       notify: ${{ steps.target.outputs.notify }}
@@ -67,6 +68,15 @@ jobs:
             echo "type=issue" >> "$GITHUB_OUTPUT"
           fi
           echo "notify=${NOTIFY}" >> "$GITHUB_OUTPUT"
+      - name: Report invalid slash command
+        if: steps.command.outputs.error != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.target.outputs.number }}
+          ERROR: ${{ steps.command.outputs.error }}
+        run: |
+          gh issue comment "${NUMBER}" --body "Atoma command error: ${ERROR}"
   run:
     if: needs.parse.outputs.agent != ''
     uses: ./.github/workflows/atoma-runner.yml
@@ -75,6 +85,7 @@ jobs:
       number: ${{ needs.parse.outputs.number }}
       type: ${{ needs.parse.outputs.type }}
       notify: ${{ needs.parse.outputs.notify }}
+      session_mode: ${{ needs.parse.outputs.session_mode }}
     secrets: inherit
     needs:
       - parse

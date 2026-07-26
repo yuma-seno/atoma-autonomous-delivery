@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * check_sub_issue_closure.ts — Determine whether a just-closed issue is an
- * Atoma sub-issue (has an `<!-- atoma:parent=#N -->` tag) and, if so,
+ * Atoma sub-issue (has an `<!-- atoma:parent=N -->` tag) and, if so,
  * whether it was already closed via a merged PR (in which case
  * atoma-pr-merged.wac.ts already handled aggregation, and this fallback
  * path must skip to avoid dispatching the orchestrator twice).
@@ -12,6 +12,7 @@
 import { readFileSync, appendFileSync } from "node:fs";
 import { ghGraphql } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
+import { PARENT_TAG } from "../lib/tags.ts";
 
 export const ref = defineScript(import.meta.url);
 
@@ -28,14 +29,13 @@ function main(): void {
 
   const event = eventPath ? (JSON.parse(readFileSync(eventPath, "utf8")) as GithubIssueClosedEvent) : {};
   const body = event.issue?.body ?? "";
-  const match = /<!--\s*atoma:parent=#(\d+)\s*-->/.exec(body);
+  const parent = PARENT_TAG.read(body);
 
-  if (!match) {
+  if (parent === undefined) {
     if (githubOutput) appendFileSync(githubOutput, "is_sub_issue=false\n");
     return;
   }
 
-  const parent = match[1]!;
   console.error(`Sub-issue #${closedNum} closed — parent #${parent}`);
 
   // atoma-pr-merged.wac.ts (pull_request_target: closed) is the PRIMARY
