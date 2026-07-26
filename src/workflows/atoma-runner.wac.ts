@@ -331,17 +331,6 @@ const postResultCommentStep = new TypedOutputsStep(
   ["comment_id"] as const,
 );
 
-const eyesReactionStep = new TypedOutputsStep({
-  name: "Add eyes reaction on agent handoff",
-  if: `steps.atoma.outcome == 'success' && ${postResultCommentStep.rawOutputs.comment_id} != '' && ${runAgentStep.rawOutputs.directive} != ''`,
-  shell: "bash",
-  env: { GH_TOKEN: "${{ github.token }}", COMMENT_ID: postResultCommentStep.outputs.comment_id },
-  run: `gh api --method POST \\
-  "repos/\${{ github.repository }}/issues/comments/\${COMMENT_ID}/reactions" \\
-  -f content="eyes" 2>/dev/null || true
-`,
-});
-
 const recordRunMetadataStep = new TypedOutputsStep({
   // Both the comment-tagging and context-snapshot-recording halves of
   // record_run_metadata.ts only apply when a result comment was actually
@@ -659,7 +648,6 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   runAgentStep,
   tokenUsageStep,
   postResultCommentStep,
-  eyesReactionStep,
   recordRunMetadataStep,
   saveSessionStep,
   reportFailureStep,

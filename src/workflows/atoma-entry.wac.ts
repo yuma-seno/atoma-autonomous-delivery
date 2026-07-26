@@ -55,17 +55,6 @@ export const atomaEntry = new Workflow("atoma-entry", {
       // GitHub-hosted runners.
       new SetupBunAction({ name: "Setup Bun" }),
       resolveStep,
-      new Step({
-        name: "Add reaction to issue",
-        if: `${resolveStep.rawOutputs.agent} != ''`,
-        shell: "bash",
-        env: {
-          GH_TOKEN: "${{ github.token }}",
-          NUMBER: githubEvent<IssuesOpenedEvent>((e) => e.issue.number),
-        },
-        run: `gh api --method POST "repos/\${GITHUB_REPOSITORY}/issues/\${NUMBER}/reactions" -f content="eyes" 2>/dev/null || true
-`,
-      }),
     ],
   )
     .then((routeJob) => dispatchToAtomaRunner(routeJob, "inherit"))
