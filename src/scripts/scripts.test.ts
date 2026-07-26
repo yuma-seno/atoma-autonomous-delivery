@@ -132,6 +132,30 @@ describe("skill catalog", () => {
   });
 });
 
+describe("agent prompt contracts", () => {
+  test("uses orchestrator-first delegation with an explicit engineer leaf gate", () => {
+    const orchestrator = readFileSync("src/atoma/agent-definitions/orchestrator.md", "utf8");
+    expect(orchestrator).toContain("assign them to `orchestrator` by default");
+    expect(orchestrator).toContain("only when it satisfies every leaf condition");
+    expect(orchestrator).toContain("File count and apparent effort do not determine leaf status");
+  });
+
+  test("prevents engineers from implementing unresolved non-leaf work", () => {
+    const engineer = readFileSync("src/atoma/agent-definitions/engineer.md", "utf8");
+    expect(engineer).toContain("If it is not engineer-ready, do not edit");
+    expect(engineer).toContain("Return `/orchestrator` on the first line");
+  });
+
+  test("loads procedures as skills without requesting visible chain of thought", () => {
+    const reviewer = readFileSync("src/atoma/agent-definitions/reviewer.md", "utf8");
+    const prompt = readFileSync("src/atoma/prompt-template.md", "utf8");
+    expect(reviewer).toContain("Load `review/quick-quality-gate`");
+    expect(prompt).toContain("Load each relevant skill with `atoma_builtin__load_skill`");
+    expect(prompt).toContain("Reason privately");
+    expect(prompt).not.toContain("Before taking action or generating final output, always use the `<thought>` tag");
+  });
+});
+
 describe("lib/cli.ts toArgv", () => {
   test("builds quoted --flag value pairs, skipping undefined", () => {
     expect(toArgv({ repo: "owner/repo", parent: 5, empty: undefined })).toEqual(["--repo", '"owner/repo"', "--parent", '"5"']);

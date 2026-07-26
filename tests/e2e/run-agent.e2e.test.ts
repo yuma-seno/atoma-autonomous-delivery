@@ -161,8 +161,9 @@ You are a test agent.
       if (exitCode !== 0) console.error("atoma stderr:", stderr);
       expect(exitCode).toBe(0);
       expect(mock.requests[0]!.tools?.some((tool) => tool.function?.name === "atoma_builtin__load_skill")).toBe(true);
-      expect(String(mock.requests[0]!.messages[0]?.content)).toContain("**atoma-autonomous-delivery** system");
-      expect(String(mock.requests[0]!.messages[0]?.content)).toContain("`engineering/tdd`");
+      const initialPrompt = String(mock.requests[0]!.messages[0]?.content);
+      expect(initialPrompt).toContain("Load each relevant skill with `atoma_builtin__load_skill`");
+      expect(initialPrompt).toContain("`engineering/tdd`");
 
       const toolMessage = mock.requests[1]!.messages.find((message) => message.role === "tool");
       expect(String(toolMessage?.content)).toContain("# Skill: engineering/tdd");
