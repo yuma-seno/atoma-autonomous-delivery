@@ -1,0 +1,59 @@
+# Operations
+
+This page explains how the generated workflows operate in production.
+
+## Workflow entry points
+
+Entry workflows:
+
+- `atoma-entry.yml` for `issues.opened`
+- `atoma-manual-comment.yml` for `issue_comment.created`
+- `atoma-auto-trigger.yml` for `pull_request_target` opened/synchronize/ready_for_review
+- `atoma-pr-review.yml` for `pull_request_review.submitted`
+- `atoma-pr-merged.yml` for merged PR aggregation
+- `atoma-sub-issue-closed.yml` for manual sub-issue close fallback
+
+Shared executor:
+
+- `atoma-runner.yml` is a reusable workflow called by routing workflows.
+
+## Session persistence (`atoma-data` branch)
+
+- Session files are stored as `sessions/<type>-<number>-<agent>.json`.
+- Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.
+- Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.
+
+## Serialization guard and in-progress label
+
+- Runner uses workflow concurrency group per `<type>-<number>`.
+- Runner adds `atoma/in-progress` label before agent execution.
+- Manual comments during active runs are guarded:
+  - comment can be deleted
+  - commenter is notified to retry after completion
+- Label release is decided by domain rule (`shouldReleaseGuard`), not by ad-hoc workflow condition strings.
+
+## Dispatch, handoff, aggregation, idempotency
+
+- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.
+- Auto-dispatch loop counter is tracked in session metadata and capped at 5.
+- PR merge path is the primary sub-issue aggregation trigger.
+- Manual issue-close path is fallback and skips when closure already came from merged PR.
+- Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.
+
+## Symptom-based troubleshooting
+
+| Symptom | Likely cause | Recovery action |
+| --- | --- | --- |
+| Workflow ran but agent did not start | Route step produced empty `agent` output | Check issue first line slash command or trigger mapping in `config.json` |
+| Agent exits immediately with provider error | Missing/invalid API credential or provider mismatch | Verify secrets and optional `ATOMA_PROVIDER` variable |
+| Review-submitted dispatch starts without provider credentials | `atoma-pr-review.yml` currently calls the reusable runner without forwarding secrets | Add explicit secret forwarding or `secrets: inherit` in the workflow source, regenerate, and deploy |
+| `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |
+| Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |
+| Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |
+| Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |
+
+## Security boundaries
+
+- Token boundary: workflows use `GITHUB_TOKEN` and declared write scopes to mutate issues/PRs/workflow dispatch.
+- Shell guard boundary: command denylist for shell MCP calls; this is not a sandbox.
+- Event boundary: `pull_request_target` executes in base repository context, so review trust model for external contributors before enabling broad automation.
