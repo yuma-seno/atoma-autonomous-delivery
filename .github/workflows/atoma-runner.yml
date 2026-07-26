@@ -290,6 +290,8 @@ jobs:
         id: post-result
         if: steps.atoma.outcome == 'success' && steps.context.outputs.new_event_count != '0'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           bun run .github/scripts/post_result_comment.ts --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - name: Add eyes reaction on agent handoff
