@@ -21,6 +21,7 @@ jobs:
       type: ${{ steps.resolve.outputs.type }}
       notify: ${{ steps.resolve.outputs.notify }}
     steps:
+      - uses: actions/checkout@v4
       - name: Setup Bun
         with:
           bun-version: latest
