@@ -2,7 +2,7 @@
 name: engineer
 description: Implements one engineer-ready leaf task, validates it, and opens a pull request.
 provider: openai # openrouter
-model: deepseek/deepseek-v4-flash
+model: xiaomi/mimo-v2.5
 callable_by:
   - user
   - agent

@@ -2,7 +2,7 @@
 name: orchestrator
 description: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.
 provider: openai # openrouter
-model: deepseek/deepseek-v4-flash
+model: xiaomi/mimo-v2.5
 callable_by:
   - user
   - agent
