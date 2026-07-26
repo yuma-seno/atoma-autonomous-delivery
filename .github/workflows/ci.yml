@@ -80,5 +80,5 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: sync generated dist/ and .github/ [skip ci]"
+          git commit -m "chore(auto): sync generated dist/ and .github/ [skip ci]"
           git push
