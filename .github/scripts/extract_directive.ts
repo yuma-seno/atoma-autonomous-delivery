@@ -16,7 +16,7 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/extract_directive.ts
 var ref = defineScript(import.meta.url);
-var COMMAND_RE = /^\/([a-z][a-z0-9-]+)(?:\b|\s|$)/;
+var COMMAND_RE = /^\/([a-z][a-z0-9-]+)$/;
 function candidates(rawLine) {
   let line = rawLine.trim();
   if (!line)

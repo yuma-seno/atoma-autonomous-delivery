@@ -2,11 +2,11 @@
 // @bun
 
 // src/scripts/save_agent_session.ts
-import { existsSync, readFileSync } from "fs";
+import { existsSync as existsSync2, readFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/scripts/lib/atoma-data.ts
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 
@@ -29,7 +29,7 @@ function gitRun(...args) {
 
 // src/scripts/lib/atoma-data.ts
 function sessionTargetPath(type, number, agent) {
-  return `sessions/${type}-${number}-${agent}.json`;
+  return `sessions/${type}-${number}/${agent}.json`;
 }
 function gitIn(cwd, ...args) {
   const proc = Bun.spawnSync({ cmd: ["git", ...args], cwd, stdout: "pipe", stderr: "pipe" });
@@ -99,7 +99,7 @@ function main() {
     console.error("usage: save_agent_session.ts --session FILE --type issue|pr --number N --agent NAME");
     process.exit(2);
   }
-  if (!existsSync(values.session)) {
+  if (!existsSync2(values.session)) {
     console.error("No session.json found, skipping save.");
     return;
   }

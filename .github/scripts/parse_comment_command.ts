@@ -14,31 +14,45 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/parse_comment_command.ts
 var ref = defineScript(import.meta.url);
-var COMMAND_RE = /^\/([a-z][a-z0-9-]*)/;
+var COMMAND_RE = /^\/([a-z][a-z0-9-]*)(?:\s+(.*))?$/;
 var DISPATCH_RE = /^<!--\s*atoma:dispatch\s*=\s*([a-z][a-z0-9-]*)\s*-->/;
-function parseAgent(body) {
+function parseCommentCommand(body) {
   if (!body)
-    return "";
+    return { agent: "", sessionMode: "continue", error: "" };
   for (const rawLine of body.split(`
 `)) {
     const line = rawLine.trim();
     const commandMatch = COMMAND_RE.exec(line);
-    if (commandMatch)
-      return commandMatch[1];
+    if (commandMatch) {
+      const agent = commandMatch[1];
+      const modifier = commandMatch[2]?.trim() ?? "";
+      if (!modifier)
+        return { agent, sessionMode: "continue", error: "" };
+      if (modifier === "recover")
+        return { agent, sessionMode: "recover", error: "" };
+      return {
+        agent: "",
+        sessionMode: "continue",
+        error: `Unknown command syntax: '/${agent} ${modifier}'. Put instructions on the lines after '/${agent}', or use '/${agent} recover'.`
+      };
+    }
     const dispatchMatch = DISPATCH_RE.exec(line);
     if (dispatchMatch)
-      return dispatchMatch[1];
+      return { agent: dispatchMatch[1], sessionMode: "continue", error: "" };
   }
-  return "";
+  return { agent: "", sessionMode: "continue", error: "" };
 }
 function main() {
   const body = process.env.ATOMA_COMMENT_BODY ?? "";
-  const agent = parseAgent(body);
+  const { agent, sessionMode, error } = parseCommentCommand(body);
   const matched = agent ? "true" : "false";
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
     appendFileSync(githubOutput, `matched=${matched}
 agent=${agent}
+`);
+    appendFileSync(githubOutput, `session_mode=${sessionMode}
+error=${error}
 `);
   }
 }
@@ -46,5 +60,5 @@ if (import.meta.main)
   main();
 export {
   ref,
-  parseAgent
+  parseCommentCommand
 };

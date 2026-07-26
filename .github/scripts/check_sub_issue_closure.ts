@@ -44,6 +44,34 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key) {
+  return makeTag(key, "\\d+", Number, String);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent");
+var PARENT_ISSUE_TAG = numericTag("parent-issue");
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
+var AGGREGATED_TAG = numericTag("aggregated");
+var SUB_RESULT_TAG = numericTag("sub-result");
+
 // src/scripts/check_sub_issue_closure.ts
 var ref = defineScript(import.meta.url);
 function main() {
@@ -54,14 +82,13 @@ function main() {
   const githubOutput = process.env.GITHUB_OUTPUT;
   const event = eventPath ? JSON.parse(readFileSync(eventPath, "utf8")) : {};
   const body = event.issue?.body ?? "";
-  const match = /<!--\s*atoma:parent=#(\d+)\s*-->/.exec(body);
-  if (!match) {
+  const parent = PARENT_TAG.read(body);
+  if (parent === undefined) {
     if (githubOutput)
       appendFileSync(githubOutput, `is_sub_issue=false
 `);
     return;
   }
-  const parent = match[1];
   console.error(`Sub-issue #${closedNum} closed \u2014 parent #${parent}`);
   let closedViaPr = false;
   try {

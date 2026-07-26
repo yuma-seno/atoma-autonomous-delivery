@@ -52,7 +52,7 @@ function getLabel(key, fallback) {
 function countOpenSiblings(opts) {
   const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
   const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
-  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=#${opts.parent} in:body`, "--json", "number");
+  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
   if (code !== 0) {
     throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
   }
@@ -73,21 +73,21 @@ function makeTag(key, valuePattern, parse, render) {
     has: (text) => re.test(text)
   };
 }
-function numericTag(key, hashPrefix) {
-  return makeTag(key, "#?\\d+", (raw) => Number(raw.replace(/^#/, "")), (value) => `${hashPrefix ? "#" : ""}${value}`);
+function numericTag(key) {
+  return makeTag(key, "\\d+", Number, String);
 }
 function stringTag(key, valuePattern) {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
-var PARENT_TAG = numericTag("parent", true);
-var PARENT_ISSUE_TAG = numericTag("parent-issue", false);
+var PARENT_TAG = numericTag("parent");
+var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
 var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
 var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
-var AGGREGATED_TAG = numericTag("aggregated", false);
-var SUB_RESULT_TAG = numericTag("sub-result", false);
+var AGGREGATED_TAG = numericTag("aggregated");
+var SUB_RESULT_TAG = numericTag("sub-result");
 function readAnyParentTag(text) {
   return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
 }
@@ -240,16 +240,21 @@ function injectSubResults(session, repo, subIssues) {
   return session;
 }
 
+// src/scripts/lib/atoma-data.ts
+function sessionTargetPath(type, number, agent) {
+  return `sessions/${type}-${number}/${agent}.json`;
+}
+
 // src/scripts/aggregate_sub_issues.ts
 var ref = defineScript(import.meta.url);
 function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 async function injectResultsIntoOrchestratorSession(repo, parent) {
-  const { stdout: allSubsOut } = gh("issue", "list", "--repo", repo, "--state", "all", "--json", "number,title,body", "--jq", `[.[] | select(.body | contains("atoma:parent=#${parent}")) | .number] | join(",")`);
+  const { stdout: allSubsOut } = gh("issue", "list", "--repo", repo, "--state", "all", "--json", "number,title,body", "--jq", `[.[] | select(.body | contains("atoma:parent=${parent}")) | .number] | join(",")`);
   const subIssues = allSubsOut.trim().split(",").filter(Boolean).map(Number);
   console.log(`All sub-issues for parent #${parent}: ${subIssues.join(",")}`);
-  const sessionPath = `sessions/issue-${parent}-orchestrator.json`;
+  const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
   gitRun("config", "user.email", "action@github.com");
   gitRun("config", "user.name", "GitHub Actions");
   let saved = false;

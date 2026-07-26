@@ -23,6 +23,11 @@ name: Atoma Runner
         required: false
         type: string
         default: ''
+      session_mode:
+        description: 'Session mode: continue restores history; recover archives history and rebuilds from GitHub context'
+        required: false
+        type: string
+        default: continue
       atoma_version:
         description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
         required: false
@@ -50,6 +55,14 @@ name: Atoma Runner
         required: false
         type: string
         default: ''
+      session_mode:
+        description: 'Session mode: continue restores history; recover archives history and rebuilds from GitHub context'
+        required: false
+        type: choice
+        options:
+          - continue
+          - recover
+        default: continue
       atoma_version:
         description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
         required: false
@@ -133,7 +146,7 @@ jobs:
         id: restore-session
         shell: bash
         run: |
-          bun run .github/scripts/restore_agent_session.ts --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}" --out "session.json" --fallback-type "${{ inputs.type }}" --fallback-number "${{ inputs.number }}"
+          bun run .github/scripts/restore_agent_session.ts --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}" --out "session.json" --session-mode "${{ inputs.session_mode }}"
       - name: Merge GitHub context into session
         id: context
         shell: bash
