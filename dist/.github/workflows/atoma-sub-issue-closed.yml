@@ -20,6 +20,7 @@ jobs:
       parent_number: ${{ steps.check.outputs.parent_number }}
       closed_via_pr: ${{ steps.check.outputs.closed_via_pr }}
     steps:
+      - uses: actions/checkout@v4
       - name: Setup Bun
         with:
           bun-version: latest

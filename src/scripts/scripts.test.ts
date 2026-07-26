@@ -72,6 +72,27 @@ describe("config.json", () => {
   });
 });
 
+describe("generated workflows", () => {
+  test("checkout the repository before running repository scripts", () => {
+    type WorkflowStep = { uses?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const directory = "dist/.github/workflows";
+    for (const name of readdirSync(directory).filter((entry) => entry.endsWith(".yml"))) {
+      const workflow = Bun.YAML.parse(readFileSync(join(directory, name), "utf8")) as WorkflowDocument;
+      for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+        const steps = job.steps ?? [];
+        const firstScript = steps.findIndex((step) => step.run?.includes(".github/scripts/"));
+        if (firstScript === -1) continue;
+
+        const checkout = steps.findIndex((step) => step.uses?.startsWith("actions/checkout@"));
+        expect(checkout, `${name}:${jobName} must checkout before running repository scripts`).toBeGreaterThanOrEqual(0);
+        expect(checkout, `${name}:${jobName} checkout order`).toBeLessThan(firstScript);
+      }
+    }
+  });
+});
+
 describe("skill catalog", () => {
   test("has valid, unique metadata and non-empty instructions", () => {
     const files: string[] = [];

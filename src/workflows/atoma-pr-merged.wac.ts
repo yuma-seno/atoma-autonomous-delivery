@@ -77,7 +77,7 @@ const resolveParentJob = new DefinedJob(
       parent_issue: resolveStep.outputs.parent_issue,
     },
   },
-  [new SetupBunAction({ name: "Setup Bun" }), resolveStep],
+  [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), resolveStep],
   [parseJob],
 );
 

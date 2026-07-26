@@ -41,6 +41,7 @@ jobs:
     needs:
       - parse
     steps:
+      - uses: actions/checkout@v4
       - name: Setup Bun
         with:
           bun-version: latest

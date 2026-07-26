@@ -1,5 +1,6 @@
 import { Workflow, Step } from "@github-actions-workflow-ts/lib";
 import type { IssuesOpenedEvent } from "@octokit/webhooks-types";
+import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
@@ -48,6 +49,7 @@ export const atomaEntry = new Workflow("atoma-entry", {
       },
     },
     [
+      new ActionsCheckoutV4({}),
       // Required by the "Resolve agent and context" step below, which runs
       // resolve_entry_agent.ts via `bun run` -- not preinstalled on
       // GitHub-hosted runners.

@@ -1,5 +1,6 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
+import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
@@ -114,7 +115,7 @@ export const atomaManualComment = new Workflow("atoma-manual-comment", {
         notify: targetStep.outputs.notify,
       },
     },
-    [new SetupBunAction({ name: "Setup Bun" }), guardStep, parseCommandStep, targetStep],
+    [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), guardStep, parseCommandStep, targetStep],
   )
     .then((parseJob) => dispatchToAtomaRunner(parseJob, "inherit"))
     .jobs(),

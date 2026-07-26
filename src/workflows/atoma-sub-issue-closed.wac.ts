@@ -49,7 +49,7 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
         closed_via_pr: checkStep.outputs.closed_via_pr,
       },
     },
-    [new SetupBunAction({ name: "Setup Bun" }), checkStep],
+    [new ActionsCheckoutV4({}), new SetupBunAction({ name: "Setup Bun" }), checkStep],
   )
     .then(
       (checkJob) =>
