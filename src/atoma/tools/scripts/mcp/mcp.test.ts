@@ -207,6 +207,111 @@ describe("mcp/github.ts", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // The advertised JSON Schema is what teaches the model the correct shape, and
+  // zod-to-json-schema is known to degrade silently to `{}` for schemas built
+  // the wrong way (see lib/mcp-tool.ts). These assertions pin the emitted schema
+  // so a lenient runtime never comes at the cost of a vague contract.
+  test("tools/list advertises precise argument schemas", async () => {
+    const r = await sendRequest("github.ts", {
+      jsonrpc: "2.0", id: 20, method: "tools/list", params: {},
+    });
+    const byName = new Map<string, any>(r.result.tools.map((t: { name: string }) => [t.name, t]));
+
+    // `.int()` makes zod-to-json-schema emit "integer" rather than "number".
+    const getIssue = byName.get("get_issue").inputSchema;
+    expect(getIssue.properties.number.type).toBe("integer");
+    expect(getIssue.required ?? []).not.toContain("number");
+
+    // Mutations must keep `number` mandatory — no inferring an irreversible target.
+    const closeIssue = byName.get("close_issue").inputSchema;
+    expect(closeIssue.properties.number.type).toBe("integer");
+    expect(closeIssue.required).toContain("number");
+
+    // `labels` stays an array in the contract even though a bare string parses.
+    const listIssues = byName.get("list_issues").inputSchema;
+    expect(listIssues.properties.labels.type).toBe("array");
+    expect(listIssues.properties.labels.items.type).toBe("string");
+    expect(listIssues.properties.limit.type).toBe("integer");
+  });
+
+  test("get_issue accepts a stringified number", async () => {
+    const r = await sendRequest(
+      "github.ts",
+      {
+        jsonrpc: "2.0", id: 21, method: "tools/call",
+        params: { name: "get_issue", arguments: { number: "185" } },
+      },
+      {
+        PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+        FAKE_GH_RESPONSES: JSON.stringify([
+          { match: ["issue", "view", "185"], stdout: JSON.stringify({ number: 185, title: "Coerced" }) },
+        ]),
+      },
+    );
+    expect(r.result.isError).toBe(false);
+    expect(JSON.parse(r.result.content[0].text)).toMatchObject({ number: 185 });
+  });
+
+  test("get_issue falls back to the run's issue when number is omitted", async () => {
+    const r = await sendRequest(
+      "github.ts",
+      {
+        jsonrpc: "2.0", id: 22, method: "tools/call",
+        params: { name: "get_issue", arguments: {} },
+      },
+      {
+        ISSUE_NUMBER: "42",
+        PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+        FAKE_GH_RESPONSES: JSON.stringify([
+          { match: ["issue", "view", "42"], stdout: JSON.stringify({ number: 42, title: "From context" }) },
+        ]),
+      },
+    );
+    expect(r.result.isError).toBe(false);
+    expect(JSON.parse(r.result.content[0].text)).toMatchObject({ number: 42 });
+  });
+
+  test("close_issue still refuses an omitted number", async () => {
+    const r = await sendRequest(
+      "github.ts",
+      {
+        jsonrpc: "2.0", id: 23, method: "tools/call",
+        params: { name: "close_issue", arguments: {} },
+      },
+      { ISSUE_NUMBER: "42" },
+    );
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("Invalid arguments for close_issue");
+  });
+
+  test("list_issues accepts a bare string for labels", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-list-issues-labels-"));
+    const log = join(dir, "gh.log");
+    try {
+      const r = await sendRequest(
+        "github.ts",
+        {
+          jsonrpc: "2.0", id: 24, method: "tools/call",
+          params: { name: "list_issues", arguments: { labels: "atoma/sub-issue", limit: "5" } },
+        },
+        {
+          PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+          FAKE_GH_LOG: log,
+          FAKE_GH_RESPONSES: JSON.stringify([{ match: ["issue", "list"], stdout: "[]" }]),
+        },
+      );
+      expect(r.result.isError).toBe(false);
+      const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+      const issueList = calls[0] ?? [];
+      expect(issueList).toContain("--label");
+      expect(issueList).toContain("atoma/sub-issue");
+      // The stringified limit passed validation and reached `gh` as 5.
+      expect(issueList[issueList.indexOf("--limit") + 1]).toBe("5");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("mcp/shell.ts", () => {

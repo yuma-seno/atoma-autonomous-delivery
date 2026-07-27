@@ -30,6 +30,38 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export { z };
 
+/**
+ * A positive integer that also accepts its own decimal string form.
+ *
+ * Weaker models routinely send `"185"` where the advertised JSON Schema says
+ * `number` -- observed repeatedly in production against `get_issue`,
+ * `get_issue_comments`, and the `limit` filters, each failure costing a whole
+ * inference iteration to relay back a message the model then ignored. The
+ * schema shown to the model is unchanged (`z.coerce.number()` still emits
+ * `{"type":"number"}`); only the runtime becomes forgiving. Genuinely
+ * non-numeric input still fails: `"abc"` coerces to `NaN` and is rejected by
+ * `.int()`, and `""`/`"0"` are rejected by `.positive()`.
+ */
+export function positiveInt(description: string) {
+  return z.coerce.number().int().positive().describe(description);
+}
+
+/**
+ * An array of strings that also accepts a single bare string.
+ *
+ * Same rationale as [`positiveInt`]: models send `labels: "atoma/sub-issue"`
+ * for a one-element list. `z.preprocess` keeps the advertised schema an array,
+ * so the model is still told the correct shape.
+ */
+export function stringArray(description: string) {
+  return z
+    .preprocess(
+      (value) => (typeof value === "string" ? [value] : value),
+      z.array(z.string()),
+    )
+    .describe(description);
+}
+
 /** A handler may return either plain text, or `{text, meta}` when the response needs extra `_meta` fields (e.g. `session_ends: true`). */
 export type McpToolResult = string | { text: string; meta?: Record<string, unknown> };
 

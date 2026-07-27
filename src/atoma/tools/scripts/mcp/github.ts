@@ -24,7 +24,7 @@ import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation
 import { logDispatch, logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
-import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
 
 function log(msg: string): void {
@@ -70,15 +70,62 @@ async function resolveIssueId(number: number): Promise<string> {
   return d.repository.issue.id;
 }
 
-/** Shared schema for tools that take a single required `number` (issue/PR number) argument. */
+/**
+ * Shared schema for tools that take a single required `number` (issue/PR
+ * number) argument.
+ *
+ * `number` stays required for every mutation, and for every PR read. Only the
+ * two issue reads below default it — see `ISSUE_CONTEXT_NUMBER_ARG_SCHEMA`.
+ */
 const NUMBER_ARG_SCHEMA = z.object({
-  number: z.number().int().positive().describe("Positive GitHub issue or pull request number, without a leading '#'."),
+  number: positiveInt("Positive GitHub issue or pull request number, without a leading '#'."),
 });
+
+/**
+ * Schema for the two read-only ISSUE lookups, whose `number` defaults to the
+ * issue this run is already operating on.
+ *
+ * Deliberately not used for PR reads or for any mutation:
+ *
+ * - Mutations (`close_issue`, `merge_pr`): inferring the target of an
+ *   irreversible, outward-facing action from an environment variable turns a
+ *   malformed call into a wrong merge instead of an error message.
+ * - PR reads (`get_pr`, `get_pr_diff`, ...): `ISSUE_NUMBER` carries whichever
+ *   number the run resolved, and the run env does not say whether that was an
+ *   issue or a PR. Defaulting a PR read during an issue-context run would shell
+ *   out `gh pr view <issue-number>`, replacing a precise "number: Required"
+ *   with a confusing GitHub error. Observed production failures were all on the
+ *   two issue reads, so the fallback stops there.
+ */
+const ISSUE_CONTEXT_NUMBER_ARG_SCHEMA = z.object({
+  number: positiveInt(
+    "Positive GitHub issue number, without a leading '#'. " +
+      "Omit to use the issue this run is already operating on.",
+  ).optional(),
+});
+
+/**
+ * Resolve an issue read's target, falling back to the run's issue number.
+ *
+ * Models omit `number` entirely when they are already reasoning about a single
+ * issue, which used to surface as `number: Required` and burn an iteration.
+ * `ISSUE_NUMBER` is the number the runner resolved for this run (see
+ * `atoma-runner.wac.ts`), and is already relied on elsewhere in this file.
+ */
+function issueContextNumber(args: { number?: number }): number {
+  if (args.number !== undefined) return args.number;
+  const raw = (process.env.ISSUE_NUMBER ?? "").trim();
+  const parsed = Number(raw);
+  if (!raw || !Number.isInteger(parsed) || parsed <= 0) {
+    mcpFail("`number` was omitted and this run has no current issue number. Pass `number` explicitly.");
+  }
+  return parsed;
+}
 
 const CREATE_ISSUE_SCHEMA = z.object({
   title: z.string().min(1).describe("Concise issue title."),
   body: z.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
-  labels: z.array(z.string()).optional().describe("Existing repository label names to apply. Defaults to no extra labels."),
+  labels: stringArray("Existing repository label names to apply. Defaults to no extra labels.").optional(),
   sub_issue: z
     .boolean()
     .optional()
@@ -87,8 +134,8 @@ const CREATE_ISSUE_SCHEMA = z.object({
 
 const LIST_ISSUES_SCHEMA = z.object({
   state: z.enum(["open", "closed", "all"]).optional().describe("Issue state filter. Defaults to 'open'."),
-  labels: z.array(z.string()).optional().describe("Return only issues matching these repository labels."),
-  limit: z.number().int().positive().max(100).optional().describe("Maximum issues to return. Defaults to 30; maximum 100."),
+  labels: stringArray("Return only issues matching these repository labels.").optional(),
+  limit: positiveInt("Maximum issues to return. Defaults to 30; maximum 100.").max(100).optional(),
 });
 
 const CREATE_PR_SCHEMA = z.object({
@@ -99,7 +146,7 @@ const CREATE_PR_SCHEMA = z.object({
 
 const LIST_PRS_SCHEMA = z.object({
   state: z.enum(["open", "closed", "merged", "all"]).optional().describe("Pull request state filter. Defaults to 'open'."),
-  limit: z.number().int().positive().max(100).optional().describe("Maximum pull requests to return. Defaults to 30; maximum 100."),
+  limit: positiveInt("Maximum pull requests to return. Defaults to 30; maximum 100.").max(100).optional(),
 });
 
 const SEARCH_CODE_SCHEMA = z.object({
@@ -116,7 +163,7 @@ const SYNC_BRANCH_SCHEMA = z.object({
 });
 
 const SUBMIT_PR_REVIEW_SCHEMA = z.object({
-  number: z.number().int().positive().describe("Positive pull request number, without a leading '#'."),
+  number: positiveInt("Positive pull request number, without a leading '#'."),
   event: z.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
   body: z.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES."),
 });
@@ -180,8 +227,8 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   return JSON.stringify({ number: num, url: stdout.trim() });
 }
 
-function getIssue(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
-  return JSON.stringify(ghJsonOrThrow("issue", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
+function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
+  return JSON.stringify(ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
 }
 
 function listIssues(a: z.infer<typeof LIST_ISSUES_SCHEMA>): string {
@@ -193,8 +240,8 @@ function listIssues(a: z.infer<typeof LIST_ISSUES_SCHEMA>): string {
   return JSON.stringify(ghJsonOrThrow(...cmd) ?? []);
 }
 
-function getIssueComments(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
-  const d = ghJsonOrThrow<{ comments?: unknown[] }>("issue", "view", String(a.number), "--repo", REPO, "--json", "comments");
+function getIssueComments(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
+  const d = ghJsonOrThrow<{ comments?: unknown[] }>("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "comments");
   return JSON.stringify(d?.comments ?? []);
 }
 
@@ -592,9 +639,9 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
     schema: CREATE_ISSUE_SCHEMA,
     handler: createIssue,
   }),
-  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssue }),
+  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
   defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssueComments }),
+  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssueComments }),
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
   defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),

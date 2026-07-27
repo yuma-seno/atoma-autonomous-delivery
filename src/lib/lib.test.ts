@@ -156,3 +156,51 @@ describe("tags.ts", () => {
     expect(LLM_CONTEXT_TAG.read(`${marker}\nAtoma: operation started.`)).toBe("exclude");
   });
 });
+
+describe("mcp-tool schema helpers", () => {
+  test("positiveInt accepts a number and its string form, rejecting non-integers", async () => {
+    const { positiveInt } = await import("./mcp-tool.ts");
+    const schema = positiveInt("issue number");
+
+    expect(schema.parse(185)).toBe(185);
+    expect(schema.parse("185")).toBe(185);
+
+    for (const bad of ["abc", "", 0, -1, 1.5, "1.5", null, {}]) {
+      expect(schema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  test("stringArray accepts an array and wraps a bare string", async () => {
+    const { stringArray } = await import("./mcp-tool.ts");
+    const schema = stringArray("label names");
+
+    expect(schema.parse(["a", "b"])).toEqual(["a", "b"]);
+    expect(schema.parse("a")).toEqual(["a"]);
+
+    for (const bad of [5, [1], null, {}]) {
+      expect(schema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  // A lenient runtime must not cost us a precise contract: zod-to-json-schema
+  // silently emits `{}` for schemas built the wrong way (see mcp-tool.ts's
+  // header), which would leave the model with no shape at all to follow.
+  test("helpers still advertise a precise JSON Schema", async () => {
+    const { positiveInt, stringArray } = await import("./mcp-tool.ts");
+    const { zodToJsonSchema } = await import("zod-to-json-schema");
+
+    const numberSchema = zodToJsonSchema(positiveInt("issue number"), {
+      target: "jsonSchema7",
+      $refStrategy: "none",
+    }) as Record<string, unknown>;
+    expect(numberSchema.type).toBe("integer");
+    expect(numberSchema.description).toBe("issue number");
+
+    const labelsSchema = zodToJsonSchema(stringArray("label names"), {
+      target: "jsonSchema7",
+      $refStrategy: "none",
+    }) as Record<string, any>;
+    expect(labelsSchema.type).toBe("array");
+    expect(labelsSchema.items.type).toBe("string");
+  });
+});

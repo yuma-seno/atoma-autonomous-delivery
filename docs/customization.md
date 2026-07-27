@@ -44,6 +44,44 @@ The `atoma:dispatch` entry in the shipped config is reserved for comments genera
 
 Edit `.github/atoma/agent-definitions/<agent>.md` and update the frontmatter `model` field.
 
+### Pin which OpenRouter endpoint serves a model
+
+Agent definitions ship an `extra_body.provider` block. Atoma merges every
+`extra_body` key straight into the request body, so this is OpenRouter's own
+provider-routing contract rather than an Atoma feature:
+
+```yaml
+extra_body:
+  provider:
+    order:
+      - Xiaomi
+      - Parasail
+      - Novita
+    allow_fallbacks: false
+    require_parameters: true
+```
+
+Note this is unrelated to the top-level `provider:` field, which selects Atoma's
+client (`openai`/`anthropic`/`github-copilot`).
+
+Why it is set:
+
+- `order` restricts inference to endpoints with healthy uptime.
+- `allow_fallbacks: false` prevents silent substitution to an endpoint outside
+  that list, including one OpenRouter has deranked.
+- `require_parameters: true` keeps routing away from endpoints that do not accept
+  the `tools`/`tool_choice` every Atoma agent depends on.
+
+A single unhealthy endpoint shows up as hung requests, truncated response
+bodies, and contentless completions. List current endpoints and their uptime with:
+
+```bash
+curl -s https://openrouter.ai/api/v1/models/<author>/<slug>/endpoints
+```
+
+Adjust `order` whenever you change `model`, since the endpoint names are
+per-model.
+
 ### Change iteration budget
 
 Edit `.github/atoma/config.json`:
