@@ -15,6 +15,19 @@ mcp_servers:
   - github
   - atoma
 extra_body:
+  # OpenRouter provider routing. Unrelated to the top-level `provider:` above,
+  # which selects Atoma's client; this constrains which upstream endpoint
+  # OpenRouter dispatches to. Endpoints outside `order` are excluded outright so
+  # a stalling or deranked one cannot be silently substituted mid-run, and
+  # `require_parameters` keeps routing away from endpoints that do not accept the
+  # `tools`/`tool_choice` this agent depends on.
+  provider:
+    order:
+      - Xiaomi
+      - Parasail
+      - Novita
+    allow_fallbacks: false
+    require_parameters: true
   tools:
     - type: openrouter:web_search
     - type: openrouter:web_fetch

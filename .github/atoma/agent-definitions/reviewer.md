@@ -13,6 +13,17 @@ mcp_servers:
   - filesystem_readonly
   - github
 extra_body:
+  # OpenRouter provider routing; see orchestrator.md for the full rationale.
+  # Endpoints outside `order` are excluded so a stalling one cannot be
+  # substituted silently, and `require_parameters` keeps routing away from
+  # endpoints that do not accept `tools`/`tool_choice`.
+  provider:
+    order:
+      - Xiaomi
+      - Parasail
+      - Novita
+    allow_fallbacks: false
+    require_parameters: true
   tools:
     - type: openrouter:web_search
     - type: openrouter:web_fetch

@@ -18062,6 +18062,12 @@ async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
 }
 
 // src/lib/mcp-tool.ts
+function positiveInt(description) {
+  return exports_external.coerce.number().int().positive().describe(description);
+}
+function stringArray(description) {
+  return exports_external.preprocess((value) => typeof value === "string" ? [value] : value, exports_external.array(exports_external.string())).describe(description);
+}
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
 }
@@ -18142,18 +18148,31 @@ async function resolveIssueId(number4) {
   return d.repository.issue.id;
 }
 var NUMBER_ARG_SCHEMA = exports_external.object({
-  number: exports_external.number().int().positive().describe("Positive GitHub issue or pull request number, without a leading '#'.")
+  number: positiveInt("Positive GitHub issue or pull request number, without a leading '#'.")
 });
+var ISSUE_CONTEXT_NUMBER_ARG_SCHEMA = exports_external.object({
+  number: positiveInt("Positive GitHub issue number, without a leading '#'. " + "Omit to use the issue this run is already operating on.").optional()
+});
+function issueContextNumber(args) {
+  if (args.number !== undefined)
+    return args.number;
+  const raw = (process.env.ISSUE_NUMBER ?? "").trim();
+  const parsed = Number(raw);
+  if (!raw || !Number.isInteger(parsed) || parsed <= 0) {
+    mcpFail("`number` was omitted and this run has no current issue number. Pass `number` explicitly.");
+  }
+  return parsed;
+}
 var CREATE_ISSUE_SCHEMA = exports_external.object({
   title: exports_external.string().min(1).describe("Concise issue title."),
   body: exports_external.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
-  labels: exports_external.array(exports_external.string()).optional().describe("Existing repository label names to apply. Defaults to no extra labels."),
+  labels: stringArray("Existing repository label names to apply. Defaults to no extra labels.").optional(),
   sub_issue: exports_external.boolean().optional().describe("Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true.")
 });
 var LIST_ISSUES_SCHEMA = exports_external.object({
   state: exports_external.enum(["open", "closed", "all"]).optional().describe("Issue state filter. Defaults to 'open'."),
-  labels: exports_external.array(exports_external.string()).optional().describe("Return only issues matching these repository labels."),
-  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum issues to return. Defaults to 30; maximum 100.")
+  labels: stringArray("Return only issues matching these repository labels.").optional(),
+  limit: positiveInt("Maximum issues to return. Defaults to 30; maximum 100.").max(100).optional()
 });
 var CREATE_PR_SCHEMA = exports_external.object({
   title: exports_external.string().min(1).describe("Concise pull request title."),
@@ -18162,7 +18181,7 @@ var CREATE_PR_SCHEMA = exports_external.object({
 });
 var LIST_PRS_SCHEMA = exports_external.object({
   state: exports_external.enum(["open", "closed", "merged", "all"]).optional().describe("Pull request state filter. Defaults to 'open'."),
-  limit: exports_external.number().int().positive().max(100).optional().describe("Maximum pull requests to return. Defaults to 30; maximum 100.")
+  limit: positiveInt("Maximum pull requests to return. Defaults to 30; maximum 100.").max(100).optional()
 });
 var SEARCH_CODE_SCHEMA = exports_external.object({
   query: exports_external.string().min(1).describe("GitHub code-search query scoped automatically to the current repository.")
@@ -18177,7 +18196,7 @@ var SYNC_BRANCH_SCHEMA = exports_external.object({
   branch: exports_external.string().optional().describe("Branch to synchronize. Defaults to the current Atoma branch.")
 });
 var SUBMIT_PR_REVIEW_SCHEMA = exports_external.object({
-  number: exports_external.number().int().positive().describe("Positive pull request number, without a leading '#'."),
+  number: positiveInt("Positive pull request number, without a leading '#'."),
   event: exports_external.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
   body: exports_external.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES.")
 });
@@ -18232,7 +18251,7 @@ ${body}`;
   return JSON.stringify({ number: num, url: stdout.trim() });
 }
 function getIssue(a) {
-  return JSON.stringify(ghJsonOrThrow("issue", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
+  return JSON.stringify(ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
 }
 function listIssues(a) {
   const state = a.state ?? "open";
@@ -18244,7 +18263,7 @@ function listIssues(a) {
   return JSON.stringify(ghJsonOrThrow(...cmd) ?? []);
 }
 function getIssueComments(a) {
-  const d = ghJsonOrThrow("issue", "view", String(a.number), "--repo", REPO, "--json", "comments");
+  const d = ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "comments");
   return JSON.stringify(d?.comments ?? []);
 }
 function closeIssue(a) {
@@ -18555,9 +18574,9 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
     schema: CREATE_ISSUE_SCHEMA,
     handler: createIssue
   }),
-  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssue }),
+  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
   defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getIssueComments }),
+  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssueComments }),
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
   defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
