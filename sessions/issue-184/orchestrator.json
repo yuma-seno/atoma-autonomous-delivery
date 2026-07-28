@@ -6,7 +6,7 @@
     },
     {
       "role": "user",
-      "content": "Issue #184: 軽量化\n\n/orchestrator\nワークフローの各構成について、もっと起動や処理を高速化できないでしょうか？\natoma内部の機構やについては難しいでしょうが、事前準備のキャッシングやMCPツールの最適化はすでに健全な状態と言えますか？\n修正は行わず、調査をお願いします。その後内容に応じて修正を進めましょう。",
+      "content": "Issue #184: 軽量化\n**Labels:** atoma/in-progress\n\n/orchestrator\nワークフローの各構成について、もっと起動や処理を高速化できないでしょうか？\natoma内部の機構やについては難しいでしょうが、事前準備のキャッシングやMCPツールの最適化はすでに健全な状態と言えますか？\n修正は行わず、調査をお願いします。その後内容に応じて修正を進めましょう。",
       "atoma_metadata": {
         "author": "yuma-seno",
         "created_at": "2026-07-26T15:38:08Z",
@@ -577,13 +577,105 @@
       "role": "tool",
       "content": "Dispatch comments posted for 2 sub-issue(s): #186→engineer, #187→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
       "tool_call_id": "call_ab5bdf2548bc4606af58e19b"
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:aggregated=187 -->\nAtoma: All sub-tasks completed (last: #187). Re-invoking orchestrator for aggregation.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-28T03:16:44Z",
+        "event_type": "issue_comment",
+        "id": 5099523690,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_9d302d95d07e490d80817975",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 186}"
+          }
+        },
+        {
+          "id": "call_4349f243f95b415daff0f209",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 187}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"<!-- atoma:parent=184 -->\\n<!-- atoma:notify=yuma-seno -->\\n## 背景\\n\\nIssue #184 のパッケージA: `atoma_version` のデフォルトを `source`（cargo build: 10-30分）から、バージョン指定のバイナリダウンロードに変更する。\\n\\n## 現状\\n\\n`src/workflows/atoma-runner.wac.ts` で `atoma_version` のデフォルトが `\\\"source\\\"` になっており、毎回 `cargo install --path atoma-src --force --locked` を実行している。バイナリダウンロードのパスはすでに実装済み（`latest` とバージョン指定）だが、デフォルトが `source` のため使われていない。\\n\\n## 変更内容\\n\\n1. **`src/workflows/atoma-runner.wac.ts`**:\\n   - ファイル冒頭に `ATOMA_DEFAULT_VERSION` 定数を追加（例: `\\\"v1.0.0\\\"` — 最新リリースタグを確認して設定）\\n   - `atoma_version` の `default` を `\\\"source\\\"` から `ATOMA_DEFAULT_VERSION` に変更（`workflow_call` と `workflow_dispatch` の両方）\\n   - `ATOMA_VERSION_DESC` の説明文を更新（デフォルトがバージョン指定であることを反映）\\n   - `source` ビルドパスは維持（手動dispatchで `source` を指定すれば従来通り動作）\\n\\n2. **`bun run synth`** で `dist/.github/workflows/atoma-runner.yml` を再生成\\n\\n## 受入条件\\n\\n- `dist/.github/workflows/atoma-runner.yml` の `atoma_version` デフォルトがバージョン文字列になっている\\n- `source` を明示的に指定した場合も cargo build パスが動作する（条件分岐の変更なし）\\n- `bun run synth:check` がパスする\\n- `bun run test` がパスする\\n\\n## 検証方法\\n\\n1. `bun run synth` 実行後、`dist/.github/workflows/atoma-runner.yml` を確認して `default:` がバージョン文字列になっていることを確認\\n2. `bun run lint` (= typecheck + synth:check) がパスすることを確認\\n3. `bun run test` がパスすることを確認\\n\\n## 備考\\n\\n- バージョン定数の値は、`yuma-seno/atoma` の最新リリースタグを `gh release list --repo yuma-seno/atoma` で確認して設定すること\\n- 将来的にバージョンアップが必要な場合は `ATOMA_DEFAULT_VERSION` のみを更新する\",\"closedAt\":\"2026-07-28T03:04:50Z\",\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABL_KShg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: Agent `engineer` dispatched to work on this sub-task.\",\"createdAt\":\"2026-07-28T02:55:05Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/186#issuecomment-5099393670\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_LlWg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: PR #188 created (https://github.com/yuma-seno/atoma-autonomous-delivery/pull/188). Dispatching reviewer.\",\"createdAt\":\"2026-07-28T02:58:51Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/186#issuecomment-5099414874\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_NCfA\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\",\"createdAt\":\"2026-07-28T03:03:02Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/186#issuecomment-5099438716\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_NyZw\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:agent=engineer -->\\nPR #188 merged. Sub-issue #186 closed.\\n\\n\\n\\n---\\n_Tokens: 65605 total (65522 prompt + 83 completion)_\\n_Estimated cost: $0.0099_\\n@yuma-seno — **engineer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\\n\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/30324838599)_\",\"createdAt\":\"2026-07-28T03:05:08Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/186#issuecomment-5099450983\",\"viewerDidAuthor\":true}],\"createdAt\":\"2026-07-28T02:54:56Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACqHlk9g\",\"name\":\"atoma/sub-issue\",\"description\":\"Child delivery task managed by Atoma\",\"color\":\"8250df\"},{\"id\":\"LA_kwDOS6gmSM8AAAACq85w7w\",\"name\":\"atoma/launched\",\"description\":\"Sub-issue has been dispatched to an agent\",\"color\":\"0E8A16\"}],\"number\":186,\"state\":\"CLOSED\",\"title\":\"[A] atoma_version デフォルトをバージョン指定バイナリダウンロードに変更\"}",
+      "tool_call_id": "call_9d302d95d07e490d80817975"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"<!-- atoma:parent=184 -->\\n<!-- atoma:notify=yuma-seno -->\\n## 背景\\n\\nIssue #184 のパッケージB: `filesystem_readonly` MCPサーバーの `npx` 冷起動を排除する。\\n\\n## 現状\\n\\n`src/atoma/tools/tools.yaml` で `filesystem_readonly` サーバーが `npx -y @modelcontextprotocol/server-filesystem .` を使用している。`npx` は毎回 `npm install` を実行し **3-10秒** のオーバーヘッドが発生する。\\n\\n一方、`github` と `atoma` のMCPサーバーは `bun run .github/atoma/tools/scripts/mcp/github.ts` のようにバンドルされたスクリプトとして配置されており、冷起動を回避している。\\n\\n## 変更内容\\n\\n### 方針: バンドル化（github.ts/atoma.ts と同じパターン）\\n\\n1. **devDependencies に追加**: `package.json` に `@modelcontextprotocol/server-filesystem` を追加\\n2. **ラッパースクリプト作成**: `src/atoma/tools/scripts/mcp/filesystem.ts` を作成\\n   - `@modelcontextprotocol/server-filesystem` をインポートし、stdio transport で起動\\n   - `github.ts` や `atoma.ts` と同じパターン（`Server` + `StdioServerTransport`）\\n   - ツールフィルタリング（read-only の allowlist）は Atoma 側の hooks 機能で処理されるため、ラッパー自体は純粋にサーバー起動のみ\\n3. **tools.yaml 更新**: `filesystem_readonly` の command/args を `bun run .github/atoma/tools/scripts/mcp/filesystem.ts` に変更\\n4. **`bun install` + `bun run synth`** で再ビルド\\n\\n### 備考: `filesystem`（非readonly）エントリについて\\n\\n現在 `tools.yaml` に定義があるが、エージェントに露出していない（未使用）。この機会に削除してもよい。\\n\\n## 受入条件\\n\\n- `filesystem_readonly` MCPサーバーが `npx` を使わず、バンドルされたスクリプトとして起動する\\n- `bun run synth:check` がパスする\\n- `bun run test` がパスする\\n- ツールの動作確認: `read_file`, `read_multiple_files`, `list_directory`, `get_file_info` が正常に動作する\\n\\n## 検証方法\\n\\n1. `bun install && bun run synth` 実行\\n2. `dist/.github/atoma/tools/tools.yaml` を確認して `filesystem_readonly` の command が `npx` でないことを確認\\n3. `dist/.github/atoma/tools/scripts/mcp/filesystem.ts` が存在することを確認\\n4. `bun run lint` がパスすることを確認\\n5. `bun run test` がパスすることを確認\\n\\n## 備考\\n\\n- `build-dist.ts` は `src/atoma/tools/scripts/` 配下を自動的にバンドルするため、新しいラッパーは自動的に dist に含まれる\\n- `@modelcontextprotocol/server-filesystem` のprogrammatic API を確認し、適切なラッパー実装を見つけること\",\"closedAt\":\"2026-07-28T03:16:35Z\",\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABL_KTcA\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: Agent `engineer` dispatched to work on this sub-task.\",\"createdAt\":\"2026-07-28T02:55:08Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/187#issuecomment-5099393904\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_RPOg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: PR #189 created (https://github.com/yuma-seno/atoma-autonomous-delivery/pull/189). Dispatching reviewer.\",\"createdAt\":\"2026-07-28T03:13:52Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/187#issuecomment-5099507514\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_SJGg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\",\"createdAt\":\"2026-07-28T03:16:29Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/187#issuecomment-5099522330\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABL_Szrg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:agent=engineer -->\\nPR #189 has been merged. The implementation:\\n\\n- **New wrapper**: `src/atoma/tools/scripts/mcp/filesystem.ts` — a one-line static import of `@modelcontextprotocol/server-filesystem/dist/index.js`, bundled by Bun.build into a self-contained 764KB script\\n- **tools.yaml**: `filesystem_readnow` now uses `bun run` instead of `npx -y`, eliminating the 3-10 second cold-start\\n- **Tests**: 4 new integration tests covering initialize, tools/list, list_directory, and read_text_file\\n- **Unused entry removed**: The `filesystem` (non-readonly) entry was removed from tools.yaml\\n\\nAll acceptance criteria met:\\n- ✅ `bun run test` passes (143 tests)\\n- ✅ `bun run typecheck` passes\\n- ✅ `bun run synth` produces correct dist output with no npx references\\n- ✅ `dist/.github/atoma/tools/scripts/mcp/filesystem.ts` exists and is functional\\n\\n\\n\\n---\\n_Tokens: 441887 total (441404 prompt + 483 completion)_\\n_Estimated cost: $0.0665_\\n@yuma-seno — **engineer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\\n\\n---\\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/30325476810)_\",\"createdAt\":\"2026-07-28T03:18:30Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/187#issuecomment-5099533230\",\"viewerDidAuthor\":true}],\"createdAt\":\"2026-07-28T02:54:58Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACqHlk9g\",\"name\":\"atoma/sub-issue\",\"description\":\"Child delivery task managed by Atoma\",\"color\":\"8250df\"},{\"id\":\"LA_kwDOS6gmSM8AAAACq85w7w\",\"name\":\"atoma/launched\",\"description\":\"Sub-issue has been dispatched to an agent\",\"color\":\"0E8A16\"}],\"number\":187,\"state\":\"CLOSED\",\"title\":\"[B] filesystem_readonly MCPサーバーをバンドル化して npx 冷起動を排除\"}",
+      "tool_call_id": "call_4349f243f95b415daff0f209"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_0707ad5590294387969d35ff",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 188}"
+          }
+        },
+        {
+          "id": "call_5c73de722ec9420c9a5b3509",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 189}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=186 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #186\\n<!-- atoma:notify=yuma-seno -->\\n## Summary\\n\\nChanges the `atoma_version` default from `\\\"source\\\"` (cargo build, 10-30 min) to `\\\"v0.1.7\\\"` (binary download) in `src/workflows/atoma-runner.wac.ts`.\\n\\n## Changes\\n\\n1. Added `ATOMA_DEFAULT_VERSION = \\\"v0.1.7\\\"` constant at the top of `atoma-runner.wac.ts`\\n2. Updated `atoma_version` default from `\\\"source\\\"` to `ATOMA_DEFAULT_VERSION` in both `workflow_call` and `workflow_dispatch` inputs\\n3. Updated `ATOMA_VERSION_DESC` to reflect the new default\\n4. Regenerated `dist/.github/workflows/atoma-runner.yml` via `bun run synth`\\n\\n## What's preserved\\n\\n- The `source` build path is fully maintained — callers can still pass `atoma_version: source` to trigger cargo build\\n- The `latest` binary download path is unchanged\\n- No conditional logic in `installAtomaCliStep` was modified\\n\\n## Verification\\n\\n- `bun run synth:check` — passes (dist is in sync with source)\\n- `bun run test` — 139 tests pass, 0 failures\\n- `dist/.github/workflows/atoma-runner.yml` confirms `default: v0.1.7` for both trigger types\",\"createdAt\":\"2026-07-28T02:58:49Z\",\"headRefName\":\"atoma/issue-186\",\"number\":188,\"state\":\"MERGED\",\"title\":\"feat: change atoma_version default from source to v0.1.7 binary download\"}",
+      "tool_call_id": "call_0707ad5590294387969d35ff"
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=187 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #187\\n<!-- atoma:notify=yuma-seno -->\\n## Summary\\n\\nBundle the `@modelcontextprotocol/server-filesystem` MCP server into a thin wrapper script, replacing the `npx -y` cold-start that added 3-10 seconds per invocation.\\n\\n## Changes\\n\\n### New file: `src/atoma/tools/scripts/mcp/filesystem.ts`\\nA one-line static import of `@modelcontextprotocol/server-filesystem/dist/index.js`. The server-filesystem package's entry point reads `process.argv.slice(2)` for allowed directories and sets up all tools + stdio transport automatically. By importing it directly:\\n- **No npx cold-start** — the code is bundled by Bun.build into the dist output\\n- **Auto-updates** — upstream package improvements are picked up on `bun install`\\n- **Minimal maintenance** — no re-implemented tool registrations to keep in sync\\n\\n### Modified: `src/atoma/tools/tools.yaml`\\n- `filesystem_readonly`: `command: bun` / `args: [\\\"run\\\", \\\".github/atoma/tools/scripts/mcp/filesystem.ts\\\", \\\".\\\"]`\\n- Removed unused `filesystem` (non-readonly) entry that was never exposed to agents\\n\\n### Modified: `package.json`\\n- Added `@modelcontextprotocol/server-filesystem: ^2026.7.10` to devDependencies\\n\\n### Modified: `src/atoma/tools/scripts/mcp/mcp.test.ts`\\n- Added `sendRequestWithInit` helper for McpServer-based scripts (requires initialization handshake before accepting tool calls)\\n- Added `INIT_REQUEST` constant\\n- Added 4 tests for `filesystem.ts`: initialize, tools/list, list_directory, read_text_file\\n\\n## Verification\\n\\n- ✅ `bun run test` — 143 tests pass (including 4 new filesystem tests)\\n- ✅ `bun run typecheck` — passes\\n- ✅ `bun run synth` — bundles successfully, dist/.github/atoma/tools/scripts/mcp/filesystem.ts exists (764KB bundled)\\n- ✅ `dist/.github/atoma/tools/tools.yaml` — no npx references, filesystem_readonly uses bun run\\n- ✅ Manual verification: MCP initialize + tools/list + list_directory + read_text_file all work via stdio\",\"createdAt\":\"2026-07-28T03:13:49Z\",\"headRefName\":\"atoma/issue-187\",\"number\":189,\"state\":\"MERGED\",\"title\":\"feat: bundle filesystem_readonly MCP server to eliminate npx cold-start\"}",
+      "tool_call_id": "call_5c73de722ec9420c9a5b3509"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_e533dcbd0a0f41e2969f60e3",
+          "type": "function",
+          "function": {
+            "name": "atoma__request_close_issue",
+            "arguments": "{\"reason\": \"A（バイナリダウンロード）とB（MCPサーバーバンドル化）のサブタスクが完了し、PR #188 と #189 としてマージ済みです。CとDについても調査結果をまとめます。\", \"summary\": \"## 完了サブタスク\\n\\n### ✅ A: atoma_version デフォルト変更 (PR #188)\\n- `atoma_version` のデフォルトを `source`（cargo build: 10-30分）から `v0.1.7`（バイナリダウンロード）に変更\\n- `ATOMA_DEFAULT_VERSION` 定数を追加し、バージョンアップは定数のみ更新で対応可能\\n- `source` ビルドパスは手動指定で維持\\n\\n### ✅ B: filesystem_readonly MCPサーバーバンドル化 (PR #189)\\n- `npx -y @modelcontextprotocol/server-filesystem` → `bun run .github/atoma/tools/scripts/mcp/filesystem.ts` に変更\\n- 未使用の `filesystem`（非readonly）エントリを削除\\n- 3-10秒のnpx冷起動を排除（バンドル化により起動時コストほぼゼロ）\\n- 新規テスト4件追加、全143テストパス\\n\\n---\\n\\n## 調査結果：CとDについて\\n\\n### C: ルートジョブのBun依存排除\\n**結論: 推奨しない。** 効果が小さく（5-10秒/実行）、コードの可読性を損なうリスクがある。\\n\\n- ルートジョブのスクリプト（resolve_entry_agent.ts, match_trigger.ts等）はBunバンドルで自己完結しており、実行自体は高速\\n- Bun-setup自体は~5秒。GitHub-hosted runnerではNode.js 22がプリインストール済みだが、バンドル出力は`.ts`拡張子のため`node`直接実行は不安定（`--experimental-strip-types`依存）\\n- Bashに書き直す方案もあるが、config.json読み取りや正規表現処理は Bashでは冗長になりコード品質が低下\\n\\n### D: Atoma実行時の最適化\\n**結論: リポジトリ側で大きく削れる箇所はAとBでほぼ網羅済み。**\\n\\n提供されたログ分析:\\n- **MCPサーバー接続**: ~11秒 → Bの改善で~2-3秒に短縮\\n- **ツール実行**: 各<100ms → すでに最適\\n- **LLM推論**: 全体の80%以上を占める（7秒〜210秒/回）→ LLMプロバイダー依存のため本リポジトリでは不可変\\n- **セッションサイズ**: 55→78メッセージ、プロンプトトークン374,969 → Atomaコアのセッション管理の課題\\n- **atoma-dataブランチの複数fetch**: セッション復元/保存/集約で各々fetchしているが、各々1-2秒と軽微\\n\\n残る最適化余地はAtomaコア（セッション圧縮、MCPサーバー並列起動等）に委ねられます。\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Issue #184 was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.",
+      "tool_call_id": "call_e533dcbd0a0f41e2969f60e3"
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "orchestrator",
-      "event_count": 8,
-      "snapshot_hash": "2a012c0638066c7045059398c9fee337b7bbbd58b2883ff60d0ef3fec14a3e68",
+      "event_count": 9,
+      "snapshot_hash": "e25af61eab18b92f1de7e225174d146da03f7d4bcc78f214e2a6ffe32a7b3e50",
       "version": 1
     }
   }
