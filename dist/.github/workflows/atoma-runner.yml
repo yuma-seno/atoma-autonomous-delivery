@@ -29,10 +29,10 @@ name: Atoma Runner
         type: string
         default: continue
       atoma_version:
-        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
+        description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: source
+        default: v0.1.7
   workflow_dispatch:
     inputs:
       agent:
@@ -64,10 +64,10 @@ name: Atoma Runner
           - recover
         default: continue
       atoma_version:
-        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main
+        description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: source
+        default: v0.1.7
 jobs:
   run:
     runs-on: ubuntu-latest
