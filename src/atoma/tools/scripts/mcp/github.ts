@@ -26,6 +26,7 @@ import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
+import { decideMergeReadiness, formatBlockers, type MergeSignals } from "../../../../domain/merge-readiness.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-github] ${msg}`);
@@ -580,13 +581,98 @@ function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
   return true;
 }
 
+/** GitHub's view of one PR, plus the check runs on its head commit. */
+function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: string } {
+  const pr = ghJsonOrThrow<{
+    mergeable?: string;
+    mergeStateStatus?: string;
+    isDraft?: boolean;
+    state?: string;
+    headRefOid?: string;
+    headRefName?: string;
+  }>(
+    "pr", "view", String(num), "--repo", REPO,
+    "--json", "mergeable,mergeStateStatus,isDraft,state,headRefOid,headRefName",
+  );
+
+  // Check runs hang off the commit, so a workflow_dispatch run against the
+  // branch registers here just as a `pull_request` run would.
+  const sha = pr?.headRefOid ?? "";
+  const runs = sha
+    ? ghJsonOrThrow<{ check_runs?: { name: string; status: string; conclusion: string | null; details_url?: string }[] }>(
+        "api", `repos/${REPO}/commits/${sha}/check-runs`,
+      )
+    : null;
+
+  return {
+    signals: {
+      mergeable: pr?.mergeable ?? "UNKNOWN",
+      ...(pr?.mergeStateStatus ? { mergeStateStatus: pr.mergeStateStatus } : {}),
+      isDraft: pr?.isDraft ?? false,
+      state: pr?.state ?? "UNKNOWN",
+      checks: (runs?.check_runs ?? []).map((c) => ({
+        name: c.name,
+        status: c.status,
+        conclusion: c.conclusion,
+        ...(c.details_url ? { detailsUrl: c.details_url } : {}),
+      })),
+      mergePolicy: getMergePolicy(),
+    },
+    headRefName: pr?.headRefName ?? "",
+  };
+}
+
+/** Kick off the CI workflow against a branch, so a fresh agent PR gets a check run. */
+function dispatchCi(branch: string): boolean {
+  const workflow = process.env.ATOMA_CI_WORKFLOW ?? "ci.yml";
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
+  if (code) {
+    log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`dispatchCi: dispatched ${workflow} on ${branch}`);
+  return true;
+}
+
+function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
+  const num = issueContextNumber(a);
+  const { signals, headRefName } = gatherMergeSignals(num);
+  const readiness = decideMergeReadiness(signals);
+
+  const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
+
+  return JSON.stringify({
+    number: num,
+    ready: readiness.ready,
+    blockers: readiness.blockers,
+    checks: signals.checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
+    ci_dispatched: dispatched,
+    summary: readiness.ready
+      ? "Ready to merge."
+      : `Not mergeable:\n${formatBlockers(readiness.blockers)}` +
+        (dispatched ? "\n\nCI has been dispatched for the head commit; re-check shortly." : ""),
+  });
+}
+
 async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   const num = a.number;
-  const policy = getMergePolicy();
-  if (policy !== "auto") {
-    log(`mergePr: merge_policy=${JSON.stringify(policy)}, not 'auto' — skipping merge for PR #${num}`);
-    return JSON.stringify({ merged: false, reason: `merge_policy is '${policy}', not 'auto'` });
+
+  // The gate. Branch protection cannot be committed to the repository, so the
+  // rule that CI must be green before a merge is enforced right here, on the
+  // path every agent merge actually takes.
+  const { signals, headRefName } = gatherMergeSignals(num);
+  const readiness = decideMergeReadiness(signals);
+  if (!readiness.ready) {
+    log(`mergePr: refusing PR #${num} — ${readiness.blockers.map((b) => b.kind).join(", ")}`);
+    const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
+    return JSON.stringify({
+      merged: false,
+      blockers: readiness.blockers,
+      ci_dispatched: dispatched,
+      reason: `Not mergeable:\n${formatBlockers(readiness.blockers)}`,
+    });
   }
+
   const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
   log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code) mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
@@ -656,6 +742,13 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
     handler: syncBranch,
   }),
   defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
+  defineMcpTool({
+    name: "check_merge_readiness",
+    description:
+      "Report whether a pull request can be merged right now, and every reason it cannot: failing checks (by name, with a link), still-running checks, an absent CI run, merge conflicts, draft state, or a non-auto merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so — re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
+    schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA,
+    handler: checkMergeReadiness,
+  }),
   defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
   defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
   defineMcpTool({
@@ -672,7 +765,7 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   }),
   defineMcpTool({
     name: "merge_pr",
-    description: "Merge a pull request only when config.json sets merge_policy to 'auto', then continue Atoma's issue handoff. Call this after review feedback is posted and checks are acceptable; under manual or unknown policy it performs no merge and returns merged:false. This may merge the PR, close its linked issue, and dispatch follow-up work.",
+    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable: CI not green on the head commit, no CI run at all, conflicts, draft state, or merge_policy not 'auto'. It never merges past a failing check, so a refusal is a real defect to fix, not a condition to retry around — read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
     schema: NUMBER_ARG_SCHEMA,
     handler: mergePr,
   }),

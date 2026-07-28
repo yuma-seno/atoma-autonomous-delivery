@@ -5,9 +5,20 @@ name: CI
 # It manages this repository's own build, not the Atoma template deliverable,
 # so it's kept decoupled from that generation pipeline.
 
+# `workflow_dispatch` is what makes the merge gate work. Agent branches are
+# pushed and their PRs opened with GITHUB_TOKEN, and GitHub does not start a
+# workflow run for events it triggers -- so neither `push` nor `pull_request`
+# ever fires for them. `workflow_dispatch` is the documented exception, and the
+# reviewer's `check_merge_readiness` tool uses it to put a real `check` run on
+# the head commit of the PR it is about to merge.
+#
+# `pull_request` still earns its place: it covers human-opened PRs, where the
+# events do fire.
 on:
   push:
     branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,6 +42,11 @@ jobs:
   sync-dist:
     runs-on: ubuntu-latest
     needs: [check]
+    # Deploys by committing and pushing to main, so it must stay on the `push`
+    # trigger only. On a `pull_request` run it would push a PR branch's generated
+    # output onto main; on a `workflow_dispatch` run (which the merge gate fires
+    # against an unmerged agent branch) it would do the same.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
