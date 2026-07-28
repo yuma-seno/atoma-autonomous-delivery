@@ -18113,6 +18113,64 @@ function decidePostMergeHandoff(signals) {
   return { kind: "close-directly", parentIssue: signals.parentIssue };
 }
 
+// src/domain/merge-readiness.ts
+var PASSING = new Set(["success", "neutral", "skipped"]);
+function decideMergeReadiness(signals) {
+  const blockers = [];
+  if (signals.state?.toUpperCase() !== "OPEN") {
+    blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
+  }
+  if (signals.isDraft) {
+    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+  }
+  const mergeable = signals.mergeable?.toUpperCase();
+  if (mergeable === "CONFLICTING") {
+    blockers.push({
+      kind: "conflicting",
+      detail: "branch conflicts with the base; call github__sync_branch and resolve before merging"
+    });
+  } else if (mergeable !== "MERGEABLE") {
+    blockers.push({
+      kind: "mergeability-unknown",
+      detail: `GitHub reports mergeable=${signals.mergeable ?? "null"}; retry shortly`
+    });
+  }
+  const completed = signals.checks.filter((c) => c.status === "completed");
+  const incomplete = signals.checks.filter((c) => c.status !== "completed");
+  const failing = completed.filter((c) => !PASSING.has((c.conclusion ?? "").toLowerCase()));
+  if (signals.checks.length === 0) {
+    blockers.push({
+      kind: "no-checks",
+      detail: "no check run exists for the head commit; CI must run before this can merge"
+    });
+  } else if (failing.length > 0) {
+    for (const check2 of failing) {
+      const where = check2.detailsUrl ? ` (${check2.detailsUrl})` : "";
+      blockers.push({
+        kind: "checks-failing",
+        detail: `check "${check2.name}" concluded ${check2.conclusion}${where}`
+      });
+    }
+  } else if (incomplete.length > 0) {
+    blockers.push({
+      kind: "checks-pending",
+      detail: `${incomplete.length} check(s) still running: ${incomplete.map((c) => c.name).join(", ")}`
+    });
+  }
+  if (signals.mergePolicy !== "auto") {
+    blockers.push({
+      kind: "merge-policy",
+      detail: `merge_policy is '${signals.mergePolicy}', not 'auto'; a human performs the merge`
+    });
+  }
+  const needsCiDispatch = blockers.length === 1 && blockers[0]?.kind === "no-checks";
+  return { ready: blockers.length === 0, blockers, needsCiDispatch };
+}
+function formatBlockers(blockers) {
+  return blockers.map((b, i) => `${i + 1}. [${b.kind}] ${b.detail}`).join(`
+`);
+}
+
 // src/atoma/tools/scripts/mcp/github.ts
 function log(msg) {
   console.error(`[atoma-github] ${msg}`);
@@ -18523,12 +18581,68 @@ function dispatchPostMergeAgent(subIssueNum, agent) {
   logDispatch("issue", agent, { number: subIssueNum });
   return true;
 }
+function gatherMergeSignals(num) {
+  const pr = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "mergeable,mergeStateStatus,isDraft,state,headRefOid,headRefName");
+  const sha = pr?.headRefOid ?? "";
+  const runs = sha ? ghJsonOrThrow("api", `repos/${REPO}/commits/${sha}/check-runs`) : null;
+  return {
+    signals: {
+      mergeable: pr?.mergeable ?? "UNKNOWN",
+      ...pr?.mergeStateStatus ? { mergeStateStatus: pr.mergeStateStatus } : {},
+      isDraft: pr?.isDraft ?? false,
+      state: pr?.state ?? "UNKNOWN",
+      checks: (runs?.check_runs ?? []).map((c) => ({
+        name: c.name,
+        status: c.status,
+        conclusion: c.conclusion,
+        ...c.details_url ? { detailsUrl: c.details_url } : {}
+      })),
+      mergePolicy: getMergePolicy()
+    },
+    headRefName: pr?.headRefName ?? ""
+  };
+}
+function dispatchCi(branch) {
+  const workflow = process.env.ATOMA_CI_WORKFLOW ?? "ci.yml";
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
+  if (code) {
+    log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`dispatchCi: dispatched ${workflow} on ${branch}`);
+  return true;
+}
+function checkMergeReadiness(a) {
+  const num = issueContextNumber(a);
+  const { signals, headRefName } = gatherMergeSignals(num);
+  const readiness = decideMergeReadiness(signals);
+  const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
+  return JSON.stringify({
+    number: num,
+    ready: readiness.ready,
+    blockers: readiness.blockers,
+    checks: signals.checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
+    ci_dispatched: dispatched,
+    summary: readiness.ready ? "Ready to merge." : `Not mergeable:
+${formatBlockers(readiness.blockers)}` + (dispatched ? `
+
+CI has been dispatched for the head commit; re-check shortly.` : "")
+  });
+}
 async function mergePr(a) {
   const num = a.number;
-  const policy = getMergePolicy();
-  if (policy !== "auto") {
-    log(`mergePr: merge_policy=${JSON.stringify(policy)}, not 'auto' \u2014 skipping merge for PR #${num}`);
-    return JSON.stringify({ merged: false, reason: `merge_policy is '${policy}', not 'auto'` });
+  const { signals, headRefName } = gatherMergeSignals(num);
+  const readiness = decideMergeReadiness(signals);
+  if (!readiness.ready) {
+    log(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
+    const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
+    return JSON.stringify({
+      merged: false,
+      blockers: readiness.blockers,
+      ci_dispatched: dispatched,
+      reason: `Not mergeable:
+${formatBlockers(readiness.blockers)}`
+    });
   }
   const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
   log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
@@ -18591,6 +18705,12 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
     handler: syncBranch
   }),
   defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
+  defineMcpTool({
+    name: "check_merge_readiness",
+    description: "Report whether a pull request can be merged right now, and every reason it cannot: failing checks (by name, with a link), still-running checks, an absent CI run, merge conflicts, draft state, or a non-auto merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so \u2014 re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
+    schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA,
+    handler: checkMergeReadiness
+  }),
   defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
   defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
   defineMcpTool({
@@ -18607,7 +18727,7 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
   }),
   defineMcpTool({
     name: "merge_pr",
-    description: "Merge a pull request only when config.json sets merge_policy to 'auto', then continue Atoma's issue handoff. Call this after review feedback is posted and checks are acceptable; under manual or unknown policy it performs no merge and returns merged:false. This may merge the PR, close its linked issue, and dispatch follow-up work.",
+    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable: CI not green on the head commit, no CI run at all, conflicts, draft state, or merge_policy not 'auto'. It never merges past a failing check, so a refusal is a real defect to fix, not a condition to retry around \u2014 read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
     schema: NUMBER_ARG_SCHEMA,
     handler: mergePr
   })
