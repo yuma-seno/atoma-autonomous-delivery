@@ -7,8 +7,8 @@
 # front of you. `agent-definitions.test.ts` enforces this.
 
 filesystem:
-  command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/filesystem.ts", "."]
+  command: mcp-server-filesystem
+  args: ["."]
   env: {}
   hooks:
     tool_denylist:
@@ -16,8 +16,8 @@ filesystem:
       - "filesystem__search_files"
 
 filesystem_readonly:
-  command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/filesystem.ts", "."]
+  command: mcp-server-filesystem
+  args: ["."]
   env: {}
   hooks:
     tool_allowlist:
