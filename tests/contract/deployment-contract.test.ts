@@ -57,10 +57,18 @@ function walk(dir: string): string[] {
 describe("deployment contract", () => {
   // `src/atoma/` is the deliverable, mirrored 1:1 into `dist/.github/atoma/`
   // and from there into an adopter's own `.github/`. Anything that exists to
-  // develop THIS repository — a test, a fixture, a build helper — belongs
-  // outside it, which is why these contract tests live under `tests/`.
-  test("src/atoma/ holds nothing that exists only to develop this repo", () => {
-    const strays = walk(ATOMA_SRC).filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f));
+  // develop THIS repository belongs outside it, which is why these contract
+  // tests live under `tests/`.
+  //
+  // Scoped to the pure-content areas. `tools/scripts/**` is exempt because the
+  // established convention there is a unit test co-located with the MCP server
+  // it exercises (`mcp.test.ts`, `shell_guard.test.ts`); those test shipped code
+  // rather than this repo's pipeline, and build-dist.ts never bundles them.
+  // Widen this if that convention should change.
+  test("the deliverable's content directories hold no test files", () => {
+    const strays = walk(ATOMA_SRC)
+      .filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
+      .filter((f) => !f.startsWith("src/atoma/tools/scripts/"));
     expect(strays, `move these out of src/atoma/: ${strays.join(", ")}`).toEqual([]);
   });
 
