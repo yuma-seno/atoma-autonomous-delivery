@@ -25,9 +25,14 @@ extra_body:
       - Novita
     allow_fallbacks: false
     require_parameters: true
-  tools:
-    - type: openrouter:web_search
-    - type: openrouter:web_fetch
+  # OpenRouter's `openrouter:web_search`/`web_fetch` server tools were removed
+  # here. They never once fired in any recorded run, and while they sat in this
+  # array they were substituted for the MCP tool definitions in the request,
+  # leaving the model with tool names and no argument schemas. Once Atoma began
+  # appending instead of replacing, every request failed outright with
+  # "Server tool request failed" (HTTP 404) on the first inference call.
+  # To restore web access, prefer OpenRouter's `plugins: [{ id: "web" }]`, which
+  # is a separate request field and does not touch `tools`.
 ---
 
 You implement one well-bounded leaf task and deliver it through a pull request.
