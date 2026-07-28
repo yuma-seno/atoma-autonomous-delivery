@@ -45,7 +45,8 @@ const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
-const ATOMA_VERSION_DESC = "Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main";
+const ATOMA_DEFAULT_VERSION = "v0.1.7";
+const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
 // src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
@@ -693,7 +694,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         type: { description: "Context type", required: true, type: "string" },
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "string", default: "continue" },
-        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: "source" },
+        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: ATOMA_DEFAULT_VERSION },
       },
     },
     workflow_dispatch: {
@@ -703,7 +704,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         type: { description: "Context type", required: true, type: "choice", options: ["issue", "pr"] },
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "choice", options: ["continue", "recover"], default: "continue" },
-        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: "source" },
+        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: ATOMA_DEFAULT_VERSION },
       },
     },
   } as unknown as GWT.Workflow["on"],
