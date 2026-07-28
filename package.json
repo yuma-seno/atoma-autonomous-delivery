@@ -18,6 +18,7 @@
     "@github-actions-workflow-ts/cli": "^2.5.0",
     "@github-actions-workflow-ts/lib": "^2.5.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/server-filesystem": "^2026.7.10",
     "@octokit/webhooks-types": "^7.6.1",
     "@types/bun": "^1.2.14",
     "@types/shell-quote": "^1.7.5",

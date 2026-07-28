@@ -12,9 +12,10 @@ function sendRequest(
   request: Record<string, unknown>,
   env: Record<string, string> = {},
   cwd = process.cwd(),
+  extraArgs: string[] = [],
 ): Promise<any> {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`], {
+    const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`, ...extraArgs], {
       env: { ...process.env, GITHUB_REPOSITORY: "owner/repo", ...env },
       cwd,
     });
@@ -40,10 +41,72 @@ function sendRequest(
   });
 }
 
+/**
+ * Send an initialize handshake followed by a second request (e.g. tools/call)
+ * to a McpServer-based script.  McpServer requires initialization before
+ * accepting tool calls, unlike the lower-level Server class.
+ *
+ * Returns the response whose `id` matches `secondRequest.id`.
+ */
+function sendRequestWithInit(
+  script: string,
+  secondRequest: Record<string, unknown>,
+  env: Record<string, string> = {},
+  cwd = process.cwd(),
+  extraArgs: string[] = [],
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`, ...extraArgs], {
+      env: { ...process.env, GITHUB_REPOSITORY: "owner/repo", ...env },
+      cwd,
+    });
+    let out = "";
+    let initialized = false;
+    const targetId = secondRequest.id;
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`timed out waiting for response from ${script}`));
+    }, 8000);
+    child.stdout.on("data", (d) => {
+      out += d.toString();
+      const lines = out.split("\n").filter((l) => l.trim());
+      if (!initialized && lines.length >= 1) {
+        // Got the initialize response; send initialized notification then the second request
+        initialized = true;
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }) + "\n");
+        child.stdin.write(JSON.stringify(secondRequest) + "\n");
+      }
+      if (initialized) {
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.id === targetId) {
+              clearTimeout(timer);
+              child.kill();
+              resolve(parsed);
+              return;
+            }
+          } catch {
+            // skip non-JSON lines
+          }
+        }
+      }
+    });
+    child.stdin.write(JSON.stringify(INIT_REQUEST) + "\n");
+  });
+}
+
 const INIT_PARAMS = {
   protocolVersion: "2024-11-05",
   capabilities: {},
   clientInfo: { name: "test-client", version: "1.0.0" },
+};
+
+const INIT_REQUEST = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: INIT_PARAMS,
 };
 
 function git(cwd: string, ...args: string[]): string {
@@ -331,6 +394,60 @@ describe("mcp/shell.ts", () => {
     });
     const result = JSON.parse(response.result.content[0].text);
     expect(result.status).toBe("timeout");
+  });
+});
+
+describe("mcp/filesystem.ts", () => {
+  test("initialize returns server info", async () => {
+    const r = await sendRequest("filesystem.ts", {
+      jsonrpc: "2.0", id: 1, method: "initialize", params: INIT_PARAMS,
+    }, {}, process.cwd(), ["."]);
+    expect(r.result.serverInfo.name).toBe("secure-filesystem-server");
+  });
+
+  test("tools/list exposes read-only filesystem tools", async () => {
+    const r = await sendRequestWithInit(
+      "filesystem.ts",
+      { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      {}, process.cwd(), ["."]
+    );
+    const names = r.result.tools.map((t: { name: string }) => t.name);
+    for (const tool of ["read_file", "read_text_file", "list_directory", "get_file_info"]) {
+      expect(names).toContain(tool);
+    }
+  });
+
+  test("list_directory returns entries", async () => {
+    const dir = mkdtempSync(join(process.cwd(), "atoma-fs-list-"));
+    writeFileSync(join(dir, "hello.txt"), "hi\n");
+    try {
+      const r = await sendRequestWithInit(
+        "filesystem.ts",
+        { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_directory", arguments: { path: dir } } },
+        {}, process.cwd(), ["."]
+      );
+      expect(r.result.isError ?? false).toBe(false);
+      expect(r.result.content[0].text).toContain("hello.txt");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("read_text_file returns file contents", async () => {
+    const dir = mkdtempSync(join(process.cwd(), "atoma-fs-read-"));
+    const filePath = join(dir, "data.txt");
+    writeFileSync(filePath, "hello from bundle\n");
+    try {
+      const r = await sendRequestWithInit(
+        "filesystem.ts",
+        { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_text_file", arguments: { path: filePath } } },
+        {}, process.cwd(), ["."]
+      );
+      expect(r.result.isError ?? false).toBe(false);
+      expect(r.result.content[0].text).toContain("hello from bundle");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
