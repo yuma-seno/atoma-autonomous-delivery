@@ -20,7 +20,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "tests/e2e/**/*.ts",
+    "tests/**/*.ts",
     "wac.config.ts"
   ]
 }

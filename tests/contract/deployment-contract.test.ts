@@ -17,8 +17,8 @@
  * switching tools.yaml to a binary that only that file installs.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 
 const ATOMA_SRC = join(process.cwd(), "src/atoma");
 const BUILD_DIST = join(process.cwd(), "src/build-dist.ts");
@@ -31,14 +31,59 @@ function copiedFiles(): string[] {
   return [...list.matchAll(/"([^"]+)"/g)].map((m) => m[1] as string);
 }
 
-/** Loose static files sitting directly in src/atoma/ (not directories). */
+/**
+ * Loose static files sitting directly in src/atoma/, i.e. the ones that have to
+ * be named in build-dist.ts's copy list. Restricted to shippable data
+ * extensions: anything else in there is a stray, which the first test below
+ * reports on its own terms rather than as a missing copy-list entry.
+ */
 function staticFiles(): string[] {
   return readdirSync(ATOMA_SRC, { withFileTypes: true })
-    .filter((e) => e.isFile() && !e.name.endsWith(".test.ts"))
+    .filter((e) => e.isFile() && /\.(json|md|ya?ml)$/.test(e.name))
     .map((e) => e.name);
 }
 
+/** Every file under a directory, recursively, repo-relative. */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(path));
+    else out.push(relative(process.cwd(), path).replaceAll("\\", "/"));
+  }
+  return out;
+}
+
 describe("deployment contract", () => {
+  // `src/atoma/` is the deliverable, mirrored 1:1 into `dist/.github/atoma/`
+  // and from there into an adopter's own `.github/`. Anything that exists to
+  // develop THIS repository — a test, a fixture, a build helper — belongs
+  // outside it, which is why these contract tests live under `tests/`.
+  test("src/atoma/ holds nothing that exists only to develop this repo", () => {
+    const strays = walk(ATOMA_SRC).filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f));
+    expect(strays, `move these out of src/atoma/: ${strays.join(", ")}`).toEqual([]);
+  });
+
+  test("src/atoma/ and the shipped dist tree hold the same static files", () => {
+    const distAtoma = join(process.cwd(), "dist/.github/atoma");
+    let shipped: string[];
+    try {
+      statSync(distAtoma);
+      shipped = walk(distAtoma).map((f) => f.replace("dist/.github/atoma/", ""));
+    } catch {
+      return; // dist/ not built in this checkout; synth:check covers that case
+    }
+
+    // Markdown and YAML are copied verbatim, so every one in src must ship.
+    const sourceStatic = walk(ATOMA_SRC)
+      .map((f) => f.replace("src/atoma/", ""))
+      .filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".json"));
+
+    for (const file of sourceStatic) {
+      expect(shipped.includes(file), `src/atoma/${file} never reaches dist/.github/atoma/`).toBe(true);
+    }
+  });
+
   test("build-dist.ts copies every static file in src/atoma/", () => {
     const copied = copiedFiles();
     const present = staticFiles();
