@@ -1,8 +1,14 @@
 # Tools configuration for Atoma GitHub templates
+#
+# Every server named here must cover the union of `mcp_servers` across
+# .github/atoma/agent-definitions/*.md. An agent naming a server that is absent
+# here aborts before any MCP server starts ("Tool 'X' not found in tools file"),
+# so removals must be checked against all three agents, not just the one in
+# front of you. `agent-definitions.test.ts` enforces this.
 
 filesystem:
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/filesystem.ts", "."]
   env: {}
   hooks:
     tool_denylist:
@@ -10,8 +16,8 @@ filesystem:
       - "filesystem__search_files"
 
 filesystem_readonly:
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/filesystem.ts", "."]
   env: {}
   hooks:
     tool_allowlist:
