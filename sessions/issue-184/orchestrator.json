@@ -860,17 +860,65 @@
       "role": "assistant",
       "content": "調査しました。非常に良いアプローチだと思います。詳しく説明します。\n\n## プレインストール + キャッシュ方式\n\n### 仕組み\n\n```\n初回実行:  npm install -g @modelcontextprotocol/server-filesystem → ダウンロード+インストール\n            actions/cache で ~/.npm を保存\n\n2回目以降: actions/cache から復元 → npm install -g はキャッシュヒットで即座に完了\n            tools.yaml の command: mcp-server-filesystem が直接実行\n```\n\n### tools.yaml の変更例\n\n```yaml\n# 現在（npx は毎回ダウンロード）\nfilesystem_readonly:\n  command: npx\n  args: [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\n\n# プレインストール後（グローバルバイナリを直接実行）\nfilesystem_readonly:\n  command: mcp-server-filesystem\n  args: [\".\"]\n```\n\n`@modelcontextprotocol/server-filesystem` パッケージは `bin` エントリとして `mcp-server-filesystem` を提供しているため、`npm install -g` 後に直接実行可能です。\n\n### 導入方法\n\n1. **パッケージリストファイル** (`.github/atoma/mcp-packages.json`):\n```json\n{\n  \"npm\": [\"@modelcontextprotocol/server-filesystem\"],\n  \"pip\": []\n}\n```\n\n2. **Runner ワークフローにステップ追加**:\n```yaml\n- name: Cache MCP package downloads\n  uses: actions/cache@v4\n  with:\n    path: ~/.npm\n    key: mcp-npm-${{ hashFiles('.github/atoma/mcp-packages.json') }}\n\n- name: Install MCP server packages\n  shell: bash\n  run: |\n    if [ -f \".github/atoma/mcp-packages.json\" ]; then\n      NPM_PKGS=$(jq -r '.npm[]?' .github/atoma/mcp-packages.json 2>/dev/null || true)\n      for pkg in $NPM_PKGS; do\n        npm install -g \"$pkg\"\n      done\n    fi\n```\n\n### なぜこれが優れているか\n\n| 項目 | バンドル方式（現在） | プレインストール方式（提案） |\n|------|---------------------|---------------------------|\n| ユーザーのカスタム手順 | ラッパースクリプト作成 + `bun run synth` | `mcp-packages.json` にパッケージ名追加 + `tools.yaml` 更新 |\n| メンテナンス対象 | ラッパーの互換性確認 | パッケージバージョンのみ |\n| 新規MCPサーバー追加 | ソースコード変更が必要 | 設定ファイル変更のみ |\n| キャッシュ | バンドル済み（更新は再ビルド） | npm キャッシュ（自動更新） |\n\n### Python MCP サーバーの場合\n\n```json\n{\n  \"npm\": [\"@modelcontextprotocol/server-filesystem\"],\n  \"pip\": [\"mcp-server-fetch\"]\n}\n```\n\n```yaml\n- name: Cache pip package downloads\n  uses: actions/cache@v4\n  with:\n    path: ~/.cache/pip\n    key: mcp-pip-${{ hashFiles('.github/atoma/mcp-packages.json') }}\n\n- name: Install pip MCP packages\n  shell: bash\n  run: |\n    PIP_PKGS=$(jq -r '.pip[]?' .github/atoma/mcp-packages.json 2>/dev/null || true)\n    for pkg in $PIP_PKGS; do\n      pip install \"$pkg\"\n    done\n```\n\n## 結論\n\n**難しくない**。むしろバンドル方式よりも簡素で、ユーザーにとってもカスタムしやすいです。\n\n実装に進めてよければ、以下をサブイssueとして作成します：\n\n1. **バンドル方式の reverted** — `filesystem.ts` ラッパーと `@modelcontextprotocol/server-filesystem` の devDependencies 追加を元に戻す\n2. **プレインストール方式の導入** — `mcp-packages.json` 作成、Runner ワークフローにキャッシュ+インストールステップ追加、`tools.yaml` 更新\n\nご判断をお願いします。",
       "atoma_metadata": {
-        "github_comment_id": 5099629757,
-        "agent": "orchestrator"
+        "agent": "orchestrator",
+        "github_comment_id": 5099629757
       }
+    },
+    {
+      "role": "user",
+      "content": "/orchestrator\nありがとう。その方式にしましょう。",
+      "atoma_metadata": {
+        "author": "yuma-seno",
+        "created_at": "2026-07-28T03:37:42Z",
+        "event_type": "issue_comment",
+        "id": 5099644029,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_c1b3c86c7c494dc68e46293e",
+          "type": "function",
+          "function": {
+            "name": "github__create_issue",
+            "arguments": "{\"body\": \"## 背景\\n\\nIssue #184 のB改善を、バンドル方式からプレインストール + キャッシュ方式に変更する。\\n\\n**前のアプローチ（PR #189）**: `filesystem.ts` ラッパーを作成し、`@modelcontextprotocol/server-filesystem` をバンドル。効果的だが、ユーザーがMCPツールをカスタムする際にラッパースクリプト作成が必要。\\n\\n**新しいアプローチ**: `npm install -g` でパッケージをグローバルインストールし、`actions/cache` でキャッシュ。ユーザーはパッケージ名を追加するだけ。\\n\\n## 変更内容\\n\\n### 1. バンドル方式の reverted（PR #189 の一部変更）\\n\\n- `src/atoma/tools/scripts/mcp/filesystem.ts` を削除\\n- `package.json` から `@modelcontextprotocol/server-filesystem` を devDependencies から削除\\n- `src/atoma/tools/scripts/mcp/mcp.test.ts` から filesystem のテスト（4件）を削除\\n- `bun install` で lockfile を更新\\n\\n### 2. プレインストール方式の導入\\n\\n#### 2a. パッケージリストファイル作成\\n\\n`.github/atoma/mcp-packages.json`:\\n```json\\n{\\n  \\\"npm\\\": [\\\"@modelcontextprotocol/server-filesystem\\\"],\\n  \\\"pip\\\": []\\n}\\n```\\n\\n#### 2b. Runner ワークフローにステップ追加（`src/workflows/atoma-runner.wac.ts`）\\n\\n「Setup Bun」の直後に以下のステップを追加:\\n\\n```typescript\\n// MCP サーバーパッケージのキャッシュ\\n// npm のダウンロードキャッシュを保存し、`npm install -g` を高速化\\nconst cacheMcpPackagesStep = new TypedOutputsStep({\\n  name: \\\"Cache MCP server package downloads\\\",\\n  shell: \\\"bash\\\",\\n  run: `# キャッシュ復元（actions/cache が自動で行うが、明示的にログ出力）\\necho \\\"MCP package cache key: mcp-pkg-${{ hashFiles('.github/atoma/mcp-packages.json') }}\\\"\\n`,\\n});\\n\\nconst installMcpPackagesStep = new TypedOutputsStep({\\n  name: \\\"Install MCP server packages\\\",\\n  shell: \\\"bash\\\",\\n  run: `MCP_PKGS_FILE=\\\".github/atoma/mcp-packages.json\\\"\\nif [ ! -f \\\"$MCP_PKGS_FILE\\\" ]; then\\n  echo \\\"No mcp-packages.json found; skipping MCP package installation.\\\"\\n  exit 0\\nfi\\n\\n# npm パッケージをグローバルインストール\\nNPM_PKGS=$(jq -r '.npm[]? // empty' \\\"$MCP_PKGS_FILE\\\" 2>/dev/null || true)\\nif [ -n \\\"$NPM_PKGS\\\" ]; then\\n  echo \\\"Installing npm MCP packages: $NPM_PKGS\\\"\\n  for pkg in $NPM_PKGS; do\\n    npm install -g \\\"$pkg\\\"\\n  done\\n  # グローバル bin ディレクトリを PATH に追加\\n  NPM_BIN=$(npm prefix -g)/bin\\n  echo \\\"$NPM_BIN\\\" >> \\\"$GITHUB_PATH\\\"\\n  echo \\\"Added npm global bin to PATH: $NPM_BIN\\\"\\nfi\\n\\n# pip パッケージをインストール\\nPIP_PKGS=$(jq -r '.pip[]? // empty' \\\"$MCP_PKGS_FILE\\\" 2>/dev/null || true)\\nif [ -n \\\"$PIP_PKGS\\\" ]; then\\n  echo \\\"Installing pip MCP packages: $PIP_PKGS\\\"\\n  for pkg in $PIP_PKGS; do\\n    pip install \\\"$pkg\\\"\\n  done\\nfi\\n`,\\n});\\n```\\n\\n#### 2c. `tools.yaml` の更新（`src/atoma/tools/tools.yaml`）\\n\\n```yaml\\nfilesystem_readonly:\\n  command: mcp-server-filesystem\\n  args: [\\\".\\\"]\\n  env: {}\\n  hooks:\\n    tool_allowlist:\\n      - \\\"filesystem_readonly__read_file\\\"\\n      - \\\"filesystem_readonly__read_multiple_files\\\"\\n      - \\\"filesystem_readonly__list_directory\\\"\\n      - \\\"filesystem_readonly__get_file_info\\\"\\n```\\n\\n（`filesystem` エントリは元から未使用だったため削除されたまま維持）\\n\\n#### 2d. Actions Cache の設定\\n\\n`src/workflows/atoma-runner.wac.ts` の `installMcpPackagesStep` に `actions/cache` を追加:\\n\\n```typescript\\n// 注意: actions/cache は wac.ts では CustomAction としてラップするか、\\n// 直接 YAML に記述する必要がある。既存の third-party.ts パターンに倣う。\\n```\\n\\n`actions/cache@v4` の使用:\\n- `path`: `~/.npm`（npm のダウンロードキャッシュ）\\n- `key`: `mcp-npm-${{ hashFiles('.github/atoma/mcp-packages.json') }}`\\n- `restore-keys`: `mcp-npm-`（部分一致で復元）\\n\\n### 3. dist の再生成\\n\\n`bun run synth` で `dist/.github/workflows/atoma-runner.yml` を再生成。\\n\\n## 受入条件\\n\\n- `src/atoma/tools/scripts/mcp/filesystem.ts` が存在しない\\n- `package.json` の devDependencies に `@modelcontextprotocol/server-filesystem` がない\\n- `.github/atoma/mcp-packages.json` が存在し、`npm` 配列に `@modelcontextprotocol/server-filesystem` を含む\\n- `dist/.github/workflows/atoma-runner.yml` に `Install MCP server packages` ステップがある\\n- `dist/.github/atoma/tools/tools.yaml` の `filesystem_readonly` の `command` が `mcp-server-filesystem` である\\n- `bun run synth:check` がパスする\\n- `bun run test` がパスする（filesystem テスト削除後も）\\n\\n## 検証方法\\n\\n1. `bun install && bun run synth` 実行\\n2. `dist/.github/workflows/atoma-runner.yml` を確認してインストールステップとキャッシュ設定があることを確認\\n3. `dist/.github/atoma/tools/tools.yaml` を確認して `npx` が使用されていないことを確認\\n4. `bun run lint` がパスすることを確認\\n5. `bun run test` がパスすることを確認\\n\\n## 備考\\n\\n- `npm install -g` は `~/.npm` キャッシュが温まれば高速（ダウンロード不要、展開のみ）\\n- `jq` は GitHub-hosted runner にプリインストール済み\\n- `npm prefix -g` はグローバルインストール先のパスを返す（通常 `/usr/local` または nvm パス）\\n- 将来的に新しいMCPサーバーを追加する場合は `mcp-packages.json` の `npm` 配列にパッケージ名を追加し、`tools.yaml` にエントリを追加するだけ\", \"labels\": [\"atoma/sub-issue\"], \"title\": \"[B] filesystem MCPサーバーをプレインストール+キャッシュ方式に変更\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":190,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/190\"}",
+      "tool_call_id": "call_c1b3c86c7c494dc68e46293e"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_d215ab9ff7ac4fbf947170ef",
+          "type": "function",
+          "function": {
+            "name": "atoma__launch_sub_agent",
+            "arguments": "{\"tasks\": [{\"agent\": \"engineer\", \"issue\": 190}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Dispatch comments posted for 1 sub-issue(s): #190→engineer.\n\nAgents will be dispatched automatically. The orchestrator session will now end.\nIt will resume automatically when all sub-issues are closed.",
+      "tool_call_id": "call_d215ab9ff7ac4fbf947170ef"
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "orchestrator",
-      "event_count": 12,
+      "event_count": 13,
       "resolved_number": "184",
-      "snapshot_hash": "9e32dca45abed00df488c4e1afa7809e221cc8556800155c3c6f2ac3d82dcd9c",
+      "snapshot_hash": "c467dde0d18019e76fb50267a1baae5a9c4148c2a4769a921b52ee6087bb246e",
       "type": "issue",
       "version": 1
     }
