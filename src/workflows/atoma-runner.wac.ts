@@ -6,6 +6,7 @@ import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { CacheAction } from "./actions/cache.ts";
 import { ref as resolveNotifyRef } from "../scripts/resolve_notify.ts";
 import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
@@ -603,6 +604,48 @@ echo "BRANCH=$BRANCH" >> $GITHUB_ENV
   // (tools.yaml spawns the atoma MCP servers via `bun run ...`) --
   // GitHub-hosted runners do not ship Bun preinstalled.
   new SetupBunAction({ name: "Setup Bun" }),
+  // MCP サーバーパッケージのキャッシュ + グローバルインストール
+  // npm のダウンロードキャッシュを保存し、`npm install -g` を高速化
+  new CacheAction({
+    name: "Cache MCP server package downloads",
+    with: {
+      path: "~/.npm",
+      key: "mcp-npm-${{ hashFiles('.github/atoma/mcp-packages.json') }}",
+      "restore-keys": "mcp-npm-",
+    },
+  }),
+  new TypedOutputsStep({
+    name: "Install MCP server packages",
+    shell: "bash",
+    run: `MCP_PKGS_FILE=".github/atoma/mcp-packages.json"
+if [ ! -f "$MCP_PKGS_FILE" ]; then
+  echo "No mcp-packages.json found; skipping MCP package installation."
+  exit 0
+fi
+
+# npm パッケージをグローバルインストール
+NPM_PKGS=$(jq -r '.npm[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
+if [ -n "$NPM_PKGS" ]; then
+  echo "Installing npm MCP packages: $NPM_PKGS"
+  for pkg in $NPM_PKGS; do
+    npm install -g "$pkg"
+  done
+  # グローバル bin ディレクトリを PATH に追加
+  NPM_BIN=$(npm prefix -g)/bin
+  echo "$NPM_BIN" >> "$GITHUB_PATH"
+  echo "Added npm global bin to PATH: $NPM_BIN"
+fi
+
+# pip パッケージをインストール
+PIP_PKGS=$(jq -r '.pip[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
+if [ -n "$PIP_PKGS" ]; then
+  echo "Installing pip MCP packages: $PIP_PKGS"
+  for pkg in $PIP_PKGS; do
+    pip install "$pkg"
+  done
+fi
+`,
+  }),
   // No separate "install MCP server dependencies" step needed: build-dist.ts
   // bundles every script (via Bun.build) with all its imports -- including
   // npm dependencies like @modelcontextprotocol/sdk/shell-quote -- inlined
