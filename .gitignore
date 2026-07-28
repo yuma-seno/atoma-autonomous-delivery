@@ -12,3 +12,7 @@ logs/
 node_modules/
 dist/**/node_modules/
 dist/**/bun.lock*
+
+# Atoma source checkout created by the runner when atoma_version=source.
+# A bare `git add -A` otherwise commits it as a dangling gitlink (no .gitmodules).
+atoma-src/
