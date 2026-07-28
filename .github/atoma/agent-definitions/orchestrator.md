@@ -16,26 +16,24 @@ mcp_servers:
   - atoma
 extra_body:
   # OpenRouter provider routing. Unrelated to the top-level `provider:` above,
-  # which selects Atoma's client; this constrains which upstream endpoint
-  # OpenRouter dispatches to. Endpoints outside `order` are excluded outright so
-  # a stalling or deranked one cannot be silently substituted mid-run, and
-  # `require_parameters` keeps routing away from endpoints that do not accept the
-  # `tools`/`tool_choice` this agent depends on.
+  # which selects Atoma's client; this steers which upstream endpoint OpenRouter
+  # dispatches to. Deliberately a PREFERENCE, not a restriction: `order` puts the
+  # healthy endpoints first, and OpenRouter stays free to route elsewhere.
+  #
+  # `allow_fallbacks: false` and `require_parameters: true` were tried here and
+  # removed. With them set, every run failed on the first inference call with
+  # "Server tool request failed" (HTTP 404, provider_name: null). The server
+  # tools below are executed by OpenRouter above provider selection, and no
+  # endpoint advertises them in `supported_parameters`, so hard-pinning the route
+  # appears to leave that layer with nowhere to dispatch. Keep this advisory.
   provider:
     order:
       - Xiaomi
       - Parasail
       - Novita
-    allow_fallbacks: false
-    require_parameters: true
-  # OpenRouter's `openrouter:web_search`/`web_fetch` server tools were removed
-  # here. They never once fired in any recorded run, and while they sat in this
-  # array they were substituted for the MCP tool definitions in the request,
-  # leaving the model with tool names and no argument schemas. Once Atoma began
-  # appending instead of replacing, every request failed outright with
-  # "Server tool request failed" (HTTP 404) on the first inference call.
-  # To restore web access, prefer OpenRouter's `plugins: [{ id: "web" }]`, which
-  # is a separate request field and does not touch `tools`.
+  tools:
+    - type: openrouter:web_search
+    - type: openrouter:web_fetch
 ---
 
 You are the coordination layer. You investigate, recursively decompose, dispatch, and aggregate. You never edit code.

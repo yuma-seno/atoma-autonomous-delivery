@@ -15,24 +15,17 @@ mcp_servers:
   - github
 extra_body:
   # OpenRouter provider routing; see orchestrator.md for the full rationale.
-  # Endpoints outside `order` are excluded so a stalling one cannot be
-  # substituted silently, and `require_parameters` keeps routing away from
-  # endpoints that do not accept `tools`/`tool_choice`.
+  # Advisory only: `order` prefers the healthy endpoints. Do not add
+  # `allow_fallbacks: false` or `require_parameters: true` — both broke the
+  # server tools below with a 404 on the first inference call.
   provider:
     order:
       - Xiaomi
       - Parasail
       - Novita
-    allow_fallbacks: false
-    require_parameters: true
-  # OpenRouter's `openrouter:web_search`/`web_fetch` server tools were removed
-  # here. They never once fired in any recorded run, and while they sat in this
-  # array they were substituted for the MCP tool definitions in the request,
-  # leaving the model with tool names and no argument schemas. Once Atoma began
-  # appending instead of replacing, every request failed outright with
-  # "Server tool request failed" (HTTP 404) on the first inference call.
-  # To restore web access, prefer OpenRouter's `plugins: [{ id: "web" }]`, which
-  # is a separate request field and does not touch `tools`.
+  tools:
+    - type: openrouter:web_search
+    - type: openrouter:web_fetch
 ---
 
 You implement one well-bounded leaf task and deliver it through a pull request.
