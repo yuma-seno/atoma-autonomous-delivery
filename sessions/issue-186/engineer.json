@@ -6,7 +6,7 @@
     },
     {
       "role": "user",
-      "content": "Issue #186: [A] atoma_version デフォルトをバージョン指定バイナリダウンロードに変更\n**Labels:** atoma/sub-issue, atoma/launched\n\n<!-- atoma:parent=184 -->\n<!-- atoma:notify=yuma-seno -->\n## 背景\n\nIssue #184 のパッケージA: `atoma_version` のデフォルトを `source`（cargo build: 10-30分）から、バージョン指定のバイナリダウンロードに変更する。\n\n## 現状\n\n`src/workflows/atoma-runner.wac.ts` で `atoma_version` のデフォルトが `\"source\"` になっており、毎回 `cargo install --path atoma-src --force --locked` を実行している。バイナリダウンロードのパスはすでに実装済み（`latest` とバージョン指定）だが、デフォルトが `source` のため使われていない。\n\n## 変更内容\n\n1. **`src/workflows/atoma-runner.wac.ts`**:\n   - ファイル冒頭に `ATOMA_DEFAULT_VERSION` 定数を追加（例: `\"v1.0.0\"` — 最新リリースタグを確認して設定）\n   - `atoma_version` の `default` を `\"source\"` から `ATOMA_DEFAULT_VERSION` に変更（`workflow_call` と `workflow_dispatch` の両方）\n   - `ATOMA_VERSION_DESC` の説明文を更新（デフォルトがバージョン指定であることを反映）\n   - `source` ビルドパスは維持（手動dispatchで `source` を指定すれば従来通り動作）\n\n2. **`bun run synth`** で `dist/.github/workflows/atoma-runner.yml` を再生成\n\n## 受入条件\n\n- `dist/.github/workflows/atoma-runner.yml` の `atoma_version` デフォルトがバージョン文字列になっている\n- `source` を明示的に指定した場合も cargo build パスが動作する（条件分岐の変更なし）\n- `bun run synth:check` がパスする\n- `bun run test` がパスする\n\n## 検証方法\n\n1. `bun run synth` 実行後、`dist/.github/workflows/atoma-runner.yml` を確認して `default:` がバージョン文字列になっていることを確認\n2. `bun run lint` (= typecheck + synth:check) がパスすることを確認\n3. `bun run test` がパスすることを確認\n\n## 備考\n\n- バージョン定数の値は、`yuma-seno/atoma` の最新リリースタグを `gh release list --repo yuma-seno/atoma` で確認して設定すること\n- 将来的にバージョンアップが必要な場合は `ATOMA_DEFAULT_VERSION` のみを更新する",
+      "content": "Issue #186: [A] atoma_version デフォルトをバージョン指定バイナリダウンロードに変更\n**Labels:** atoma/in-progress, atoma/sub-issue, atoma/launched\n\n<!-- atoma:parent=184 -->\n<!-- atoma:notify=yuma-seno -->\n## 背景\n\nIssue #184 のパッケージA: `atoma_version` のデフォルトを `source`（cargo build: 10-30分）から、バージョン指定のバイナリダウンロードに変更する。\n\n## 現状\n\n`src/workflows/atoma-runner.wac.ts` で `atoma_version` のデフォルトが `\"source\"` になっており、毎回 `cargo install --path atoma-src --force --locked` を実行している。バイナリダウンロードのパスはすでに実装済み（`latest` とバージョン指定）だが、デフォルトが `source` のため使われていない。\n\n## 変更内容\n\n1. **`src/workflows/atoma-runner.wac.ts`**:\n   - ファイル冒頭に `ATOMA_DEFAULT_VERSION` 定数を追加（例: `\"v1.0.0\"` — 最新リリースタグを確認して設定）\n   - `atoma_version` の `default` を `\"source\"` から `ATOMA_DEFAULT_VERSION` に変更（`workflow_call` と `workflow_dispatch` の両方）\n   - `ATOMA_VERSION_DESC` の説明文を更新（デフォルトがバージョン指定であることを反映）\n   - `source` ビルドパスは維持（手動dispatchで `source` を指定すれば従来通り動作）\n\n2. **`bun run synth`** で `dist/.github/workflows/atoma-runner.yml` を再生成\n\n## 受入条件\n\n- `dist/.github/workflows/atoma-runner.yml` の `atoma_version` デフォルトがバージョン文字列になっている\n- `source` を明示的に指定した場合も cargo build パスが動作する（条件分岐の変更なし）\n- `bun run synth:check` がパスする\n- `bun run test` がパスする\n\n## 検証方法\n\n1. `bun run synth` 実行後、`dist/.github/workflows/atoma-runner.yml` を確認して `default:` がバージョン文字列になっていることを確認\n2. `bun run lint` (= typecheck + synth:check) がパスすることを確認\n3. `bun run test` がパスすることを確認\n\n## 備考\n\n- バージョン定数の値は、`yuma-seno/atoma` の最新リリースタグを `gh release list --repo yuma-seno/atoma` で確認して設定すること\n- 将来的にバージョンアップが必要な場合は `ATOMA_DEFAULT_VERSION` のみを更新する",
       "atoma_metadata": {
         "author": "github-actions[bot]",
         "created_at": "2026-07-28T02:54:56Z",
@@ -378,14 +378,103 @@
       "role": "tool",
       "content": "{\"number\":188,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/188\"}",
       "tool_call_id": "call_67a81fd8908a466abd6ccea1"
+    },
+    {
+      "role": "user",
+      "content": "PR #188: feat: change atoma_version default from source to v0.1.7 binary download\n**Labels:** atoma/in-progress\n**Linked Issue:** #186\n\n<!-- atoma:parent-issue=186 -->\n<!-- atoma:origin-agent=engineer -->\nCloses #186\n<!-- atoma:notify=yuma-seno -->\n## Summary\n\nChanges the `atoma_version` default from `\"source\"` (cargo build, 10-30 min) to `\"v0.1.7\"` (binary download) in `src/workflows/atoma-runner.wac.ts`.\n\n## Changes\n\n1. Added `ATOMA_DEFAULT_VERSION = \"v0.1.7\"` constant at the top of `atoma-runner.wac.ts`\n2. Updated `atoma_version` default from `\"source\"` to `ATOMA_DEFAULT_VERSION` in both `workflow_call` and `workflow_dispatch` inputs\n3. Updated `ATOMA_VERSION_DESC` to reflect the new default\n4. Regenerated `dist/.github/workflows/atoma-runner.yml` via `bun run synth`\n\n## What's preserved\n\n- The `source` build path is fully maintained — callers can still pass `atoma_version: source` to trigger cargo build\n- The `latest` binary download path is unchanged\n- No conditional logic in `installAtomaCliStep` was modified\n\n## Verification\n\n- `bun run synth:check` — passes (dist is in sync with source)\n- `bun run test` — 139 tests pass, 0 failures\n- `dist/.github/workflows/atoma-runner.yml` confirms `default: v0.1.7` for both trigger types",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-28T02:58:49Z",
+        "event_type": "pr_opened",
+        "id": "pr-188",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM\n\nCore change is correct: `ATOMA_DEFAULT_VERSION = \"v0.1.7\"` constant added, defaults updated in both `workflow_call` and `workflow_dispatch`, description revised, and `dist/.github/workflows/atoma-runner.yml` matches source. The `source` build path is preserved unchanged. All acceptance criteria met.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-28T03:02:55Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4793311963",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-28T03:03:02Z",
+        "event_type": "issue_comment",
+        "id": 5099438716,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/atoma-src b/atoma-src\nnew file mode 160000\nindex 0000000..9ee56fc\n--- /dev/null\n+++ b/atoma-src\n@@ -0,0 +1 @@\n+Subproject commit 9ee56fcf498163aaed1dc3f3ee6c093445a9dbb1\ndiff --git a/bun.lock b/bun.lock\nindex f375eb6..0758c59 100644\n--- a/bun.lock\n+++ b/bun.lock\n@@ -14,6 +14,8 @@\n         \"@types/shell-quote\": \"^1.7.5\",\n         \"shell-quote\": \"^1.10.0\",\n         \"typescript\": \"^5.6.3\",\n+        \"zod\": \"^3.25.76\",\n+        \"zod-to-json-schema\": \"^3.25.2\",\n       },\n     },\n   },\ndiff --git a/dist/.github/workflows/atoma-runner.yml b/dist/.github/workflows/atoma-runner.yml\nindex 0a27174..27078fc 100644\n--- a/dist/.github/workflows/atoma-runner.yml\n+++ b/dist/.github/workflows/atoma-runner.yml\n@@ -29,10 +29,10 @@ name: Atoma Runner\n         type: string\n         default: continue\n       atoma_version:\n-        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main\n+        description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.\n         required: false\n         type: string\n-        default: source\n+        default: v0.1.7\n   workflow_dispatch:\n     inputs:\n       agent:\n@@ -64,10 +64,10 @@ name: Atoma Runner\n           - recover\n         default: continue\n       atoma_version:\n-        description: Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main\n+        description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.\n         required: false\n         type: string\n-        default: source\n+        default: v0.1.7\n jobs:\n   run:\n     runs-on: ubuntu-latest\ndiff --git a/src/workflows/atoma-runner.wac.ts b/src/workflows/atoma-runner.wac.ts\nindex 18f8fb4..402c234 100644\n--- a/src/workflows/atoma-runner.wac.ts\n+++ b/src/workflows/atoma-runner.wac.ts\n@@ -45,7 +45,8 @@ const AGENT_INPUT_DESC = \"Agent name to invoke\";\n const NUMBER_INPUT_DESC = \"Issue or PR number\";\n const NOTIFY_INPUT_DESC = \"GitHub login to mention on completion\";\n const SESSION_MODE_INPUT_DESC = \"Session mode: continue restores history; recover archives history and rebuilds from GitHub context\";\n-const ATOMA_VERSION_DESC = \"Atoma CLI version tag to install, or `source` to build from a checkout of yuma-seno/atoma@main\";\n+const ATOMA_DEFAULT_VERSION = \"v0.1.7\";\n+const ATOMA_VERSION_DESC = \"Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.\";\n \n // Deployed-repo-relative paths into the `.github/atoma/` content tree (see\n // src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).\n@@ -693,7 +694,7 @@ export const atomaRunner = new Workflow(\"atoma-runner\", {\n         type: { description: \"Context type\", required: true, type: \"string\" },\n         notify: { description: NOTIFY_INPUT_DESC, required: false, type: \"string\", default: \"\" },\n         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: \"string\", default: \"continue\" },\n-        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: \"string\", default: \"source\" },\n+        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: \"string\", default: ATOMA_DEFAULT_VERSION },\n       },\n     },\n     workflow_dispatch: {\n@@ -703,7 +704,7 @@ export const atomaRunner = new Workflow(\"atoma-runner\", {\n         type: { description: \"Context type\", required: true, type: \"choice\", options: [\"issue\", \"pr\"] },\n         notify: { description: NOTIFY_INPUT_DESC, required: false, type: \"string\", default: \"\" },\n         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: \"choice\", options: [\"continue\", \"recover\"], default: \"continue\" },\n-        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: \"string\", default: \"source\" },\n+        atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: \"string\", default: ATOMA_DEFAULT_VERSION },\n       },\n     },\n   } as unknown as GWT.Workflow[\"on\"],\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-07-28T03:03:08Z",
+        "event_type": "pr_diff",
+        "id": "pr-188-diff",
+        "layer": "github-context",
+        "sha": "b554509d",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #188 has been reviewed and merged. The change is correct — `atoma_version` default is now `\"v0.1.7\"` (binary download) instead of `\"source\"` (cargo build), with the constant `ATOMA_DEFAULT_VERSION` making future version bumps trivial.\n\n\n\n---\n_Tokens: 177729 total (171584 prompt + 6145 completion)_\n_Estimated cost: $0.0294_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/30324632632)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-28T03:03:08Z",
+        "event_type": "pr_comment",
+        "id": 5099439362,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_c9ec3463167146dfb5ac8302",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 186}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\":true}",
+      "tool_call_id": "call_c9ec3463167146dfb5ac8302"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #188 merged. Sub-issue #186 closed.",
+      "atoma_metadata": {
+        "github_comment_id": 5099450983,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 1,
-      "snapshot_hash": "2b668330e3a9d44c939f8269841b05c75e3a246f5ee68c50f170dec8a4f2a8d0",
-      "version": 1
+      "event_count": 6,
+      "snapshot_hash": "bcc7229a2613086c92ac5506fc119f5579b1df2400a891768e5c6187079e617d",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "186"
     }
   }
 }
