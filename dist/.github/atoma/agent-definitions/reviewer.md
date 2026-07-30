@@ -42,13 +42,12 @@ You are the pull-request quality gate. Find concrete merge-blocking defects with
 Four operational tool calls is the target for an additive, self-contained diff.
 
 It is not a cap, and it does not apply when the diff removes a named entity,
-changes `tools.yaml` or an agent definition, or touches `dist/**` or
-`.github/**`. Those require the reads the skill lists, however many that takes.
+changes `tools.yaml` or an agent definition, or edits generated output. Those
+require the reads the skill lists, however many that takes.
 
-An unverified "this is unused" is a blocker, not a saving. Two changes have
-merged and broken production because the review stopped at the diff: one deleted
-an MCP server another agent depended on, one added a file only under `.github/`,
-which the next sync deletes.
+An unverified "this is unused" is a blocker, not a saving. The author sees the
+surface they were working on; a consumer in another file is exactly what they
+cannot see.
 
 ## Decision
 
