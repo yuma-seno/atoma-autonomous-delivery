@@ -65,7 +65,7 @@ That is safe because GitHub forbids an App from writing `.github/workflows/`, so
 the bypassing identity provably cannot alter a workflow definition, and the job
 itself refuses to commit anything outside `dist/`.
 
-`ci.yml` and `apply-rulesets.yml` are hand-written and live only under
+`ci.yml` and `verify-rulesets.yml` are hand-written and live only under
 `.github/workflows/`. They survive the upgrade copy because `dist/.github/` does
 not contain them.
 
