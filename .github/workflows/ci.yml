@@ -38,6 +38,16 @@ jobs:
         run: bun run typecheck
       - name: Test
         run: bun run test
+      # Pull requests must arrive with dist/ already regenerated, so a change to
+      # src/ cannot merge while the deliverable adopters copy still shows the old
+      # behaviour.
+      #
+      # Deliberately NOT run on `push`: on main, sync-dist is what regenerates
+      # dist/, and it declares `needs: [check]`. Failing this step there would
+      # block the only job able to fix the thing it is complaining about.
+      - name: Verify dist/ matches src/
+        if: github.event_name == 'pull_request'
+        run: bun run synth:check
 
   sync-dist:
     runs-on: ubuntu-latest
