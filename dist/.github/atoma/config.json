@@ -1,7 +1,6 @@
 {
   "merge_policy": "auto",
   "environment": {
-    "description": "The runner environment is assumed to be already fully set up (dependencies installed, test framework available, etc.) before an agent starts -- agents should never spend iterations installing or configuring tooling themselves. Add any one-time setup your project needs to setup_commands below (empty by default; this template is intentionally language/framework-agnostic).",
     "setup_commands": []
   },
   "agents": {

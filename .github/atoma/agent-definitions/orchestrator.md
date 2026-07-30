@@ -17,15 +17,18 @@ mcp_servers:
 extra_body:
   # OpenRouter provider routing. Unrelated to the top-level `provider:` above,
   # which selects Atoma's client; this steers which upstream endpoint OpenRouter
-  # dispatches to. Deliberately a PREFERENCE, not a restriction: `order` puts the
-  # healthy endpoints first, and OpenRouter stays free to route elsewhere.
+  # dispatches to. Keep it a PREFERENCE, not a restriction: `order` puts the
+  # endpoints with the best uptime first while OpenRouter stays free to route
+  # elsewhere. Check current endpoints and their uptime with
+  # `curl -s https://openrouter.ai/api/v1/models/<author>/<slug>/endpoints`, and
+  # revisit `order` whenever `model` changes, since the names are per-model.
   #
-  # `allow_fallbacks: false` and `require_parameters: true` were tried here and
-  # removed. With them set, every run failed on the first inference call with
-  # "Server tool request failed" (HTTP 404, provider_name: null). The server
-  # tools below are executed by OpenRouter above provider selection, and no
-  # endpoint advertises them in `supported_parameters`, so hard-pinning the route
-  # appears to leave that layer with nowhere to dispatch. Keep this advisory.
+  # Do not add `allow_fallbacks: false` or `require_parameters: true` alongside
+  # the server tools below. Server tools are executed by OpenRouter above
+  # provider selection, and no endpoint advertises them in
+  # `supported_parameters`, so hard-pinning the route leaves that layer with
+  # nowhere to dispatch: every request then fails on the first inference call
+  # with `Server tool request failed` (HTTP 404, `provider_name: null`).
   provider:
     order:
       - Xiaomi

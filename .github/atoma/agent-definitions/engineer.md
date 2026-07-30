@@ -15,9 +15,10 @@ mcp_servers:
   - github
 extra_body:
   # OpenRouter provider routing; see orchestrator.md for the full rationale.
-  # Advisory only: `order` prefers the healthy endpoints. Do not add
-  # `allow_fallbacks: false` or `require_parameters: true` — both broke the
-  # server tools below with a 404 on the first inference call.
+  # Keep it advisory: `order` prefers the endpoints with the best uptime. Do not
+  # add `allow_fallbacks: false` or `require_parameters: true` alongside the
+  # server tools below — hard-pinning the route makes every request fail with
+  # `Server tool request failed` (HTTP 404) on the first inference call.
   provider:
     order:
       - Xiaomi
