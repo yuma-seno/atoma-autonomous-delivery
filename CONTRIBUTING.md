@@ -29,6 +29,28 @@ tests of the pipeline, operational scripts, and any rule phrased in terms of
 
 When changing template behavior, treat `src/` as canonical.
 
+## Branch protection
+
+What may reach `main` is declared in `.github/rulesets/main.json`: no direct
+pushes, no force-pushes, no branch deletion, and a pull request that cannot merge
+until the `check` job passes. The only bypass is the GitHub Actions app, which
+`publish-dist` runs as to commit `dist/`.
+
+CI verifies the live configuration against that file on every run. It cannot
+apply it: creating or updating a ruleset goes through the repository
+administration API, and `administration` is not a permission a workflow can grant
+`GITHUB_TOKEN`. Applying therefore needs someone with admin on the repository,
+once, from their own machine:
+
+```bash
+gh api --method POST repos/yuma-seno/atoma-autonomous-delivery/rulesets \
+  --input .github/rulesets/main.json
+```
+
+To change the rules afterwards, edit the JSON in a pull request, then re-apply
+with `--method PUT repos/<repo>/rulesets/<id>`. `verify-rulesets` fails until the
+live configuration matches, so the file cannot quietly become fiction.
+
 ## Setup (Bun)
 
 ```bash

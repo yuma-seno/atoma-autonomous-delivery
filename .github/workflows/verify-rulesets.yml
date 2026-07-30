@@ -1,0 +1,92 @@
+name: Verify rulesets
+
+# Branch protection is declared in `.github/rulesets/*.json` and this workflow
+# holds the repository to it.
+#
+# It verifies rather than applies, because it cannot apply: creating or updating a
+# ruleset goes through the repository administration API, and `administration` is
+# not one of the permissions a workflow can grant GITHUB_TOKEN -- it is an App
+# permission, not a workflow one. Writing it here produced an invalid workflow that
+# never started a job. The alternative would be storing an admin PAT, which is
+# precisely the kind of credential this repository just finished removing.
+#
+# Reading rulesets needs no admin, so the split is: a human applies the file once
+# with their own credentials (see CONTRIBUTING.md, one `gh api` call, no settings
+# screen), and CI fails from then on if the live configuration drifts from it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Live rulesets match the committed declaration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+
+          for file in .github/rulesets/*.json; do
+            name=$(jq -r '.name' "$file")
+            id=$(gh api "repos/$REPO/rulesets" --jq --arg n "$name" '.[] | select(.name == $n) | .id' || true)
+
+            if [ -z "$id" ]; then
+              echo "::error file=$file::No ruleset named '$name' exists on this repository."
+              echo "  Apply it once, with an account that has admin on the repo:"
+              echo "    gh api --method POST repos/$REPO/rulesets --input $file"
+              failed=1
+              continue
+            fi
+
+            live=$(gh api "repos/$REPO/rulesets/$id")
+            echo "Checking ruleset '$name' (id $id)"
+
+            # Properties are checked individually rather than by deep-diffing the
+            # documents: GitHub echoes back defaults for parameters we never set,
+            # so an equality check would report drift that does not exist.
+            check() { # description, expected, actual
+              if [ "$2" = "$3" ]; then
+                echo "  ok    $1: $3"
+              else
+                echo "::error file=$file::$1 is '$3', declared as '$2'"
+                failed=1
+              fi
+            }
+
+            check "enforcement" \
+              "$(jq -r '.enforcement' "$file")" "$(jq -r '.enforcement' <<<"$live")"
+            check "target" \
+              "$(jq -r '.target' "$file")" "$(jq -r '.target' <<<"$live")"
+            check "included refs" \
+              "$(jq -rc '.conditions.ref_name.include | sort' "$file")" \
+              "$(jq -rc '.conditions.ref_name.include | sort' <<<"$live")"
+            check "rule types" \
+              "$(jq -rc '[.rules[].type] | sort' "$file")" \
+              "$(jq -rc '[.rules[].type] | sort' <<<"$live")"
+            check "bypass actors" \
+              "$(jq -rc '[.bypass_actors[] | {actor_id, actor_type}] | sort_by(.actor_id)' "$file")" \
+              "$(jq -rc '[.bypass_actors[]? | {actor_id, actor_type}] | sort_by(.actor_id)' <<<"$live")"
+            check "required status checks" \
+              "$(jq -rc '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort' "$file")" \
+              "$(jq -rc '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort' <<<"$live")"
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo
+            echo "The repository's live protection does not match .github/rulesets/."
+            exit 1
+          fi
+          echo
+          echo "Live protection matches the committed declaration."

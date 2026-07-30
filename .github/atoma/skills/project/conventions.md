@@ -48,13 +48,17 @@ a change there is yours to make and review, not something to keep out.
 
 ## main is protected; everything lands by pull request
 
-`.github/rulesets/main.json` is the source of truth for what may reach main, and
-`apply-rulesets.yml` reconciles the repository against it. Direct pushes to main
-are refused, and a pull request cannot merge until the `check` job passes.
+`.github/rulesets/main.json` is the source of truth for what may reach main:
+direct pushes are refused, and a pull request cannot merge until the `check` job
+passes. `verify-rulesets.yml` fails if the repository's live configuration drifts
+from that file.
 
-Changing that rule is itself a pull request against the JSON — not a visit to a
-settings screen. `github__check_merge_readiness` reports against whatever the
-ruleset currently requires, so it follows the file automatically.
+Changing the rule is a pull request against the JSON, followed by one `gh api`
+call from an account with admin (see CONTRIBUTING.md). CI cannot make that call —
+`administration` is not a permission a workflow can hold.
+
+`github__check_merge_readiness` reports against whatever the ruleset currently
+requires, so it follows the file rather than holding a second opinion.
 
 One identity bypasses it: the GitHub Actions app, which `publish-dist` runs as.
 That is safe because GitHub forbids an App from writing `.github/workflows/`, so
