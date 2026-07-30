@@ -66,7 +66,7 @@ Then open a pull request with the result. That lag is the point — a change to
 reached the running system exactly that way.
 
 The upgrade replaces everything under `.github/` except the paths in
-`scripts/adopt-self.sh`'s `KEEP` array: `workflows/ci.yml` and this directory.
+`maintenance/adopt-self.sh`'s `KEEP` array: `workflows/ci.yml` and this directory.
 Anything else hand-added there is lost at the next upgrade unless you add it to
 `KEEP`.
 

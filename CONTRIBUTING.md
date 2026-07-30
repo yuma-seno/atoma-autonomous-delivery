@@ -2,11 +2,33 @@
 
 ## Source-of-truth map
 
-- `src/`: hand-authored source code and workflow definitions.
-- `dist/.github/`: generated deliverable artifacts for adopters.
-- top-level `.github/`: this repository's own operational automation (dogfooding and CI runtime files).
+Everything here divides into two kinds: **the deliverable**, which adopters
+receive, and **this repository's own tooling**, which they must never see.
 
-When changing template behavior, treat `src/` as canonical and regenerate outputs.
+The deliverable:
+
+- `src/`: hand-authored source for the template — agent definitions, skills, MCP
+  servers, workflow definitions. Adopter-agnostic by rule: no reference to this
+  repository's build pipeline, no incident history, no PR numbers.
+- `dist/.github/`: generated from `src/`. This is what adopters copy. Produced by
+  the `publish-dist` CI job, never committed by a pull request.
+
+This repository's own:
+
+- top-level `.github/`: this repository's adoption of the deliverable, plus
+  `workflows/ci.yml`. Upgraded deliberately with `bun run adopt:self`, not on
+  merge. Project-specific agent rules live in `.github/atoma/skills/project/`.
+- `tests/`: tests of the build-and-deploy machinery. Tests of *shipped behaviour*
+  live beside the shipped code instead.
+- `maintenance/`: scripts for operating this repository.
+- `docs/`: adopter-facing documentation.
+
+Beware two same-named directories that mean opposite things: `src/scripts/` is
+deliverable code, bundled into `dist/.github/scripts/`; top-level `maintenance/`
+is this repository's own. Nothing this repository needs for itself belongs
+under `src/`.
+
+When changing template behavior, treat `src/` as canonical.
 
 ## Setup (Bun)
 
