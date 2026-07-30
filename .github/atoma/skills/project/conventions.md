@@ -46,6 +46,25 @@ under a diff orders of magnitude larger.
 `.github/**` is a different matter — see below. It is not regenerated on merge, so
 a change there is yours to make and review, not something to keep out.
 
+## main is protected; everything lands by pull request
+
+`.github/rulesets/main.json` is the source of truth for what may reach main, and
+`apply-rulesets.yml` reconciles the repository against it. Direct pushes to main
+are refused, and a pull request cannot merge until the `check` job passes.
+
+Changing that rule is itself a pull request against the JSON — not a visit to a
+settings screen. `github__check_merge_readiness` reports against whatever the
+ruleset currently requires, so it follows the file automatically.
+
+One identity bypasses it: the GitHub Actions app, which `publish-dist` runs as.
+That is safe because GitHub forbids an App from writing `.github/workflows/`, so
+the bypassing identity provably cannot alter a workflow definition, and the job
+itself refuses to commit anything outside `dist/`.
+
+`ci.yml` and `apply-rulesets.yml` are hand-written and live only under
+`.github/workflows/`. They survive the upgrade copy because `dist/.github/` does
+not contain them.
+
 ## Adding a static file to the deliverable
 
 A new non-code file under `src/atoma/` must also be added to `build-dist.ts`'s
