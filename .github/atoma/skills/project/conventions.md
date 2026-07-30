@@ -58,17 +58,20 @@ Nothing regenerates `.github/` automatically. It is this repository's deliberate
 adoption of the deliverable, so it lags `src/` until someone upgrades it:
 
 ```bash
-bun run adopt:self
+bun run synth && cp -r dist/.github/. .github/
 ```
 
 Then open a pull request with the result. That lag is the point — a change to
 `src/` must not reconfigure the live agents the moment it merges. Two breakages
 reached the running system exactly that way.
 
-The upgrade replaces everything under `.github/` except the paths in
-`maintenance/adopt-self.sh`'s `KEEP` array: `workflows/ci.yml` and this directory.
-Anything else hand-added there is lost at the next upgrade unless you add it to
-`KEEP`.
+`cp -r <source>/. <dest>/` writes what the deliverable contains and touches
+nothing else, so `workflows/ci.yml` and this directory survive with no preserve
+list needed: neither exists in `dist/.github/`.
+
+What it will not do is remove a file the template has *deleted*. That leaves no
+diff, so it is invisible in review — when the upgrade follows a change that
+removed something, look for orphans under `.github/atoma/` yourself.
 
 A human has to run it. GitHub refuses to let an App write files under
 `.github/workflows/`, so no automation can perform this step. That same

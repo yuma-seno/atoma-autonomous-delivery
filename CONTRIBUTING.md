@@ -16,17 +16,16 @@ The deliverable:
 This repository's own:
 
 - top-level `.github/`: this repository's adoption of the deliverable, plus
-  `workflows/ci.yml`. Upgraded deliberately with `bun run adopt:self`, not on
-  merge. Project-specific agent rules live in `.github/atoma/skills/project/`.
+  `workflows/ci.yml`. Upgraded deliberately, not on merge:
+  `bun run synth && cp -r dist/.github/. .github/`, then open a pull request.
+  Project-specific agent rules live in `.github/atoma/skills/project/`.
 - `tests/`: tests of the build-and-deploy machinery. Tests of *shipped behaviour*
   live beside the shipped code instead.
-- `maintenance/`: scripts for operating this repository.
 - `docs/`: adopter-facing documentation.
 
-Beware two same-named directories that mean opposite things: `src/scripts/` is
-deliverable code, bundled into `dist/.github/scripts/`; top-level `maintenance/`
-is this repository's own. Nothing this repository needs for itself belongs
-under `src/`.
+Nothing this repository needs for itself belongs under `src/`. That includes
+tests of the pipeline, operational scripts, and any rule phrased in terms of
+`dist/`, `synth`, or this repository's CI — adopters have none of those.
 
 When changing template behavior, treat `src/` as canonical.
 

@@ -51,7 +51,7 @@ jobs:
       #
       # Only `dist/` is checked. `.github/` is no longer generated on every
       # push -- it is this repository's deliberate adoption of the deliverable,
-      # upgraded by `bun run adopt:self` and reviewed in a pull request like any
+      # upgraded by hand and reviewed in a pull request like any
       # other change.
       - name: Reject generated output in the diff
         if: github.event_name == 'pull_request'
