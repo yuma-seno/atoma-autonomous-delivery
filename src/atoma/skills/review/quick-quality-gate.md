@@ -20,7 +20,8 @@ Do not broaden into unrelated architecture review. A finding must describe a con
 
 ## Mandatory checks
 
-These are not optional reads. Each one has already let a breaking change merge.
+These are not optional reads. Each covers a failure that a diff-only review
+cannot see, because the evidence lives in a file the diff does not contain.
 
 ### Anything removed
 
@@ -35,12 +36,6 @@ yourself.
   on; a consumer in another file is exactly what they cannot see.
 - If a search is not possible, the removal is unverified. Say so and return it.
 
-A past merge deleted the `filesystem` server from `tools.yaml` as "unused" while
-`engineer.md` still declared it in `mcp_servers`. Atoma aborts the run before
-starting any MCP server when that name cannot be resolved, so the next engineer
-dispatch failed outright. One read of the three agent definitions would have
-caught it.
-
 ### `tools.yaml` or an agent definition changed
 
 Read **all** of `.github/atoma/agent-definitions/*.md`, not just the one in the
@@ -53,19 +48,16 @@ installed by the runner. Confirm the package appears in `mcp-packages.json`.
 
 ### Generated output touched
 
-`dist/**` and `.github/atoma/**` are build output, produced from `src/**` by
-`bun run synth`. Both are wiped and regenerated; the deploy job literally runs
-`rm -rf .github` before repopulating from `dist/`.
+Some files are produced by a build rather than written by hand.
 
-- **A pull request must not contain them at all.** Generated output is the deploy
-  job's to produce, after the merge. A diff carrying it is a defect regardless of
-  whether the content is correct: parallel branches collide in files no human
-  wrote, and a regenerated bundle buries the `src/` change under a
-  five-figure diff.
-- An edit to them *instead of* to `src/**` is the worse version of the same
-  defect — it survives until the next deploy and then silently disappears.
-- A new static file under `src/atoma/` must also be added to `build-dist.ts`'s
-  verbatim-copy list, or it never reaches `dist/` at all.
+- An edit made directly to one is a defect even when its content is correct. The
+  next build overwrites it, so the change it was meant to make is silently lost.
+  Require the change in the source the generator reads.
+- When the project regenerates and commits that output itself, a diff carrying it
+  is also a defect: concurrent branches collide in files no human wrote, and a
+  regenerated bundle buries the real change under a far larger diff.
+- Establish which convention the project follows before ruling, rather than
+  assuming. The build configuration states it.
 
 ### Workflow or runner changed
 

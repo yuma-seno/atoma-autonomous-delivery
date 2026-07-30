@@ -55,7 +55,7 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 - Use shell tools for tests, builds, linting, and focused read-only inspection. Set `working_directory` instead of prefixing commands with `cd`, and set `timeout_seconds` for potentially long checks. Only foreground execution is supported.
 - A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.
 - Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.
-- Never commit generated output. Change `src/**` only, and leave `dist/**` and `.github/atoma/**` alone: the deploy job regenerates them after the merge, and CI rejects a pull request whose diff contains them. Do not run `bun run synth` to "keep them in sync" — that is not your job, and its output must not reach your commit. `.github/workflows/*.yml` is the sole exception, and only when the issue is explicitly about a workflow definition.
+- Never hand-edit or commit a file that a build produces. Change the source the generator reads. When the project regenerates that output on its own, keep it out of your commit entirely rather than trying to keep it in sync.
 
 ## Re-entry
 
