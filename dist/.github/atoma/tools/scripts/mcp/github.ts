@@ -18115,47 +18115,71 @@ function decidePostMergeHandoff(signals) {
 
 // src/domain/merge-readiness.ts
 var PASSING = new Set(["success", "neutral", "skipped"]);
+function explainRequiredChecks(signals) {
+  const blockers = [];
+  const byName = new Map(signals.checks.map((c) => [c.name, c]));
+  for (const context of signals.requiredChecks) {
+    const run2 = byName.get(context);
+    if (!run2) {
+      blockers.push({
+        kind: "checks-missing",
+        detail: `required check "${context}" has not run on the head commit`
+      });
+    } else if (run2.status !== "completed") {
+      blockers.push({
+        kind: "checks-pending",
+        detail: `required check "${context}" is ${run2.status}`
+      });
+    } else if (!PASSING.has((run2.conclusion ?? "").toLowerCase())) {
+      const where = run2.detailsUrl ? ` (${run2.detailsUrl})` : "";
+      blockers.push({
+        kind: "checks-failing",
+        detail: `required check "${context}" concluded ${run2.conclusion}${where}`
+      });
+    }
+  }
+  return blockers;
+}
 function decideMergeReadiness(signals) {
   const blockers = [];
   if (signals.state?.toUpperCase() !== "OPEN") {
     blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
   }
-  if (signals.isDraft) {
-    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
-  }
-  const mergeable = signals.mergeable?.toUpperCase();
-  if (mergeable === "CONFLICTING") {
-    blockers.push({
-      kind: "conflicting",
-      detail: "branch conflicts with the base; call github__sync_branch and resolve before merging"
-    });
-  } else if (mergeable !== "MERGEABLE") {
-    blockers.push({
-      kind: "mergeability-unknown",
-      detail: `GitHub reports mergeable=${signals.mergeable ?? "null"}; retry shortly`
-    });
-  }
-  const completed = signals.checks.filter((c) => c.status === "completed");
-  const incomplete = signals.checks.filter((c) => c.status !== "completed");
-  const failing = completed.filter((c) => !PASSING.has((c.conclusion ?? "").toLowerCase()));
-  if (signals.checks.length === 0) {
-    blockers.push({
-      kind: "no-checks",
-      detail: "no check run exists for the head commit; CI must run before this can merge"
-    });
-  } else if (failing.length > 0) {
-    for (const check2 of failing) {
-      const where = check2.detailsUrl ? ` (${check2.detailsUrl})` : "";
+  switch (signals.mergeStateStatus?.toUpperCase()) {
+    case "CLEAN":
+    case "UNSTABLE":
+      break;
+    case "DRAFT":
+      blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      break;
+    case "DIRTY":
       blockers.push({
-        kind: "checks-failing",
-        detail: `check "${check2.name}" concluded ${check2.conclusion}${where}`
+        kind: "conflicting",
+        detail: "branch conflicts with the base; call github__sync_branch and resolve before merging"
       });
+      break;
+    case "BEHIND":
+      blockers.push({
+        kind: "behind",
+        detail: "branch is behind the base and the ruleset requires it current; call github__sync_branch"
+      });
+      break;
+    case "BLOCKED": {
+      const explained = explainRequiredChecks(signals);
+      if (explained.length > 0)
+        blockers.push(...explained);
+      else
+        blockers.push({
+          kind: "blocked",
+          detail: "branch protection blocks this merge for a reason outside the required checks " + "(for example a required review or an unresolved conversation); inspect the pull request"
+        });
+      break;
     }
-  } else if (incomplete.length > 0) {
-    blockers.push({
-      kind: "checks-pending",
-      detail: `${incomplete.length} check(s) still running: ${incomplete.map((c) => c.name).join(", ")}`
-    });
+    default:
+      blockers.push({
+        kind: "mergeability-unknown",
+        detail: `GitHub reports mergeStateStatus=${signals.mergeStateStatus ?? "null"}; retry shortly`
+      });
   }
   if (signals.mergePolicy !== "auto") {
     blockers.push({
@@ -18163,7 +18187,7 @@ function decideMergeReadiness(signals) {
       detail: `merge_policy is '${signals.mergePolicy}', not 'auto'; a human performs the merge`
     });
   }
-  const needsCiDispatch = blockers.length === 1 && blockers[0]?.kind === "no-checks";
+  const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
   return { ready: blockers.length === 0, blockers, needsCiDispatch };
 }
 function formatBlockers(blockers) {
@@ -18582,14 +18606,19 @@ function dispatchPostMergeAgent(subIssueNum, agent) {
   return true;
 }
 function gatherMergeSignals(num) {
-  const pr = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "mergeable,mergeStateStatus,isDraft,state,headRefOid,headRefName");
+  const pr = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName");
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? ghJsonOrThrow("api", `repos/${REPO}/commits/${sha}/check-runs`) : null;
+  const baseRef = pr?.baseRefName ?? "";
+  let requiredChecks = [];
+  if (baseRef) {
+    const rules = ghJsonOrThrow("api", `repos/${REPO}/rules/branches/${baseRef}`);
+    requiredChecks = (rules ?? []).filter((r) => r.type === "required_status_checks").flatMap((r) => r.parameters?.required_status_checks ?? []).map((c) => c.context);
+  }
   return {
     signals: {
-      mergeable: pr?.mergeable ?? "UNKNOWN",
-      ...pr?.mergeStateStatus ? { mergeStateStatus: pr.mergeStateStatus } : {},
-      isDraft: pr?.isDraft ?? false,
+      mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
+      ...pr?.mergeable ? { mergeable: pr.mergeable } : {},
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((c) => ({
         name: c.name,
@@ -18597,6 +18626,7 @@ function gatherMergeSignals(num) {
         conclusion: c.conclusion,
         ...c.details_url ? { detailsUrl: c.details_url } : {}
       })),
+      requiredChecks,
       mergePolicy: getMergePolicy()
     },
     headRefName: pr?.headRefName ?? ""
@@ -18621,6 +18651,8 @@ function checkMergeReadiness(a) {
     number: num,
     ready: readiness.ready,
     blockers: readiness.blockers,
+    merge_state_status: signals.mergeStateStatus,
+    required_checks: signals.requiredChecks,
     checks: signals.checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
     ci_dispatched: dispatched,
     summary: readiness.ready ? "Ready to merge." : `Not mergeable:
