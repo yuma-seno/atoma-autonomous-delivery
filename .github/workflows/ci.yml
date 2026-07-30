@@ -49,19 +49,17 @@ jobs:
       # hundreds of kilobytes -- PR #189 was +22900/-23 -- which buries the `src/`
       # change a reviewer actually has to read.
       #
-      # `.github/workflows/**` is deliberately exempt. The deploy job
-      # authenticates as github-actions[bot], and GitHub refuses to let an App
-      # write workflow files, so a human-authored pull request is their only
-      # possible route in.
+      # Only `dist/` is checked. `.github/` is no longer generated on every
+      # push -- it is this repository's deliberate adoption of the deliverable,
+      # upgraded by `bun run adopt:self` and reviewed in a pull request like any
+      # other change.
       - name: Reject generated output in the diff
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          GENERATED=$(gh pr diff "$PR" --name-only \
-            | grep -E '^(dist/|\.github/atoma/)' \
-            | grep -vE '^\.github/atoma/skills/project/' || true)
+          GENERATED=$(gh pr diff "$PR" --name-only | grep -E '^dist/' || true)
           if [ -n "$GENERATED" ]; then
             echo "::error::This pull request edits generated output. Drop these files and let the deploy job produce them:"
             echo "$GENERATED" | sed 's/^/  /'
@@ -75,28 +73,23 @@ jobs:
         if: github.event_name == 'pull_request'
         run: bun run synth
 
-  sync-dist:
+  publish-dist:
     runs-on: ubuntu-latest
     needs: [check]
-    # Deploys by committing and pushing to main, so it must stay on the `push`
-    # trigger only. On a `pull_request` run it would push a PR branch's generated
-    # output onto main; on a `workflow_dispatch` run (which the merge gate fires
-    # against an unmerged agent branch) it would do the same.
+    # Pushes to main, so it must stay on the `push` trigger. On a
+    # `pull_request` or `workflow_dispatch` run it would put a branch's
+    # generated output onto main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
+      # Deliberately the default GITHUB_TOKEN, not a PAT. GitHub refuses to let
+      # an App create or update files under the real `.github/workflows/`, and
+      # that refusal is load-bearing here: it is what guarantees this job -- the
+      # one identity allowed to bypass the branch ruleset -- cannot alter a
+      # workflow definition. `dist/.github/workflows/` is unaffected by the
+      # restriction, so publishing the deliverable still works.
       - uses: actions/checkout@v4
-        with:
-          # Empirically confirmed (2026-07-22): the default GITHUB_TOKEN's
-          # push is rejected once it touches .github/workflows/**, with
-          # "refusing to allow a GitHub App to create or update workflow
-          # ... without `workflows` permission" -- a hard GitHub restriction
-          # with no `permissions:` YAML equivalent to grant it. This job
-          # needs to push there (see "Deploy dist/.github into .github"
-          # below), so it checks out with a PAT that has the `repo` +
-          # `workflow` scopes, stored as the WORKFLOW_PAT secret.
-          token: ${{ secrets.WORKFLOW_PAT }}
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -105,49 +98,29 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Regenerate dist/
         run: bun run synth
-      - name: Deploy dist/.github into .github (dogfooding)
-        # This repo develops itself using the very Atoma workflows it
-        # generates, so everything under .github/ is disposable and
-        # regenerated from dist/.github/ -- except the paths in KEEP, which
-        # this repository owns rather than generates and which are stashed
-        # across the wipe-and-repopulate.
-        #
-        # Anything hand-added under .github/ and NOT listed here is deleted on
-        # the next run. Add the path to KEEP, or put it in src/ and let it be
-        # generated. There is no third option.
+      - name: Refuse to publish anything but dist/
+        # This job holds the ruleset bypass, so bound what it can possibly commit.
+        # A synth that reached outside dist/ must stop here rather than ride the
+        # bypass onto main.
         shell: bash
         run: |
-          KEEP=(workflows/ci.yml atoma/skills/project)
-          STASH=$(mktemp -d)
-          for path in "${KEEP[@]}"; do
-            if [ -e ".github/$path" ]; then
-              mkdir -p "$STASH/$(dirname "$path")"
-              cp -r ".github/$path" "$STASH/$path"
-              echo "preserving .github/$path"
-            fi
-          done
-          rm -rf .github
-          mkdir -p .github/workflows
-          cp -r dist/.github/. .github/
-          for path in "${KEEP[@]}"; do
-            if [ -e "$STASH/$path" ]; then
-              mkdir -p ".github/$(dirname "$path")"
-              cp -r "$STASH/$path" ".github/$path"
-            fi
-          done
-      - name: Commit and push if the generated output changed
+          STRAY=$(git status --porcelain -- . ":(exclude)dist" | head -20)
+          if [ -n "$STRAY" ]; then
+            echo "::error::synth modified paths outside dist/; refusing to publish:"
+            echo "$STRAY"
+            exit 1
+          fi
+      - name: Commit and push dist/ if it changed
         shell: bash
         run: |
-          git add dist .github
-          # `git diff` (unstaged) silently ignores untracked files, which is
-          # exactly what every file under dist/.github/atoma/** and the
-          # deployed .github/workflows/*.yml was on the very first sync --
-          # check the *staged* diff instead, which correctly includes them.
+          git add dist
+          # `git diff` (unstaged) silently ignores untracked files, which every
+          # newly generated file under dist/ is -- check the *staged* diff.
           if git diff --cached --quiet; then
-            echo "Nothing to sync -- dist/ and .github/ already match src/**."
+            echo "Nothing to publish -- dist/ already matches src/**."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(auto): sync generated dist/ and .github/ [skip ci]"
+          git commit -m "chore(auto): publish generated dist/ [skip ci]"
           git push

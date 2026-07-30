@@ -30,11 +30,11 @@ this file instead.
 
 ## Never commit generated output
 
-Change `src/**` only. Leave `dist/**` and `.github/atoma/**` out of your commit
-entirely — the deploy job regenerates them after the merge, and CI rejects a pull
-request whose diff contains them.
+Change `src/**` only. Keep `dist/**` out of your commit entirely — the
+`publish-dist` job regenerates and commits it after the merge, and CI rejects a
+pull request whose diff contains it.
 
-Do not run `bun run synth` to "keep them in sync". That is not your job, and its
+Do not run `bun run synth` to "keep it in sync". That is not your job, and its
 output must not reach your commit. Run it only to inspect what adopters would
 receive, then discard the result.
 
@@ -43,18 +43,34 @@ parallel, so two branches regenerating the same bundles collide in files no huma
 wrote; and a regenerated bundle buries the `src/` change a reviewer has to read
 under a diff orders of magnitude larger.
 
-`.github/workflows/*.yml` is the sole exception. The deploy job authenticates as
-an App, and GitHub refuses to let an App write workflow files, so a
-human-authored pull request is their only route in.
+`.github/**` is a different matter — see below. It is not regenerated on merge, so
+a change there is yours to make and review, not something to keep out.
 
 ## Adding a static file to the deliverable
 
 A new non-code file under `src/atoma/` must also be added to `build-dist.ts`'s
-verbatim-copy list, or it never reaches `dist/` and is silently deleted from
-`.github/` on the next deploy. `tests/contract/deployment-contract.test.ts`
-enforces this.
+verbatim-copy list, or it never reaches `dist/` at all.
+`tests/contract/deployment-contract.test.ts` enforces this.
 
-## Anything hand-added under `.github/`
+## `.github/` is an adoption, not a mirror
 
-It is deleted on the next deploy unless its path is listed in the deploy step's
-`KEEP` array. Either add it there, or put it in `src/` and let it be generated.
+Nothing regenerates `.github/` automatically. It is this repository's deliberate
+adoption of the deliverable, so it lags `src/` until someone upgrades it:
+
+```bash
+bun run adopt:self
+```
+
+Then open a pull request with the result. That lag is the point — a change to
+`src/` must not reconfigure the live agents the moment it merges. Two breakages
+reached the running system exactly that way.
+
+The upgrade replaces everything under `.github/` except the paths in
+`scripts/adopt-self.sh`'s `KEEP` array: `workflows/ci.yml` and this directory.
+Anything else hand-added there is lost at the next upgrade unless you add it to
+`KEEP`.
+
+A human has to run it. GitHub refuses to let an App write files under
+`.github/workflows/`, so no automation can perform this step. That same
+restriction is what lets `publish-dist` hold the branch-ruleset bypass safely: it
+provably cannot alter a workflow definition.
