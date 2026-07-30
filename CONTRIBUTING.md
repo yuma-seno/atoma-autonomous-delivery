@@ -36,20 +36,45 @@ pushes, no force-pushes, no branch deletion, and a pull request that cannot merg
 until the `check` job passes. The only bypass is the GitHub Actions app, which
 `publish-dist` runs as to commit `dist/`.
 
-CI verifies the live configuration against that file on every run. It cannot
-apply it: creating or updating a ruleset goes through the repository
+A ruleset is **not** read from the repository. It is a server-side setting, and
+`.github/rulesets/main.json` is this project's own convention: the reviewed
+declaration of what the setting should be. Something has to carry it across.
+
+CI cannot: creating or updating a ruleset goes through the repository
 administration API, and `administration` is not a permission a workflow can grant
-`GITHUB_TOKEN`. Applying therefore needs someone with admin on the repository,
-once, from their own machine:
+`GITHUB_TOKEN`. So applying is a deliberate act by someone with admin. Either way
+the file stays the source of truth and `verify-rulesets` fails on any drift, so it
+cannot quietly become fiction.
+
+**From the web UI** — easiest, and needs nothing installed:
+
+> Settings → Rules → Rulesets → *New ruleset* → **Import a ruleset**, then upload
+> `.github/rulesets/main.json`.
+
+If the import option is unavailable, create it through the form instead and set:
+target the default branch; restrict deletions; block force pushes; require a pull
+request with **0** required approvals; require the `check` status check; and add
+**GitHub Actions** as the only bypass actor.
+
+**From a shell** — if you already have an admin-scoped `gh` login:
 
 ```bash
 gh api --method POST repos/yuma-seno/atoma-autonomous-delivery/rulesets \
   --input .github/rulesets/main.json
 ```
 
-To change the rules afterwards, edit the JSON in a pull request, then re-apply
-with `--method PUT repos/<repo>/rulesets/<id>`. `verify-rulesets` fails until the
-live configuration matches, so the file cannot quietly become fiction.
+To change the rules later, edit the JSON in a pull request, then re-import (or
+`gh api --method PUT repos/<repo>/rulesets/<id> --input ...`). Do not edit the
+ruleset in the UI without updating the file: `verify-rulesets` will fail, which is
+the point.
+
+Two settings in that file exist for specific reasons. Required approvals is **0**
+because Atoma's agents share one bot identity and GitHub forbids self-approval —
+requiring an approval would deadlock the autonomous path. The sole bypass actor is
+the GitHub Actions app, which `publish-dist` runs as to commit `dist/`; it is safe
+to bypass precisely because GitHub refuses to let an App write
+`.github/workflows/`, so that identity provably cannot alter a workflow
+definition. Repository admins are deliberately **not** bypassed.
 
 ## Setup (Bun)
 
