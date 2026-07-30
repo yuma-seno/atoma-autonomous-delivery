@@ -25,7 +25,6 @@ Primary file: `.github/atoma/config.json`
 Supported top-level fields used by scripts/workflows:
 
 - `merge_policy`
-- `environment.description`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
@@ -112,6 +111,16 @@ Example:
 ### Add environment setup commands
 
 Add shell commands to `environment.setup_commands`. They run before `atoma run` through `bash -c`, in order, and stop on first failure.
+
+Agents are told to treat the runner as already provisioned and never to spend
+iterations installing or configuring tooling themselves, so anything they need at
+run time belongs here. The template ships it empty on purpose: it is
+language- and framework-agnostic, and only you know what your project needs.
+
+(This guidance previously lived in an `environment.description` field inside
+`config.json`. Nothing ever read it — JSON has no comments, so prose in a config
+file is invisible to both the code and the agents. It is documentation, so it
+lives in the documentation.)
 
 ### Rename labels
 

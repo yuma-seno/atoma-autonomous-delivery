@@ -12,7 +12,6 @@ export interface AutoTrigger {
 export interface AtomaConfig {
   merge_policy: "auto" | "manual" | string;
   environment?: {
-    description?: string;
     setup_commands?: string[];
   };
   agents?: Record<string, { max_iterations?: number }>;

@@ -59,7 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          GENERATED=$(gh pr diff "$PR" --name-only | grep -E '^(dist/|\.github/atoma/)' || true)
+          GENERATED=$(gh pr diff "$PR" --name-only \
+            | grep -E '^(dist/|\.github/atoma/)' \
+            | grep -vE '^\.github/atoma/skills/project/' || true)
           if [ -n "$GENERATED" ]; then
             echo "::error::This pull request edits generated output. Drop these files and let the deploy job produce them:"
             echo "$GENERATED" | sed 's/^/  /'
@@ -105,17 +107,34 @@ jobs:
         run: bun run synth
       - name: Deploy dist/.github into .github (dogfooding)
         # This repo develops itself using the very Atoma workflows it
-        # generates: everything under .github/ is disposable/regenerated
-        # from dist/.github/ except this file (ci.yml) itself, which is
-        # preserved across the wipe-and-repopulate.
+        # generates, so everything under .github/ is disposable and
+        # regenerated from dist/.github/ -- except the paths in KEEP, which
+        # this repository owns rather than generates and which are stashed
+        # across the wipe-and-repopulate.
+        #
+        # Anything hand-added under .github/ and NOT listed here is deleted on
+        # the next run. Add the path to KEEP, or put it in src/ and let it be
+        # generated. There is no third option.
         shell: bash
         run: |
-          mkdir -p /tmp/keep-ci
-          cp .github/workflows/ci.yml /tmp/keep-ci/ci.yml
+          KEEP=(workflows/ci.yml atoma/skills/project)
+          STASH=$(mktemp -d)
+          for path in "${KEEP[@]}"; do
+            if [ -e ".github/$path" ]; then
+              mkdir -p "$STASH/$(dirname "$path")"
+              cp -r ".github/$path" "$STASH/$path"
+              echo "preserving .github/$path"
+            fi
+          done
           rm -rf .github
           mkdir -p .github/workflows
           cp -r dist/.github/. .github/
-          cp /tmp/keep-ci/ci.yml .github/workflows/ci.yml
+          for path in "${KEEP[@]}"; do
+            if [ -e "$STASH/$path" ]; then
+              mkdir -p ".github/$(dirname "$path")"
+              cp -r "$STASH/$path" ".github/$path"
+            fi
+          done
       - name: Commit and push if the generated output changed
         shell: bash
         run: |
