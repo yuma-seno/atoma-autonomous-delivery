@@ -60,11 +60,14 @@ describe("deployment contract", () => {
   // develop THIS repository belongs outside it, which is why these contract
   // tests live under `tests/`.
   //
-  // Scoped to the pure-content areas. `tools/scripts/**` is exempt because the
-  // established convention there is a unit test co-located with the MCP server
-  // it exercises (`mcp.test.ts`, `shell_guard.test.ts`); those test shipped code
-  // rather than this repo's pipeline, and build-dist.ts never bundles them.
-  // Widen this if that convention should change.
+  // The line, decided deliberately: a test of SHIPPED BEHAVIOUR lives beside the
+  // shipped code, because it describes the product. A test of THIS REPO'S
+  // build-and-deploy machinery lives here under `tests/`, because it describes
+  // the factory. Neither ever ships — build-dist.ts excludes `*.test.ts`.
+  //
+  // So `tools/scripts/**` is exempt: `mcp.test.ts` and `shell_guard.test.ts`
+  // exercise MCP servers that adopters receive and run, and a template repo that
+  // shipped an untested MCP server would be handing adopters untested code.
   test("the deliverable's content directories hold no test files", () => {
     const strays = walk(ATOMA_SRC)
       .filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
