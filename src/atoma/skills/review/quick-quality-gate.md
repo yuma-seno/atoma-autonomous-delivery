@@ -53,16 +53,19 @@ installed by the runner. Confirm the package appears in `mcp-packages.json`.
 
 ### Generated output touched
 
-`dist/**` and `.github/**` are build output, produced from `src/**` by
-`bun run synth`. Both are wiped and regenerated; `sync-dist` literally runs
+`dist/**` and `.github/atoma/**` are build output, produced from `src/**` by
+`bun run synth`. Both are wiped and regenerated; the deploy job literally runs
 `rm -rf .github` before repopulating from `dist/`.
 
-- A diff that edits them **without** a corresponding `src/**` change is a defect.
-  The edit survives until the next sync and then disappears.
+- **A pull request must not contain them at all.** Generated output is the deploy
+  job's to produce, after the merge. A diff carrying it is a defect regardless of
+  whether the content is correct: parallel branches collide in files no human
+  wrote, and a regenerated bundle buries the `src/` change under a
+  five-figure diff.
+- An edit to them *instead of* to `src/**` is the worse version of the same
+  defect — it survives until the next deploy and then silently disappears.
 - A new static file under `src/atoma/` must also be added to `build-dist.ts`'s
   verbatim-copy list, or it never reaches `dist/` at all.
-- The reverse is also a defect: `src/**` changed while the matching generated
-  file was not regenerated.
 
 ### Workflow or runner changed
 

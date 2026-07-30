@@ -42,14 +42,21 @@ This fails when generated `dist/` content is out of sync.
 
 ## Generated-file discipline
 
-- Do not hand-edit `dist/.github/*`.
-- Edit `src/*`, run `bun run synth`, then commit regenerated output.
-- Keep source and generated changes in the same PR.
+- Do not hand-edit `dist/.github/*` or `.github/atoma/*`. Both are generated.
+- **Do not commit generated output in a pull request.** Change `src/*` only; the
+  deploy job regenerates `dist/` and redeploys `.github/` after the merge. CI
+  rejects a pull request whose diff touches `dist/` or `.github/atoma/`.
+- Run `bun run synth` locally whenever you want to inspect what adopters will
+  receive, then discard the result. CI runs it on every pull request to prove the
+  deliverable still builds.
+- `.github/workflows/*.yml` is the one exception: the deploy job authenticates as
+  an App, which GitHub forbids from writing workflow files, so those changes have
+  to arrive in a human-authored pull request.
 
 ## PR checklist
 
 - Describe behavior changes from an adopter perspective.
 - Include exact commands you ran and outcomes.
-- Regenerate and include `dist/.github` when relevant.
+- Do not include `dist/.github` or `.github/atoma`; the deploy job owns them.
 - Avoid unrelated refactors in the same PR.
 - If you changed workflow dispatch semantics, call out backward compatibility impact explicitly.
