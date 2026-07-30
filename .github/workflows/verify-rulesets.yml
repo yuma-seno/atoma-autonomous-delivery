@@ -40,7 +40,9 @@ jobs:
 
           for file in .github/rulesets/*.json; do
             name=$(jq -r '.name' "$file")
-            id=$(gh api "repos/$REPO/rulesets" --jq --arg n "$name" '.[] | select(.name == $n) | .id' || true)
+            # Piped to a real jq: `gh api --jq` takes a single filter and rejects
+            # jq's own flags, so --arg cannot be passed through it.
+            id=$(gh api "repos/$REPO/rulesets" | jq -r --arg n "$name" '.[] | select(.name == $n) | .id' || true)
 
             if [ -z "$id" ]; then
               echo "::error file=$file::No ruleset named '$name' exists on this repository."

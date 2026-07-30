@@ -586,13 +586,13 @@ function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: 
   const pr = ghJsonOrThrow<{
     mergeable?: string;
     mergeStateStatus?: string;
-    isDraft?: boolean;
     state?: string;
     headRefOid?: string;
     headRefName?: string;
+    baseRefName?: string;
   }>(
     "pr", "view", String(num), "--repo", REPO,
-    "--json", "mergeable,mergeStateStatus,isDraft,state,headRefOid,headRefName",
+    "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName",
   );
 
   // Check runs hang off the commit, so a workflow_dispatch run against the
@@ -604,11 +604,25 @@ function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: 
       )
     : null;
 
+  // Status-check contexts the branch ruleset requires. Read from the repository
+  // rather than hardcoded, so editing `.github/rulesets/*.json` changes what the
+  // gate enforces without touching this code. Reading rules needs no admin.
+  const baseRef = pr?.baseRefName ?? "";
+  let requiredChecks: string[] = [];
+  if (baseRef) {
+    const rules = ghJsonOrThrow<
+      { type: string; parameters?: { required_status_checks?: { context: string }[] } }[]
+    >("api", `repos/${REPO}/rules/branches/${baseRef}`);
+    requiredChecks = (rules ?? [])
+      .filter((r) => r.type === "required_status_checks")
+      .flatMap((r) => r.parameters?.required_status_checks ?? [])
+      .map((c) => c.context);
+  }
+
   return {
     signals: {
-      mergeable: pr?.mergeable ?? "UNKNOWN",
-      ...(pr?.mergeStateStatus ? { mergeStateStatus: pr.mergeStateStatus } : {}),
-      isDraft: pr?.isDraft ?? false,
+      mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
+      ...(pr?.mergeable ? { mergeable: pr.mergeable } : {}),
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((c) => ({
         name: c.name,
@@ -616,6 +630,7 @@ function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: 
         conclusion: c.conclusion,
         ...(c.details_url ? { detailsUrl: c.details_url } : {}),
       })),
+      requiredChecks,
       mergePolicy: getMergePolicy(),
     },
     headRefName: pr?.headRefName ?? "",
@@ -645,6 +660,11 @@ function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>)
     number: num,
     ready: readiness.ready,
     blockers: readiness.blockers,
+    // The branch protection this verdict came from, so a refusal is auditable
+    // rather than an assertion: `merge_state_status` is GitHub's own evaluation
+    // and `required_checks` is what the ruleset currently demands.
+    merge_state_status: signals.mergeStateStatus,
+    required_checks: signals.requiredChecks,
     checks: signals.checks.map((c) => ({ name: c.name, status: c.status, conclusion: c.conclusion })),
     ci_dispatched: dispatched,
     summary: readiness.ready
