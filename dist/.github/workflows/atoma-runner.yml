@@ -250,8 +250,6 @@ jobs:
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
           ATOMA_OPS_LOG: atoma_ops.log
-          ATOMA_CI_WORKFLOW: ${{ vars.ATOMA_CI_WORKFLOW }}
-          ATOMA_CD_WORKFLOW: ${{ vars.ATOMA_CD_WORKFLOW }}
           OPENAI_API_KEY_IN: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
           ANTHROPIC_API_KEY_IN: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -17929,6 +17929,9 @@ function getTriggerAgent(event, fallback = "") {
   }
   return fallback;
 }
+function getWorkflowName(kind, fallback = "") {
+  return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
+}
 
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse5, render) {
@@ -18664,11 +18667,11 @@ function dispatchPostMergeAgent(subIssueNum, agent) {
   return true;
 }
 function dispatchCi(branch) {
-  const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
+  const workflow = getWorkflowName("ci", "ci.yml");
   return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log2);
 }
 function dispatchCd(baseRef) {
-  const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
+  const workflow = getWorkflowName("cd");
   if (!workflow)
     return false;
   return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log2);
