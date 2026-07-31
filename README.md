@@ -33,7 +33,9 @@ Required before first run:
 - Repository secret for at least one model path:
   - `OPENAI_API_KEY` (OpenAI-compatible path), or
   - `ANTHROPIC_API_KEY` (Anthropic path).
-- Repository labels named `atoma/in-progress`, `atoma/sub-issue`, and `atoma/launched`.
+- Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and
+  `atoma/launched` are created on first use. Rename them in `config.json` if your
+  taxonomy differs.
 - These entries in your `.gitignore`. A run writes them to the repository root, and
   without this the engineer's `git add -A` commits its own session and logs into the
   branch — and `create_pr`, which requires a clean worktree, then refuses every
