@@ -2,7 +2,7 @@ import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestOpenedEvent, PullRequestReadyForReviewEvent, PullRequestSynchronizeEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
-import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
+import { githubEvent, githubEventRaw, isRepositoryMember } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -94,6 +94,10 @@ export const atomaAutoTrigger = new Workflow("atoma-auto-trigger", {
     "route",
     {
       "runs-on": "ubuntu-latest",
+      // Only a repository member's pull request starts an agent. Combined with
+      // `pull_request_target`, this is what keeps an outside contributor's code
+      // from ever being checked out and run with this repository's credentials.
+      if: isRepositoryMember(githubEventRaw<AutoTriggerEvent>((e) => e.pull_request.author_association)),
       outputs: {
         agent: matchStep.outputs.agent,
         number: matchStep.outputs.number,

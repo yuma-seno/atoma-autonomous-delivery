@@ -2,7 +2,7 @@ import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestReviewSubmittedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
-import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
+import { githubEvent, githubEventRaw, isRepositoryMember } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -71,6 +71,9 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
     "route",
     {
       "runs-on": "ubuntu-latest",
+      // Only a repository member's review starts an agent. Otherwise anyone could
+      // dispatch the engineer by submitting REQUEST_CHANGES on a pull request.
+      if: isRepositoryMember(githubEventRaw<PullRequestReviewSubmittedEvent>((e) => e.review.author_association)),
       outputs: {
         agent: matchStep.outputs.agent,
         number: matchStep.outputs.number,

@@ -2,7 +2,7 @@ import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssueCommentCreatedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
-import { githubEvent, githubEventRaw } from "./actions/github-context.ts";
+import { githubEvent, githubEventRaw, isRepositoryMember } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -42,18 +42,18 @@ const guardStep = new TypedOutputsStep(
   ["blocked"] as const,
 );
 
-// Original OWNER/MEMBER/COLLABORATOR-or-bot-dispatch-tag restriction on
-// actually DISPATCHING a slash command (unchanged from before) -- the job
-// itself now also runs for non-qualifying humans (see the job's own `if:`
-// below), but only to let guardStep do its job; this step still refuses to
-// parse/dispatch for them.
+// A slash command dispatches only for a repository member, or for Atoma's own
+// dispatch marker. The membership half now shares `isRepositoryMember` with every
+// other entry point, so the trust boundary has one definition rather than an
+// inline expression here and nothing anywhere else.
+//
+// The job itself still runs for non-qualifying humans, but only so guardStep can
+// do its job; this step refuses to parse or dispatch for them.
 const PARSE_ALLOWED =
   `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} == 'Bot' &&\n` +
   ` contains(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.body)}, 'atoma:dispatch')) ||\n` +
   `(${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.user.type)} != 'Bot' &&\n` +
-  ` (${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'OWNER' ||\n` +
-  `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'MEMBER' ||\n` +
-  `  ${githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association)} == 'COLLABORATOR'))`;
+  ` ${isRepositoryMember(githubEventRaw<IssueCommentCreatedEvent>((e) => e.comment.author_association))})`;
 
 const parseCommandStep = new TypedOutputsStep(
   {

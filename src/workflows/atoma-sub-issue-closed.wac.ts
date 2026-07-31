@@ -2,7 +2,7 @@ import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { IssuesClosedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { DefinedJob, startJob, TypedOutputsStep } from "./actions/base.ts";
-import { githubEvent } from "./actions/github-context.ts";
+import { githubEvent, githubEventRaw, isRepositoryMember } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -43,6 +43,8 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
     "check",
     {
       "runs-on": "ubuntu-latest",
+      // Only a repository member closing an issue triggers parent aggregation.
+      if: isRepositoryMember(githubEventRaw<IssuesClosedEvent>((e) => e.issue.author_association)),
       outputs: {
         is_sub_issue: checkStep.outputs.is_sub_issue,
         parent_number: checkStep.outputs.parent_number,

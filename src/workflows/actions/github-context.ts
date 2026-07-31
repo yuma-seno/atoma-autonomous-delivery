@@ -59,3 +59,33 @@ export function githubEvent<T>(selector: (event: T) => unknown): string {
 export function githubEventRaw<T>(selector: (event: T) => unknown): string {
   return `github.event.${resolvePath(selector)}`;
 }
+
+/**
+ * Author associations that imply write access to the repository.
+ *
+ * `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`, `MANNEQUIN` and `NONE`
+ * are all outside contributors. GitHub reports the association on every event
+ * that carries an actor, so no API call is needed to tell them apart.
+ */
+const MEMBER_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"] as const;
+
+/**
+ * Bare `if:` fragment asserting that the actor behind an event is a repository
+ * member, for gating agent runs on the trigger being someone trusted.
+ *
+ * This is the whole trust boundary for event-driven entry points, and it is
+ * sufficient because it is the only way an untrusted actor can reach one. Every
+ * routing workflow fires on a human action — an agent's own issues, comments,
+ * pull requests and merges are made with `GITHUB_TOKEN`, and GitHub starts no
+ * workflow run for events its own token triggers. Agents reach the runner through
+ * `workflow_dispatch` instead, which no outside contributor can invoke.
+ *
+ * So an outside contributor may open issues, comment and raise pull requests
+ * freely; none of it starts an agent. A member acts, or nothing happens.
+ *
+ * @example
+ *   isRepositoryMember(githubEventRaw<IssuesOpenedEvent>((e) => e.issue.author_association))
+ */
+export function isRepositoryMember(associationExpr: string): string {
+  return `contains(fromJson('${JSON.stringify(MEMBER_ASSOCIATIONS)}'), ${associationExpr})`;
+}
