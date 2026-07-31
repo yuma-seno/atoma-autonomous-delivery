@@ -82,10 +82,34 @@ jobs:
       pull-requests: write
       contents: write
     steps:
+      - name: Resolve a safe checkout ref
+        id: checkout_ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TYPE: ${{ inputs.type }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          if [ "$TYPE" != "pr" ]; then
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CROSS=$(gh pr view "$NUMBER" --repo "$REPO" --json isCrossRepository --jq '.isCrossRepository')
+          if [ "$CROSS" = "true" ]; then
+            echo "::warning::PR #$NUMBER comes from a fork. Checking out the base branch instead of the pull request head, so no untrusted code runs with this repository's credentials. The agent reviews the diff through the GitHub API."
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=refs/pull/$NUMBER/head" >> "$GITHUB_OUTPUT"
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}
+          ref: ${{ steps.checkout_ref.outputs.ref }}
       - name: Create feature branch for issue
         if: inputs.type == 'issue'
         shell: bash

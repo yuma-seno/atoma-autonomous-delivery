@@ -59,6 +59,21 @@ Some files are produced by a build rather than written by hand.
 - Establish which convention the project follows before ruling, rather than
   assuming. The build configuration states it.
 
+### The pull request came from a fork
+
+`github__get_pr` reports `isCrossRepository`. When it is true, the working tree is
+the **base** branch, not the pull request: running a contributor's code with the
+repository's credentials would be an arbitrary-code-execution hole, so the runner
+deliberately does not check it out.
+
+Review from the diff, which `github__get_pr_diff` returns through the API. Do not
+read a changed file from disk and conclude anything about the change — you would be
+reading the pre-change version. Reading *unchanged* files for context is still
+fine and still useful.
+
+Do not hand a fork pull request back to the engineer either: it cannot push to
+someone else's fork. Report the findings for a human to relay.
+
 ### Workflow or runner changed
 
 Trace the values a new step depends on. A step that reads a file must have that

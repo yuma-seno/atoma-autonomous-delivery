@@ -18535,7 +18535,7 @@ function syncBranch(a) {
   return JSON.stringify({ branch, status, ahead, behind });
 }
 function getPr(a) {
-  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt"));
+  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt,isCrossRepository"));
 }
 function getPrDiff(a) {
   const { code, stdout, stderr } = gh("pr", "diff", String(a.number), "--repo", REPO);
