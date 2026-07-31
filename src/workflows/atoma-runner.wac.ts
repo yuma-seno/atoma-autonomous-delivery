@@ -572,6 +572,55 @@ Atoma: reviewer starting review."
 `,
 });
 
+/**
+ * Decides what may be checked out, and runs BEFORE the checkout because it is
+ * what makes the checkout safe. Needs no repository content: `gh` is preinstalled.
+ *
+ * The routing workflows use `pull_request_target` deliberately — an agent needs
+ * the base repository's secrets and write access in order to comment, label and
+ * dispatch, and a fork-originated `pull_request` gets neither. That trigger only
+ * becomes dangerous when combined with checking out the pull request's own code,
+ * because that code then executes with those credentials: `setup_commands` is read
+ * from the checked-out tree and run through `bash -c`, and any install step runs
+ * the tree's own lifecycle scripts.
+ *
+ * So a pull request opened from within this repository is trusted content — an
+ * agent or a maintainer pushed the branch here — and is checked out as usual. A
+ * pull request from a fork is not, and the base branch is checked out instead. The
+ * review still happens: the diff is read through the API, which is inert text. It
+ * simply never runs a contributor's code with credentials attached.
+ */
+const checkoutRefStep = new TypedOutputsStep(
+  {
+    name: "Resolve a safe checkout ref",
+    id: "checkout_ref",
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      REPO: "${{ github.repository }}",
+      TYPE: "${{ inputs.type }}",
+      NUMBER: "${{ inputs.number }}",
+    },
+    run: `if [ "$TYPE" != "pr" ]; then
+  echo "ref=" >> "$GITHUB_OUTPUT"
+  echo "is_fork=false" >> "$GITHUB_OUTPUT"
+  exit 0
+fi
+
+CROSS=$(gh pr view "$NUMBER" --repo "$REPO" --json isCrossRepository --jq '.isCrossRepository')
+if [ "$CROSS" = "true" ]; then
+  echo "::warning::PR #$NUMBER comes from a fork. Checking out the base branch instead of the pull request head, so no untrusted code runs with this repository's credentials. The agent reviews the diff through the GitHub API."
+  echo "ref=" >> "$GITHUB_OUTPUT"
+  echo "is_fork=true" >> "$GITHUB_OUTPUT"
+else
+  echo "ref=refs/pull/$NUMBER/head" >> "$GITHUB_OUTPUT"
+  echo "is_fork=false" >> "$GITHUB_OUTPUT"
+fi
+`,
+  },
+  ["ref", "is_fork"] as const,
+);
+
 const runJob = new NormalJob("run", {
   "runs-on": "ubuntu-latest",
   "timeout-minutes": 60,
@@ -581,10 +630,28 @@ const runJob = new NormalJob("run", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addSteps([
+  // Decides what may be checked out, and it runs BEFORE the checkout because it
+  // is what makes the checkout safe. No repository content is needed for it:
+  // `gh` is preinstalled.
+  //
+  // The routing workflows use `pull_request_target`, which is deliberate — an
+  // agent needs the base repository's secrets and write access to comment, label
+  // and dispatch, and a fork-originated `pull_request` gets neither. That trigger
+  // is only dangerous when it is combined with checking out the pull request's
+  // own code, because that code then executes with those credentials. This
+  // repository's own `environment.setup_commands` runs through `bash -c`, and it
+  // is read from the checked-out tree.
+  //
+  // So: a pull request from within this repository is trusted content (an agent
+  // or a maintainer pushed the branch here) and is checked out as usual. A pull
+  // request from a fork is not, and the base branch is checked out instead. The
+  // review still happens — the diff is read through the API, which is inert text —
+  // it simply never runs a contributor's code with credentials attached.
+  checkoutRefStep,
   new ActionsCheckoutV4({
     name: "Checkout repository",
     with: {
-      ref: "${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}",
+      ref: checkoutRefStep.outputs.ref,
     },
   }),
   new TypedOutputsStep({
