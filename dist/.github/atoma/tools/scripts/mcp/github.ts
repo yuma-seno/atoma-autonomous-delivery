@@ -18612,8 +18612,17 @@ function gatherMergeSignals(num) {
   const baseRef = pr?.baseRefName ?? "";
   let requiredChecks = [];
   if (baseRef) {
-    const rules = ghJsonOrThrow("api", `repos/${REPO}/rules/branches/${baseRef}`);
-    requiredChecks = (rules ?? []).filter((r) => r.type === "required_status_checks").flatMap((r) => r.parameters?.required_status_checks ?? []).map((c) => c.context);
+    const { code, stdout } = gh("api", `repos/${REPO}/rules/branches/${baseRef}`);
+    if (code) {
+      log(`gatherMergeSignals: WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
+    } else {
+      try {
+        const rules = JSON.parse(stdout || "[]");
+        requiredChecks = rules.filter((r) => r.type === "required_status_checks").flatMap((r) => r.parameters?.required_status_checks ?? []).map((c) => c.context);
+      } catch {
+        log(`gatherMergeSignals: WARN branch rules for ${baseRef} were not valid JSON`);
+      }
+    }
   }
   return {
     signals: {
@@ -18629,17 +18638,31 @@ function gatherMergeSignals(num) {
       requiredChecks,
       mergePolicy: getMergePolicy()
     },
-    headRefName: pr?.headRefName ?? ""
+    headRefName: pr?.headRefName ?? "",
+    baseRefName: baseRef
   };
 }
 function dispatchCi(branch) {
-  const workflow = process.env.ATOMA_CI_WORKFLOW ?? "ci.yml";
+  const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
   const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
   if (code) {
     log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
     return false;
   }
   log(`dispatchCi: dispatched ${workflow} on ${branch}`);
+  return true;
+}
+function dispatchCd(baseRef) {
+  const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
+  if (!workflow)
+    return false;
+  const ref = baseRef || "main";
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", ref);
+  if (code) {
+    log(`dispatchCd: WARN failed to dispatch ${workflow} on ${ref}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`dispatchCd: dispatched ${workflow} on ${ref}`);
   return true;
 }
 function checkMergeReadiness(a) {
@@ -18663,7 +18686,7 @@ CI has been dispatched for the head commit; re-check shortly.` : "")
 }
 async function mergePr(a) {
   const num = a.number;
-  const { signals, headRefName } = gatherMergeSignals(num);
+  const { signals, headRefName, baseRefName } = gatherMergeSignals(num);
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
     log(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
@@ -18681,6 +18704,7 @@ ${formatBlockers(readiness.blockers)}`
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
+  dispatchCd(baseRefName);
   const d = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "body");
   const body = d?.body ?? "";
   const parentIssue = PARENT_ISSUE_TAG.read(body);

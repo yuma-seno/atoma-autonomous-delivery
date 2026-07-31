@@ -250,6 +250,8 @@ jobs:
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
           ATOMA_OPS_LOG: atoma_ops.log
+          ATOMA_CI_WORKFLOW: ${{ vars.ATOMA_CI_WORKFLOW }}
+          ATOMA_CD_WORKFLOW: ${{ vars.ATOMA_CD_WORKFLOW }}
         shell: bash
         run: |
           AGENT="${{ inputs.agent }}"
