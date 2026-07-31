@@ -16,6 +16,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    if: contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     outputs:
       is_sub_issue: ${{ steps.check.outputs.is_sub_issue }}
       parent_number: ${{ steps.check.outputs.parent_number }}

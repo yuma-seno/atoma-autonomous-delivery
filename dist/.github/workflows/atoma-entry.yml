@@ -16,6 +16,7 @@ permissions:
 jobs:
   route:
     runs-on: ubuntu-latest
+    if: contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     outputs:
       agent: ${{ steps.resolve.outputs.agent }}
       number: ${{ steps.resolve.outputs.number }}

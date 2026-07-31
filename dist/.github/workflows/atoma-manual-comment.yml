@@ -46,9 +46,7 @@ jobs:
           ((github.event.comment.user.type == 'Bot' &&
            contains(github.event.comment.body, 'atoma:dispatch')) ||
           (github.event.comment.user.type != 'Bot' &&
-           (github.event.comment.author_association == 'OWNER' ||
-            github.event.comment.author_association == 'MEMBER' ||
-            github.event.comment.author_association == 'COLLABORATOR'))) && steps.guard.outputs.blocked != 'true'
+           contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) && steps.guard.outputs.blocked != 'true'
         shell: bash
         env:
           ATOMA_COMMENT_BODY: ${{ github.event.comment.body }}
