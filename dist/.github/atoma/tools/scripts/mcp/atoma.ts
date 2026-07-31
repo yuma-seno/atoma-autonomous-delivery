@@ -17951,6 +17951,7 @@ function dispatchSubAgent(issue2, agent, notify = "") {
   gh("issue", "comment", String(issue2), "--body", `${LLM_CONTEXT_TAG.write("exclude")}
 Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
   const launchedLabel = getLabel("launched", "atoma/launched");
+  gh("label", "create", launchedLabel, "--force", "-c", "1f883d", "-d", "Atoma has dispatched an agent for this sub-task");
   const { code: labelCode } = gh("issue", "edit", String(issue2), "--add-label", launchedLabel);
   if (labelCode !== 0) {
     console.error(`Warning: failed to add '${launchedLabel}' label to #${issue2}`);
