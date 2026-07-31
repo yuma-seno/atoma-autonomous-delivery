@@ -252,6 +252,10 @@ jobs:
           ATOMA_OPS_LOG: atoma_ops.log
           ATOMA_CI_WORKFLOW: ${{ vars.ATOMA_CI_WORKFLOW }}
           ATOMA_CD_WORKFLOW: ${{ vars.ATOMA_CD_WORKFLOW }}
+          OPENAI_API_KEY_IN: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
+          ANTHROPIC_API_KEY_IN: ${{ secrets.ANTHROPIC_API_KEY }}
+          ATOMA_PROVIDER_IN: ${{ vars.ATOMA_PROVIDER }}
         shell: bash
         run: |
           AGENT="${{ inputs.agent }}"
@@ -265,20 +269,21 @@ jobs:
             TOOLS_ARG="--tools-file .github/atoma/tools/tools.yaml"
           fi
 
-          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
-            export OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
-          fi
-          if [ -n "${{ vars.OPENAI_BASE_URL }}" ]; then
-            export OPENAI_BASE_URL="${{ vars.OPENAI_BASE_URL }}"
-          fi
-          # Optional: Anthropic API key (only export when non-empty to avoid breaking auto-detection)
-          if [ -n "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
-            export ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}"
-          fi
-          # Optional: force a specific provider (only export when non-empty)
-          if [ -n "${{ vars.ATOMA_PROVIDER }}" ]; then
-            export ATOMA_PROVIDER="${{ vars.ATOMA_PROVIDER }}"
-          fi
+          # Credentials and settings arrive through the step's `env:` (see ATOMA_SECRET_ENV
+          # below) rather than being interpolated into this script.
+          #
+          # `${{ secrets.X }}` written here would be substituted into the script TEXT before
+          # bash ever parses it, so a key containing a quote or a backtick would break the
+          # script or execute as part of it. Through `env:` the value is only ever data.
+          #
+          # Each is re-exported only when non-empty: exporting an empty OPENAI_API_KEY or
+          # ATOMA_PROVIDER would defeat Atoma's provider auto-detection.
+          for name in OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_API_KEY ATOMA_PROVIDER; do
+            eval "value=\${${name}_IN:-}"
+            if [ -n "$value" ]; then
+              export "${name}=${value}"
+            fi
+          done
 
           # No --prompt-file or stdin is needed: the cached session contains both stable
           # GitHub context and the agent's chronological working history.
@@ -339,9 +344,9 @@ jobs:
           if [ -z "$USAGE_LINE" ]; then
             exit 0
           fi
-          PROMPT=$(echo "$USAGE_LINE"     | grep -oP 'prompt=\K[0-9]+')
-          COMPLETION=$(echo "$USAGE_LINE" | grep -oP 'completion=\K[0-9]+')
-          TOTAL=$(echo "$USAGE_LINE"      | grep -oP 'total=\K[0-9]+')
+          PROMPT=$(echo "$USAGE_LINE"     | grep -oP 'prompt=\K[0-9]+' || true)
+          COMPLETION=$(echo "$USAGE_LINE" | grep -oP 'completion=\K[0-9]+' || true)
+          TOTAL=$(echo "$USAGE_LINE"      | grep -oP 'total=\K[0-9]+' || true)
           {
             echo "## Atoma Token Usage"
             echo "| Agent | Prompt | Completion | Total |"
