@@ -482,10 +482,7 @@ function syncBranch(a: z.infer<typeof SYNC_BRANCH_SCHEMA>): string {
 }
 
 function getPr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
-  // `isCrossRepository` tells the agent whether this pull request came from a
-  // fork. It matters for review: for a fork, the runner checks out the BASE branch
-  // rather than the pull request, so the working tree does not contain the change.
-  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt,isCrossRepository"));
+  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt"));
 }
 
 function getPrDiff(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
