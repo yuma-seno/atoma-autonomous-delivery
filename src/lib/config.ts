@@ -45,3 +45,16 @@ export function getTriggerAgent(event: string, fallback = ""): string {
   }
   return fallback;
 }
+
+/**
+ * Look up one of this project's own workflow names from the `workflows` section.
+ *
+ * Lives in config.json rather than in a repository variable because it is
+ * project configuration: versioned, reviewable in a pull request, and one fewer
+ * thing to remember when setting a repository up. That only works because
+ * config.json is yours — the documented upgrade deliberately does not overwrite
+ * it, unlike everything else under `.github/atoma/`.
+ */
+export function getWorkflowName(kind: "ci" | "cd", fallback = ""): string {
+  return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
+}

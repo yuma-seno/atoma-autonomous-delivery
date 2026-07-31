@@ -15,6 +15,19 @@ export interface AtomaConfig {
     setup_commands?: string[];
   };
   agents?: Record<string, { max_iterations?: number }>;
+  /**
+   * Names of this project's own workflows, which Atoma dispatches by name.
+   *
+   * Both are project-specific, so the template ships neither: an adopter's CI is
+   * not necessarily `ci.yml`, and most projects have no deployment workflow that
+   * needs dispatching at all.
+   */
+  workflows?: {
+    /** Put a required check on a pull request's head commit before merging. Defaults to `ci.yml`. */
+    ci?: string;
+    /** Dispatched after a successful merge. Unset means no post-merge dispatch. */
+    cd?: string;
+  };
   labels?: {
     in_progress?: string;
     sub_issue?: string;

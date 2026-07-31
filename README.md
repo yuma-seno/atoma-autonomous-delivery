@@ -52,8 +52,6 @@ Required before first run:
 - Optional repository variables:
   - `OPENAI_BASE_URL`
   - `ATOMA_PROVIDER` (`openai` or `anthropic` with the credentials wired by this template)
-  - `ATOMA_CI_WORKFLOW` — workflow the reviewer dispatches to put a required check on a pull request's head commit before merging. Defaults to `ci.yml`; set this if yours is named differently, or the dispatch fails silently and every merge is refused for a missing check.
-  - `ATOMA_CD_WORKFLOW` — workflow to dispatch after a successful merge. Leave unset unless your deployment is chained off CI or off a push to the base branch: an agent merge is made with `GITHUB_TOKEN`, and GitHub starts no workflow run for events its own token triggers, so nothing downstream of that merge fires by itself.
 
 Workflow permissions are already declared in the generated workflows (`actions`, `issues`, `pull-requests`, `contents` set to write where needed), but they do not override the repository-level setting above.
 
@@ -100,4 +98,4 @@ flowchart TD
 - Session serialization per issue/PR is guarded by the `atoma/in-progress` label and workflow concurrency group.
 - The shell guard is a denylist-based command filter, not a full sandbox.
 - Some workflows use `pull_request_target`, which runs with base-repository privileges. Review your repository policy for third-party PRs.
-- The current `pull_request_review` route does not forward repository secrets to the reusable runner. Wire explicit secrets or `secrets: inherit` before relying on review-submitted dispatches with API-key providers.
+- An agent only starts when a repository member triggered it. Outside contributors can open issues, comment and raise pull requests freely; none of it dispatches an agent, so no untrusted instruction reaches one and no model budget is spent. Every routing workflow fires on a human action, and agents reach the runner through `workflow_dispatch` instead, so this covers the whole untrusted surface.

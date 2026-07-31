@@ -28,7 +28,13 @@ Supported top-level fields used by scripts/workflows:
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
+- `workflows.ci`, `workflows.cd`
 - `auto_triggers[]` with `event`, `agent`, optional `condition`
+
+`config.json` is **yours**. Everything else under `.github/atoma/` is generated and
+is replaced when you upgrade the template; this file is not, so edits to it
+survive. Keep project-specific settings here rather than in repository variables,
+where they are neither versioned nor reviewable.
 
 Supported trigger conditions:
 
@@ -123,6 +129,28 @@ language- and framework-agnostic, and only you know what your project needs.
 `config.json`. Nothing ever read it — JSON has no comments, so prose in a config
 file is invisible to both the code and the agents. It is documentation, so it
 lives in the documentation.)
+
+### Point Atoma at your own workflows
+
+```json
+{
+  "workflows": {
+    "ci": "ci.yml",
+    "cd": "deploy.yml"
+  }
+}
+```
+
+`ci` is the workflow the reviewer dispatches to put a required check on a pull
+request's head commit before merging. Defaults to `ci.yml`; set it if yours is
+named differently, or the dispatch fails silently and every merge is refused for a
+missing check.
+
+`cd` is dispatched after a successful merge. Leave it unset unless your deployment
+is chained off CI or off a push to the base branch — in that case it is required,
+not optional. An agent merge is performed with `GITHUB_TOKEN`, and GitHub starts no
+workflow run for events its own token triggers, so nothing downstream of that merge
+fires by itself and your deployment would silently never run.
 
 ### Rename labels
 

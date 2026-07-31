@@ -82,8 +82,13 @@ Nothing regenerates `.github/` automatically. It is this repository's deliberate
 adoption of the deliverable, so it lags `src/` until someone upgrades it:
 
 ```bash
-bun run synth && cp -r dist/.github/. .github/
+bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json
 ```
+
+The last step matters: everything under `.github/atoma/` is generated and gets
+overwritten, **except `config.json`, which is this repository's own
+configuration**. It carries `workflows.cd`, without which nothing publishes
+`dist/` after an agent merge.
 
 Then open a pull request with the result. That lag is the point — a change to
 `src/` must not reconfigure the live agents the moment it merges. Two breakages

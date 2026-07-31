@@ -18,7 +18,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { dispatchWorkflow, gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
-import { getLabel, getMergePolicy, getTriggerAgent } from "../../../../lib/config.ts";
+import { getLabel, getMergePolicy, getTriggerAgent, getWorkflowName } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
 import { logDispatch, logOp } from "../../../../lib/ops-log.ts";
@@ -585,9 +585,7 @@ function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
 
 /** Kick off the CI workflow against a branch, so a fresh agent PR gets a check run. */
 function dispatchCi(branch: string): boolean {
-  // `||` not `??`: an unset repository variable reaches the runner as an empty
-  // string, which is not nullish and would otherwise become the workflow name.
-  const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
+  const workflow = getWorkflowName("ci", "ci.yml");
   return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log);
 }
 
@@ -598,11 +596,11 @@ function dispatchCi(branch: string): boolean {
  * starts no workflow run for events its own token triggers — so merging fires no
  * `push` on the base branch, nothing chains off it, and a deployment workflow
  * waiting on that chain never runs. `workflow_dispatch` is the documented
- * exception. Configure `ATOMA_CD_WORKFLOW` to point at the project's deployment
+ * exception. Set `workflows.cd` in config.json to the project's deployment
  * workflow, or leave it unset to skip this entirely.
  */
 function dispatchCd(baseRef: string): boolean {
-  const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
+  const workflow = getWorkflowName("cd");
   if (!workflow) return false;
   return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log);
 }

@@ -17,7 +17,9 @@ This repository's own:
 
 - top-level `.github/`: this repository's adoption of the deliverable, plus
   `workflows/ci.yml`. Upgraded deliberately, not on merge:
-  `bun run synth && cp -r dist/.github/. .github/`, then open a pull request.
+  `bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json`,
+  then open a pull request. That last step is the rule that generated files are
+  overwritten and **your configuration is not** — `config.json` is yours.
   Project-specific agent rules live in `.github/atoma/skills/project/`.
 - `tests/`: tests of the build-and-deploy machinery. Tests of *shipped behaviour*
   live beside the shipped code instead.
