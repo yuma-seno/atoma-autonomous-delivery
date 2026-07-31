@@ -122,3 +122,29 @@ export function ghPaginated<T = unknown>(...args: string[]): T[] {
   }
   return flat;
 }
+
+/**
+ * Fire a `workflow_dispatch`, with the one error shape every caller wants.
+ *
+ * Four call sites had grown their own copy of this: run `gh workflow run`, log a
+ * WARN with the combined stderr/stdout on failure, log the success otherwise,
+ * return whether it took. The duplication mattered because a dispatch failing
+ * quietly is how an agent chain stops without anyone noticing, so the reporting
+ * is the substance here, not boilerplate.
+ *
+ * `context` prefixes both messages so a log line still says who was dispatching.
+ */
+export function dispatchWorkflow(
+  context: string,
+  workflow: string,
+  args: string[] = [],
+  log: (message: string) => void = (m) => console.error(m),
+): boolean {
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, ...args);
+  if (code) {
+    log(`${context}: WARN failed to dispatch ${workflow}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`${context}: dispatched ${workflow}`);
+  return true;
+}

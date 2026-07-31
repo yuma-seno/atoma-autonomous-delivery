@@ -92,9 +92,18 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
       matchStep,
     ],
   )
-    // NOTE: preserved verbatim from the original hand-written YAML -- unlike
-    // the other routing workflows, this job intentionally has no
-    // `secrets: inherit` (no 2nd argument to dispatchToAtomaRunner).
-    .then((routeJob) => dispatchToAtomaRunner(routeJob))
+    // `secrets: inherit`, like every other routing workflow. Its absence was
+    // preserved from the original hand-written YAML as if deliberate, but a
+    // reusable workflow called without it receives no secrets at all: the runner
+    // exports the provider key from `secrets.OPENAI_API_KEY`/`ANTHROPIC_API_KEY`,
+    // so the agent started with no credentials and the run failed on its first
+    // inference call.
+    //
+    // The path that reaches here is a human submitting REQUEST_CHANGES, which
+    // `auto_triggers` maps to the engineer. Agent-to-agent review never came
+    // through it — `submit_pr_review` dispatches nothing and the handoff rides the
+    // `/engineer` directive instead — so the only route through this workflow was
+    // the broken one.
+    .then((routeJob) => dispatchToAtomaRunner(routeJob, "inherit"))
     .jobs(),
 );

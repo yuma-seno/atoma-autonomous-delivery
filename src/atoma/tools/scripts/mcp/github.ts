@@ -17,7 +17,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
+import { dispatchWorkflow, gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
 import { getLabel, getMergePolicy, getTriggerAgent } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
@@ -26,7 +26,8 @@ import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
-import { decideMergeReadiness, formatBlockers, type MergeSignals } from "../../../../domain/merge-readiness.ts";
+import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
+import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-github] ${msg}`);
@@ -581,90 +582,13 @@ function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
   return true;
 }
 
-/** GitHub's view of one PR, plus the check runs on its head commit. */
-function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: string; baseRefName: string } {
-  const pr = ghJsonOrThrow<{
-    mergeable?: string;
-    mergeStateStatus?: string;
-    state?: string;
-    headRefOid?: string;
-    headRefName?: string;
-    baseRefName?: string;
-  }>(
-    "pr", "view", String(num), "--repo", REPO,
-    "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName",
-  );
-
-  // Check runs hang off the commit, so a workflow_dispatch run against the
-  // branch registers here just as a `pull_request` run would.
-  const sha = pr?.headRefOid ?? "";
-  const runs = sha
-    ? ghJsonOrThrow<{ check_runs?: { name: string; status: string; conclusion: string | null; details_url?: string }[] }>(
-        "api", `repos/${REPO}/commits/${sha}/check-runs`,
-      )
-    : null;
-
-  // Status-check contexts the branch ruleset requires. Read from the repository
-  // rather than hardcoded, so editing `.github/rulesets/*.json` changes what the
-  // gate enforces without touching this code. Reading rules needs no admin.
-  const baseRef = pr?.baseRefName ?? "";
-  let requiredChecks: string[] = [];
-  if (baseRef) {
-    // Best-effort. This lookup only makes a refusal more specific — it names the
-    // check to fix instead of relaying GitHub's verdict verbatim. Letting it throw
-    // would turn a transient 403 or rate limit into a tool error for every merge
-    // attempt, losing the verdict entirely; `decideMergeReadiness` degrades
-    // gracefully to the generic `blocked` blocker when this comes back empty.
-    const { code, stdout } = gh("api", `repos/${REPO}/rules/branches/${baseRef}`);
-    if (code) {
-      log(`gatherMergeSignals: WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
-    } else {
-      try {
-        const rules = JSON.parse(stdout || "[]") as {
-          type: string;
-          parameters?: { required_status_checks?: { context: string }[] };
-        }[];
-        requiredChecks = rules
-          .filter((r) => r.type === "required_status_checks")
-          .flatMap((r) => r.parameters?.required_status_checks ?? [])
-          .map((c) => c.context);
-      } catch {
-        log(`gatherMergeSignals: WARN branch rules for ${baseRef} were not valid JSON`);
-      }
-    }
-  }
-
-  return {
-    signals: {
-      mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
-      ...(pr?.mergeable ? { mergeable: pr.mergeable } : {}),
-      state: pr?.state ?? "UNKNOWN",
-      checks: (runs?.check_runs ?? []).map((c) => ({
-        name: c.name,
-        status: c.status,
-        conclusion: c.conclusion,
-        ...(c.details_url ? { detailsUrl: c.details_url } : {}),
-      })),
-      requiredChecks,
-      mergePolicy: getMergePolicy(),
-    },
-    headRefName: pr?.headRefName ?? "",
-    baseRefName: baseRef,
-  };
-}
 
 /** Kick off the CI workflow against a branch, so a fresh agent PR gets a check run. */
 function dispatchCi(branch: string): boolean {
-  // `|| ` not `??`: an unset repository variable reaches the runner as an empty
+  // `||` not `??`: an unset repository variable reaches the runner as an empty
   // string, which is not nullish and would otherwise become the workflow name.
   const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
-  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
-  if (code) {
-    log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchCi: dispatched ${workflow} on ${branch}`);
-  return true;
+  return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log);
 }
 
 /**
@@ -680,20 +604,13 @@ function dispatchCi(branch: string): boolean {
 function dispatchCd(baseRef: string): boolean {
   const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
   if (!workflow) return false;
-
-  const ref = baseRef || "main";
-  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", ref);
-  if (code) {
-    log(`dispatchCd: WARN failed to dispatch ${workflow} on ${ref}: ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchCd: dispatched ${workflow} on ${ref}`);
-  return true;
+  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log);
 }
 
 function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
   const num = issueContextNumber(a);
-  const { signals, headRefName } = gatherMergeSignals(num);
+  const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
+  const headRefName = refs.headRefName;
   const readiness = decideMergeReadiness(signals);
 
   const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
@@ -724,7 +641,8 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   // see domain/merge-readiness.ts. It is applied at this call site because an
   // agent merge is made with GITHUB_TOKEN, which the ruleset must exempt in order
   // to let the deployment job publish, so protection alone would not stop it.
-  const { signals, headRefName, baseRefName } = gatherMergeSignals(num);
+  const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
+  const { headRefName, baseRefName } = refs;
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
     log(`mergePr: refusing PR #${num} — ${readiness.blockers.map((b) => b.kind).join(", ")}`);
