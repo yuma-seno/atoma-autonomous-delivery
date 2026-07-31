@@ -17895,6 +17895,15 @@ function ghGraphql(query, variables = {}) {
 function gitRun(...args) {
   return run(["git", ...args]);
 }
+function dispatchWorkflow(context, workflow, args = [], log = (m) => console.error(m)) {
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, ...args);
+  if (code) {
+    log(`${context}: WARN failed to dispatch ${workflow}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`${context}: dispatched ${workflow}`);
+  return true;
+}
 
 // src/lib/config.ts
 import { readFileSync } from "fs";
@@ -18195,8 +18204,57 @@ function formatBlockers(blockers) {
 `);
 }
 
+// src/lib/merge-signals.ts
+function log(message) {
+  console.error(`[atoma-merge-signals] ${message}`);
+}
+function readRequiredChecks(repo, baseRef) {
+  if (!baseRef)
+    return [];
+  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
+  if (code) {
+    log(`WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
+    return [];
+  }
+  try {
+    const rules = JSON.parse(stdout || "[]");
+    return rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check2) => check2.context);
+  } catch {
+    log(`WARN branch rules for ${baseRef} were not valid JSON`);
+    return [];
+  }
+}
+function gatherMergeSignals(repo, num, throwOnFailure) {
+  const json = (...args) => {
+    const { code, stdout, stderr } = gh(...args);
+    if (code)
+      throwOnFailure(stderr || stdout);
+    return stdout ? JSON.parse(stdout) : null;
+  };
+  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName");
+  const sha = pr?.headRefOid ?? "";
+  const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
+  const baseRefName = pr?.baseRefName ?? "";
+  return {
+    signals: {
+      mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
+      ...pr?.mergeable ? { mergeable: pr.mergeable } : {},
+      state: pr?.state ?? "UNKNOWN",
+      checks: (runs?.check_runs ?? []).map((run2) => ({
+        name: run2.name,
+        status: run2.status,
+        conclusion: run2.conclusion,
+        ...run2.details_url ? { detailsUrl: run2.details_url } : {}
+      })),
+      requiredChecks: readRequiredChecks(repo, baseRefName),
+      mergePolicy: getMergePolicy()
+    },
+    refs: { headRefName: pr?.headRefName ?? "", baseRefName }
+  };
+}
+
 // src/atoma/tools/scripts/mcp/github.ts
-function log(msg) {
+function log2(msg) {
   console.error(`[atoma-github] ${msg}`);
 }
 var REPO = process.env.GITHUB_REPOSITORY ?? "";
@@ -18324,9 +18382,9 @@ ${body}`;
       const pid = await resolveIssueId(Number(parentNum));
       const sid = await resolveIssueId(num);
       ghGraphql("mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}", { parent: pid, sub: sid });
-      log(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
+      log2(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
     } catch (e) {
-      log(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
+      log2(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
     }
   }
   logOp("create_issue", { number: num, title, sub_issue: sub });
@@ -18350,10 +18408,10 @@ function getIssueComments(a) {
 }
 function closeIssue(a) {
   const num = a.number;
-  log(`closeIssue: #${num}`);
+  log2(`closeIssue: #${num}`);
   const d = ghJsonOrThrow("issue", "view", String(num), "--repo", REPO, "--json", "author");
   const isBot = Boolean(d?.author?.is_bot);
-  log(`closeIssue: author.is_bot=${isBot}`);
+  log2(`closeIssue: author.is_bot=${isBot}`);
   if (!isBot)
     mcpFail(`Refusing to close issue #${num}: opened by a human, not a bot`);
   const { code, stdout, stderr } = gh("issue", "close", String(num), "--repo", REPO);
@@ -18368,7 +18426,7 @@ async function closeIssueAndDispatch(a) {
   try {
     await dispatchOrchestratorIfSubIssueReady(REPO, num);
   } catch (e) {
-    log(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
+    log2(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
   }
   return result;
 }
@@ -18412,12 +18470,12 @@ ${originLine}${closesLine}${body}`;
 }
 function dispatchPostPrAgent(prNumber) {
   const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW ?? "atoma-runner.yml";
-  const { code, stdout, stderr } = gh("workflow", "run", dispatchWorkflow, "--field", `agent=${agent}`, "--field", `number=${prNumber}`, "--field", "type=pr", "--field", `notify=${(process.env.ISSUE_NOTIFY ?? "").trim()}`);
+  const dispatchWorkflow2 = process.env.ATOMA_DISPATCH_WORKFLOW ?? "atoma-runner.yml";
+  const { code, stdout, stderr } = gh("workflow", "run", dispatchWorkflow2, "--field", `agent=${agent}`, "--field", `number=${prNumber}`, "--field", "type=pr", "--field", `notify=${(process.env.ISSUE_NOTIFY ?? "").trim()}`);
   if (code) {
-    log(`dispatchPostPrAgent: WARN failed to dispatch ${agent} for PR #${prNumber}: ${stderr || stdout}`);
+    log2(`dispatchPostPrAgent: WARN failed to dispatch ${agent} for PR #${prNumber}: ${stderr || stdout}`);
   } else {
-    log(`dispatchPostPrAgent: dispatched ${agent} for PR #${prNumber}`);
+    log2(`dispatchPostPrAgent: dispatched ${agent} for PR #${prNumber}`);
     logDispatch("pr", agent, { number: prNumber });
   }
 }
@@ -18426,9 +18484,9 @@ function createPr(a) {
   let body = a.body ?? "";
   const base = a.base;
   body = injectParentIssue(body);
-  log(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
+  log2(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
   const branch = resolveBranch();
-  log(`createPr: resolved branch=${JSON.stringify(branch)}`);
+  log2(`createPr: resolved branch=${JSON.stringify(branch)}`);
   const worktree = gitRun("status", "--porcelain");
   if (worktree.code)
     mcpFail(worktree.stderr || worktree.stdout);
@@ -18453,9 +18511,9 @@ function createPr(a) {
     cmd.push("--body", body);
   if (base)
     cmd.push("--base", base);
-  log(`createPr: running gh ${cmd.join(" ")}`);
+  log2(`createPr: running gh ${cmd.join(" ")}`);
   const { code, stdout, stderr } = gh(...cmd);
-  log(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log2(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr create failed (rc=${code}): ${stderr || stdout}`);
   const num = Number(stdout.trim().split("/").pop());
@@ -18571,7 +18629,7 @@ function listPrReviewComments(a) {
 function submitPrReview(a) {
   let event = a.event;
   if (event === "APPROVE") {
-    log(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
+    log2(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
     event = "COMMENT";
   }
   const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
@@ -18592,82 +18650,33 @@ function dispatchPostMergeAgent(subIssueNum, agent) {
   {
     const { code: code2, stdout: stdout2, stderr: stderr2 } = gh("issue", "comment", String(subIssueNum), "--repo", REPO, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
     if (code2) {
-      log(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr2 || stdout2}`);
+      log2(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr2 || stdout2}`);
       return false;
     }
   }
   const { code, stdout, stderr } = gh("workflow", "run", "atoma-runner.yml", "--repo", REPO, "--field", `agent=${agent}`, "--field", `number=${subIssueNum}`, "--field", "type=issue", "--field", `notify=${notify}`);
   if (code) {
-    log(`dispatchPostMergeAgent: gh workflow run failed for #${subIssueNum} (rc=${code}): ${stderr || stdout}`);
+    log2(`dispatchPostMergeAgent: gh workflow run failed for #${subIssueNum} (rc=${code}): ${stderr || stdout}`);
     return false;
   }
-  log(`dispatchPostMergeAgent: re-invoked ${agent} on #${subIssueNum} to confirm and close`);
+  log2(`dispatchPostMergeAgent: re-invoked ${agent} on #${subIssueNum} to confirm and close`);
   logDispatch("issue", agent, { number: subIssueNum });
   return true;
 }
-function gatherMergeSignals(num) {
-  const pr = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName");
-  const sha = pr?.headRefOid ?? "";
-  const runs = sha ? ghJsonOrThrow("api", `repos/${REPO}/commits/${sha}/check-runs`) : null;
-  const baseRef = pr?.baseRefName ?? "";
-  let requiredChecks = [];
-  if (baseRef) {
-    const { code, stdout } = gh("api", `repos/${REPO}/rules/branches/${baseRef}`);
-    if (code) {
-      log(`gatherMergeSignals: WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
-    } else {
-      try {
-        const rules = JSON.parse(stdout || "[]");
-        requiredChecks = rules.filter((r) => r.type === "required_status_checks").flatMap((r) => r.parameters?.required_status_checks ?? []).map((c) => c.context);
-      } catch {
-        log(`gatherMergeSignals: WARN branch rules for ${baseRef} were not valid JSON`);
-      }
-    }
-  }
-  return {
-    signals: {
-      mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
-      ...pr?.mergeable ? { mergeable: pr.mergeable } : {},
-      state: pr?.state ?? "UNKNOWN",
-      checks: (runs?.check_runs ?? []).map((c) => ({
-        name: c.name,
-        status: c.status,
-        conclusion: c.conclusion,
-        ...c.details_url ? { detailsUrl: c.details_url } : {}
-      })),
-      requiredChecks,
-      mergePolicy: getMergePolicy()
-    },
-    headRefName: pr?.headRefName ?? "",
-    baseRefName: baseRef
-  };
-}
 function dispatchCi(branch) {
   const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
-  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
-  if (code) {
-    log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchCi: dispatched ${workflow} on ${branch}`);
-  return true;
+  return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log2);
 }
 function dispatchCd(baseRef) {
   const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
   if (!workflow)
     return false;
-  const ref = baseRef || "main";
-  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", ref);
-  if (code) {
-    log(`dispatchCd: WARN failed to dispatch ${workflow} on ${ref}: ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchCd: dispatched ${workflow} on ${ref}`);
-  return true;
+  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log2);
 }
 function checkMergeReadiness(a) {
   const num = issueContextNumber(a);
-  const { signals, headRefName } = gatherMergeSignals(num);
+  const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
+  const headRefName = refs.headRefName;
   const readiness = decideMergeReadiness(signals);
   const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
   return JSON.stringify({
@@ -18686,10 +18695,11 @@ CI has been dispatched for the head commit; re-check shortly.` : "")
 }
 async function mergePr(a) {
   const num = a.number;
-  const { signals, headRefName, baseRefName } = gatherMergeSignals(num);
+  const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
+  const { headRefName, baseRefName } = refs;
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
-    log(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
+    log2(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
     const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
     return JSON.stringify({
       merged: false,
@@ -18700,7 +18710,7 @@ ${formatBlockers(readiness.blockers)}`
     });
   }
   const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
-  log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log2(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
@@ -18717,7 +18727,7 @@ ${formatBlockers(readiness.blockers)}`
     case "no-parent":
       return JSON.stringify({ merged: true, closed_issue: null });
     case "already-closed":
-      log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
+      log2(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
       return JSON.stringify({ merged: true, closed_issue: null });
     case "reinvoke-origin-agent":
       if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
@@ -18733,7 +18743,7 @@ async function closeParentAndReport(parentIssue) {
     await closeIssueAndDispatch({ number: parentIssue });
     return JSON.stringify({ merged: true, closed_issue: parentIssue });
   } catch (e) {
-    log(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
+    log2(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
     return JSON.stringify({ merged: true, closed_issue: null });
   }
 }
@@ -18800,12 +18810,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ...meta ? { _meta: meta } : {}
     };
   } catch (e) {
-    log(`Tool error: ${e}`);
+    log2(`Tool error: ${e}`);
     return { content: [{ type: "text", text: `Error: ${e.message ?? e}` }], isError: true };
   }
 });
 async function main() {
-  log(`Starting for ${REPO}`);
+  log2(`Starting for ${REPO}`);
   const transport = new StdioServerTransport;
   await server.connect(transport);
 }
