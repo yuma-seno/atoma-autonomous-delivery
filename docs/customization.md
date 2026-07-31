@@ -56,20 +56,22 @@ extra_body:
       - Xiaomi
       - Parasail
       - Novita
-    allow_fallbacks: false
-    require_parameters: true
 ```
 
 Note this is unrelated to the top-level `provider:` field, which selects Atoma's
 client (`openai`/`anthropic`/`github-copilot`).
 
-Why it is set:
+Why it is set: `order` puts the endpoints with the best uptime first, while
+OpenRouter stays free to route elsewhere.
 
-- `order` restricts inference to endpoints with healthy uptime.
-- `allow_fallbacks: false` prevents silent substitution to an endpoint outside
-  that list, including one OpenRouter has deranked.
-- `require_parameters: true` keeps routing away from endpoints that do not accept
-  the `tools`/`tool_choice` every Atoma agent depends on.
+**Do not add `allow_fallbacks: false` or `require_parameters: true`.** They look
+like the natural way to make `order` binding, and they break every request. With
+either set alongside the `openrouter:web_search`/`web_fetch` server tools the
+agents declare, every run fails on its first inference call with
+`Server tool request failed` (HTTP 404, `provider_name: null`). Server tools are
+executed by OpenRouter above provider selection, and no endpoint advertises them in
+`supported_parameters`, so hard-pinning the route leaves that layer nowhere to
+dispatch. Keep this list advisory.
 
 A single unhealthy endpoint shows up as hung requests, truncated response
 bodies, and contentless completions. List current endpoints and their uptime with:
@@ -156,8 +158,10 @@ Dynamic skill behavior:
 If you are modifying this template repository:
 
 1. Edit `src/` files.
-2. Run `bun run synth`.
-3. Commit both source changes and updated `dist/.github/`.
+2. Commit only that. CI rejects a pull request whose diff touches `dist/`, and
+   regenerates it after the merge — see CONTRIBUTING.md.
+3. Run `bun run synth` locally whenever you want to see what adopters will
+   receive, then discard the result.
 
 If you are only adopting in your own repository:
 

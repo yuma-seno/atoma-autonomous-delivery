@@ -42,9 +42,13 @@ declaration of what the setting should be. Something has to carry it across.
 
 CI cannot: creating or updating a ruleset goes through the repository
 administration API, and `administration` is not a permission a workflow can grant
-`GITHUB_TOKEN`. So applying is a deliberate act by someone with admin. Either way
-the file stays the source of truth and `verify-rulesets` fails on any drift, so it
-cannot quietly become fiction.
+`GITHUB_TOKEN`. So applying is a deliberate act by someone with admin, and the
+configuration being in place is taken as a given afterwards.
+
+There is deliberately no workflow checking that. A check could only report, never
+enforce: if the ruleset were missing then `check` would no longer be a required
+context either, so a failing check would block nothing — a permanently red mark
+that stops nobody, which is worse than no mark at all.
 
 **From the web UI** — easiest, and needs nothing installed:
 
@@ -64,9 +68,9 @@ gh api --method POST repos/yuma-seno/atoma-autonomous-delivery/rulesets \
 ```
 
 To change the rules later, edit the JSON in a pull request, then re-import (or
-`gh api --method PUT repos/<repo>/rulesets/<id> --input ...`). Do not edit the
-ruleset in the UI without updating the file: `verify-rulesets` will fail, which is
-the point.
+`gh api --method PUT repos/<repo>/rulesets/<id> --input ...`). Nothing detects a
+ruleset edited in the UI without a matching change to the file, so keeping the two
+together is a discipline rather than something enforced.
 
 Two settings in that file exist for specific reasons. Required approvals is **0**
 because Atoma's agents share one bot identity and GitHub forbids self-approval —

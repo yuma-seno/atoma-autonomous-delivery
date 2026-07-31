@@ -34,6 +34,19 @@ Required before first run:
   - `OPENAI_API_KEY` (OpenAI-compatible path), or
   - `ANTHROPIC_API_KEY` (Anthropic path).
 - Repository labels named `atoma/in-progress`, `atoma/sub-issue`, and `atoma/launched`.
+- These entries in your `.gitignore`. A run writes them to the repository root, and
+  without this the engineer's `git add -A` commits its own session and logs into the
+  branch — and `create_pr`, which requires a clean worktree, then refuses every
+  time:
+
+  ```gitignore
+  atoma_logs.txt
+  atoma_output.txt
+  atoma_ops.log
+  events.json
+  session.json
+  ```
+
 - Optional repository variables:
   - `OPENAI_BASE_URL`
   - `ATOMA_PROVIDER` (`openai` or `anthropic` with the credentials wired by this template)

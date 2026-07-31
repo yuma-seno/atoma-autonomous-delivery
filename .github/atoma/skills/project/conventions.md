@@ -50,8 +50,9 @@ a change there is yours to make and review, not something to keep out.
 
 `.github/rulesets/main.json` is the source of truth for what may reach main:
 direct pushes are refused, and a pull request cannot merge until the `check` job
-passes. `verify-rulesets.yml` fails if the repository's live configuration drifts
-from that file.
+passes. It is applied by hand from an account with admin, and taken as correctly
+configured thereafter — nothing verifies it, because a check could only report and
+never enforce: with no ruleset, `check` would not be a required context either.
 
 Changing the rule is a pull request against the JSON, followed by one `gh api`
 call from an account with admin (see CONTRIBUTING.md). CI cannot make that call —
@@ -65,7 +66,7 @@ That is safe because GitHub forbids an App from writing `.github/workflows/`, so
 the bypassing identity provably cannot alter a workflow definition, and the job
 itself refuses to commit anything outside `dist/`.
 
-`ci.yml` and `verify-rulesets.yml` are hand-written and live only under
+`ci.yml` and `cd.yml` are hand-written and live only under
 `.github/workflows/`. They survive the upgrade copy because `dist/.github/` does
 not contain them.
 
