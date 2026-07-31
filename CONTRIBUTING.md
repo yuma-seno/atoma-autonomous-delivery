@@ -11,7 +11,7 @@ The deliverable:
   servers, workflow definitions. Adopter-agnostic by rule: no reference to this
   repository's build pipeline, no incident history, no PR numbers.
 - `dist/.github/`: generated from `src/`. This is what adopters copy. Produced by
-  the `publish-dist` CI job, never committed by a pull request.
+  the `publish-dist` job in cd.yml, never committed by a pull request.
 
 This repository's own:
 

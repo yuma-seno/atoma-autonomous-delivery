@@ -1,0 +1,84 @@
+name: CD
+
+# Publishes the deliverable. Separate from CI on purpose:
+#
+# - Different job, different blast radius. CI is read-only; this job holds
+#   `contents: write` and is the sole identity allowed to bypass the branch
+#   ruleset. Keeping it in its own file makes that surface obvious to review
+#   rather than buried under a job-level `if:`.
+# - While it lived in ci.yml it was skipped on every pull request, and a skipped
+#   job still records a check run. That is noise at best, and a live trap the
+#   moment anyone adds `publish-dist` to the ruleset's required checks, because
+#   GitHub does not count a skipped required check as satisfied.
+#
+# Chained through `workflow_run` rather than a `push` trigger so the gate CI
+# provided as `needs: [check]` survives the split: nothing is published from a
+# commit whose CI failed. This mirrors how the Atoma core repo chains its release
+# workflow off CI.
+#
+# No loop: this job pushes as github-actions[bot], and GitHub starts no workflow
+# run for events its own token triggers.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-dist:
+    runs-on: ubuntu-latest
+    # `workflow_run` fires for any conclusion, including failure and cancellation.
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+    steps:
+      # Deliberately the default GITHUB_TOKEN, not a PAT. GitHub refuses to let an
+      # App create or update files under the real `.github/workflows/`, and that
+      # refusal is load-bearing: it is what guarantees this job -- the one identity
+      # allowed to bypass the branch ruleset -- cannot alter a workflow definition.
+      # `dist/.github/workflows/` is unaffected, so publishing still works.
+      #
+      # Checks out the branch tip rather than the triggering commit: the point is
+      # to leave main's dist/ current, and pushing a detached older SHA would
+      # undo a newer publish.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Regenerate dist/
+        run: bun run synth
+      - name: Refuse to publish anything but dist/
+        # This job holds the ruleset bypass, so bound what it can possibly commit.
+        # A synth that reached outside dist/ must stop here rather than ride the
+        # bypass onto main.
+        shell: bash
+        run: |
+          STRAY=$(git status --porcelain -- . ":(exclude)dist" | head -20)
+          if [ -n "$STRAY" ]; then
+            echo "::error::synth modified paths outside dist/; refusing to publish:"
+            echo "$STRAY"
+            exit 1
+          fi
+      - name: Commit and push dist/ if it changed
+        shell: bash
+        run: |
+          git add dist
+          # `git diff` (unstaged) silently ignores untracked files, which every
+          # newly generated file under dist/ is -- check the *staged* diff.
+          if git diff --cached --quiet; then
+            echo "Nothing to publish -- dist/ already matches src/**."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(auto): publish generated dist/ [skip ci]"
+          git push origin HEAD:main
