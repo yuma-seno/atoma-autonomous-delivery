@@ -10,9 +10,16 @@ name: Verify rulesets
 # never started a job. The alternative would be storing an admin PAT, which is
 # precisely the kind of credential this repository just finished removing.
 #
-# Reading rulesets needs no admin, so the split is: a human applies the file once
-# with their own credentials (see CONTRIBUTING.md, one `gh api` call, no settings
-# screen), and CI fails from then on if the live configuration drifts from it.
+# So a human applies the file once with their own credentials (see
+# CONTRIBUTING.md), and this fails from then on if the live configuration drifts.
+#
+# It reads `rules/branches/{branch}` -- the rules in EFFECT for the branch --
+# rather than the ruleset document. Two reasons. GitHub returns `bypass_actors`
+# only to a caller with write access to the ruleset, which is the administration
+# permission GITHUB_TOKEN cannot hold, so comparing it would report drift that does
+# not exist on every single run. And the effective rules are the thing worth
+# asserting: they are what actually governs a merge, whichever ruleset supplies
+# them.
 
 on:
   push:
@@ -29,66 +36,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Live rulesets match the committed declaration
+      - name: Declared protection is in effect on the default branch
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
           failed=0
 
+          # No `|| true` here on purpose: swallowing a 403 or a rate limit would
+          # print "not applied" and send the reader off to create a duplicate.
+          live=$(gh api "repos/$REPO/rules/branches/$BRANCH")
+          live_types=$(jq -rc '[.[].type] | sort | unique' <<<"$live")
+          echo "Rules in effect on $BRANCH: $live_types"
+
           for file in .github/rulesets/*.json; do
-            name=$(jq -r '.name' "$file")
-            # Piped to a real jq: `gh api --jq` takes a single filter and rejects
-            # jq's own flags, so --arg cannot be passed through it.
-            id=$(gh api "repos/$REPO/rulesets" | jq -r --arg n "$name" '.[] | select(.name == $n) | .id' || true)
+            echo "Checking $file"
 
-            if [ -z "$id" ]; then
-              echo "::error file=$file::No ruleset named '$name' exists on this repository."
-              echo "  Apply it once, with an account that has admin on the repo:"
-              echo "    gh api --method POST repos/$REPO/rulesets --input $file"
-              failed=1
-              continue
-            fi
-
-            live=$(gh api "repos/$REPO/rulesets/$id")
-            echo "Checking ruleset '$name' (id $id)"
-
-            # Properties are checked individually rather than by deep-diffing the
-            # documents: GitHub echoes back defaults for parameters we never set,
-            # so an equality check would report drift that does not exist.
-            check() { # description, expected, actual
-              if [ "$2" = "$3" ]; then
-                echo "  ok    $1: $3"
+            want_types=$(jq -rc '[.rules[].type] | sort | unique' "$file")
+            for type in $(jq -r '.rules[].type' "$file" | sort -u); do
+              if jq -e --arg t "$type" 'any(.[]; .type == $t)' <<<"$live" >/dev/null; then
+                echo "  ok      rule '$type' is in effect"
               else
-                echo "::error file=$file::$1 is '$3', declared as '$2'"
+                echo "::error file=$file::rule '$type' is declared but not in effect on $BRANCH"
                 failed=1
               fi
-            }
+            done
 
-            check "enforcement" \
-              "$(jq -r '.enforcement' "$file")" "$(jq -r '.enforcement' <<<"$live")"
-            check "target" \
-              "$(jq -r '.target' "$file")" "$(jq -r '.target' <<<"$live")"
-            check "included refs" \
-              "$(jq -rc '.conditions.ref_name.include | sort' "$file")" \
-              "$(jq -rc '.conditions.ref_name.include | sort' <<<"$live")"
-            check "rule types" \
-              "$(jq -rc '[.rules[].type] | sort' "$file")" \
-              "$(jq -rc '[.rules[].type] | sort' <<<"$live")"
-            check "bypass actors" \
-              "$(jq -rc '[.bypass_actors[] | {actor_id, actor_type}] | sort_by(.actor_id)' "$file")" \
-              "$(jq -rc '[.bypass_actors[]? | {actor_id, actor_type}] | sort_by(.actor_id)' <<<"$live")"
-            check "required status checks" \
-              "$(jq -rc '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort' "$file")" \
-              "$(jq -rc '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort' <<<"$live")"
+            for context in $(jq -r '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | .[]' "$file"); do
+              if jq -e --arg c "$context" \
+                'any(.[]; .type == "required_status_checks" and (.parameters.required_status_checks // [] | any(.context == $c)))' \
+                <<<"$live" >/dev/null; then
+                echo "  ok      required check '$context' is in effect"
+              else
+                echo "::error file=$file::required status check '$context' is declared but not required on $BRANCH"
+                failed=1
+              fi
+            done
           done
 
           if [ "$failed" -ne 0 ]; then
-            echo
-            echo "The repository's live protection does not match .github/rulesets/."
+            cat <<EOF
+
+          The declared protection is not in effect. If no ruleset has been applied
+          yet, apply it once from an account with admin on the repository:
+
+            Settings -> Rules -> Rulesets -> New ruleset -> Import a ruleset
+
+          or:
+
+            gh api --method POST repos/$REPO/rulesets --input .github/rulesets/main.json
+          EOF
             exit 1
           fi
           echo
-          echo "Live protection matches the committed declaration."
+          echo "Declared protection is in effect."

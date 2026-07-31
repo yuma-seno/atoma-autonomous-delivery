@@ -37,6 +37,8 @@ Required before first run:
 - Optional repository variables:
   - `OPENAI_BASE_URL`
   - `ATOMA_PROVIDER` (`openai` or `anthropic` with the credentials wired by this template)
+  - `ATOMA_CI_WORKFLOW` — workflow the reviewer dispatches to put a required check on a pull request's head commit before merging. Defaults to `ci.yml`; set this if yours is named differently, or the dispatch fails silently and every merge is refused for a missing check.
+  - `ATOMA_CD_WORKFLOW` — workflow to dispatch after a successful merge. Leave unset unless your deployment is chained off CI or off a push to the base branch: an agent merge is made with `GITHUB_TOKEN`, and GitHub starts no workflow run for events its own token triggers, so nothing downstream of that merge fires by itself.
 
 Workflow permissions are already declared in the generated workflows (`actions`, `issues`, `pull-requests`, `contents` set to write where needed), but they do not override the repository-level setting above.
 

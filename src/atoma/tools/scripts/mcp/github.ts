@@ -582,7 +582,7 @@ function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
 }
 
 /** GitHub's view of one PR, plus the check runs on its head commit. */
-function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: string } {
+function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: string; baseRefName: string } {
   const pr = ghJsonOrThrow<{
     mergeable?: string;
     mergeStateStatus?: string;
@@ -610,13 +610,28 @@ function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: 
   const baseRef = pr?.baseRefName ?? "";
   let requiredChecks: string[] = [];
   if (baseRef) {
-    const rules = ghJsonOrThrow<
-      { type: string; parameters?: { required_status_checks?: { context: string }[] } }[]
-    >("api", `repos/${REPO}/rules/branches/${baseRef}`);
-    requiredChecks = (rules ?? [])
-      .filter((r) => r.type === "required_status_checks")
-      .flatMap((r) => r.parameters?.required_status_checks ?? [])
-      .map((c) => c.context);
+    // Best-effort. This lookup only makes a refusal more specific — it names the
+    // check to fix instead of relaying GitHub's verdict verbatim. Letting it throw
+    // would turn a transient 403 or rate limit into a tool error for every merge
+    // attempt, losing the verdict entirely; `decideMergeReadiness` degrades
+    // gracefully to the generic `blocked` blocker when this comes back empty.
+    const { code, stdout } = gh("api", `repos/${REPO}/rules/branches/${baseRef}`);
+    if (code) {
+      log(`gatherMergeSignals: WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
+    } else {
+      try {
+        const rules = JSON.parse(stdout || "[]") as {
+          type: string;
+          parameters?: { required_status_checks?: { context: string }[] };
+        }[];
+        requiredChecks = rules
+          .filter((r) => r.type === "required_status_checks")
+          .flatMap((r) => r.parameters?.required_status_checks ?? [])
+          .map((c) => c.context);
+      } catch {
+        log(`gatherMergeSignals: WARN branch rules for ${baseRef} were not valid JSON`);
+      }
+    }
   }
 
   return {
@@ -634,18 +649,45 @@ function gatherMergeSignals(num: number): { signals: MergeSignals; headRefName: 
       mergePolicy: getMergePolicy(),
     },
     headRefName: pr?.headRefName ?? "",
+    baseRefName: baseRef,
   };
 }
 
 /** Kick off the CI workflow against a branch, so a fresh agent PR gets a check run. */
 function dispatchCi(branch: string): boolean {
-  const workflow = process.env.ATOMA_CI_WORKFLOW ?? "ci.yml";
+  // `|| ` not `??`: an unset repository variable reaches the runner as an empty
+  // string, which is not nullish and would otherwise become the workflow name.
+  const workflow = (process.env.ATOMA_CI_WORKFLOW ?? "").trim() || "ci.yml";
   const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", branch);
   if (code) {
     log(`dispatchCi: WARN failed to dispatch ${workflow} on ${branch}: ${stderr || stdout}`);
     return false;
   }
   log(`dispatchCi: dispatched ${workflow} on ${branch}`);
+  return true;
+}
+
+/**
+ * Kick off the deployment workflow after a merge.
+ *
+ * Required, not a nicety. This merge is performed with GITHUB_TOKEN, and GitHub
+ * starts no workflow run for events its own token triggers — so merging fires no
+ * `push` on the base branch, nothing chains off it, and a deployment workflow
+ * waiting on that chain never runs. `workflow_dispatch` is the documented
+ * exception. Configure `ATOMA_CD_WORKFLOW` to point at the project's deployment
+ * workflow, or leave it unset to skip this entirely.
+ */
+function dispatchCd(baseRef: string): boolean {
+  const workflow = (process.env.ATOMA_CD_WORKFLOW ?? "").trim();
+  if (!workflow) return false;
+
+  const ref = baseRef || "main";
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, "--ref", ref);
+  if (code) {
+    log(`dispatchCd: WARN failed to dispatch ${workflow} on ${ref}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`dispatchCd: dispatched ${workflow} on ${ref}`);
   return true;
 }
 
@@ -677,10 +719,12 @@ function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>)
 async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   const num = a.number;
 
-  // The gate. Branch protection cannot be committed to the repository, so the
-  // rule that CI must be green before a merge is enforced right here, on the
-  // path every agent merge actually takes.
-  const { signals, headRefName } = gatherMergeSignals(num);
+  // The gate, applied on the path every agent merge takes. The verdict itself is
+  // the repository's own branch protection, re-read here rather than restated —
+  // see domain/merge-readiness.ts. It is applied at this call site because an
+  // agent merge is made with GITHUB_TOKEN, which the ruleset must exempt in order
+  // to let the deployment job publish, so protection alone would not stop it.
+  const { signals, headRefName, baseRefName } = gatherMergeSignals(num);
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
     log(`mergePr: refusing PR #${num} — ${readiness.blockers.map((b) => b.kind).join(", ")}`);
@@ -697,6 +741,10 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code) mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
+
+  // Nothing else will: this merge produced no `push` event, because GitHub starts
+  // no workflow run for events GITHUB_TOKEN triggers.
+  dispatchCd(baseRefName);
 
   const d = ghJsonOrThrow<{ body?: string }>("pr", "view", String(num), "--repo", REPO, "--json", "body");
   const body = d?.body ?? "";

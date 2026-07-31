@@ -197,6 +197,19 @@ const runAgentStep = new TypedOutputsStep(
       // is written to (see lib/ops-log.ts) -- read back below to determine
       // chain_continues, and generally useful as a per-run audit trail.
       ATOMA_OPS_LOG: "atoma_ops.log",
+      // Workflow the reviewer dispatches to put a required check on a pull
+      // request's head commit before merging. Defaults to `ci.yml` inside the
+      // MCP server; set the repository variable to override.
+      ATOMA_CI_WORKFLOW: "${{ vars.ATOMA_CI_WORKFLOW }}",
+      // Workflow the reviewer dispatches AFTER a successful merge. Unset means
+      // no post-merge dispatch, which is the right default for a project whose
+      // deployment is driven by a push event.
+      //
+      // It is needed when deployment is chained off CI or off a push to the base
+      // branch: an agent merge is made with GITHUB_TOKEN, and GitHub starts no
+      // workflow run for events its own token triggers, so nothing downstream of
+      // that merge fires on its own.
+      ATOMA_CD_WORKFLOW: "${{ vars.ATOMA_CD_WORKFLOW }}",
     },
     shell: "bash",
     run: `AGENT="\${{ inputs.agent }}"

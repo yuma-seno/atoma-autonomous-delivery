@@ -11,19 +11,41 @@ name: CD
 #   moment anyone adds `publish-dist` to the ruleset's required checks, because
 #   GitHub does not count a skipped required check as satisfied.
 #
-# Chained through `workflow_run` rather than a `push` trigger so the gate CI
-# provided as `needs: [check]` survives the split: nothing is published from a
-# commit whose CI failed. This mirrors how the Atoma core repo chains its release
-# workflow off CI.
+# Two triggers, because the two merge paths reach main differently.
 #
-# No loop: this job pushes as github-actions[bot], and GitHub starts no workflow
-# run for events its own token triggers.
+# `workflow_run` covers the human path: a person merging fires a real `push` on
+# main, CI runs, and chaining off its success preserves the gate that
+# `needs: [check]` gave before CI and CD were separated.
+#
+# `workflow_dispatch` covers the autonomous path, and is not optional. An agent
+# merge is performed with GITHUB_TOKEN, and GitHub starts no workflow run for
+# events its own token triggers -- so no `push` fires, no CI runs, and no
+# `workflow_run` follows. Chained alone, this workflow never ran after an agent
+# merge, and since CI also rejects any pull request that edits `dist/`, the
+# deliverable had no route to be updated at all: it would have frozen silently the
+# moment direct pushes to main were forbidden. `mergePr` now dispatches this
+# workflow after a successful merge.
+#
+# Publishing on dispatch without CI having re-run on main is sound: the merge gate
+# already required the `check` context to be green on the merged head, `dist/` is a
+# pure function of `src/`, and a broken `synth` fails this job rather than
+# publishing anything.
+#
+# No loop: the push below is made as github-actions[bot], whose events start no
+# workflow run.
 
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
+
+# Serialised: two publishes racing would both `git push`, and the loser is
+# rejected non-fast-forward with nothing retrying it.
+concurrency:
+  group: publish-dist
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,7 +54,8 @@ jobs:
   publish-dist:
     runs-on: ubuntu-latest
     # `workflow_run` fires for any conclusion, including failure and cancellation.
-    if: github.event.workflow_run.conclusion == 'success'
+    # A dispatch has no `workflow_run` context, so allow it through explicitly.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
     steps:
@@ -62,10 +85,13 @@ jobs:
         # bypass onto main.
         shell: bash
         run: |
-          STRAY=$(git status --porcelain -- . ":(exclude)dist" | head -20)
+          # No `head` in the pipeline: `shell: bash` runs with `-o pipefail`, so a
+          # closed pipe would kill the step at the assignment and the error below
+          # would never print. Truncate when reporting instead.
+          STRAY=$(git status --porcelain -- . ':(exclude)dist')
           if [ -n "$STRAY" ]; then
             echo "::error::synth modified paths outside dist/; refusing to publish:"
-            echo "$STRAY"
+            printf '%s\n' "$STRAY" | head -20 | sed 's/^/  /'
             exit 1
           fi
       - name: Commit and push dist/ if it changed

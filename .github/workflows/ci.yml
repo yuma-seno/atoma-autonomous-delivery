@@ -56,22 +56,45 @@ jobs:
       # push -- it is this repository's deliberate adoption of the deliverable,
       # upgraded by hand and reviewed in a pull request like any
       # other change.
+      #
+      # Gated on `!= 'push'` rather than `== 'pull_request'`. An agent's branch and
+      # pull request are created with GITHUB_TOKEN, so `pull_request` never fires
+      # for them -- their only CI run is the reviewer's `workflow_dispatch`. Keying
+      # on `pull_request` skipped both of these guards on exactly the pull requests
+      # they exist to police, and the required `check` context went green having run
+      # nothing but typecheck and test.
       - name: Reject generated output in the diff
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
+          # Empty on a workflow_dispatch run; resolved from the branch below.
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        shell: bash
         run: |
-          GENERATED=$(gh pr diff "$PR" --name-only | grep -E '^dist/' || true)
+          set -euo pipefail
+          PR="$EVENT_PR"
+          if [ -z "$PR" ]; then
+            PR=$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')
+          fi
+          if [ -z "$PR" ]; then
+            echo "No open pull request for $GITHUB_REF_NAME; nothing to inspect."
+            exit 0
+          fi
+
+          # Two statements, not one pipeline: with `|| true` spanning the whole
+          # pipeline a failing `gh` was indistinguishable from a clean diff, and
+          # the step passed.
+          FILES=$(gh pr diff "$PR" --name-only)
+          GENERATED=$(printf '%s\n' "$FILES" | grep -E '^dist/' || true)
           if [ -n "$GENERATED" ]; then
-            echo "::error::This pull request edits generated output. Drop these files and let the deploy job produce them:"
-            echo "$GENERATED" | sed 's/^/  /'
+            echo "::error::Pull request #$PR edits generated output. Drop these files and let CD produce them:"
+            printf '%s\n' "$GENERATED" | sed 's/^/  /'
             exit 1
           fi
-          echo "No generated output in the diff."
+          echo "No generated output in pull request #$PR."
       # Verifies the deliverable still BUILDS, without requiring dist/ to be
       # committed -- the counterpart to the check above. A synth that only breaks
-      # after merge would leave main unable to deploy.
+      # after merge would leave main unable to publish.
       - name: Verify the deliverable still builds
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'push'
         run: bun run synth
