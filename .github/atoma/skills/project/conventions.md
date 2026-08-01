@@ -83,12 +83,18 @@ adoption of the deliverable, so it lags `src/` until someone upgrades it:
 
 ```bash
 bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json
+git diff .github/
 ```
 
-The last step matters: everything under `.github/atoma/` is generated and gets
-overwritten, **except `config.json`, which is this repository's own
-configuration**. It carries `workflows.cd`, without which nothing publishes
-`dist/` after an agent merge.
+This one-liner is correct **for this repository specifically**, because this
+repository is the template's author: its agent definitions, skills and prompt
+template are the deliverable, so there is nothing of its own to lose in them.
+`config.json` is the single exception, carrying `workflows.cd` — without which
+nothing publishes `dist/` after an agent merge.
+
+Do not read it as the general procedure. An adopter who has tuned an agent
+definition would lose that, which is why `docs/customization.md` documents
+upgrading as a git-mediated merge rather than a copy. Read the diff either way.
 
 Then open a pull request with the result. That lag is the point — a change to
 `src/` must not reconfigure the live agents the moment it merges. Two breakages

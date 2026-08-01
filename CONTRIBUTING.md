@@ -18,8 +18,11 @@ This repository's own:
 - top-level `.github/`: this repository's adoption of the deliverable, plus
   `workflows/ci.yml`. Upgraded deliberately, not on merge:
   `bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json`,
-  then open a pull request. That last step is the rule that generated files are
-  overwritten and **your configuration is not** — `config.json` is yours.
+  then read `git diff .github/` and open a pull request. Restoring `config.json`
+  encodes the rule that generated files are overwritten and configuration is not.
+  This shortcut holds only because this repository authors the template, so its
+  agent definitions and skills have nothing of their own to lose; adopters upgrade
+  as a merge instead — see [docs/customization.md](docs/customization.md).
   Project-specific agent rules live in `.github/atoma/skills/project/`.
 - `tests/`: tests of the build-and-deploy machinery. Tests of *shipped behaviour*
   live beside the shipped code instead.
