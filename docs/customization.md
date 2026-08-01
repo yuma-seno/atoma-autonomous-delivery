@@ -36,6 +36,32 @@ is replaced when you upgrade the template; this file is not, so edits to it
 survive. Keep project-specific settings here rather than in repository variables,
 where they are neither versioned nor reviewable.
 
+### Which file a setting belongs in
+
+The line follows what the setting is *about*, not which file is more convenient to
+edit:
+
+- **`config.json` — the delivery system.** How agents coordinate with each other
+  and with GitHub: which event dispatches which agent, the labels used to track
+  work, the merge policy, the workflows to dispatch, the environment a run needs.
+- **The agent definition — one agent.** What that agent *is*: its model and
+  provider, the tools it may use, the colleagues it knows about, who may call it,
+  and its role prompt.
+
+This is not an invention of this template. The agent definition is Atoma's own
+contract and is validated by `atoma validate`; `config.json` is the delivery
+layer's. Keeping them apart means an agent definition stays portable — it describes
+an agent, not a delivery pipeline.
+
+`agents.<name>.max_iterations` is the one entry that looks like an exception. It is
+per-agent yet lives in `config.json`, because it is a budget the runner imposes on
+a run rather than part of what the agent is — Atoma has no such field, it is a CLI
+flag the runner supplies.
+
+Resist moving a setting across this line for operational convenience. Wanting to
+avoid an upgrade conflict is not a reason to describe an agent's model as delivery
+configuration; fix the upgrade procedure instead.
+
 Supported trigger conditions:
 
 - `changes_requested`
