@@ -2,7 +2,7 @@
 name: orchestrator
 description: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.
 provider: openai # openrouter
-model: xiaomi/mimo-v2.5
+model: qwen/qwen3.7-plus
 callable_by:
   - user
   - agent
@@ -31,9 +31,7 @@ extra_body:
   # with `Server tool request failed` (HTTP 404, `provider_name: null`).
   provider:
     order:
-      - Xiaomi
-      - Parasail
-      - Novita
+      - Alibaba Cloud Int.
   tools:
     - type: openrouter:web_search
     - type: openrouter:web_fetch

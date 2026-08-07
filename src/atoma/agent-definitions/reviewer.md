@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews one pull request for concrete merge-blocking defects and applies the configured merge policy.
 provider: openai # openrouter
-model: xiaomi/mimo-v2.5
+model: qwen/qwen3-vl-235b-a22b-instruct
 callable_by:
   - user
   - agent
@@ -20,9 +20,10 @@ extra_body:
   # `Server tool request failed` (HTTP 404) on the first inference call.
   provider:
     order:
-      - Xiaomi
       - Parasail
       - Novita
+      - DeepInfra
+      - Fireworks
   tools:
     - type: openrouter:web_search
     - type: openrouter:web_fetch
