@@ -2,7 +2,7 @@
 name: engineer
 description: Implements one engineer-ready leaf task, validates it, and opens a pull request.
 provider: openai # openrouter
-model: xiaomi/mimo-v2.5
+model: deepseek/deepseek-v4-flash-0731
 callable_by:
   - user
   - agent
@@ -21,9 +21,11 @@ extra_body:
   # `Server tool request failed` (HTTP 404) on the first inference call.
   provider:
     order:
-      - Xiaomi
-      - Parasail
-      - Novita
+      - Cloudflare
+      - DeepSeek
+      - DeepInfra
+      - NovitaAI
+      - Fireworks
   tools:
     - type: openrouter:web_search
     - type: openrouter:web_fetch
