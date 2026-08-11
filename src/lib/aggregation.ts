@@ -4,26 +4,26 @@
  * orchestrator for re-invocation".
  *
  * Three call sites need this exact gate, previously reimplemented
- * independently (with subtly different retry/exclude/idempotency behavior)
- * in dispatch_orchestrator_if_ready.ts (atoma-side, post-close),
- * dispatch_if_siblings_done.ts (workflow-side, manual-close fallback), and
- * aggregate_sub_issues.ts (workflow-side, PR-merge primary path -- which
- * additionally injects sub-issue results into the orchestrator's session
- * before dispatching, via `beforeDispatch` below).
+ * independently with subtly different retry/exclude/idempotency behavior:
  *
- * Idempotency: two of the three call sites can race for the SAME
- * completion (a PR merge triggers both the event-driven
- * aggregate_sub_issues.ts AND, asynchronously, an origin-agent
- * re-invocation that eventually closes the sub-issue itself and reaches
- * dispatch_orchestrator_if_ready.ts) -- see the `atoma:aggregated` marker
- * check below, which makes whichever caller gets here first win and the
- * other a no-op.
+ * - `dispatchOrchestratorIfSubIssueReady` below, reached from the MCP server
+ *   whenever an agent closes a sub-issue (atoma-side, post-close).
+ * - dispatch_if_siblings_done.ts (workflow-side, manual-close fallback).
+ * - aggregate_sub_issues.ts (workflow-side, PR-merge primary path -- which
+ *   additionally injects sub-issue results into the orchestrator's session
+ *   before dispatching, via `beforeDispatch` below).
+ *
+ * Idempotency: two of the three can race for the SAME completion -- a PR merge
+ * triggers the event-driven aggregate_sub_issues.ts AND, asynchronously, an
+ * origin-agent re-invocation that eventually closes the sub-issue itself and
+ * reaches the first path. The `atoma:aggregated` marker check below makes
+ * whichever caller gets here first win and the other a no-op.
  */
 import { gh } from "./gh.ts";
 import { countOpenSiblings } from "./sibling-check.ts";
+import { dispatchRunner } from "./dispatch.ts";
 import { resolveNotify } from "./notify.ts";
 import { AGGREGATED_TAG, LLM_CONTEXT_TAG, PARENT_TAG, SUB_RESULT_TAG } from "./tags.ts";
-import { logDispatch } from "./ops-log.ts";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,7 +52,6 @@ export interface DispatchGateOptions {
   progressMessage?: (remaining: number) => string;
   /** Run just before posting the "all done" comment + dispatching -- aggregate_sub_issues.ts uses this to inject sub-issue results into the orchestrator's persisted session first. */
   beforeDispatch?: () => Promise<void> | void;
-  dispatchWorkflow?: string;
 }
 
 export interface DispatchGateResult {
@@ -99,18 +98,19 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
     "--body", `${AGGREGATED_TAG.write(opts.closedNum)}\nAtoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`,
   );
 
-  const notify = resolveNotify(opts.repo, opts.parent);
-  gh(
-    "workflow", "run", opts.dispatchWorkflow ?? "atoma-runner.yml",
-    "--repo", opts.repo,
-    "--field", "agent=orchestrator",
-    "--field", `number=${opts.parent}`,
-    "--field", "type=issue",
-    "--field", `notify=${notify}`,
-  );
-  logDispatch("issue", "orchestrator", { number: opts.parent });
+  const dispatched = dispatchRunner({
+    context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
+    agent: "orchestrator",
+    type: "issue",
+    number: opts.parent,
+    notify: resolveNotify(opts.repo, opts.parent),
+    repo: opts.repo,
+  });
 
-  return { ready: true, remaining: 0, dispatched: true };
+  // Reported rather than assumed. The `atoma:aggregated` marker above is already
+  // written at this point, so a failed dispatch cannot be retried by the racing
+  // caller either -- saying so is the only way it reaches a human.
+  return { ready: true, remaining: 0, dispatched };
 }
 
 /**

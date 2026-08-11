@@ -1,7 +1,7 @@
 import { gh } from "../../../../lib/gh.ts";
 import { isAgentName } from "../../../../lib/agent-name.ts";
 import { getLabel } from "../../../../lib/config.ts";
-import { logDispatch } from "../../../../lib/ops-log.ts";
+import { dispatchRunner } from "../../../../lib/dispatch.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
 
 export interface DispatchSubAgentResult {
@@ -21,8 +21,6 @@ export function dispatchSubAgent(issue: number, agent: string, notify = ""): Dis
     throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
   }
 
-  console.error(`Dispatching agent '${agent}' on sub-issue #${issue} ...`);
-
   gh(
     "issue", "comment", String(issue),
     "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: Agent \`${agent}\` dispatched to work on this sub-task.`,
@@ -40,15 +38,20 @@ export function dispatchSubAgent(issue: number, agent: string, notify = ""): Dis
     console.error(`Warning: failed to add '${launchedLabel}' label to #${issue}`);
   }
 
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
-  gh(
-    "workflow", "run", dispatchWorkflow,
-    "--field", `agent=${agent}`,
-    "--field", `number=${issue}`,
-    "--field", "type=issue",
-    "--field", `notify=${notify}`,
-  );
-  logDispatch("issue", agent, { number: issue });
+  // Throws rather than returning quietly: `launch_sub_agent` reports each task's
+  // outcome to the orchestrator individually, and the confirmation comment above
+  // is already posted, so a swallowed failure would leave a sub-issue that says
+  // an agent is working on it while nothing is.
+  const dispatched = dispatchRunner({
+    context: `dispatchSubAgent: dispatching ${agent} on sub-issue #${issue}`,
+    agent,
+    type: "issue",
+    number: issue,
+    notify,
+  });
+  if (!dispatched) {
+    throw new Error(`could not dispatch ${agent} on sub-issue #${issue}; see the workflow log for the gh error`);
+  }
 
   return { issue, agent };
 }

@@ -11,15 +11,14 @@
  * Writes `notify=<login-or-empty>` to $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
+import { NOTIFY_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);
 
-const NOTIFY_RE = /<!--\s*atoma:notify=([A-Za-z0-9-]+)\s*-->/;
-
 function main(): void {
   const body = process.env.PR_BODY ?? "";
-  const notify = NOTIFY_RE.exec(body)?.[1] ?? "";
+  const notify = NOTIFY_TAG.read(body) ?? "";
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) appendFileSync(githubOutput, `notify=${notify}\n`);
 }

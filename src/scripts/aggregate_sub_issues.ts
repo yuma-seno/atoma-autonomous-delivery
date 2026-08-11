@@ -6,21 +6,20 @@
  * aggregates their results into the orchestrator's session (stored on the
  * orphan `atoma-data` branch) and re-dispatches the orchestrator.
  *
- * Thin CLI wrapper around lib/aggregation.ts's shared dispatch gate --
- * see that module's doc comment for why this exact gate is also used by
- * dispatch_orchestrator_if_ready.ts and dispatch_if_siblings_done.ts.
+ * Thin CLI wrapper around lib/aggregation.ts's shared dispatch gate -- see that
+ * module's doc comment for the other two callers of the same gate and for the
+ * race between them.
  *
  * Usage:
  *   aggregate_sub_issues.ts --repo OWNER/REPO --parent N --closed-num N
  */
 import { parseArgs } from "node:util";
-import { dirname } from "node:path";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { gh, gitRun } from "../lib/gh.ts";
+import { gh } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 import { dispatchOrchestratorIfReady } from "../lib/aggregation.ts";
 import { injectSubResults, type Session } from "../lib/inject-sub-results.ts";
-import { sessionTargetPath } from "./lib/atoma-data.ts";
+import { PARENT_TAG } from "../lib/tags.ts";
+import { restoreSession, saveSession, sessionTargetPath } from "./lib/atoma-data.ts";
 
 export interface AggregateSubIssuesArgs {
   repo: string;
@@ -30,73 +29,59 @@ export interface AggregateSubIssuesArgs {
 
 export const ref = defineScript<AggregateSubIssuesArgs>(import.meta.url);
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Every sub-issue linked to `parent`, open or closed.
+ *
+ * The `--search` narrows server-side, but GitHub's issue search tokenizes, so it
+ * is a prefilter and not the predicate: the same query returns `atoma:parent=50`
+ * for a query of `5`. `PARENT_TAG.read` is the predicate, because it is anchored
+ * on the tag's real wire format. The previous version filtered with jq
+ * `contains("atoma:parent=<n>")`, an unanchored substring test, so aggregating
+ * parent #5 collected every sub-issue of #50 through #59 and fed their results
+ * into #5's orchestrator session.
+ *
+ * `--limit` is explicit because `gh issue list` defaults to 30 and truncates
+ * silently, which for a plan with more sub-tasks than that would look like
+ * results simply going missing.
+ */
+function linkedSubIssues(repo: string, parent: number): number[] {
+  const { code, stdout, stderr } = gh(
+    "issue", "list", "--repo", repo, "--state", "all", "--limit", "200",
+    "--search", `atoma:parent=${parent} in:body`,
+    "--json", "number,body",
+  );
+  if (code !== 0) {
+    throw new Error(`could not list sub-issues of #${parent}: ${stderr || stdout}`);
+  }
+  const issues = (stdout ? JSON.parse(stdout) : []) as { number: number; body?: string }[];
+  return issues.filter((issue) => PARENT_TAG.read(issue.body ?? "") === parent).map((issue) => issue.number);
 }
 
 /**
- * Fetches every sub-issue linked to `parent` (open or closed) and injects
- * their results into the orchestrator's persisted session on the orphan
- * `atoma-data` branch, retrying on push races -- multiple parents can
- * finish aggregation around the same time, all pushing to the same
- * atoma-data branch, so a race is expected, not exceptional. Re-pulls the
- * latest tip on every attempt and, if the push still loses the race,
- * resets and retries from scratch -- safe because each parent only ever
- * touches its own uniquely-named sessionPath, so a reset can never discard
- * another parent's concurrently-pushed session.
+ * Injects every linked sub-issue's result into the orchestrator's persisted
+ * session on the `atoma-data` branch.
+ *
+ * Reads and writes through lib/atoma-data.ts rather than driving git here. That
+ * module's `saveSession` already owns the part that is easy to get wrong -- it
+ * creates the branch if absent, holds the push-retry loop for the races that are
+ * expected when sibling agents finish together, and does all of it in a
+ * throwaway worktree so the job's own checkout is untouched. This function used
+ * to reimplement that with `git checkout -B atoma-data` in the main checkout
+ * (and `git rm -rf .` on the branch-missing path), which worked only because
+ * nothing in this job reads a file afterwards.
  */
-async function injectResultsIntoOrchestratorSession(repo: string, parent: string): Promise<void> {
-  const { stdout: allSubsOut } = gh(
-    "issue", "list", "--repo", repo, "--state", "all",
-    "--json", "number,title,body",
-    "--jq", `[.[] | select(.body | contains("atoma:parent=${parent}")) | .number] | join(",")`,
-  );
-  const subIssues = allSubsOut.trim().split(",").filter(Boolean).map(Number);
-  console.log(`All sub-issues for parent #${parent}: ${subIssues.join(",")}`);
+function injectResultsIntoOrchestratorSession(repo: string, parent: number): void {
+  const subIssues = linkedSubIssues(repo, parent);
+  console.error(`Sub-issues of #${parent}: ${subIssues.join(", ") || "(none)"}`);
 
   const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
+  const existing = restoreSession(sessionPath);
+  const session: Session = existing ? (JSON.parse(existing) as Session) : { messages: [] };
 
-  gitRun("config", "user.email", "action@github.com");
-  gitRun("config", "user.name", "GitHub Actions");
-
-  let saved = false;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    if (gitRun("fetch", "origin", "atoma-data").code === 0) {
-      gitRun("checkout", "-B", "atoma-data", "origin/atoma-data");
-    } else {
-      gitRun("checkout", "--orphan", "atoma-data");
-      gitRun("rm", "-rf", ".");
-    }
-
-    const session: Session = gitRun("cat-file", "-e", `HEAD:${sessionPath}`).code === 0
-      ? (JSON.parse(gitRun("show", `HEAD:${sessionPath}`).stdout) as Session)
-      : { messages: [] };
-
-    const updated = injectSubResults(session, repo, subIssues);
-
-    mkdirSync(dirname(sessionPath), { recursive: true });
-    writeFileSync(sessionPath, JSON.stringify(updated, null, 2));
-    gitRun("add", sessionPath);
-
-    if (gitRun("diff", "--cached", "--quiet").code === 0) {
-      console.log("No changes to session; skipping commit.");
-      saved = true;
-      break;
-    }
-
-    gitRun("commit", "-m", `atoma: inject sub-issue results for parent #${parent}`);
-
-    if (gitRun("push", "origin", "atoma-data").code === 0) {
-      saved = true;
-      break;
-    }
-
-    console.log(`Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull...`);
-    await sleep(attempt * 2000);
-  }
-
-  if (!saved) {
-    console.log(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);
+  const updated = injectSubResults(session, repo, subIssues);
+  const message = `atoma: inject sub-issue results for parent #${parent}`;
+  if (!saveSession(sessionPath, JSON.stringify(updated, null, 2), message)) {
+    console.error(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);
   }
 }
 
@@ -117,7 +102,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  console.log(`PR merged (sub-issue #${closedNum}, parent #${parent}). Checking siblings...`);
+  console.error(`PR merged (sub-issue #${closedNum}, parent #${parent}). Checking siblings...`);
 
   const result = await dispatchOrchestratorIfReady({
     repo,
@@ -130,15 +115,21 @@ async function main(): Promise<void> {
     // its first (and normally only) run instead of depending on that timing.
     exclude: true,
     progressMessage: (remaining) => `Atoma: Sub-task #${closedNum} completed. ${remaining} sub-task(s) still in progress.`,
-    beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, parent),
+    beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, Number(parent)),
   });
 
   if (!result.ready) {
-    console.log("Not all sub-tasks done yet.");
+    console.error("Not all sub-tasks done yet.");
   } else if (!result.dispatched) {
-    console.log(`Aggregation for sub-issue #${closedNum} already dispatched by another caller; skipping.`);
+    // Two causes, and the gate does not distinguish them: another caller got
+    // there first (the normal race, harmless), or the dispatch itself failed and
+    // logged the gh error above. Say both rather than assert the benign one.
+    console.error(
+      `Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` +
+        `completion, or the dispatch failed -- check for a WARN above.`,
+    );
   } else {
-    console.log("All sub-tasks completed! Orchestrator re-invoked.");
+    console.error("All sub-tasks completed! Orchestrator re-invoked.");
   }
 }
 

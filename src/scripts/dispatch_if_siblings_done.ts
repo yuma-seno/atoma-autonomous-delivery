@@ -3,10 +3,10 @@
  * dispatch_if_siblings_done.ts — FALLBACK path for a manually-closed
  * sub-issue: if no open siblings remain, dispatch the orchestrator.
  *
- * Thin CLI wrapper around lib/aggregation.ts's shared dispatch gate -- see
- * that module's doc comment for why the exact same gate is also used by
- * aggregate_sub_issues.ts (PR-merge primary path) and
- * dispatch_orchestrator_if_ready.ts (atoma-side, post-close).
+ * Thin CLI wrapper around lib/aggregation.ts's shared dispatch gate -- see that
+ * module's doc comment for the other two callers of the same gate (the PR-merge
+ * primary path, and the MCP server's own post-close check) and for the race
+ * between them.
  *
  * Usage: dispatch_if_siblings_done.ts --repo OWNER/REPO --parent N --closed-num N
  */
@@ -49,7 +49,10 @@ async function main(): Promise<void> {
   if (!result.ready) {
     console.log(`Still ${result.remaining} sibling(s) open. No action needed.`);
   } else if (!result.dispatched) {
-    console.log(`Aggregation for #${closedNum} already dispatched by another caller; skipping.`);
+    console.log(
+      `Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` +
+        `completion, or the dispatch failed -- check for a WARN above.`,
+    );
   } else {
     console.log(`All siblings done. Dispatched orchestrator on parent #${parent}.`);
   }

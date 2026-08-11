@@ -21,7 +21,8 @@ import { dispatchWorkflow, gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
 import { getLabel, getMergePolicy, getTriggerAgent, getWorkflowName } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
-import { logDispatch, logOp } from "../../../../lib/ops-log.ts";
+import { dispatchRunner } from "../../../../lib/dispatch.ts";
+import { logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
@@ -334,20 +335,14 @@ function injectParentIssue(body: string): string {
  */
 function dispatchPostPrAgent(prNumber: number): void {
   const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW ?? "atoma-runner.yml";
-  const { code, stdout, stderr } = gh(
-    "workflow", "run", dispatchWorkflow,
-    "--field", `agent=${agent}`,
-    "--field", `number=${prNumber}`,
-    "--field", "type=pr",
-    "--field", `notify=${(process.env.ISSUE_NOTIFY ?? "").trim()}`,
-  );
-  if (code) {
-    log(`dispatchPostPrAgent: WARN failed to dispatch ${agent} for PR #${prNumber}: ${stderr || stdout}`);
-  } else {
-    log(`dispatchPostPrAgent: dispatched ${agent} for PR #${prNumber}`);
-    logDispatch("pr", agent, { number: prNumber });
-  }
+  dispatchRunner({
+    context: `dispatchPostPrAgent: dispatching ${agent} for PR #${prNumber}`,
+    agent,
+    type: "pr",
+    number: prNumber,
+    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
+    log,
+  });
 }
 
 function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
@@ -539,6 +534,12 @@ function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
   return JSON.stringify({ ok: true });
 }
 
+/** True if `number` is currently closed (used to skip a pointless post-merge re-invocation when native "Closes #N" auto-close already did the job). */
+function isIssueClosed(number: number): boolean {
+  const d = ghJsonOrThrow<{ state?: string }>("issue", "view", String(number), "--repo", REPO, "--json", "state");
+  return (d?.state ?? "").toUpperCase() === "CLOSED";
+}
+
 /**
  * After a PR merges, re-invoke the agent that originally created it (tagged
  * via <!-- atoma:origin-agent=... --> in the PR body, see injectParentIssue)
@@ -547,12 +548,6 @@ function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
  * here should not fail merge_pr itself -- caller falls back to closing
  * directly).
  */
-/** True if `number` is currently closed (used to skip a pointless post-merge re-invocation when native "Closes #N" auto-close already did the job). */
-function isIssueClosed(number: number): boolean {
-  const d = ghJsonOrThrow<{ state?: string }>("issue", "view", String(number), "--repo", REPO, "--json", "state");
-  return (d?.state ?? "").toUpperCase() === "CLOSED";
-}
-
 function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
   const notify = resolveNotify(REPO, subIssueNum);
   {
@@ -565,21 +560,15 @@ function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
       return false;
     }
   }
-  const { code, stdout, stderr } = gh(
-    "workflow", "run", "atoma-runner.yml",
-    "--repo", REPO,
-    "--field", `agent=${agent}`,
-    "--field", `number=${subIssueNum}`,
-    "--field", "type=issue",
-    "--field", `notify=${notify}`,
-  );
-  if (code) {
-    log(`dispatchPostMergeAgent: gh workflow run failed for #${subIssueNum} (rc=${code}): ${stderr || stdout}`);
-    return false;
-  }
-  log(`dispatchPostMergeAgent: re-invoked ${agent} on #${subIssueNum} to confirm and close`);
-  logDispatch("issue", agent, { number: subIssueNum });
-  return true;
+  return dispatchRunner({
+    context: `dispatchPostMergeAgent: re-invoking ${agent} on #${subIssueNum} to confirm and close`,
+    agent,
+    type: "issue",
+    number: subIssueNum,
+    notify,
+    repo: REPO,
+    log,
+  });
 }
 
 

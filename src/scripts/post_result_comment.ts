@@ -16,6 +16,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
+import { AGENT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
@@ -59,7 +60,7 @@ export function buildCommentBody(args: {
   output: string;
   usageLines: string[];
 }): string {
-  const lines = [`<!-- atoma:agent=${args.agent} -->`, args.output, "", ...args.usageLines];
+  const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
 
   if (!args.directive && args.chainContinues !== "true" && args.notify) {
     lines.push(
