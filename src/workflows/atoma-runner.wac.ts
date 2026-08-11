@@ -22,6 +22,7 @@ import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
+import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
 // The shared reusable workflow every entry-point workflow (atoma-entry,
@@ -58,6 +59,60 @@ const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
 const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
+
+// Every input this workflow takes is spliced into shell TEXT somewhere below:
+// `AGENT="${{ inputs.agent }}"`, `BRANCH="atoma/issue-${{ inputs.number }}"`,
+// `VERSION="${{ inputs.atoma_version }}"`, and a dozen `--flag "${{ ... }}"`
+// script arguments. GitHub Actions substitutes `${{ }}` into the script before
+// bash ever parses it, so a value carrying a quote or a `$(...)` is not data --
+// it is code, running in a job that holds write scopes and, via
+// `secrets: inherit`, the provider API keys.
+//
+// The step below is the boundary. It runs first, reads every input through
+// `env:` (where a value can only ever be data), and refuses anything outside a
+// narrow shape. One check covering all sinks, rather than converting each of a
+// dozen interpolations and hoping the next one added remembers -- which is the
+// same reasoning as the `directive` guard in dispatchNextAgentStep, applied to
+// the inputs instead of the outputs.
+//
+// The agent pattern is GENERATED from lib/agent-name.ts rather than written out
+// here, so this bash test and the TypeScript `isAgentName()` that validates the
+// same value at its producers cannot drift apart.
+const validateInputsStep = new TypedOutputsStep({
+  name: "Validate workflow inputs",
+  shell: "bash",
+  env: {
+    AGENT: "${{ inputs.agent }}",
+    NUMBER: "${{ inputs.number }}",
+    TYPE: "${{ inputs.type }}",
+    SESSION_MODE: "${{ inputs.session_mode }}",
+    ATOMA_VERSION: "${{ inputs.atoma_version }}",
+    NOTIFY: "${{ inputs.notify }}",
+  },
+  run: `reject() {
+  echo "::error::atoma-runner received an invalid \\`$1\\` input: '$2'. $3"
+  exit 1
+}
+
+[[ "$AGENT" =~ ^${AGENT_NAME_PATTERN}$ ]] ||
+  reject agent "$AGENT" "Expected a bare lowercase agent name, e.g. 'engineer'."
+[[ "$NUMBER" =~ ^[0-9]+$ ]] ||
+  reject number "$NUMBER" "Expected an issue or pull request number."
+[[ "$TYPE" == "issue" || "$TYPE" == "pr" ]] ||
+  reject type "$TYPE" "Expected 'issue' or 'pr'."
+[[ "$SESSION_MODE" == "continue" || "$SESSION_MODE" == "recover" ]] ||
+  reject session_mode "$SESSION_MODE" "Expected 'continue' or 'recover'."
+# 'source' builds from a checkout; anything else is fetched as a release asset
+# and interpolated into a download URL, so keep it to a tag-shaped string.
+[[ "$ATOMA_VERSION" =~ ^(source|latest|v[0-9A-Za-z._-]+)$ ]] ||
+  reject atoma_version "$ATOMA_VERSION" "Expected 'source', 'latest', or a release tag like 'v0.1.7'."
+# May be empty: a run with nobody to notify is normal.
+[[ "$NOTIFY" =~ ^[A-Za-z0-9-]*$ ]] ||
+  reject notify "$NOTIFY" "Expected a GitHub login, or empty."
+
+echo "Inputs validated: \${TYPE} #\${NUMBER}, agent=\${AGENT}, session_mode=\${SESSION_MODE}"
+`,
+});
 
 // Referenced downstream by name only where a later step (or the job's own
 // `if`/`outputs`) needs to read a `.outputs`/`.rawOutputs` value; every step
@@ -244,7 +299,7 @@ atoma run \\
   --out-session session.json \\
   --template "${PROMPT_TEMPLATE}" \\
   --skills-dir "${SKILLS_DIR}" \\
-  --max-iterations ${cfgStep.outputs.max_iterations} \\
+  --max-iterations "${cfgStep.outputs.max_iterations}" \\
   \${TOOLS_ARG} \\
   > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 
@@ -505,7 +560,7 @@ const dispatchNextAgentStep = new TypedOutputsStep({
     TYPE: "${{ inputs.type }}",
     NOTIFY: notifyStep.outputs.notify,
   },
-  run: `if ! [[ "$DIRECTIVE" =~ ^[a-z][a-z0-9-]*$ ]]; then
+  run: `if ! [[ "$DIRECTIVE" =~ ^${AGENT_NAME_PATTERN}$ ]]; then
   echo "::error::Invalid directive value: \${DIRECTIVE}"
   exit 1
 fi
@@ -578,6 +633,9 @@ const runJob = new NormalJob("run", {
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
 }).addSteps([
+  // First, before the checkout: nothing should run at all on an input this job
+  // is going to splice into shell text.
+  validateInputsStep,
   new ActionsCheckoutV4({
     name: "Checkout repository",
     with: {

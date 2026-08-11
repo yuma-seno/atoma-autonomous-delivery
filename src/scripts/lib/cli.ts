@@ -21,10 +21,21 @@ export function toArgv<T extends Record<string, string | number | boolean | unde
   for (const [flag, value] of Object.entries(args)) {
     if (value === undefined) continue;
     // Double-quote every value: these argv arrays are joined with spaces and
-    // spliced directly into a bash `run:` heredoc, so any value that is
-    // itself a `${VAR}`/`${{ ... }}` expansion must stay quoted the same way
-    // hand-written bash would quote it (safe no-op for plain identifiers
-    // like issue numbers or agent names).
+    // spliced directly into a bash `run:` heredoc, so a value that is itself a
+    // `${VAR}`/`${{ ... }}` expansion has to stay quoted or it word-splits.
+    //
+    // Quoting is NOT a safety boundary, and reading it as one is how an
+    // injection gets written. Double quotes stop word splitting and globbing;
+    // they do not stop `$(...)`, backticks, or `${...}`, all of which still
+    // expand inside them. For a `${{ }}` expression that is doubly true: the
+    // value is substituted into the script TEXT before bash parses it, so a
+    // quote character in the value simply ends the string.
+    //
+    // What makes these call sites safe is therefore the value's provenance, not
+    // this function. Values reaching a generated `run:` must be validated
+    // before they get here -- see atoma-runner.wac.ts's "Validate workflow
+    // inputs" step, which is the boundary for every input that workflow splices
+    // into shell text.
     argv.push(`--${flag}`, `"${String(value)}"`);
   }
   return argv;

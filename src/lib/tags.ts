@@ -7,6 +7,7 @@
  * wire format is defined; every reader/writer imports from here instead of
  * re-deriving its own regex.
  */
+import { AGENT_NAME_PATTERN } from "./agent-name.ts";
 
 export interface AtomaTag<T> {
   /** Render this tag's HTML-comment form, ready to prepend/embed in a body or comment. */
@@ -46,11 +47,11 @@ export const PARENT_ISSUE_TAG = numericTag("parent-issue");
 /** Who to `@mention` on completion/escalation. */
 export const NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 /** Which agent originally created a PR (for post-merge/rejection re-invocation). */
-export const ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
+export const ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
 /** Slash-command-equivalent dispatch marker on a bot-authored comment. */
-export const DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
+export const DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
 /** Tags a posted result comment with which agent generated it (used by reconcile_github_session.ts to exclude an agent's own past comments from its future shared context). */
-export const AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+export const AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 /** Marks a GitHub comment as human-visible operational audit only; excluded from future LLM context reconciliation. */
 export const LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 /** Idempotency marker: orchestrator dispatch was already triggered for a given closed sub-issue's completion (see lib/aggregation.ts). Fresh tag with no pre-existing data, written as plain `N`. */

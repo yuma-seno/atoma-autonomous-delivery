@@ -1,4 +1,5 @@
 import { gh } from "../../../../lib/gh.ts";
+import { isAgentName } from "../../../../lib/agent-name.ts";
 import { getLabel } from "../../../../lib/config.ts";
 import { logDispatch } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
@@ -16,7 +17,7 @@ export function dispatchSubAgent(issue: number, agent: string, notify = ""): Dis
   if (!Number.isInteger(issue) || issue <= 0) {
     throw new Error(`issue must be a positive integer, got: ${issue}`);
   }
-  if (!/^[a-z][a-z0-9-]*$/.test(agent)) {
+  if (!isAgentName(agent)) {
     throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
   }
 

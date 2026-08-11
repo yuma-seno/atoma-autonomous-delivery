@@ -123,6 +123,38 @@ describe("inject-sub-results.ts injectSubResultsFile", () => {
   });
 });
 
+describe("agent-name.ts", () => {
+  test("accepts a bare lowercase name and rejects everything a shell would reinterpret", async () => {
+    const { isAgentName } = await import("./agent-name.ts");
+    for (const valid of ["engineer", "orchestrator", "e", "code-reviewer", "agent2"]) {
+      expect(isAgentName(valid), valid).toBe(true);
+    }
+    for (const invalid of [
+      "",
+      "Engineer",
+      "2fast",
+      "-leading",
+      "with space",
+      "engineer implement the thing",
+      'engineer"; id; #',
+      "engineer$(id)",
+      "../../etc/passwd",
+      "engineer\nreviewer",
+    ]) {
+      expect(isAgentName(invalid), invalid).toBe(false);
+    }
+  });
+
+  // The pattern is embedded in a bash `[[ =~ ]]` test in the generated runner
+  // workflow and in three tag regexes, so it has to stay a plain character
+  // class: no anchors, no groups, no escapes that only mean something to one of
+  // those three engines.
+  test("is exported as a bare pattern body the bash and tag consumers can embed", async () => {
+    const { AGENT_NAME_PATTERN } = await import("./agent-name.ts");
+    expect(AGENT_NAME_PATTERN).toBe("[a-z][a-z0-9-]*");
+  });
+});
+
 describe("tags.ts", () => {
   // Pure, no `gh` involved -- safe to test in-process directly.
   test("PARENT_TAG round-trips with the canonical numeric format", async () => {
