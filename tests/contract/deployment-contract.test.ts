@@ -2,15 +2,16 @@
  * deployment-contract.test.ts — every static Atoma file reaches the deployed
  * `.github/`.
  *
- * `sync-dist` deploys by wiping `.github/` and repopulating it from `dist/`:
+ * A repository adopts the deliverable by copying it over its own `.github/`:
  *
- *     rm -rf .github && cp -r dist/.github/. .github/
+ *     cp -r dist/.github/. .github/
  *
- * So a file that exists only under `.github/` is not deployed — it is pending
- * deletion. It keeps working until the next sync and then vanishes, and because
- * agent PR merges are made with GITHUB_TOKEN (which does not trigger
- * workflows), that sync can be an arbitrarily long time after the change that
- * introduced it.
+ * So a file that exists only under `.github/` is not part of the deliverable at
+ * all. It keeps working wherever it already sits and is simply missing
+ * everywhere else, which leaves no diff and so cannot be caught in review. That
+ * is the failure this file exists to make loud, and it is why the check is
+ * against `src/atoma/` and `build-dist.ts` rather than against any deployed
+ * tree.
  *
  * This already happened: a PR added `.github/atoma/mcp-packages.json` by hand
  * without adding it to `src/atoma/` or to build-dist.ts's copy list, while
@@ -104,7 +105,7 @@ describe("deployment contract", () => {
       expect(
         copied.includes(file),
         `src/atoma/${file} is not in build-dist.ts's copy list, so it never reaches ` +
-          `dist/ and will be deleted from .github/ on the next sync-dist run.`,
+          `dist/ and no adopter ever receives it.`,
       ).toBe(true);
     }
   });

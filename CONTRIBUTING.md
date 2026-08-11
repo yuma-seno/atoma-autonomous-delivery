@@ -119,16 +119,20 @@ This fails when generated `dist/` content is out of sync.
 
 ## Generated-file discipline
 
-- Do not hand-edit `dist/.github/*` or `.github/atoma/*`. Both are generated.
-- **Do not commit generated output in a pull request.** Change `src/*` only; the
-  deploy job regenerates `dist/` and redeploys `.github/` after the merge. CI
-  rejects a pull request whose diff touches `dist/` or `.github/atoma/`.
+- **Do not commit generated output in a pull request.** Change `src/*` only. CI
+  rejects a pull request whose diff touches `dist/`, and `cd.yml` regenerates and
+  commits it after the merge.
 - Run `bun run synth` locally whenever you want to inspect what adopters will
   receive, then discard the result. CI runs it on every pull request to prove the
   deliverable still builds.
-- `.github/workflows/*.yml` is the one exception: the deploy job authenticates as
-  an App, which GitHub forbids from writing workflow files, so those changes have
-  to arrive in a human-authored pull request.
+- `dist/.github/*` is generated: never hand-edit it, and never commit it.
+- `.github/atoma/*` is *deployed*, not generated on merge. Nothing regenerates it
+  — it is this repository's own adoption of the deliverable, upgraded by the
+  one-liner in the source-of-truth map above and reviewed like any other change.
+  So a change to `src/atoma/` does not reach the live agents until someone runs
+  that upgrade, and CI does not reject a diff that touches it. Two exceptions
+  inside it are genuinely yours to edit: `config.json` (which the upgrade
+  restores) and `skills/project/`, which the deliverable does not contain.
 
 ## PR checklist
 

@@ -40,11 +40,22 @@ function main(): void {
 
   // atoma-pr-merged.wac.ts (pull_request_target: closed) is the PRIMARY
   // aggregation path and already handles sub-issues auto-closed by a merged
-  // PR's "Closes #N". A merged PR's auto-close ALSO fires this `issues:
-  // closed` event (GitHub only suppresses that cascade for GITHUB_TOKEN-
-  // driven merges — under the default merge_policy: "manual", a human/agent
-  // merges via their own credentials, so both workflows fire). Without this
-  // check, the orchestrator gets dispatched twice.
+  // PR's "Closes #N". This path is the fallback, and whether the two can both
+  // fire for one completion turns on WHO performed the merge, because GitHub
+  // suppresses the event cascade only for actions taken with GITHUB_TOKEN:
+  //
+  // - An agent merge (`github__merge_pr`, which the shipped `merge_policy:
+  //   "auto"` permits) runs as GITHUB_TOKEN, so the auto-close fires no
+  //   `issues: closed` event and this workflow never starts. The guard below
+  //   costs nothing.
+  // - A person merging from the GitHub UI — the only route under
+  //   `merge_policy: "manual"`, and always available regardless — uses their
+  //   own credentials, so the auto-close DOES fire this workflow while
+  //   atoma-pr-merged is already handling the same completion.
+  //
+  // The second case is why the check exists: without it the orchestrator gets
+  // dispatched twice. lib/aggregation.ts's `atoma:aggregated` marker would
+  // catch the duplicate anyway, but only after a second run has started.
   let closedViaPr = false;
   try {
     const data = ghGraphql<{

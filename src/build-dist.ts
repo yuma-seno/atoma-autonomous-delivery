@@ -87,10 +87,10 @@ function copyStaticAtomaContent(): void {
   const distAtomaDir = join(DIST_GITHUB_DIR, "atoma");
 
   // Every static file the generated workflows read at runtime must be listed
-  // here. `sync-dist` wipes `.github/` and repopulates it from `dist/`, so a
-  // file that exists only under `.github/` survives exactly until the next
-  // sync and then disappears silently. `deployment-contract.test.ts` keeps this
-  // list in step with `src/atoma/`.
+  // here, or it never reaches `dist/` and so never reaches an adopter. A file
+  // missing from this list is invisible in review: it keeps working in whatever
+  // `.github/` already has it and is simply absent from everyone else's.
+  // `deployment-contract.test.ts` keeps this list in step with `src/atoma/`.
   for (const file of ["config.json", "mcp-packages.json", "prompt-template.md"]) {
     cpSync(join(srcAtomaDir, file), join(distAtomaDir, file));
   }

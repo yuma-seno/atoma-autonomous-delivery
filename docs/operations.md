@@ -33,7 +33,13 @@ An agent command must occupy its own line. Put instructions on following lines:
 Implement the remaining acceptance criteria.
 ```
 
-Text after an agent name on the command line is rejected as invalid syntax. The only supported modifier is `recover`:
+Text after an agent name on the command line is rejected rather than guessed at,
+because the name is used as a filename and as a shell word. A comment says so on
+the issue; a new issue's body reports it as a warning on the workflow run and
+starts nothing.
+
+The only supported modifier is `recover`, and only in a comment — a new issue's
+first line takes a bare name and nothing else:
 
 ```text
 /engineer recover
