@@ -22,7 +22,6 @@ export interface PullRequestRefs {
 }
 
 interface PullRequestView {
-  mergeable?: string;
   mergeStateStatus?: string;
   state?: string;
   headRefOid?: string;
@@ -94,7 +93,10 @@ export function gatherMergeSignals(
 
   const pr = json<PullRequestView>(
     "pr", "view", String(num), "--repo", repo,
-    "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName",
+    // `mergeable` is deliberately absent: `mergeStateStatus` is the verdict, and
+    // requesting it is already what makes GitHub compute mergeability, so asking
+    // for both only produced a field nothing read.
+    "--json", "mergeStateStatus,state,headRefOid,headRefName,baseRefName",
   );
 
   // Check runs hang off the commit, so a `workflow_dispatch` run against the
@@ -108,7 +110,6 @@ export function gatherMergeSignals(
   return {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
-      ...(pr?.mergeable ? { mergeable: pr.mergeable } : {}),
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run) => ({
         name: run.name,

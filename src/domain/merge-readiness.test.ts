@@ -4,7 +4,6 @@ import { decideMergeReadiness, formatBlockers, type MergeSignals } from "./merge
 function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
   return {
     mergeStateStatus: "CLEAN",
-    mergeable: "MERGEABLE",
     state: "OPEN",
     checks: [{ name: "check", status: "completed", conclusion: "success" }],
     requiredChecks: ["check"],

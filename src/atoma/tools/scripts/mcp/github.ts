@@ -167,7 +167,13 @@ const SYNC_BRANCH_SCHEMA = z.object({
 
 const SUBMIT_PR_REVIEW_SCHEMA = z.object({
   number: positiveInt("Positive pull request number, without a leading '#'."),
-  event: z.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
+  // APPROVE is accepted and silently downgraded to COMMENT (see submitPrReview).
+  // It is NOT in the description below, so the model is never told to use it --
+  // this is the runtime being forgiving about a shape it is not advertising, the
+  // same bargain positiveInt/stringArray strike in lib/mcp-tool.ts.
+  event: z
+    .enum(["COMMENT", "REQUEST_CHANGES", "APPROVE"])
+    .describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
   body: z.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES."),
 });
 
@@ -523,6 +529,11 @@ function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
     // GitHub always rejects self-approval since all Atoma agents share the
     // same bot identity ("Can not approve your own pull request"). Rewrite
     // to COMMENT instead of letting the gh call fail.
+    //
+    // Reviewers do reach for APPROVE despite the description saying not to --
+    // it is the obvious word for what they mean. Rewriting costs nothing and
+    // preserves their intent; rejecting the call would spend an iteration
+    // teaching them a rule that changes nothing about the outcome.
     log(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
     event = "COMMENT";
   }

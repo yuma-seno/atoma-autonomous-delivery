@@ -36,8 +36,6 @@ export interface MergeSignals {
    * This is the verdict; everything else here only explains it.
    */
   mergeStateStatus: string;
-  /** GitHub's `mergeable`: MERGEABLE | CONFLICTING | UNKNOWN. */
-  mergeable?: string;
   state: string;
   /** Check runs on the head commit, used to name what is failing or pending. */
   checks: CheckRun[];
