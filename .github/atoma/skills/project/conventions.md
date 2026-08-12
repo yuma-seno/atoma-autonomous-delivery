@@ -39,6 +39,11 @@ into the ignored `dist/`, so it cannot dirty your commit.
 Adopters receive the deliverable from a release, not from a merge, so nothing you
 merge needs to carry it.
 
+**Do not touch `version` in `package.json` unless releasing is the task.** cd.yml
+derives the release tag from it, so bumping it is what publishes to adopters —
+merging that change cuts a release rather than merely recording an intent to. A
+version left alone is a merge that publishes nothing, which is the normal case.
+
 `.github/**` is a different matter — see below. It is tracked and not regenerated,
 so a change there is yours to make and review.
 

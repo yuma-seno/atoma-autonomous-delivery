@@ -12,30 +12,34 @@ name: CD
 # going to main at all. Nothing here needs a bypass now, and `dist/` is not
 # tracked.
 #
-# A release is cut from a version tag, not from every merge. That is the point:
-# adopters could previously only copy "whatever main had when I cloned", with no
-# version to name. `package.json`'s `version` is the source of truth and the tag
-# must agree with it, so the version lives in reviewed code rather than in
-# whoever typed the tag.
+# The version is not passed in. `package.json`'s `version` is the single
+# declaration, and the tag is derived from it, so the two cannot disagree and
+# there is no separate tagging step to remember. Releasing is therefore an
+# ordinary reviewed change: bump the version, and merging it publishes.
+#
+# Idempotent, and that is what makes the trigger safe to be "every merge". This
+# runs on all of them, finds a release already exists for the declared version,
+# and stops before installing anything. Only a merge that changes the version
+# reaches the build.
 #
 # Two triggers, for the same reason ci.yml has three.
 #
-# A human pushing `v0.1.0` fires the `push` event below.
+# A human merging fires the `push` below.
 #
-# An agent cannot rely on that: GitHub starts no workflow run for events its own
-# token triggers, so a tag pushed with GITHUB_TOKEN fires nothing. Dispatching
-# against the tag ref is the documented way through:
-#
-#   gh workflow run cd.yml --ref v0.1.0
+# An agent merge does not: GitHub starts no workflow run for events its own token
+# triggers, so merging with GITHUB_TOKEN fires no `push` on main and nothing
+# chains off it. The reviewer's `mergePr` dispatches this workflow instead, via
+# `workflows.cd` in `.github/atoma/config.json`. Without that entry a version
+# bump merged by an agent would never publish.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
 
-# Serialised per tag. Re-running a release while the first attempt is still
-# uploading would have both racing to attach the same asset.
+# Serialised. Two merges landing together would otherwise both reach the release
+# creation, and the loser fails on a tag that now exists.
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -45,39 +49,52 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      # Creating the release and attaching the asset. No `git push` anywhere in
+      # Creating the release, its tag, and the asset. No `git push` anywhere in
       # this job -- main is never written to.
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # Deliberately before any setup: the common case is a merge that does not
+      # change the version, and that case should cost a checkout and one API
+      # call rather than a Bun install and a build.
+      - name: Decide whether there is a version to release
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version // empty' package.json)
+          if [ -z "$VERSION" ]; then
+            echo "::error::package.json declares no version; nothing can be released."
+            exit 1
+          fi
+          # The version reaches a tag name and a filename, so keep it to a shape
+          # that cannot mean anything else.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version '$VERSION' is not a plain semver string."
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG is already released; nothing to do."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "$TAG has no release yet; building it."
+          fi
       - name: Setup Bun
+        if: steps.decide.outputs.release == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - name: Install dependencies
+        if: steps.decide.outputs.release == 'true'
         run: bun install --frozen-lockfile
-      # `workflow_dispatch` accepts any ref, including a branch, and a branch has
-      # no version to publish. Fail before building rather than producing an
-      # asset named after something that is not a release.
-      - name: Refuse to release anything but a version tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            echo "::error::CD publishes a version tag; got $GITHUB_REF_TYPE '$GITHUB_REF_NAME'."
-            echo "Dispatch against a tag instead: gh workflow run cd.yml --ref v0.1.0"
-            exit 1
-          fi
-
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(jq -r '.version' package.json)
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME disagrees with package.json version $PKG_VERSION."
-            echo "The version is declared in package.json and reviewed there; the tag only names it."
-            exit 1
-          fi
-          echo "Releasing $GITHUB_REF_NAME (package.json version $PKG_VERSION)."
       - name: Build the deliverable
+        if: steps.decide.outputs.release == 'true'
         run: bun run synth
       # The archive root holds `.github/`, so an adopter extracts it at their
       # repository root and the files land where they belong.
@@ -86,6 +103,7 @@ jobs:
       # is what makes `releases/latest/download/atoma-delivery.zip` a stable URL,
       # and the version is already carried by the release itself.
       - name: Package dist/ as a release asset
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -95,24 +113,19 @@ jobs:
           fi
           # `zip` from inside dist/ so the archive holds `.github/...` and not
           # `dist/.github/...`. Naming `.github` explicitly is what includes it;
-          # a bare `zip -r . ` would skip the dotfile entry.
+          # a bare `zip -r .` would skip the dotfile entry.
           (cd dist && zip -qr ../atoma-delivery.zip .github)
           unzip -l atoma-delivery.zip | tail -1
-      # Idempotent on purpose. A dispatch is the agent path and also the retry
-      # path, so re-running a tag whose release already exists has to replace the
-      # asset instead of failing.
-      - name: Create or update the release
+      # `--target` is what creates the tag, so there is no separate tag push and
+      # no window where a tag exists without a release behind it.
+      - name: Create the release
+        if: steps.decide.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists; replacing the asset."
-            gh release upload "$TAG" atoma-delivery.zip --clobber
-          else
-            gh release create "$TAG" atoma-delivery.zip \
-              --title "$TAG" \
-              --generate-notes
-          fi
+          gh release create "${{ steps.decide.outputs.tag }}" atoma-delivery.zip \
+            --title "${{ steps.decide.outputs.tag }}" \
+            --target "$GITHUB_SHA" \
+            --generate-notes

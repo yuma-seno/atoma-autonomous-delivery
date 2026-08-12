@@ -100,29 +100,31 @@ deliberately **not** bypassed either; see above on why the bypass list is empty.
 
 ## Cutting a release
 
-The deliverable reaches adopters through a release, not through a merge. The
-version is declared in `package.json` and reviewed there; the tag only names it,
-and cd.yml refuses to publish a tag that disagrees.
+Bump `version` in `package.json` and merge it. That is the whole procedure.
+
+The version is the single declaration, and cd.yml derives the tag from it, so
+there is no tag to push and nothing that can disagree. Releasing is an ordinary
+reviewed change rather than a separate act of remembering.
+
+cd.yml runs on every merge and is idempotent: it reads the declared version,
+finds a release already exists for it, and stops before installing anything. Only
+a merge that changes the version reaches the build, where it packages `dist/` as
+`atoma-delivery.zip` with `.github/` at the archive root and creates the release —
+the tag included, via `--target`, so a tag never exists without a release behind
+it.
+
+Nothing writes to main, so none of this needs a ruleset bypass.
+
+An agent merge fires no `push` on main, because GitHub starts no workflow run for
+events its own token triggers. `mergePr` dispatches this workflow instead, which
+is what `workflows.cd` in `.github/atoma/config.json` is for — remove that entry
+and a version bump merged by an agent silently never publishes.
+
+To publish by hand, or to retry a failed run:
 
 ```bash
-# after the version bump has been merged
-git tag v0.1.0 && git push origin v0.1.0
+gh workflow run cd.yml --ref main
 ```
-
-Tags are outside a branch ruleset targeting the default branch, so this needs no
-bypass. cd.yml then builds `dist/`, packages it as `atoma-delivery.zip` with
-`.github/` at the archive root, and creates the release.
-
-Pushing a tag with `GITHUB_TOKEN` starts no workflow run — the same GitHub
-behaviour that ci.yml's `workflow_dispatch` trigger exists for. Dispatch against
-the tag instead:
-
-```bash
-gh workflow run cd.yml --ref v0.1.0
-```
-
-That path is idempotent: re-running a tag whose release already exists replaces
-the asset rather than failing.
 
 ## Setup (Bun)
 
