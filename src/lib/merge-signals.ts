@@ -23,6 +23,7 @@ export interface PullRequestRefs {
 
 interface PullRequestView {
   mergeStateStatus?: string;
+  isDraft?: boolean;
   state?: string;
   headRefOid?: string;
   headRefName?: string;
@@ -96,7 +97,11 @@ export function gatherMergeSignals(
     // `mergeable` is deliberately absent: `mergeStateStatus` is the verdict, and
     // requesting it is already what makes GitHub compute mergeability, so asking
     // for both only produced a field nothing read.
-    "--json", "mergeStateStatus,state,headRefOid,headRefName,baseRefName",
+    //
+    // `isDraft` is not that: it is an attribute of the pull request, not a second
+    // opinion on mergeability. It is here because `mergeStateStatus` came back
+    // `CLEAN` for a draft, so the verdict alone reported one as ready to merge.
+    "--json", "mergeStateStatus,isDraft,state,headRefOid,headRefName,baseRefName",
   );
 
   // Check runs hang off the commit, so a `workflow_dispatch` run against the
@@ -110,6 +115,7 @@ export function gatherMergeSignals(
   return {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
+      isDraft: pr?.isDraft ?? false,
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run) => ({
         name: run.name,

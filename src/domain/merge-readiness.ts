@@ -37,6 +37,15 @@ export interface MergeSignals {
    */
   mergeStateStatus: string;
   state: string;
+  /**
+   * Whether the pull request is a draft, read from the pull request itself.
+   *
+   * Not derived from `mergeStateStatus`. GitHub documents `DRAFT` as one of its
+   * values, but reports `CLEAN` for a draft in practice, so the `DRAFT` case below
+   * never fired and a draft was reported ready to merge. `isDraft` is an attribute
+   * of the pull request rather than a computed verdict, so it does not move.
+   */
+  isDraft: boolean;
   /** Check runs on the head commit, used to name what is failing or pending. */
   checks: CheckRun[];
   /**
@@ -115,12 +124,25 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
     blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
   }
 
+  // Before the verdict, because the verdict does not carry this. GitHub reports
+  // `CLEAN` for a draft, so relying on the `DRAFT` case below reported a draft as
+  // ready and left the refusal to come back from the merge call as a raw API error
+  // no blocker kind described.
+  if (signals.isDraft) {
+    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+  }
+
   switch (signals.mergeStateStatus?.toUpperCase()) {
     case "CLEAN":
     case "UNSTABLE": // a non-required check is failing; the ruleset permits merging
       break;
     case "DRAFT":
-      blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      // Kept although `isDraft` above already covers it, so this does not break if
+      // GitHub starts returning the value its own docs list. Guarded to avoid
+      // reporting the same blocker twice when it does.
+      if (!signals.isDraft) {
+        blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      }
       break;
     case "DIRTY":
       blockers.push({
