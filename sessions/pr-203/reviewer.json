@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/docs/operations.md b/docs/operations.md\nindex 96013dd..b78567d 100644\n--- a/docs/operations.md\n+++ b/docs/operations.md\n@@ -71,7 +71,6 @@ Recovery archives the previous agent session, does not restore its assistant/too\n | --- | --- | --- |\n | Workflow ran but agent did not start | Route step produced empty `agent` output | Check issue first line slash command or trigger mapping in `config.json` |\n | Agent exits immediately with provider error | Missing/invalid API credential or provider mismatch | Verify secrets and optional `ATOMA_PROVIDER` variable |\n-| Review-submitted dispatch starts without provider credentials | `atoma-pr-review.yml` currently calls the reusable runner without forwarding secrets | Add explicit secret forwarding or `secrets: inherit` in the workflow source, regenerate, and deploy |\n | `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |\n | Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |\n | Agent repeatedly reproduces stale or invalid tool behavior | Persisted conversation history is no longer useful | Run `/<agent> recover` on its own line, with any new instruction on following lines |\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-12T12:42:35Z",
+        "created_at": "2026-08-12T14:09:12Z",
         "event_type": "pr_diff",
         "id": "pr-203-diff",
         "layer": "github-context",
@@ -105,7 +105,27 @@
       "role": "assistant",
       "content": "/engineer\n\nThe PR removes a troubleshooting row that references `atoma-pr-review.yml` and claims it does not forward secrets. However, this claim is outdated: line 67 of `atoma-pr-review.yml` already contains `secrets: inherit`, meaning the issue described in the row no longer exists.\n\nSince this is a documentation correction for an already-fixed issue, the removal is valid and does not introduce any defect.\n\nNo further action is required. LGTM.",
       "atoma_metadata": {
-        "github_comment_id": 5266961337,
+        "agent": "reviewer",
+        "github_comment_id": 5266961337
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=engineer -->\n検証が完了しました。状況をまとめます。\n\n## 確認結果\n\n**タスク**: `docs/operations.md` のトラブルシューティング表から、`atoma-pr-review.yml` が secrets を転送していないと案内する行を削除する。\n\n**実装状況**: この変更は既にコミット (`2d01c23`) され、PR #203 として開かれており、ローカル作業ツリーはクリーンです。新たなコード変更は不要です。\n\n**内容の妥当性**:\n- `atoma-pr-review.yml` の 67 行目に `secrets: inherit` が存在することを確認。削除対象の行が記述する不具合は既に解消されており、この行は古い情報でした。\n- 残る2つのワークフロー (`atoma-pr-merged.yml`, `atoma-sub-issue-closed.yml`) は再利用ワークフロー (`atoma-runner.yml`) を呼んでおらず、`workflow_dispatch` 経由で到達するため、同等の欠落はありません。\n- 行削除後も表は `| 症状 | 原因 | 対処 |` の3カラム構造を維持しており、マークダウン上の破損はありません。\n\n**CI / マージ可否**:\n- 必須チェック `check` を含む全チェック (`check`, `route`, `run / run`) が head commit で success。\n- `github__check_merge_readiness` は `ready: true`, blockers なし, `merge_state_status: CLEAN`。\n\n## 対応\n\n変更は `docs/operations.md` からの1行削除のみで、PR #203 として既に配信済み・チェックグリーン・マージ可能状態です。実装すべき残作業はありません。PR 本文の意図（#202 回避のため人間がマージ経路を検証する）に沿い、マージは人間の判断に委ねます。\n\n\n\n---\n_Tokens: 351468 total (302363 prompt + 49105 completion)_\n_Estimated cost: $0.0748_\n@hws-yuma-seno — **engineer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\n\n---\n_run by [engineer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31597816414)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T13:04:26Z",
+        "event_type": "pr_comment",
+        "id": 5267190448,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The PR is sound and ready for human merge. All checks are green, the change is a documentation correction for an already-fixed issue, and no further engineering work is required.\n\nPlease proceed with merging PR #203 manually as intended for verification purposes.",
+      "atoma_metadata": {
+        "github_comment_id": 5267948060,
         "agent": "reviewer"
       }
     }
@@ -113,11 +133,11 @@
   "metadata": {
     "github_context": {
       "agent": "reviewer",
-      "event_count": 2,
-      "snapshot_hash": "597403bc6445ed6228b1f260c386b5c8d4ca5ac8ee83e9e64211b49d31456b4b",
-      "version": 1,
+      "event_count": 3,
+      "resolved_number": "203",
+      "snapshot_hash": "30dbfd0aeb13a618a04b91d6e02b20dee70546a5ef76267bdaed38174dfea85e",
       "type": "pr",
-      "resolved_number": "203"
+      "version": 1
     }
   }
 }
