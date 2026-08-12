@@ -51,11 +51,11 @@ bypass would mean naming either a GitHub App's ID or a deploy key — values tha
 only exist after manual setup elsewhere, so the reviewed declaration would stop
 describing the whole configuration.
 
-> `.github/rulesets/main.json` still carries a `bypass_actors` entry naming the
-> built-in GitHub Actions app. It is now unnecessary, and it is also invalid — that
-> app is not installable on a repository, so the import is rejected with
-> `The ruleset you are importing contains an invalid actor`. Removing it is issue
-> #193.
+`bypass_actors` is present and empty rather than absent, so that the intent reads
+as a decision rather than an omission. It once named the built-in GitHub Actions
+app, which is not an app installable on a repository and therefore not a valid
+`Integration` actor — the import failed with `The ruleset you are importing
+contains an invalid actor`, and the entry was never applied at all.
 
 A ruleset is **not** read from the repository. It is a server-side setting, and
 `.github/rulesets/main.json` is this project's own convention: the reviewed
