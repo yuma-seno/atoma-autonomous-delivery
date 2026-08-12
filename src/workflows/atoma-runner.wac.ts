@@ -90,7 +90,7 @@ const validateInputsStep = new TypedOutputsStep({
     NOTIFY: "${{ inputs.notify }}",
   },
   run: `reject() {
-  echo "::error::atoma-runner received an invalid \\`$1\\` input: '$2'. $3"
+  echo "::error::atoma-runner received an invalid \\\`$1\\\` input: '$2'. $3"
   exit 1
 }
 
