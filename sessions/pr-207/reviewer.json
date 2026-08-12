@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/package.json b/package.json\nindex 9788096..7a7116b 100644\n--- a/package.json\n+++ b/package.json\n@@ -2,7 +2,7 @@\n   \"name\": \"atoma-autonomous-delivery\",\n   \"private\": true,\n   \"type\": \"module\",\n-  \"version\": \"0.1.0\",\n+  \"version\": \"0.1.1\",\n   \"engines\": {\n     \"bun\": \">=1.2.0\"\n   },\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-12T14:34:39Z",
+        "created_at": "2026-08-12T14:35:42Z",
         "event_type": "pr_diff",
         "id": "pr-207-diff",
         "layer": "github-context",
@@ -123,7 +123,27 @@
       "role": "assistant",
       "content": "PR #207 は既にマージ済みです。GitHub の状態が `MERGED` であるため、再度マージすることはできません。次のステップに進んでください。",
       "atoma_metadata": {
-        "github_comment_id": 5268262931,
+        "agent": "reviewer",
+        "github_comment_id": 5268262931
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T14:35:33Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4917697426",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "PR #207 は既にマージ済みであり、レビューも完了しています。次の作業（`.github/` 更新やエージェントでの #200 処理）に進んでください。",
+      "atoma_metadata": {
+        "github_comment_id": 5268271003,
         "agent": "reviewer"
       }
     }
@@ -131,11 +151,11 @@
   "metadata": {
     "github_context": {
       "agent": "reviewer",
-      "event_count": 2,
-      "snapshot_hash": "96f7d0dd2e79279773899225497151c1b62dbea63b12f4a17ec11d89cdb5580f",
-      "version": 1,
+      "event_count": 3,
+      "resolved_number": "207",
+      "snapshot_hash": "a6d91400872bb18b9d030d56af20a1599efa4fa5cfbeb3b6cdbaeaafed7239d1",
       "type": "pr",
-      "resolved_number": "207"
+      "version": 1
     }
   }
 }
