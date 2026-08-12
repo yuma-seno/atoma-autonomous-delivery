@@ -18188,12 +18188,17 @@ function decideMergeReadiness(signals) {
   if (signals.state?.toUpperCase() !== "OPEN") {
     blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
   }
+  if (signals.isDraft) {
+    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+  }
   switch (signals.mergeStateStatus?.toUpperCase()) {
     case "CLEAN":
     case "UNSTABLE":
       break;
     case "DRAFT":
-      blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      if (!signals.isDraft) {
+        blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      }
       break;
     case "DIRTY":
       blockers.push({
@@ -18265,13 +18270,14 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
       throwOnFailure(stderr || stdout);
     return stdout ? JSON.parse(stdout) : null;
   };
-  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,state,headRefOid,headRefName,baseRefName");
+  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,isDraft,state,headRefOid,headRefName,baseRefName");
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
   const baseRefName = pr?.baseRefName ?? "";
   return {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
+      isDraft: pr?.isDraft ?? false,
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run2) => ({
         name: run2.name,
