@@ -3,8 +3,6 @@
 
 // src/scripts/aggregate_sub_issues.ts
 import { parseArgs } from "util";
-import { dirname } from "path";
-import { writeFileSync, mkdirSync } from "fs";
 
 // src/lib/gh.ts
 function run(cmd) {
@@ -24,6 +22,15 @@ function gh(...args) {
 }
 function gitRun(...args) {
   return run(["git", ...args]);
+}
+function dispatchWorkflow(context, workflow, args = [], log = (m) => console.error(m)) {
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, ...args);
+  if (code) {
+    log(`${context}: WARN failed to dispatch ${workflow}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`${context}: dispatched ${workflow}`);
+  return true;
 }
 
 // src/scripts/lib/script-ref.ts
@@ -61,6 +68,48 @@ function countOpenSiblings(opts) {
   return remaining.length;
 }
 
+// src/lib/ops-log.ts
+import { appendFileSync } from "fs";
+var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
+function logOp(op, payload = {}) {
+  const entry = { ts: new Date().toISOString(), op, ...payload };
+  try {
+    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
+`);
+  } catch (e) {
+    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
+  }
+}
+function logDispatch(target, agent, extra = {}) {
+  logOp("dispatch", { target, agent, ...extra });
+}
+
+// src/lib/dispatch.ts
+function runnerWorkflow() {
+  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+}
+function dispatchRunner(d) {
+  const args = [
+    ...d.repo ? ["--repo", d.repo] : [],
+    "--field",
+    `agent=${d.agent}`,
+    "--field",
+    `number=${d.number}`,
+    "--field",
+    `type=${d.type}`,
+    "--field",
+    `notify=${d.notify ?? ""}`
+  ];
+  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
+    return false;
+  logDispatch(d.type, d.agent, { number: Number(d.number) });
+  return true;
+}
+
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse, render) {
   const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
@@ -82,9 +131,9 @@ function stringTag(key, valuePattern) {
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
-var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
-var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
-var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
+var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
+var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
@@ -127,22 +176,6 @@ function resolveNotify(repo, number) {
   return "";
 }
 
-// src/lib/ops-log.ts
-import { appendFileSync } from "fs";
-var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
-function logOp(op, payload = {}) {
-  const entry = { ts: new Date().toISOString(), op, ...payload };
-  try {
-    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
-`);
-  } catch (e) {
-    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
-  }
-}
-function logDispatch(target, agent, extra = {}) {
-  logOp("dispatch", { target, agent, ...extra });
-}
-
 // src/lib/aggregation.ts
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -172,10 +205,15 @@ ${opts.progressMessage(remaining)}`);
     await opts.beforeDispatch();
   gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
-  const notify = resolveNotify(opts.repo, opts.parent);
-  gh("workflow", "run", opts.dispatchWorkflow ?? "atoma-runner.yml", "--repo", opts.repo, "--field", "agent=orchestrator", "--field", `number=${opts.parent}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", "orchestrator", { number: opts.parent });
-  return { ready: true, remaining: 0, dispatched: true };
+  const dispatched = dispatchRunner({
+    context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
+    agent: "orchestrator",
+    type: "issue",
+    number: opts.parent,
+    notify: resolveNotify(opts.repo, opts.parent),
+    repo: opts.repo
+  });
+  return { ready: true, remaining: 0, dispatched };
 }
 
 // src/lib/inject-sub-results.ts
@@ -241,50 +279,86 @@ function injectSubResults(session, repo, subIssues) {
 }
 
 // src/scripts/lib/atoma-data.ts
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 function sessionTargetPath(type, number, agent) {
   return `sessions/${type}-${number}/${agent}.json`;
+}
+function restoreSession(targetPath) {
+  if (gitRun("fetch", "origin", "atoma-data", "--depth=1").code !== 0) {
+    return;
+  }
+  if (gitRun("cat-file", "-e", `origin/atoma-data:${targetPath}`).code !== 0) {
+    return;
+  }
+  const shown = gitRun("show", `origin/atoma-data:${targetPath}`);
+  return shown.code === 0 ? shown.stdout : undefined;
+}
+function gitIn(cwd, ...args) {
+  const proc = Bun.spawnSync({ cmd: ["git", ...args], cwd, stdout: "pipe", stderr: "pipe" });
+  return { code: proc.exitCode ?? 1, stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "" };
+}
+function saveSession(targetPath, content, commitMessage) {
+  if (gitRun("ls-remote", "--exit-code", "origin", "atoma-data").code !== 0) {
+    gitRun("config", "user.email", "action@github.com");
+    gitRun("config", "user.name", "GitHub Actions");
+    const commit = gitRun("commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "init: atoma-data session store").stdout;
+    gitRun("push", "origin", `${commit}:refs/heads/atoma-data`);
+  }
+  gitRun("fetch", "origin", "atoma-data");
+  const worktreeDir = mkdtempSync(join(tmpdir(), "atoma-data-wt-"));
+  gitRun("worktree", "add", worktreeDir, "origin/atoma-data");
+  let saved = false;
+  try {
+    gitIn(worktreeDir, "config", "user.email", "action@github.com");
+    gitIn(worktreeDir, "config", "user.name", "GitHub Actions");
+    for (let attempt = 1;attempt <= 5; attempt++) {
+      gitIn(worktreeDir, "fetch", "origin", "atoma-data");
+      gitIn(worktreeDir, "reset", "--hard", "origin/atoma-data");
+      const fullTarget = join(worktreeDir, targetPath);
+      mkdirSync(dirname(fullTarget), { recursive: true });
+      writeFileSync(fullTarget, content);
+      gitIn(worktreeDir, "add", targetPath);
+      if (gitIn(worktreeDir, "diff", "--cached", "--quiet").code === 0) {
+        saved = true;
+        break;
+      }
+      gitIn(worktreeDir, "commit", "-m", commitMessage);
+      if (gitIn(worktreeDir, "push", "origin", "HEAD:atoma-data").code === 0) {
+        saved = true;
+        break;
+      }
+      console.error(`Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull...`);
+      Bun.sleepSync(attempt * 2000);
+    }
+  } finally {
+    gitRun("worktree", "remove", "--force", worktreeDir);
+    rmSync(worktreeDir, { recursive: true, force: true });
+  }
+  return saved;
 }
 
 // src/scripts/aggregate_sub_issues.ts
 var ref = defineScript(import.meta.url);
-function sleep2(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-async function injectResultsIntoOrchestratorSession(repo, parent) {
-  const { stdout: allSubsOut } = gh("issue", "list", "--repo", repo, "--state", "all", "--json", "number,title,body", "--jq", `[.[] | select(.body | contains("atoma:parent=${parent}")) | .number] | join(",")`);
-  const subIssues = allSubsOut.trim().split(",").filter(Boolean).map(Number);
-  console.log(`All sub-issues for parent #${parent}: ${subIssues.join(",")}`);
-  const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
-  gitRun("config", "user.email", "action@github.com");
-  gitRun("config", "user.name", "GitHub Actions");
-  let saved = false;
-  for (let attempt = 1;attempt <= 5; attempt++) {
-    if (gitRun("fetch", "origin", "atoma-data").code === 0) {
-      gitRun("checkout", "-B", "atoma-data", "origin/atoma-data");
-    } else {
-      gitRun("checkout", "--orphan", "atoma-data");
-      gitRun("rm", "-rf", ".");
-    }
-    const session = gitRun("cat-file", "-e", `HEAD:${sessionPath}`).code === 0 ? JSON.parse(gitRun("show", `HEAD:${sessionPath}`).stdout) : { messages: [] };
-    const updated = injectSubResults(session, repo, subIssues);
-    mkdirSync(dirname(sessionPath), { recursive: true });
-    writeFileSync(sessionPath, JSON.stringify(updated, null, 2));
-    gitRun("add", sessionPath);
-    if (gitRun("diff", "--cached", "--quiet").code === 0) {
-      console.log("No changes to session; skipping commit.");
-      saved = true;
-      break;
-    }
-    gitRun("commit", "-m", `atoma: inject sub-issue results for parent #${parent}`);
-    if (gitRun("push", "origin", "atoma-data").code === 0) {
-      saved = true;
-      break;
-    }
-    console.log(`Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull...`);
-    await sleep2(attempt * 2000);
+function linkedSubIssues(repo, parent) {
+  const { code, stdout, stderr } = gh("issue", "list", "--repo", repo, "--state", "all", "--limit", "200", "--search", `atoma:parent=${parent} in:body`, "--json", "number,body");
+  if (code !== 0) {
+    throw new Error(`could not list sub-issues of #${parent}: ${stderr || stdout}`);
   }
-  if (!saved) {
-    console.log(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);
+  const issues = stdout ? JSON.parse(stdout) : [];
+  return issues.filter((issue) => PARENT_TAG.read(issue.body ?? "") === parent).map((issue) => issue.number);
+}
+function injectResultsIntoOrchestratorSession(repo, parent) {
+  const subIssues = linkedSubIssues(repo, parent);
+  console.error(`Sub-issues of #${parent}: ${subIssues.join(", ") || "(none)"}`);
+  const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
+  const existing = restoreSession(sessionPath);
+  const session = existing ? JSON.parse(existing) : { messages: [] };
+  const updated = injectSubResults(session, repo, subIssues);
+  const message = `atoma: inject sub-issue results for parent #${parent}`;
+  if (!saveSession(sessionPath, JSON.stringify(updated, null, 2), message)) {
+    console.error(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);
   }
 }
 async function main() {
@@ -303,21 +377,21 @@ async function main() {
     console.error("usage: aggregate_sub_issues.ts --repo OWNER/REPO --parent N --closed-num N");
     process.exit(2);
   }
-  console.log(`PR merged (sub-issue #${closedNum}, parent #${parent}). Checking siblings...`);
+  console.error(`PR merged (sub-issue #${closedNum}, parent #${parent}). Checking siblings...`);
   const result = await dispatchOrchestratorIfReady({
     repo,
     parent: Number(parent),
     closedNum: Number(closedNum),
     exclude: true,
     progressMessage: (remaining) => `Atoma: Sub-task #${closedNum} completed. ${remaining} sub-task(s) still in progress.`,
-    beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, parent)
+    beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, Number(parent))
   });
   if (!result.ready) {
-    console.log("Not all sub-tasks done yet.");
+    console.error("Not all sub-tasks done yet.");
   } else if (!result.dispatched) {
-    console.log(`Aggregation for sub-issue #${closedNum} already dispatched by another caller; skipping.`);
+    console.error(`Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` + `completion, or the dispatch failed -- check for a WARN above.`);
   } else {
-    console.log("All sub-tasks completed! Orchestrator re-invoked.");
+    console.error("All sub-tasks completed! Orchestrator re-invoked.");
   }
 }
 if (import.meta.main)

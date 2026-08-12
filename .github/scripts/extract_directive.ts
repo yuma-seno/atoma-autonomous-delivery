@@ -6,6 +6,10 @@ import { existsSync, readFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import { parseArgs } from "util";
 
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -16,7 +20,7 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/extract_directive.ts
 var ref = defineScript(import.meta.url);
-var COMMAND_RE = /^\/([a-z][a-z0-9-]+)$/;
+var COMMAND_RE = new RegExp(`^\\/(${AGENT_NAME_PATTERN})$`);
 function candidates(rawLine) {
   let line = rawLine.trim();
   if (!line)

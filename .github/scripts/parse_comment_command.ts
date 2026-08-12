@@ -4,6 +4,10 @@
 // src/scripts/parse_comment_command.ts
 import { appendFileSync } from "fs";
 
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -14,8 +18,8 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/parse_comment_command.ts
 var ref = defineScript(import.meta.url);
-var COMMAND_RE = /^\/([a-z][a-z0-9-]*)(?:\s+(.*))?$/;
-var DISPATCH_RE = /^<!--\s*atoma:dispatch\s*=\s*([a-z][a-z0-9-]*)\s*-->/;
+var COMMAND_RE = new RegExp(`^\\/(${AGENT_NAME_PATTERN})(?:\\s+(.*))?$`);
+var DISPATCH_RE = new RegExp(`^<!--\\s*atoma:dispatch\\s*=\\s*(${AGENT_NAME_PATTERN})\\s*-->`);
 function parseCommentCommand(body) {
   if (!body)
     return { agent: "", sessionMode: "continue", error: "" };

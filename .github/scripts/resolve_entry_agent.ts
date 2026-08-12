@@ -4,6 +4,13 @@
 // src/scripts/resolve_entry_agent.ts
 import { readFileSync, appendFileSync } from "fs";
 
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+function isAgentName(value) {
+  return AGENT_NAME_RE.test(value);
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -32,6 +39,10 @@ function main() {
   const agent = firstLine.slice(1).trim();
   if (!agent)
     return;
+  if (!isAgentName(agent)) {
+    console.error(`::warning::Ignoring '/${agent}': an agent command must be a bare name on its own line ` + `(for example '/engineer'), with any instructions on the lines after it.`);
+    return;
+  }
   if (githubOutput) {
     appendFileSync(githubOutput, [`agent=${agent}`, `number=${number}`, "type=issue", `notify=${sender}`].join(`
 `) + `

@@ -29,6 +29,10 @@ function gh(...args) {
   return run(["gh", ...args]);
 }
 
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse, render) {
   const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
@@ -50,9 +54,9 @@ function stringTag(key, valuePattern) {
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
-var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
-var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
-var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
+var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
+var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");

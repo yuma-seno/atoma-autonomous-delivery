@@ -17933,6 +17933,10 @@ function getWorkflowName(kind, fallback = "") {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
 }
 
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse5, render) {
   const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
@@ -17954,9 +17958,9 @@ function stringTag(key, valuePattern) {
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
-var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
-var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
-var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
+var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
+var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
@@ -18028,6 +18032,28 @@ function logDispatch(target, agent, extra = {}) {
   logOp("dispatch", { target, agent, ...extra });
 }
 
+// src/lib/dispatch.ts
+function runnerWorkflow() {
+  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+}
+function dispatchRunner(d) {
+  const args = [
+    ...d.repo ? ["--repo", d.repo] : [],
+    "--field",
+    `agent=${d.agent}`,
+    "--field",
+    `number=${d.number}`,
+    "--field",
+    `type=${d.type}`,
+    "--field",
+    `notify=${d.notify ?? ""}`
+  ];
+  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
+    return false;
+  logDispatch(d.type, d.agent, { number: Number(d.number) });
+  return true;
+}
+
 // src/lib/aggregation.ts
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18057,10 +18083,15 @@ ${opts.progressMessage(remaining)}`);
     await opts.beforeDispatch();
   gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
-  const notify = resolveNotify(opts.repo, opts.parent);
-  gh("workflow", "run", opts.dispatchWorkflow ?? "atoma-runner.yml", "--repo", opts.repo, "--field", "agent=orchestrator", "--field", `number=${opts.parent}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", "orchestrator", { number: opts.parent });
-  return { ready: true, remaining: 0, dispatched: true };
+  const dispatched = dispatchRunner({
+    context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
+    agent: "orchestrator",
+    type: "issue",
+    number: opts.parent,
+    notify: resolveNotify(opts.repo, opts.parent),
+    repo: opts.repo
+  });
+  return { ready: true, remaining: 0, dispatched };
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
@@ -18234,14 +18265,13 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
       throwOnFailure(stderr || stdout);
     return stdout ? JSON.parse(stdout) : null;
   };
-  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeable,mergeStateStatus,state,headRefOid,headRefName,baseRefName");
+  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,state,headRefOid,headRefName,baseRefName");
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
   const baseRefName = pr?.baseRefName ?? "";
   return {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
-      ...pr?.mergeable ? { mergeable: pr.mergeable } : {},
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run2) => ({
         name: run2.name,
@@ -18340,7 +18370,7 @@ var SYNC_BRANCH_SCHEMA = exports_external.object({
 });
 var SUBMIT_PR_REVIEW_SCHEMA = exports_external.object({
   number: positiveInt("Positive pull request number, without a leading '#'."),
-  event: exports_external.enum(["COMMENT", "REQUEST_CHANGES"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
+  event: exports_external.enum(["COMMENT", "REQUEST_CHANGES", "APPROVE"]).describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
   body: exports_external.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES.")
 });
 var COMMIT_AND_PUSH_SCHEMA = exports_external.object({
@@ -18473,14 +18503,14 @@ ${originLine}${closesLine}${body}`;
 }
 function dispatchPostPrAgent(prNumber) {
   const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  const dispatchWorkflow2 = process.env.ATOMA_DISPATCH_WORKFLOW ?? "atoma-runner.yml";
-  const { code, stdout, stderr } = gh("workflow", "run", dispatchWorkflow2, "--field", `agent=${agent}`, "--field", `number=${prNumber}`, "--field", "type=pr", "--field", `notify=${(process.env.ISSUE_NOTIFY ?? "").trim()}`);
-  if (code) {
-    log2(`dispatchPostPrAgent: WARN failed to dispatch ${agent} for PR #${prNumber}: ${stderr || stdout}`);
-  } else {
-    log2(`dispatchPostPrAgent: dispatched ${agent} for PR #${prNumber}`);
-    logDispatch("pr", agent, { number: prNumber });
-  }
+  dispatchRunner({
+    context: `dispatchPostPrAgent: dispatching ${agent} for PR #${prNumber}`,
+    agent,
+    type: "pr",
+    number: prNumber,
+    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
+    log: log2
+  });
 }
 function createPr(a) {
   const title = a.title;
@@ -18651,20 +18681,21 @@ function isIssueClosed(number4) {
 function dispatchPostMergeAgent(subIssueNum, agent) {
   const notify = resolveNotify(REPO, subIssueNum);
   {
-    const { code: code2, stdout: stdout2, stderr: stderr2 } = gh("issue", "comment", String(subIssueNum), "--repo", REPO, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
-    if (code2) {
-      log2(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr2 || stdout2}`);
+    const { code, stdout, stderr } = gh("issue", "comment", String(subIssueNum), "--repo", REPO, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
+    if (code) {
+      log2(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
       return false;
     }
   }
-  const { code, stdout, stderr } = gh("workflow", "run", "atoma-runner.yml", "--repo", REPO, "--field", `agent=${agent}`, "--field", `number=${subIssueNum}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  if (code) {
-    log2(`dispatchPostMergeAgent: gh workflow run failed for #${subIssueNum} (rc=${code}): ${stderr || stdout}`);
-    return false;
-  }
-  log2(`dispatchPostMergeAgent: re-invoked ${agent} on #${subIssueNum} to confirm and close`);
-  logDispatch("issue", agent, { number: subIssueNum });
-  return true;
+  return dispatchRunner({
+    context: `dispatchPostMergeAgent: re-invoking ${agent} on #${subIssueNum} to confirm and close`,
+    agent,
+    type: "issue",
+    number: subIssueNum,
+    notify,
+    repo: REPO,
+    log: log2
+  });
 }
 function dispatchCi(branch) {
   const workflow = getWorkflowName("ci", "ci.yml");

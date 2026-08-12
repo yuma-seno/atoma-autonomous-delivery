@@ -17877,6 +17877,22 @@ function run(cmd) {
 function gh(...args) {
   return run(["gh", ...args]);
 }
+function dispatchWorkflow(context, workflow, args = [], log = (m) => console.error(m)) {
+  const { code, stdout, stderr } = gh("workflow", "run", workflow, ...args);
+  if (code) {
+    log(`${context}: WARN failed to dispatch ${workflow}: ${stderr || stdout}`);
+    return false;
+  }
+  log(`${context}: dispatched ${workflow}`);
+  return true;
+}
+
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+function isAgentName(value) {
+  return AGENT_NAME_RE.test(value);
+}
 
 // src/lib/config.ts
 import { readFileSync } from "fs";
@@ -17908,6 +17924,28 @@ function logDispatch(target, agent, extra = {}) {
   logOp("dispatch", { target, agent, ...extra });
 }
 
+// src/lib/dispatch.ts
+function runnerWorkflow() {
+  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+}
+function dispatchRunner(d) {
+  const args = [
+    ...d.repo ? ["--repo", d.repo] : [],
+    "--field",
+    `agent=${d.agent}`,
+    "--field",
+    `number=${d.number}`,
+    "--field",
+    `type=${d.type}`,
+    "--field",
+    `notify=${d.notify ?? ""}`
+  ];
+  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
+    return false;
+  logDispatch(d.type, d.agent, { number: Number(d.number) });
+  return true;
+}
+
 // src/lib/tags.ts
 function makeTag(key, valuePattern, parse5, render) {
   const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
@@ -17929,9 +17967,9 @@ function stringTag(key, valuePattern) {
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
-var ORIGIN_AGENT_TAG = stringTag("origin-agent", "[a-z][a-z0-9-]*");
-var DISPATCH_TAG = stringTag("dispatch", "[a-z][a-z0-9-]*");
-var AGENT_TAG = stringTag("agent", "[a-z][a-z0-9-]*");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
+var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
+var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
@@ -17944,10 +17982,9 @@ function dispatchSubAgent(issue2, agent, notify = "") {
   if (!Number.isInteger(issue2) || issue2 <= 0) {
     throw new Error(`issue must be a positive integer, got: ${issue2}`);
   }
-  if (!/^[a-z][a-z0-9-]*$/.test(agent)) {
+  if (!isAgentName(agent)) {
     throw new Error(`agent must be a valid lowercase agent name, got: ${agent}`);
   }
-  console.error(`Dispatching agent '${agent}' on sub-issue #${issue2} ...`);
   gh("issue", "comment", String(issue2), "--body", `${LLM_CONTEXT_TAG.write("exclude")}
 Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
   const launchedLabel = getLabel("launched", "atoma/launched");
@@ -17956,9 +17993,16 @@ Atoma: Agent \`${agent}\` dispatched to work on this sub-task.`);
   if (labelCode !== 0) {
     console.error(`Warning: failed to add '${launchedLabel}' label to #${issue2}`);
   }
-  const dispatchWorkflow = process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
-  gh("workflow", "run", dispatchWorkflow, "--field", `agent=${agent}`, "--field", `number=${issue2}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", agent, { number: issue2 });
+  const dispatched = dispatchRunner({
+    context: `dispatchSubAgent: dispatching ${agent} on sub-issue #${issue2}`,
+    agent,
+    type: "issue",
+    number: issue2,
+    notify
+  });
+  if (!dispatched) {
+    throw new Error(`could not dispatch ${agent} on sub-issue #${issue2}; see the workflow log for the gh error`);
+  }
   return { issue: issue2, agent };
 }
 
@@ -18039,10 +18083,15 @@ ${opts.progressMessage(remaining)}`);
     await opts.beforeDispatch();
   gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
-  const notify = resolveNotify(opts.repo, opts.parent);
-  gh("workflow", "run", opts.dispatchWorkflow ?? "atoma-runner.yml", "--repo", opts.repo, "--field", "agent=orchestrator", "--field", `number=${opts.parent}`, "--field", "type=issue", "--field", `notify=${notify}`);
-  logDispatch("issue", "orchestrator", { number: opts.parent });
-  return { ready: true, remaining: 0, dispatched: true };
+  const dispatched = dispatchRunner({
+    context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
+    agent: "orchestrator",
+    type: "issue",
+    number: opts.parent,
+    notify: resolveNotify(opts.repo, opts.parent),
+    repo: opts.repo
+  });
+  return { ready: true, remaining: 0, dispatched };
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
