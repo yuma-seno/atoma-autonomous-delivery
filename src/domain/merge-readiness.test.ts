@@ -4,6 +4,7 @@ import { decideMergeReadiness, formatBlockers, type MergeSignals } from "./merge
 function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
   return {
     mergeStateStatus: "CLEAN",
+    isDraft: false,
     state: "OPEN",
     checks: [{ name: "check", status: "completed", conclusion: "success" }],
     requiredChecks: ["check"],
@@ -95,6 +96,19 @@ describe("decideMergeReadiness", () => {
     expect(kinds(signals({ mergeStateStatus: "BEHIND" }))).toEqual(["behind"]);
     expect(kinds(signals({ mergeStateStatus: "DRAFT" }))).toEqual(["draft"]);
     expect(kinds(signals({ state: "CLOSED" }))).toContain("not-open");
+  });
+
+  // The case that actually occurs. GitHub reports `CLEAN` for a draft, so the
+  // verdict alone said ready and the refusal only arrived from the merge call, as
+  // `Pull Request is still a draft` -- an error no blocker kind described.
+  test("a draft blocks even when the verdict is CLEAN", () => {
+    const result = decideMergeReadiness(signals({ isDraft: true }));
+    expect(result.ready).toBe(false);
+    expect(result.blockers.map((b) => b.kind)).toEqual(["draft"]);
+  });
+
+  test("a draft is reported once when GitHub does return DRAFT", () => {
+    expect(kinds(signals({ isDraft: true, mergeStateStatus: "DRAFT" }))).toEqual(["draft"]);
   });
 
   test("an uncomputed merge state blocks as unknown", () => {
