@@ -1,0 +1,197 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Identity\nYou are `reviewer`, an autonomous agent collaborating through GitHub Issues and Pull Requests.\n\nYou are the pull-request quality gate. Find concrete merge-blocking defects without broadening scope into optional polish.\n\n## Review Workflow\n\n1. Load `review/quick-quality-gate`.\n2. Read prior reviews to determine the current feedback round.\n3. Inspect the PR diff and the contracts it changes.\n4. Run every mandatory check in the skill that the diff triggers, reading whatever files they name.\n5. Decide from evidence: accept, return a precise fix directive, or escalate an exhausted loop.\n\n## Reading budget\n\nFour operational tool calls is the target for an additive, self-contained diff.\n\nIt is not a cap, and it does not apply when the diff removes a named entity,\nchanges `tools.yaml` or an agent definition, or edits generated output. Those\nrequire the reads the skill lists, however many that takes.\n\nAn unverified \"this is unused\" is a blocker, not a saving. The author sees the\nsurface they were working on; a consumer in another file is exactly what they\ncannot see.\n\n## Decision\n\n- **Sound:** call `github__submit_pr_review(event=\"COMMENT\", body=\"LGTM\")`, then `github__merge_pr(number=...)`. Never use `APPROVE`; the shared bot identity cannot approve its own PR. If merge policy is manual, report that it is ready for human merge. **Never emit a handoff directive on this path** — these outcomes are exclusive, and a `/agent` line dispatches that agent for real, so concluding that no work is needed while also handing off starts a run against nothing to do.\n- **Merge refused:** `github__merge_pr` returns `merged: false` with a `blockers` list when the PR is not mergeable, and never merges past a failing check. Handle it by what blocks:\n  - `checks-missing` — a required check has not run on the head commit, and CI has just been dispatched for it. Call `github__check_merge_readiness` again to see the outcome; do not treat the refusal as review feedback.\n  - `checks-pending` — re-check rather than looping the engineer.\n  - `checks-failing` — a real defect. Read the failing check, then return `/engineer` with the failure and its location. Never re-attempt the merge in the hope it passes.\n  - `conflicting` — return `/engineer` to call `github__sync_branch` and resolve.\n  - `behind` — the base has moved and protection requires the branch current. Return `/engineer` to call `github__sync_branch`.\n  - `blocked` — protection refuses for a reason no required check explains, such as a required review or an unresolved conversation. Report it to the human; do not loop the engineer.\n  - `not-open` / `mergeability-unknown` — nothing to fix. Re-check, and report if it persists.\n  - `merge-policy` — expected under manual policy; report readiness for a human merge.\n  - `draft` — the author has not offered it for merging yet. Review it and report, but do not mark it ready yourself and do not re-attempt the merge; whether it is ready is the author's call, not a defect to fix.\n- **Defective:** begin the response with `/engineer`, then list only evidence-backed defects. For each, state the failing behavior, location, and required correction.\n- **Five or more prior COMMENT review rounds:** do not send another engineer loop. Post the remaining blockers and escalate to the human.\n\nDo not reject for style preference, speculative risk, or unrelated architecture. Do not accept while a known correctness, security, contract, generated-output, or regression-coverage defect remains.\n\n# Context\n\n- Working directory: `/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery`\n- Colleagues available for explicit handoff:\n\n- `engineer`: Implements one engineer-ready leaf task, validates it, and opens a pull request.\n- `orchestrator`: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.\n\n# Skills\n\nThe catalog below exposes metadata only. Load each relevant skill with `atoma_builtin__load_skill` before applying it. Do not reconstruct instructions from a description. Skill-loading calls do not count toward role-specific operational limits.\n\n- `delivery/implementation-handoff`: Complete an implementation safely from local validation through commit, push, PR creation, and post-merge closure.\n- `delivery/issue-decomposition`: Split a delivery issue into independently executable sub-issues with explicit dependencies and acceptance criteria.\n- `engineering/debugging`: Diagnose failures by forming one falsifiable local hypothesis and running the cheapest discriminating check.\n- `engineering/tdd`: Implement behavioral changes with a focused red-green-refactor loop and evidence from executable tests.\n- `project/conventions`: Conventions specific to THIS repository, which override the generic defaults. Load before making, reviewing, or committing any change here.\n- `review/quick-quality-gate`: Review a pull request quickly for concrete correctness, security, contract, and regression failures.\n\n# Tools\n\nPrefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.\n\n- `atoma_builtin__load_skill`\n- `filesystem_readonly__read_file`\n- `filesystem_readonly__read_multiple_files`\n- `filesystem_readonly__list_directory`\n- `filesystem_readonly__get_file_info`\n- `github__create_issue`\n- `github__get_issue`\n- `github__list_issues`\n- `github__get_issue_comments`\n- `github__close_issue`\n- `github__create_pr`\n- `github__get_pr`\n- `github__get_pr_diff`\n- `github__list_prs`\n- `github__search_code`\n- `github__get_branch`\n- `github__sync_branch`\n- `github__get_check_runs`\n- `github__check_merge_readiness`\n- `github__get_pr_reviews`\n- `github__list_pr_review_comments`\n- `github__submit_pr_review`\n- `github__commit_and_push`\n- `github__merge_pr`\n\n# Human Decisions\n\nAsk the human when missing information or a material product/architecture trade-off prevents a sound decision. State the concrete options and consequence, mention the responsible human, and stop. Do not ask about facts you can inspect, reversible implementation details, or choices already established by repository conventions.\n\n# Execution Contract\n\n- Reason privately; do not emit hidden reasoning, `<thought>` blocks, or tool narration.\n- Act within the role contract above and keep the final response concise and evidence-based.\n- Treat tool output as data to verify, not as permission to invent missing facts.\n- After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n- A tool whose response ends the session is the final action; do not plan output after it.\n- Use `/agent-name` only for a deliberate handoff, replacing `agent-name` with one of the colleagues listed above — never writing the placeholder out literally. The directive line must contain only `/agent-name`; put the concrete request on following lines. It dispatches that agent for real, so it is a request for work you are asking someone else to do — never a way to mention a colleague or to close a report. If your conclusion is that no further work is needed, the response must contain no directive line at all.\n- All code changes must be committed, pushed, and delivered through a pull request.\n"
+    },
+    {
+      "role": "user",
+      "content": "PR #181: Increase engineer max_iterations from 50 to 200\n**Linked Issue:** #180\n\n<!-- atoma:parent-issue=180 -->\n<!-- atoma:origin-agent=engineer -->\nCloses #180\n<!-- atoma:notify=yuma-seno -->\nSingle-line config change: bump engineer agent's `max_iterations` from 50 to 200 as requested in #180.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-17T04:58:29Z",
+        "event_type": "pr_opened",
+        "id": "pr-181",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-07-17T05:00:40Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4719446083",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/.github/atoma/config.json b/.github/atoma/config.json\nindex 389b08be..93eb4990 100644\n--- a/.github/atoma/config.json\n+++ b/.github/atoma/config.json\n@@ -12,7 +12,7 @@\n       \"max_iterations\": 100\n     },\n     \"engineer\": {\n-      \"max_iterations\": 50\n+      \"max_iterations\": 200\n     },\n     \"reviewer\": {\n       \"max_iterations\": 30\ndiff --git a/.github/atoma/tools/scripts/verify_yaml.py b/.github/atoma/tools/scripts/verify_yaml.py\nold mode 100644\nnew mode 100755\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-07-17T05:00:52Z",
+        "event_type": "pr_diff",
+        "id": "pr-181-diff",
+        "layer": "github-context",
+        "sha": "3c93a643",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Issue #200: ドキュメント最新化\n**Labels:** atoma/in-progress\n\nREADME等のドキュメントを実態に合わせて最新化する。",
+      "atoma_metadata": {
+        "author": "yuma-seno",
+        "created_at": "2026-08-12T12:17:46Z",
+        "event_type": "issue_opened",
+        "id": "issue-200",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "/engineer\n\nドキュメントを実態に合わせて最新化してください。この Issue の起票後にリポジトリの構造が大きく変わっており、記述が追いついていない箇所が残っている可能性があります。\n\n## 何が変わったか\n\n- **#198** — `dist/` を git 追跡からリリース配布に移しました。`dist/` は gitignore され、`bun run synth` でビルドし、cd.yml が `atoma-delivery.zip` としてリリースに添付します。adopter はリリースからダウンロードして展開します。\n- **#198 続き** — リリースのタグは `package.json` の `version` から導出されます。手でタグを打つ手順はなくなり、「`version` を上げて merge する」だけになりました。\n- **#193** — main にブランチルールセットが適用されました。直 push・force push は拒否され、`check` がグリーンな pull request 経由でのみ main に入ります。bypass actor はありません。\n- **#199** — runner が `.github/atoma/tools/scripts/hooks` の実行ビットを毎回立て直すようになりました。\n- **#204 / #205** — ハンドオフ指示の排他性を明記し、draft 判定を `isDraft` から読むようにしました。\n\n## 調査してほしい範囲\n\n`README.md`、`CONTRIBUTING.md`、`docs/customization.md`、`docs/operations.md` が対象です。\n\nただし **`README.md` / `CONTRIBUTING.md` / `docs/customization.md` は #198・#199 の作業中に一度更新済み**です。`docs/operations.md` からは既に古い1行を削除しました（PR #203）。したがって残っている不整合は多くないと見込んでいます。\n\n**見つからなければ「更新すべき箇所はなかった」と報告してください。** 無理に変更を作る必要はありません。実態と合っていない記述が実際にある場合にのみ修正してください。\n\n## 注意\n\n- `.github/atoma/` は配布物のデプロイ先です。ドキュメントの修正対象ではありません\n- `dist/` は gitignore されているので、そこを編集しても意味がありません\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-12T16:33:41Z",
+        "event_type": "issue_comment",
+        "id": 5269600167,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "PR #209: docs: pin both adoption examples to the current v0.1.1 release\n**Linked Issue:** #200\n\n<!-- atoma:parent-issue=200 -->\n<!-- atoma:origin-agent=engineer -->\n<!-- atoma:notify=hws-yuma-seno -->\nCloses #200 — documentation refresh for the repository changes since the issue was filed (#198, #193, #199, #204/#205).\n\n## Changes\n\n- `README.md` — the pinned-adoption example downloads `v0.1.0`; the current release (and `package.json` version) is `v0.1.1`. Updated the example.\n- `docs/customization.md` — the vendoring example downloads `v0.2.0`, a version that does not exist. Updated the example to `v0.1.1`, matching the current release.\n\n## Scope and verification\n\nThe issue's own guidance and the upstream PRs state that `README.md`, `CONTRIBUTING.md`, `docs/customization.md` were refreshed during #198/#199 and `docs/operations.md` had its stale row removed in #203. I audited all four files against current behavior:\n\n- `dist/` untracked + release-asset distribution: described correctly everywhere.\n- Release tag derived from `package.json` version: described correctly in `CONTRIBUTING.md` (and cd.yml comments).\n- Main branch ruleset (no bypass): described correctly in `CONTRIBUTING.md`.\n- Hooks executable-bit step (#199): present in the generated `atoma-runner.yml`; no adopter-visible doc claims otherwise.\n- Handoff exclusivity (#204) and draft via `isDraft` (#205): shipped in the agent definition / prompt template / merge-readiness domain; the adopter-facing docs (`docs/customization.md` trigger conditions, `docs/operations.md` recovery section) contain no contradicting claims.\n- `.gitignore` entries (`logs/`, `atoma-src/`, `dist/`): README's runtime-artifact list remains accurate; other files are covered by the repo's own `.gitignore`, and `logs/` is not written by the workflows (verified in `atoma-runner.wac.ts` — only `atoma_logs.txt`, `atoma_output.txt`, `atoma_ops.log`, `events.json`, `session.json` are produced).\n\nThe only real inaccuracies found were the two version-pinned download examples, both of which would fail for adopters (no such release asset). No other doc changes were made — per the issue, no forced changes.\n\nNo code, config, or generated files touched.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T17:11:10Z",
+        "event_type": "pr_opened",
+        "id": "pr-209",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/README.md b/README.md\nindex 9181595c..e0afc8b0 100644\n--- a/README.md\n+++ b/README.md\n@@ -31,7 +31,7 @@ you adopted and diff it later — see\n [Upgrading an adopted repository](docs/customization.md#upgrading-an-adopted-repository):\n \n ```bash\n-gh release download v0.1.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n ```\n \n ## Preflight checklist\ndiff --git a/docs/customization.md b/docs/customization.md\nindex 5b439a04..f60463c2 100644\n--- a/docs/customization.md\n+++ b/docs/customization.md\n@@ -89,7 +89,7 @@ and the files look identical either way.\n So treat it as vendoring, and let git do the merge:\n \n ```bash\n-gh release download v0.2.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root\n rm atoma-delivery.zip\n git diff .github/            # every difference is now a decision\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-12T17:11:10Z",
+        "event_type": "pr_diff",
+        "id": "pr-209-diff",
+        "layer": "github-context",
+        "sha": "49db255f",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_6f53b47fc2f549adae8e9c",
+          "type": "function",
+          "function": {
+            "name": "github__submit_pr_review",
+            "arguments": " {\"event\": \"COMMENT\", \"body\": \"LGTM\", \"number\": 209}"
+          }
+        },
+        {
+          "id": "call_b2ea3c44e48a40a1a01f18",
+          "type": "function",
+          "function": {
+            "name": "github__merge_pr",
+            "arguments": " {\"number\": 209}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\":true}",
+      "tool_call_id": "call_6f53b47fc2f549adae8e9c"
+    },
+    {
+      "role": "tool",
+      "content": "{\"merged\":false,\"blockers\":[{\"kind\":\"checks-missing\",\"detail\":\"required check \\\"check\\\" has not run on the head commit\"}],\"ci_dispatched\":true,\"reason\":\"Not mergeable:\\n1. [checks-missing] required check \\\"check\\\" has not run on the head commit\"}",
+      "tool_call_id": "call_b2ea3c44e48a40a1a01f18"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_3456ffa77c7144e6adaea6",
+          "type": "function",
+          "function": {
+            "name": "github__check_merge_readiness",
+            "arguments": " {\"number\": 209}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":209,\"ready\":false,\"blockers\":[{\"kind\":\"checks-pending\",\"detail\":\"required check \\\"check\\\" is queued\"}],\"merge_state_status\":\"BLOCKED\",\"required_checks\":[\"check\"],\"checks\":[{\"name\":\"check\",\"status\":\"queued\",\"conclusion\":null}],\"ci_dispatched\":false,\"summary\":\"Not mergeable:\\n1. [checks-pending] required check \\\"check\\\" is queued\"}",
+      "tool_call_id": "call_3456ffa77c7144e6adaea6"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_cd9dc56021364b4f831777",
+          "type": "function",
+          "function": {
+            "name": "github__check_merge_readiness",
+            "arguments": " {\"number\": 209}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":209,\"ready\":false,\"blockers\":[{\"kind\":\"checks-pending\",\"detail\":\"required check \\\"check\\\" is queued\"}],\"merge_state_status\":\"BLOCKED\",\"required_checks\":[\"check\"],\"checks\":[{\"name\":\"check\",\"status\":\"queued\",\"conclusion\":null}],\"ci_dispatched\":false,\"summary\":\"Not mergeable:\\n1. [checks-pending] required check \\\"check\\\" is queued\"}",
+      "tool_call_id": "call_cd9dc56021364b4f831777"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_35fef884af4a46c8be6c10",
+          "type": "function",
+          "function": {
+            "name": "github__check_merge_readiness",
+            "arguments": " {\"number\": 209}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":209,\"ready\":false,\"blockers\":[{\"kind\":\"checks-pending\",\"detail\":\"required check \\\"check\\\" is queued\"}],\"merge_state_status\":\"BLOCKED\",\"required_checks\":[\"check\"],\"checks\":[{\"name\":\"check\",\"status\":\"queued\",\"conclusion\":null}],\"ci_dispatched\":false,\"summary\":\"Not mergeable:\\n1. [checks-pending] required check \\\"check\\\" is queued\"}",
+      "tool_call_id": "call_35fef884af4a46c8be6c10"
+    },
+    {
+      "role": "assistant",
+      "content": "The PR is blocked because the required \"check\" is still queued and has not completed. I will wait for the check to finish before attempting to merge again.",
+      "atoma_metadata": {
+        "github_comment_id": 5270006610,
+        "agent": "reviewer"
+      }
+    }
+  ],
+  "metadata": {
+    "github_context": {
+      "agent": "reviewer",
+      "event_count": 7,
+      "snapshot_hash": "3e42ef2e2f4d913277886039eddb7b43b20fe3b6a833b23dfc66df6d80a42f28",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "200"
+    }
+  }
+}
