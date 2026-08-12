@@ -42,8 +42,5 @@
       "agent": "$dispatch_agent",
       "condition": "atoma:dispatch"
     }
-  ],
-  "workflows": {
-    "cd": "cd.yml"
-  }
+  ]
 }

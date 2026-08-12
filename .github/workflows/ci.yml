@@ -5,8 +5,9 @@ name: CI
 # It verifies this repository's own build, not the Atoma template deliverable,
 # so it's kept decoupled from that generation pipeline.
 #
-# Verification only. Publishing the deliverable is cd.yml, chained off this
-# workflow's success — see the reasoning in that file.
+# Verification only. Publishing the deliverable is cd.yml, which is no longer
+# chained off this workflow: a release is cut from a version tag, not from every
+# merge — see the reasoning in that file.
 
 # `workflow_dispatch` is what makes the merge gate work. Agent branches are
 # pushed and their PRs opened with GITHUB_TOKEN, and GitHub does not start a
@@ -31,7 +32,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read # `gh pr diff` in "Reject generated output"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Bun
@@ -42,59 +42,22 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Typecheck
         run: bun run typecheck
+      # Before `test`, and unconditional, for two separate reasons.
+      #
+      # It proves the deliverable still builds. A synth that only breaks after
+      # merge would leave the repository unable to cut a release.
+      #
+      # And `dist/` is no longer committed, so a fresh checkout has none. The
+      # deployment contract test compares `src/atoma/` against the built tree and
+      # silently passes when that tree is absent, so running synth afterwards
+      # would have quietly retired the check instead of running it.
+      - name: Build the deliverable
+        run: bun run synth
       - name: Test
         run: bun run test
-      # Generated output belongs to the deploy job, never to a pull request.
-      #
-      # Two concrete reasons, both already observed here. This system dispatches
-      # sub-issues in parallel, so two agent branches regenerating the same
-      # bundles collide in files no human wrote. And a regenerated bundle runs to
-      # hundreds of kilobytes -- PR #189 was +22900/-23 -- which buries the `src/`
-      # change a reviewer actually has to read.
-      #
-      # Only `dist/` is checked. `.github/` is no longer generated on every
-      # push -- it is this repository's deliberate adoption of the deliverable,
-      # upgraded by hand and reviewed in a pull request like any
-      # other change.
-      #
-      # Gated on `!= 'push'` rather than `== 'pull_request'`. An agent's branch and
-      # pull request are created with GITHUB_TOKEN, so `pull_request` never fires
-      # for them -- their only CI run is the reviewer's `workflow_dispatch`. Keying
-      # on `pull_request` skipped both of these guards on exactly the pull requests
-      # they exist to police, and the required `check` context went green having run
-      # nothing but typecheck and test.
-      - name: Reject generated output in the diff
-        if: github.event_name != 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Empty on a workflow_dispatch run; resolved from the branch below.
-          EVENT_PR: ${{ github.event.pull_request.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          PR="$EVENT_PR"
-          if [ -z "$PR" ]; then
-            PR=$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')
-          fi
-          if [ -z "$PR" ]; then
-            echo "No open pull request for $GITHUB_REF_NAME; nothing to inspect."
-            exit 0
-          fi
-
-          # Two statements, not one pipeline: with `|| true` spanning the whole
-          # pipeline a failing `gh` was indistinguishable from a clean diff, and
-          # the step passed.
-          FILES=$(gh pr diff "$PR" --name-only)
-          GENERATED=$(printf '%s\n' "$FILES" | grep -E '^dist/' || true)
-          if [ -n "$GENERATED" ]; then
-            echo "::error::Pull request #$PR edits generated output. Drop these files and let CD produce them:"
-            printf '%s\n' "$GENERATED" | sed 's/^/  /'
-            exit 1
-          fi
-          echo "No generated output in pull request #$PR."
-      # Verifies the deliverable still BUILDS, without requiring dist/ to be
-      # committed -- the counterpart to the check above. A synth that only breaks
-      # after merge would leave main unable to publish.
-      - name: Verify the deliverable still builds
-        if: github.event_name != 'push'
-        run: bun run synth
+      # There used to be a "Reject generated output in the diff" step here, which
+      # failed any pull request whose diff touched `dist/`. It existed because
+      # `dist/` was tracked: parallel agent branches collided in regenerated
+      # bundles, and a regenerated bundle buried the `src/` change under hundreds
+      # of kilobytes (PR #189 was +22900/-23). Untracking `dist/` removes the
+      # cause, so the guard went with it.

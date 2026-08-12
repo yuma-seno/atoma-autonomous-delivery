@@ -2,16 +2,16 @@
   "name": "atoma-autonomous-delivery",
   "private": true,
   "type": "module",
+  "version": "0.1.0",
   "engines": {
     "bun": ">=1.2.0"
   },
   "scripts": {
     "synth": "gwf build && bun run src/build-dist.ts",
-    "synth:check": "bun run synth && git diff --exit-code -- dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test ./src/domain ./src/lib ./src/scripts ./tests/contract ./src/atoma/tools/scripts/mcp ./src/atoma/tools/scripts/hooks",
     "test:e2e": "bun test ./tests/e2e",
-    "lint": "bun run typecheck && bun run synth:check"
+    "lint": "bun run typecheck && bun run synth"
   },
   "devDependencies": {
     "@github-actions-workflow-ts/actions": "^2.5.0",

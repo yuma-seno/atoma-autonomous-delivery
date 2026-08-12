@@ -83,7 +83,11 @@ describe("deployment contract", () => {
       statSync(distAtoma);
       shipped = walk(distAtoma).map((f) => f.replace("dist/.github/atoma/", ""));
     } catch {
-      return; // dist/ not built in this checkout; synth:check covers that case
+      // `dist/` is not tracked, so a fresh checkout has none until synth runs.
+      // ci.yml builds it before `test` for exactly this reason -- if this branch
+      // is being taken in CI, the check has been silently retired rather than
+      // satisfied.
+      return;
     }
 
     // Markdown and YAML are copied verbatim, so every one in src must ship.

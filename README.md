@@ -13,16 +13,26 @@ After adoption, opening or updating an issue/PR can trigger an agent run that:
 
 ## Shortest adoption path
 
-Copy the deliverable workflow assets from this repository into your repository:
+The deliverable ships as a release asset. Extract it at your repository root — the
+archive holds `.github/`, so the files land where they belong:
 
 ```bash
-# from this repository root
-TARGET=/path/to/your-repo
-mkdir -p "$TARGET/.github"
-cp -R dist/.github/. "$TARGET/.github/"
+cd /path/to/your-repo
+curl -fsSL -o atoma-delivery.zip \
+  https://github.com/yuma-seno/atoma-autonomous-delivery/releases/latest/download/atoma-delivery.zip
+unzip -o atoma-delivery.zip
+rm atoma-delivery.zip
 ```
 
 Then commit in your target repository.
+
+`latest` is the convenient path. Pin a version instead when you want to know what
+you adopted and diff it later — see
+[Upgrading an adopted repository](docs/customization.md#upgrading-an-adopted-repository):
+
+```bash
+gh release download v0.1.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
+```
 
 ## Preflight checklist
 

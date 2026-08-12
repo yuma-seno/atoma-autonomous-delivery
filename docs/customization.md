@@ -10,7 +10,8 @@ This guide separates two workflows clearly:
 In this repository:
 
 - `src/` is hand-authored source.
-- `dist/.github/` is generated deliverable output.
+- `dist/.github/` is generated deliverable output. Not tracked in git — `bun run
+  synth` builds it, and a release publishes it as `atoma-delivery.zip`.
 
 In your adopted repository:
 
@@ -88,10 +89,19 @@ and the files look identical either way.
 So treat it as vendoring, and let git do the merge:
 
 ```bash
-cp -R /path/to/atoma-autonomous-delivery/dist/.github/. .github/
+gh release download v0.2.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
+unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root
+rm atoma-delivery.zip
 git diff .github/            # every difference is now a decision
 git checkout -- .github/atoma/config.json    # for anything you meant to keep
 ```
+
+Name the version rather than taking `latest`. Recording which release you adopted
+is what lets you read the upstream changes between it and the next one
+(`gh release view`, or compare the two tags) instead of rediscovering them in a
+diff. Extracting also never deletes: a file the template dropped upstream stays in
+your tree, so a disappearance shows up as an upstream change you have to notice
+yourself rather than as a deletion in `git diff`.
 
 Review that diff rather than trusting the copy. The safest habit is to keep your
 customisation where the template will not fight you for it — `config.json` covers
@@ -241,10 +251,11 @@ Dynamic skill behavior:
 If you are modifying this template repository:
 
 1. Edit `src/` files.
-2. Commit only that. CI rejects a pull request whose diff touches `dist/`, and
-   regenerates it after the merge — see CONTRIBUTING.md.
+2. Commit only that. `dist/` is not tracked, so there is nothing generated to
+   commit — see CONTRIBUTING.md.
 3. Run `bun run synth` locally whenever you want to see what adopters will
-   receive, then discard the result.
+   receive.
+4. Adopters receive it when a release is cut from a version tag, not on merge.
 
 If you are only adopting in your own repository:
 

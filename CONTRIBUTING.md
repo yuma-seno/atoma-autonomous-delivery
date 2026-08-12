@@ -10,8 +10,9 @@ The deliverable:
 - `src/`: hand-authored source for the template — agent definitions, skills, MCP
   servers, workflow definitions. Adopter-agnostic by rule: no reference to this
   repository's build pipeline, no incident history, no PR numbers.
-- `dist/.github/`: generated from `src/`. This is what adopters copy. Produced by
-  the `publish-dist` job in cd.yml, never committed by a pull request.
+- `dist/.github/`: generated from `src/` by `bun run synth`. This is what adopters
+  receive. **Not tracked in git** — it is a pure function of `src/`, and cd.yml
+  publishes it as a release asset rather than committing it.
 
 This repository's own:
 
@@ -38,8 +39,23 @@ When changing template behavior, treat `src/` as canonical.
 
 What may reach `main` is declared in `.github/rulesets/main.json`: no direct
 pushes, no force-pushes, no branch deletion, and a pull request that cannot merge
-until the `check` job passes. The only bypass is the GitHub Actions app, which
-`publish-dist` runs as to commit `dist/`.
+until the `check` job passes.
+
+**Nothing needs a bypass.** No workflow writes to `main` — cd.yml attaches the
+deliverable to a release instead, which is why `dist/` is no longer tracked. An
+agent merging a pull request needs no bypass either: it satisfies the rules like
+anyone else.
+
+That is deliberate, and it is what keeps this file self-contained. Granting a
+bypass would mean naming either a GitHub App's ID or a deploy key — values that
+only exist after manual setup elsewhere, so the reviewed declaration would stop
+describing the whole configuration.
+
+> `.github/rulesets/main.json` still carries a `bypass_actors` entry naming the
+> built-in GitHub Actions app. It is now unnecessary, and it is also invalid — that
+> app is not installable on a repository, so the import is rejected with
+> `The ruleset you are importing contains an invalid actor`. Removing it is issue
+> #193.
 
 A ruleset is **not** read from the repository. It is a server-side setting, and
 `.github/rulesets/main.json` is this project's own convention: the reviewed
@@ -62,8 +78,8 @@ that stops nobody, which is worse than no mark at all.
 
 If the import option is unavailable, create it through the form instead and set:
 target the default branch; restrict deletions; block force pushes; require a pull
-request with **0** required approvals; require the `check` status check; and add
-**GitHub Actions** as the only bypass actor.
+request with **0** required approvals; and require the `check` status check. Leave
+the bypass list empty.
 
 **From a shell** — if you already have an admin-scoped `gh` login:
 
@@ -77,13 +93,36 @@ To change the rules later, edit the JSON in a pull request, then re-import (or
 ruleset edited in the UI without a matching change to the file, so keeping the two
 together is a discipline rather than something enforced.
 
-Two settings in that file exist for specific reasons. Required approvals is **0**
+One setting in that file exists for a specific reason. Required approvals is **0**
 because Atoma's agents share one bot identity and GitHub forbids self-approval —
-requiring an approval would deadlock the autonomous path. The sole bypass actor is
-the GitHub Actions app, which `publish-dist` runs as to commit `dist/`; it is safe
-to bypass precisely because GitHub refuses to let an App write
-`.github/workflows/`, so that identity provably cannot alter a workflow
-definition. Repository admins are deliberately **not** bypassed.
+requiring an approval would deadlock the autonomous path. Repository admins are
+deliberately **not** bypassed either; see above on why the bypass list is empty.
+
+## Cutting a release
+
+The deliverable reaches adopters through a release, not through a merge. The
+version is declared in `package.json` and reviewed there; the tag only names it,
+and cd.yml refuses to publish a tag that disagrees.
+
+```bash
+# after the version bump has been merged
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Tags are outside a branch ruleset targeting the default branch, so this needs no
+bypass. cd.yml then builds `dist/`, packages it as `atoma-delivery.zip` with
+`.github/` at the archive root, and creates the release.
+
+Pushing a tag with `GITHUB_TOKEN` starts no workflow run — the same GitHub
+behaviour that ci.yml's `workflow_dispatch` trigger exists for. Dispatch against
+the tag instead:
+
+```bash
+gh workflow run cd.yml --ref v0.1.0
+```
+
+That path is idempotent: re-running a tag whose release already exists replaces
+the asset rather than failing.
 
 ## Setup (Bun)
 
@@ -109,23 +148,18 @@ What each command proves:
 - `test`: unit-level behavior across `src/domain`, `src/lib`, `src/scripts`, and MCP/hook scripts.
 - `test:e2e`: end-to-end checks in `tests/e2e`.
 
-Optional strict check:
-
-```bash
-bun run synth:check
-```
-
-This fails when generated `dist/` content is out of sync.
+`test:e2e` runs against the built tree, so `bun run synth` has to come first — it
+reads `dist/.github/atoma/tools/scripts/mcp/*.ts`, which an untracked `dist/` does
+not have until you build it.
 
 ## Generated-file discipline
 
-- **Do not commit generated output in a pull request.** Change `src/*` only. CI
-  rejects a pull request whose diff touches `dist/`, and `cd.yml` regenerates and
-  commits it after the merge.
+- **`dist/` is gitignored.** There is nothing generated to commit, and nothing to
+  keep in sync with `src/`. Change `src/*` and let a release build it.
 - Run `bun run synth` locally whenever you want to inspect what adopters will
-  receive, then discard the result. CI runs it on every pull request to prove the
+  receive. CI runs it on every pull request, before `test`, to prove the
   deliverable still builds.
-- `dist/.github/*` is generated: never hand-edit it, and never commit it.
+- `dist/.github/*` is generated: never hand-edit it.
 - `.github/atoma/*` is *deployed*, not generated on merge. Nothing regenerates it
   — it is this repository's own adoption of the deliverable, upgraded by the
   one-liner in the source-of-truth map above and reviewed like any other change.
@@ -138,6 +172,7 @@ This fails when generated `dist/` content is out of sync.
 
 - Describe behavior changes from an adopter perspective.
 - Include exact commands you ran and outcomes.
-- Do not include `dist/.github` or `.github/atoma`; the deploy job owns them.
+- Do not include `.github/atoma`; it is upgraded deliberately, not per pull
+  request. `dist/` cannot appear at all — it is gitignored.
 - Avoid unrelated refactors in the same PR.
 - If you changed workflow dispatch semantics, call out backward compatibility impact explicitly.

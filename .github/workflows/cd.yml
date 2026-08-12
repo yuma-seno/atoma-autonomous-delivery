@@ -1,110 +1,118 @@
 name: CD
 
-# Publishes the deliverable. Separate from CI on purpose:
+# Publishes the deliverable as a release asset.
 #
-# - Different job, different blast radius. CI is read-only; this job holds
-#   `contents: write` and is the sole identity allowed to bypass the branch
-#   ruleset. Keeping it in its own file makes that surface obvious to review
-#   rather than buried under a job-level `if:`.
-# - While it lived in ci.yml it was skipped on every pull request, and a skipped
-#   job still records a check run. That is noise at best, and a live trap the
-#   moment anyone adds `publish-dist` to the ruleset's required checks, because
-#   GitHub does not count a skipped required check as satisfied.
+# This used to commit `dist/` to main on every merge, which is why it needed to
+# be the one identity allowed to bypass the branch ruleset. That bypass was not
+# achievable: GITHUB_TOKEN cannot push to a ruleset-protected branch, and the
+# built-in GitHub Actions app is not a valid `Integration` bypass actor because
+# it is not an app installed on the repository. Rather than introduce a dedicated
+# GitHub App or a deploy key -- both of which leave the ruleset file depending on
+# a value that only exists after some manual setup -- the deliverable stopped
+# going to main at all. Nothing here needs a bypass now, and `dist/` is not
+# tracked.
 #
-# Two triggers, because the two merge paths reach main differently.
+# A release is cut from a version tag, not from every merge. That is the point:
+# adopters could previously only copy "whatever main had when I cloned", with no
+# version to name. `package.json`'s `version` is the source of truth and the tag
+# must agree with it, so the version lives in reviewed code rather than in
+# whoever typed the tag.
 #
-# `workflow_run` covers the human path: a person merging fires a real `push` on
-# main, CI runs, and chaining off its success preserves the gate that
-# `needs: [check]` gave before CI and CD were separated.
+# Two triggers, for the same reason ci.yml has three.
 #
-# `workflow_dispatch` covers the autonomous path, and is not optional. An agent
-# merge is performed with GITHUB_TOKEN, and GitHub starts no workflow run for
-# events its own token triggers -- so no `push` fires, no CI runs, and no
-# `workflow_run` follows. Chained alone, this workflow never ran after an agent
-# merge, and since CI also rejects any pull request that edits `dist/`, the
-# deliverable had no route to be updated at all: it would have frozen silently the
-# moment direct pushes to main were forbidden. `mergePr` now dispatches this
-# workflow after a successful merge.
+# A human pushing `v0.1.0` fires the `push` event below.
 #
-# Publishing on dispatch without CI having re-run on main is sound: the merge gate
-# already required the `check` context to be green on the merged head, `dist/` is a
-# pure function of `src/`, and a broken `synth` fails this job rather than
-# publishing anything.
+# An agent cannot rely on that: GitHub starts no workflow run for events its own
+# token triggers, so a tag pushed with GITHUB_TOKEN fires nothing. Dispatching
+# against the tag ref is the documented way through:
 #
-# No loop: the push below is made as github-actions[bot], whose events start no
-# workflow run.
-
+#   gh workflow run cd.yml --ref v0.1.0
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
-# Serialised: two publishes racing would both `git push`, and the loser is
-# rejected non-fast-forward with nothing retrying it.
+# Serialised per tag. Re-running a release while the first attempt is still
+# uploading would have both racing to attach the same asset.
 concurrency:
-  group: publish-dist
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  publish-dist:
+  release:
     runs-on: ubuntu-latest
-    # `workflow_run` fires for any conclusion, including failure and cancellation.
-    # A dispatch has no `workflow_run` context, so allow it through explicitly.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
+      # Creating the release and attaching the asset. No `git push` anywhere in
+      # this job -- main is never written to.
       contents: write
     steps:
-      # Deliberately the default GITHUB_TOKEN, not a PAT. GitHub refuses to let an
-      # App create or update files under the real `.github/workflows/`, and that
-      # refusal is load-bearing: it is what guarantees this job -- the one identity
-      # allowed to bypass the branch ruleset -- cannot alter a workflow definition.
-      # `dist/.github/workflows/` is unaffected, so publishing still works.
-      #
-      # Checks out the branch tip rather than the triggering commit: the point is
-      # to leave main's dist/ current, and pushing a detached older SHA would
-      # undo a newer publish.
       - uses: actions/checkout@v4
-        with:
-          ref: main
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Regenerate dist/
-        run: bun run synth
-      - name: Refuse to publish anything but dist/
-        # This job holds the ruleset bypass, so bound what it can possibly commit.
-        # A synth that reached outside dist/ must stop here rather than ride the
-        # bypass onto main.
+      # `workflow_dispatch` accepts any ref, including a branch, and a branch has
+      # no version to publish. Fail before building rather than producing an
+      # asset named after something that is not a release.
+      - name: Refuse to release anything but a version tag
         shell: bash
         run: |
-          # No `head` in the pipeline: `shell: bash` runs with `-o pipefail`, so a
-          # closed pipe would kill the step at the assignment and the error below
-          # would never print. Truncate when reporting instead.
-          STRAY=$(git status --porcelain -- . ':(exclude)dist')
-          if [ -n "$STRAY" ]; then
-            echo "::error::synth modified paths outside dist/; refusing to publish:"
-            printf '%s\n' "$STRAY" | head -20 | sed 's/^/  /'
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::CD publishes a version tag; got $GITHUB_REF_TYPE '$GITHUB_REF_NAME'."
+            echo "Dispatch against a tag instead: gh workflow run cd.yml --ref v0.1.0"
             exit 1
           fi
-      - name: Commit and push dist/ if it changed
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(jq -r '.version' package.json)
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME disagrees with package.json version $PKG_VERSION."
+            echo "The version is declared in package.json and reviewed there; the tag only names it."
+            exit 1
+          fi
+          echo "Releasing $GITHUB_REF_NAME (package.json version $PKG_VERSION)."
+      - name: Build the deliverable
+        run: bun run synth
+      # The archive root holds `.github/`, so an adopter extracts it at their
+      # repository root and the files land where they belong.
+      #
+      # Deliberately a fixed asset name rather than one carrying the version: it
+      # is what makes `releases/latest/download/atoma-delivery.zip` a stable URL,
+      # and the version is already carried by the release itself.
+      - name: Package dist/ as a release asset
         shell: bash
         run: |
-          git add dist
-          # `git diff` (unstaged) silently ignores untracked files, which every
-          # newly generated file under dist/ is -- check the *staged* diff.
-          if git diff --cached --quiet; then
-            echo "Nothing to publish -- dist/ already matches src/**."
-            exit 0
+          set -euo pipefail
+          if [ ! -d dist/.github ]; then
+            echo "::error::synth produced no dist/.github; nothing to package."
+            exit 1
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(auto): publish generated dist/ [skip ci]"
-          git push origin HEAD:main
+          # `zip` from inside dist/ so the archive holds `.github/...` and not
+          # `dist/.github/...`. Naming `.github` explicitly is what includes it;
+          # a bare `zip -r . ` would skip the dotfile entry.
+          (cd dist && zip -qr ../atoma-delivery.zip .github)
+          unzip -l atoma-delivery.zip | tail -1
+      # Idempotent on purpose. A dispatch is the agent path and also the retry
+      # path, so re-running a tag whose release already exists has to replace the
+      # asset instead of failing.
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; replacing the asset."
+            gh release upload "$TAG" atoma-delivery.zip --clobber
+          else
+            gh release create "$TAG" atoma-delivery.zip \
+              --title "$TAG" \
+              --generate-notes
+          fi

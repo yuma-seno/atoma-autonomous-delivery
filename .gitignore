@@ -8,10 +8,14 @@ events.json
 session.json
 logs/
 
+# The deliverable, built by `bun run synth`. Not tracked: it is a pure function
+# of src/, and it is distributed as a release asset by cd.yml rather than
+# committed. Tracking it is what used to force a branch-protection bypass, since
+# publishing meant pushing generated output straight to main.
+dist/
+
 # Dependencies
 node_modules/
-dist/**/node_modules/
-dist/**/bun.lock*
 
 # Atoma source checkout created by the runner when atoma_version=source.
 # A bare `git add -A` otherwise commits it as a dangling gitlink (no .gitmodules).

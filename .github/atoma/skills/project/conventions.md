@@ -28,23 +28,19 @@ mention of `dist/`, `bun run synth`, or `build-dist.ts`, and no incident history
 or PR numbers. If a rule is about developing *this* repository, it belongs in
 this file instead.
 
-## Never commit generated output
+## Generated output is not tracked
 
-Change `src/**` only. Keep `dist/**` out of your commit entirely — the
-`publish-dist` job regenerates and commits it after the merge, and CI rejects a
-pull request whose diff contains it.
+Change `src/**` only. `dist/**` is gitignored, so there is nothing generated to
+commit and nothing to keep in sync.
 
-Do not run `bun run synth` to "keep it in sync". That is not your job, and its
-output must not reach your commit. Run it only to inspect what adopters would
-receive, then discard the result.
+Run `bun run synth` freely to inspect what adopters would receive. It writes only
+into the ignored `dist/`, so it cannot dirty your commit.
 
-Two reasons this is enforced rather than encouraged: sub-issues are dispatched in
-parallel, so two branches regenerating the same bundles collide in files no human
-wrote; and a regenerated bundle buries the `src/` change a reviewer has to read
-under a diff orders of magnitude larger.
+Adopters receive the deliverable from a release, not from a merge, so nothing you
+merge needs to carry it.
 
-`.github/**` is a different matter — see below. It is not regenerated on merge, so
-a change there is yours to make and review, not something to keep out.
+`.github/**` is a different matter — see below. It is tracked and not regenerated,
+so a change there is yours to make and review.
 
 ## main is protected; everything lands by pull request
 
@@ -61,10 +57,11 @@ call from an account with admin (see CONTRIBUTING.md). CI cannot make that call 
 `github__check_merge_readiness` reports against whatever the ruleset currently
 requires, so it follows the file rather than holding a second opinion.
 
-One identity bypasses it: the GitHub Actions app, which `publish-dist` runs as.
-That is safe because GitHub forbids an App from writing `.github/workflows/`, so
-the bypassing identity provably cannot alter a workflow definition, and the job
-itself refuses to commit anything outside `dist/`.
+Nothing bypasses it. No workflow writes to main — `cd.yml` attaches the deliverable
+to a release instead — and your merge satisfies the rules like anyone else's. Do
+not propose a bypass actor: it would mean naming a GitHub App ID or a deploy key,
+values that exist only after manual setup, so the JSON would stop describing the
+whole configuration.
 
 `ci.yml` and `cd.yml` are hand-written and live only under
 `.github/workflows/`. They survive the upgrade copy because `dist/.github/` does
@@ -109,6 +106,5 @@ diff, so it is invisible in review — when the upgrade follows a change that
 removed something, look for orphans under `.github/atoma/` yourself.
 
 A human has to run it. GitHub refuses to let an App write files under
-`.github/workflows/`, so no automation can perform this step. That same
-restriction is what lets `publish-dist` hold the branch-ruleset bypass safely: it
-provably cannot alter a workflow definition.
+`.github/workflows/`, and the upgrade copy overwrites
+`.github/workflows/atoma-*.yml`, so no automation can perform this step.
