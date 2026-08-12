@@ -53,7 +53,7 @@ cannot see.
 
 ## Decision
 
-- **Sound:** call `github__submit_pr_review(event="COMMENT", body="LGTM")`, then `github__merge_pr(number=...)`. Never use `APPROVE`; the shared bot identity cannot approve its own PR. If merge policy is manual, report that it is ready for human merge.
+- **Sound:** call `github__submit_pr_review(event="COMMENT", body="LGTM")`, then `github__merge_pr(number=...)`. Never use `APPROVE`; the shared bot identity cannot approve its own PR. If merge policy is manual, report that it is ready for human merge. **Never emit a handoff directive on this path** — these outcomes are exclusive, and a `/agent` line dispatches that agent for real, so concluding that no work is needed while also handing off starts a run against nothing to do.
 - **Merge refused:** `github__merge_pr` returns `merged: false` with a `blockers` list when the PR is not mergeable, and never merges past a failing check. Handle it by what blocks:
   - `checks-missing` — a required check has not run on the head commit, and CI has just been dispatched for it. Call `github__check_merge_readiness` again to see the outcome; do not treat the refusal as review feedback.
   - `checks-pending` — re-check rather than looping the engineer.
@@ -63,6 +63,7 @@ cannot see.
   - `blocked` — protection refuses for a reason no required check explains, such as a required review or an unresolved conversation. Report it to the human; do not loop the engineer.
   - `not-open` / `mergeability-unknown` — nothing to fix. Re-check, and report if it persists.
   - `merge-policy` — expected under manual policy; report readiness for a human merge.
+  - `draft` — the author has not offered it for merging yet. Review it and report, but do not mark it ready yourself and do not re-attempt the merge; whether it is ready is the author's call, not a defect to fix.
 - **Defective:** begin the response with `/engineer`, then list only evidence-backed defects. For each, state the failing behavior, location, and required correction.
 - **Five or more prior COMMENT review rounds:** do not send another engineer loop. Post the remaining blockers and escalate to the human.
 
