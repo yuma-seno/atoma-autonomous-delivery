@@ -71,7 +71,6 @@ Recovery archives the previous agent session, does not restore its assistant/too
 | --- | --- | --- |
 | Workflow ran but agent did not start | Route step produced empty `agent` output | Check issue first line slash command or trigger mapping in `config.json` |
 | Agent exits immediately with provider error | Missing/invalid API credential or provider mismatch | Verify secrets and optional `ATOMA_PROVIDER` variable |
-| Review-submitted dispatch starts without provider credentials | `atoma-pr-review.yml` currently calls the reusable runner without forwarding secrets | Add explicit secret forwarding or `secrets: inherit` in the workflow source, regenerate, and deploy |
 | `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |
 | Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |
 | Agent repeatedly reproduces stale or invalid tool behavior | Persisted conversation history is no longer useful | Run `/<agent> recover` on its own line, with any new instruction on following lines |
