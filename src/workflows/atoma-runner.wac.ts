@@ -59,6 +59,9 @@ const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
 const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
+// Hook scripts named by `tools.yaml`. Atoma resolves a relative hook path
+// against the directory holding that file, so these two have to agree.
+const TOOL_HOOKS_DIR = ".github/atoma/tools/scripts/hooks";
 
 // Every input this workflow takes is spliced into shell TEXT somewhere below:
 // `AGENT="${{ inputs.agent }}"`, `BRANCH="atoma/issue-${{ inputs.number }}"`,
@@ -711,6 +714,28 @@ if [ -n "$PIP_PKGS" ]; then
   for pkg in $PIP_PKGS; do
     pip install "$pkg"
   done
+fi
+`,
+  }),
+  // Hooks are the one part of the tool tree that has to be directly executable.
+  // `tools.yaml` names a `before_tool` hook by path and Atoma spawns it as a
+  // program, so it runs via its shebang and needs its exec bit. Everything else
+  // is launched as `bun run <path>`, where the file mode is irrelevant.
+  //
+  // Set here on every run rather than trusted from the checkout, because the mode
+  // is decided wherever the repository was committed from, not where it runs. Git
+  // records new files as non-executable on a filesystem with no POSIX exec bit --
+  // Windows, where `core.filemode` defaults to false -- and the loss is invisible
+  // until a tool call fails. `before_tool` is fail-closed, so a hook that cannot
+  // start denies the tool outright rather than degrading it.
+  //
+  // `find -exec` and not a glob: the directory is allowed to be empty, and a glob
+  // that matches nothing would hand `chmod` a literal `*.ts` and fail the step.
+  new TypedOutputsStep({
+    name: "Make tool hooks executable",
+    shell: "bash",
+    run: `if [ -d "${TOOL_HOOKS_DIR}" ]; then
+  find "${TOOL_HOOKS_DIR}" -name '*.ts' -exec chmod +x {} +
 fi
 `,
   }),

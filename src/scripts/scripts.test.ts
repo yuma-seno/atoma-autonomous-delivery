@@ -104,6 +104,26 @@ describe("generated workflows", () => {
     expect(step?.run).toContain('git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"');
   });
 
+  // Guards a failure that is otherwise silent until a tool call is denied: Atoma
+  // spawns a `before_tool` hook as a program, and a repository committed from a
+  // filesystem without a POSIX exec bit records it as non-executable. The hook is
+  // fail-closed, so losing the bit disables the tool entirely rather than
+  // degrading it.
+  test("makes tool hooks executable before the agent runs", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+    const chmod = steps.findIndex((candidate) => candidate.name === "Make tool hooks executable");
+    expect(chmod, "atoma-runner hook chmod step").toBeGreaterThanOrEqual(0);
+    expect(steps[chmod]?.run).toContain("chmod +x");
+
+    const agent = steps.findIndex((candidate) => candidate.name === "Run agent");
+    expect(agent, "atoma-runner agent step").toBeGreaterThanOrEqual(0);
+    expect(chmod, "hooks must be executable before the agent can call a tool").toBeLessThan(agent);
+  });
+
   test("checkout the repository before running repository scripts", () => {
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
