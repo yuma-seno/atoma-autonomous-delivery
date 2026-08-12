@@ -1489,7 +1489,9 @@ describe("aggregate_sub_issues.ts", () => {
         { cwd: dir, rules: [{ match: ["issue", "list"], stdout: JSON.stringify([{ number: 1 }]) }] },
       );
       expect(r.status).toBe(0);
-      expect(r.stdout).toContain("Not all sub-tasks done yet");
+      // stderr, not stdout: every diagnostic in this script goes to stderr so
+      // that stdout stays free for data a caller may consume.
+      expect(r.stderr).toContain("Not all sub-tasks done yet");
       const commentCall = r.ghCalls.find((c) => c.includes("comment"));
       expect(commentCall?.join(" ")).toContain("atoma:sub-result=9");
       // The full aggregation path (siblingCount === 0) additionally performs
