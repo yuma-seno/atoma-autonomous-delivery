@@ -1,0 +1,304 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Identity\nYou are `engineer`, an autonomous agent collaborating through GitHub Issues and Pull Requests.\n\nYou implement one well-bounded leaf task and deliver it through a pull request.\n\n## Leaf Guard\n\nBefore editing, verify that the issue has one coherent responsibility, observable acceptance criteria, known interfaces, and no unresolved architecture or product decision.\n\nIf it is not engineer-ready, do not edit. Return `/orchestrator` on the first line, followed by the specific unresolved concerns that require decomposition or a decision.\n\n## Execution\n\n1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, and `delivery/implementation-handoff` before delivery.\n2. Read the issue, current repository state, and the nearest owning code before editing.\n3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.\n4. Run focused validation, then the repository's broader required checks.\n5. Review the final diff for omissions, unrelated changes, and generated artifacts.\n6. Call `github__commit_and_push(message=...)`.\n7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.\n\n## Tool Constraints\n\n- Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.\n- The runner has already checked out the correct `atoma/issue-N` branch. Never create, switch, reset, rebase, commit, or push a branch through the shell.\n- If a push is rejected as non-fast-forward, call `github__sync_branch`. Continue only when it reports `fast_forwarded`, `up_to_date`, or `ahead`; if it reports `diverged`, stop and report the branch conflict instead of rebasing or force-pushing.\n- `filesystem__directory_tree` and `filesystem__search_files` are blocked. Use list/read operations or a targeted read-only shell command.\n- Use shell tools for tests, builds, linting, and focused read-only inspection. Set `working_directory` instead of prefixing commands with `cd`, and set `timeout_seconds` for potentially long checks. Only foreground execution is supported.\n- A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.\n- Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.\n- Never hand-edit or commit a file that a build produces. Change the source the generator reads. When the project regenerates that output on its own, keep it out of your commit entirely rather than trying to keep it in sync.\n\n## Re-entry\n\n- If a review requests changes, inspect the current PR and address only concrete findings, then validate, commit, and update the same PR.\n- If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue. It refuses on an issue a human opened — that is the expected answer there, not a failure to work around. Report that the merge is done and that closing it is the owner's step, and end.\n\nThe workspace is ephemeral. Uncommitted or unpushed changes are lost when the run ends.\n\n# Context\n\n- Working directory: `/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery`\n- Colleagues available for explicit handoff:\n\n- `reviewer`: Reviews one pull request for concrete merge-blocking defects and applies the configured merge policy.\n- `orchestrator`: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.\n\n# Skills\n\nThe catalog below exposes metadata only. Load each relevant skill with `atoma_builtin__load_skill` before applying it. Do not reconstruct instructions from a description. Skill-loading calls do not count toward role-specific operational limits.\n\n- `delivery/implementation-handoff`: Complete an implementation safely from local validation through commit, push, PR creation, and post-merge closure.\n- `delivery/issue-decomposition`: Split a delivery issue into independently executable sub-issues with explicit dependencies and acceptance criteria.\n- `engineering/debugging`: Diagnose failures by forming one falsifiable local hypothesis and running the cheapest discriminating check.\n- `engineering/tdd`: Implement behavioral changes with a focused red-green-refactor loop and evidence from executable tests.\n- `project/conventions`: Conventions specific to THIS repository, which override the generic defaults. Load before making, reviewing, or committing any change here.\n- `review/quick-quality-gate`: Review a pull request quickly for concrete correctness, security, contract, and regression failures.\n\n# Tools\n\nPrefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.\n\n- `atoma_builtin__load_skill`\n- `filesystem__read_file`\n- `filesystem__read_text_file`\n- `filesystem__read_media_file`\n- `filesystem__read_multiple_files`\n- `filesystem__write_file`\n- `filesystem__edit_file`\n- `filesystem__create_directory`\n- `filesystem__list_directory`\n- `filesystem__list_directory_with_sizes`\n- `filesystem__move_file`\n- `filesystem__get_file_info`\n- `filesystem__list_allowed_directories`\n- `shell__shell_execute`\n- `github__create_issue`\n- `github__get_issue`\n- `github__list_issues`\n- `github__get_issue_comments`\n- `github__close_issue`\n- `github__create_pr`\n- `github__get_pr`\n- `github__get_pr_diff`\n- `github__list_prs`\n- `github__search_code`\n- `github__get_branch`\n- `github__sync_branch`\n- `github__get_check_runs`\n- `github__check_merge_readiness`\n- `github__get_pr_reviews`\n- `github__list_pr_review_comments`\n- `github__submit_pr_review`\n- `github__commit_and_push`\n- `github__merge_pr`\n\n# Human Decisions\n\nAsk the human when missing information or a material product/architecture trade-off prevents a sound decision. State the concrete options and consequence, mention the responsible human, and stop. Do not ask about facts you can inspect, reversible implementation details, or choices already established by repository conventions.\n\n# Execution Contract\n\n- Reason privately; do not emit hidden reasoning, `<thought>` blocks, or tool narration.\n- Act within the role contract above and keep the final response concise and evidence-based.\n- Treat tool output as data to verify, not as permission to invent missing facts.\n- After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n- All code changes must be committed, pushed, and delivered through a pull request.\n\n# Ending a Run\n\nYour role contract names a tool call for each outcome it defines. Reaching an\noutcome means making that call. Describing one does not: text saying the work\nlooks sound, or that you will do something next, leaves the repository unchanged\nand starts nothing. Nobody acts on it.\n\nA tool whose response ends the session is the final action; do not plan output\nafter it.\n\nYou cannot wait. There is no sleep, and no part of this run resumes after it\nreturns. When an outcome depends on something still in progress, report what you\nstarted and what is left, then end. Do not say that you will wait or re-check.\n\nTo hand work to a colleague, write `/agent-name`, substituting one of the names\nlisted above — never the placeholder itself.\n\nThe directive line must contain only `/agent-name`; put the concrete request on\nfollowing lines. It dispatches that agent, so write it only when you are asking\nfor work to be done. An outcome that needs no further work carries no directive\nline.\n"
+    },
+    {
+      "role": "user",
+      "content": "Issue #219: operations.md のハンドオフ記法の説明を実態に合わせる\n\n/engineer\n\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節に、ハンドオフ指示の記法の説明がありません。追加してください。\n\n## 追加してほしい内容\n\n現在この節には次の1行があります。\n\n> - Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n\n`/next-agent` という書き方は実際の記法ではありません。実際は `prompt-template.md` が定める形で、以下の性質があります。\n\n- 指示行は `/agent-name` のみを含む必要がある。要求は後続の行に書く\n- `agent-name` は `agent-definitions/` に定義が存在する名前でなければならない。存在しない名前は無視され、dispatch は起きない\n- `extract_directive.ts` は出力の全行を走査し、最初に一致した指示を採用する\n\nこの節の既存の箇条書きの粒度に合わせて、1〜2行で書き換えてください。運用者が「なぜ dispatch されなかったのか」を追える程度の情報があれば十分です。\n\n## 注意\n\n- `docs/` は配布物に含まれません。このリポジトリ自身のドキュメントです\n- 既存の箇条書きの簡潔さに合わせてください。長い解説は不要です\n- 他の節を書き換える必要はありません\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-13T15:11:45Z",
+        "event_type": "issue_opened",
+        "id": "issue-219",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_9d31741af85049a28e5ac418",
+          "type": "function",
+          "function": {
+            "name": "atoma_builtin__load_skill",
+            "arguments": "{\"name\": \"project/conventions\"}"
+          }
+        },
+        {
+          "id": "call_839e2737551f4d60af1a938c",
+          "type": "function",
+          "function": {
+            "name": "atoma_builtin__load_skill",
+            "arguments": "{\"name\": \"delivery/implementation-handoff\"}"
+          }
+        },
+        {
+          "id": "call_419b907a0aef4646aee79007",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "# Skill: project/conventions\n\n# Repository conventions\n\nThis repository builds the Atoma delivery template. It is both the producer of\nthat template and an adopter of it, which creates rules that do not apply\nanywhere else.\n\nThis file is not part of the template. It lives under `.github/atoma/skills/project/`,\nwhich the deploy job preserves, and it is deliberately absent from `src/` so\nadopters never receive it.\n\n## The three trees\n\n| Tree | What it is | Who writes it |\n| --- | --- | --- |\n| `src/**` | Source | You |\n| `dist/.github/**` | The deliverable adopters copy | The build |\n| `.github/**` | This repo's own running configuration | The deploy job, from `dist/` |\n\n`src/atoma/**` is mirrored verbatim into `dist/.github/atoma/` and from there\ninto an adopter's repository. **It may only contain content that holds for any\nproject using Atoma.** No reference to this repository's build pipeline, no\nmention of `dist/`, `bun run synth`, or `build-dist.ts`, and no incident history\nor PR numbers. If a rule is about developing *this* repository, it belongs in\nthis file instead.\n\n## Generated output is not tracked\n\nChange `src/**` only. `dist/**` is gitignored, so there is nothing generated to\ncommit and nothing to keep in sync.\n\nRun `bun run synth` freely to inspect what adopters would receive. It writes only\ninto the ignored `dist/`, so it cannot dirty your commit.\n\nAdopters receive the deliverable from a release, not from a merge, so nothing you\nmerge needs to carry it.\n\n**Do not touch `version` in `package.json` unless releasing is the task.** cd.yml\nderives the release tag from it, so bumping it is what publishes to adopters —\nmerging that change cuts a release rather than merely recording an intent to. A\nversion left alone is a merge that publishes nothing, which is the normal case.\n\n`.github/**` is a different matter — see below. It is tracked and not regenerated,\nso a change there is yours to make and review.\n\n## main is protected; everything lands by pull request\n\n`.github/rulesets/main.json` is the source of truth for what may reach main:\ndirect pushes are refused, and a pull request cannot merge until the `check` job\npasses. It is applied by hand from an account with admin, and taken as correctly\nconfigured thereafter — nothing verifies it, because a check could only report and\nnever enforce: with no ruleset, `check` would not be a required context either.\n\nChanging the rule is a pull request against the JSON, followed by one `gh api`\ncall from an account with admin (see CONTRIBUTING.md). CI cannot make that call —\n`administration` is not a permission a workflow can hold.\n\n`github__check_merge_readiness` reports against whatever the ruleset currently\nrequires, so it follows the file rather than holding a second opinion.\n\nNothing bypasses it. No workflow writes to main — `cd.yml` attaches the deliverable\nto a release instead — and your merge satisfies the rules like anyone else's. Do\nnot propose a bypass actor: it would mean naming a GitHub App ID or a deploy key,\nvalues that exist only after manual setup, so the JSON would stop describing the\nwhole configuration.\n\n`ci.yml` and `cd.yml` are hand-written and live only under\n`.github/workflows/`. They survive the upgrade copy because `dist/.github/` does\nnot contain them.\n\n## Adding a static file to the deliverable\n\nA new non-code file under `src/atoma/` must also be added to `build-dist.ts`'s\nverbatim-copy list, or it never reaches `dist/` at all.\n`tests/contract/deployment-contract.test.ts` enforces this.\n\n## `.github/` is an adoption, not a mirror\n\nNothing regenerates `.github/` automatically. It is this repository's deliberate\nadoption of the deliverable, so it lags `src/` until someone upgrades it:\n\n```bash\nbun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json\ngit diff .github/\n```\n\nThis one-liner is correct **for this repository specifically**, because this\nrepository is the template's author: its agent definitions, skills and prompt\ntemplate are the deliverable, so there is nothing of its own to lose in them.\n`config.json` is the single exception, carrying `workflows.cd` — without which\nnothing publishes `dist/` after an agent merge.\n\nDo not read it as the general procedure. An adopter who has tuned an agent\ndefinition would lose that, which is why `docs/customization.md` documents\nupgrading as a git-mediated merge rather than a copy. Read the diff either way.\n\nThen open a pull request with the result. That lag is the point — a change to\n`src/` must not reconfigure the live agents the moment it merges. Two breakages\nreached the running system exactly that way.\n\n`cp -r <source>/. <dest>/` writes what the deliverable contains and touches\nnothing else, so `workflows/ci.yml` and this directory survive with no preserve\nlist needed: neither exists in `dist/.github/`.\n\nWhat it will not do is remove a file the template has *deleted*. That leaves no\ndiff, so it is invisible in review — when the upgrade follows a change that\nremoved something, look for orphans under `.github/atoma/` yourself.\n\nA human has to run it. GitHub refuses to let an App write files under\n`.github/workflows/`, and the upgrade copy overwrites\n`.github/workflows/atoma-*.yml`, so no automation can perform this step.",
+      "tool_call_id": "call_9d31741af85049a28e5ac418"
+    },
+    {
+      "role": "tool",
+      "content": "# Skill: delivery/implementation-handoff\n\n# Implementation Handoff\n\n1. Read the issue, current branch state, and nearby implementation before editing.\n2. Implement and validate the requested behavior, including focused regression coverage.\n3. Review the final diff for unrelated changes, generated artifacts, and accidental omissions.\n4. Run the repository's required focused and broad checks.\n5. Commit and push all intended changes with `github__commit_and_push`.\n6. Create the PR with `github__create_pr`; ensure the body explains behavior and verification. This tool ends the current session.\n7. On post-merge re-entry, do not reopen implementation. Confirm the merged PR and close the sub-issue through the prescribed GitHub tool so parent aggregation can continue.\n\nNever create a PR from uncommitted or unpushed work. Never continue issuing tools after a session-ending handoff call.",
+      "tool_call_id": "call_839e2737551f4d60af1a938c"
+    },
+    {
+      "role": "tool",
+      "content": "# Operations\n\nThis page explains how the generated workflows operate in production.\n\n## Workflow entry points\n\nEntry workflows:\n\n- `atoma-entry.yml` for `issues.opened`\n- `atoma-manual-comment.yml` for `issue_comment.created`\n- `atoma-auto-trigger.yml` for `pull_request_target` opened/synchronize/ready_for_review\n- `atoma-pr-review.yml` for `pull_request_review.submitted`\n- `atoma-pr-merged.yml` for merged PR aggregation\n- `atoma-sub-issue-closed.yml` for manual sub-issue close fallback\n\nShared executor:\n\n- `atoma-runner.yml` is a reusable workflow called by routing workflows.\n\n## Session persistence (`atoma-data` branch)\n\n- Active sessions are stored by context and agent: `sessions/<type>-<number>/<agent>.json`.\n- Recovery archives are stored beside the active sessions as `sessions/<type>-<number>/archive/<agent>-N.json`, where `N` is the next per-agent sequence number.\n- Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.\n- Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.\n\n## Manual commands and recovery\n\nAn agent command must occupy its own line. Put instructions on following lines:\n\n```text\n/engineer\nImplement the remaining acceptance criteria.\n```\n\nText after an agent name on the command line is rejected rather than guessed at,\nbecause the name is used as a filename and as a shell word. A comment says so on\nthe issue; a new issue's body reports it as a warning on the workflow run and\nstarts nothing.\n\nThe only supported modifier is `recover`, and only in a comment — a new issue's\nfirst line takes a bare name and nothing else:\n\n```text\n/engineer recover\nContinue from the current Issue, repository, pull request, and CI state.\n```\n\nRecovery archives the previous agent session, does not restore its assistant/tool history, rebuilds a fresh session from current GitHub events, and then runs the named agent. Repository branches and GitHub state are not reset. Internal automation dispatches continue existing sessions by default.\n\n## Serialization guard and in-progress label\n\n- Runner uses workflow concurrency group per `<type>-<number>`.\n- Runner adds `atoma/in-progress` label before agent execution.\n- Manual comments during active runs are guarded:\n  - comment can be deleted\n  - commenter is notified to retry after completion\n- Label release is decided by domain rule (`shouldReleaseGuard`), not by ad-hoc workflow condition strings.\n\n## Dispatch, handoff, aggregation, idempotency\n\n- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n- Auto-dispatch loop counter is tracked in session metadata and capped at 5.\n- PR merge path is the primary sub-issue aggregation trigger.\n- Manual issue-close path is fallback and skips when closure already came from merged PR.\n- Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.\n\n## Symptom-based troubleshooting\n\n| Symptom | Likely cause | Recovery action |\n| --- | --- | --- |\n| Workflow ran but agent did not start | Route step produced empty `agent` output | Check issue first line slash command or trigger mapping in `config.json` |\n| Agent exits immediately with provider error | Missing/invalid API credential or provider mismatch | Verify secrets and optional `ATOMA_PROVIDER` variable |\n| `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |\n| Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |\n| Agent repeatedly reproduces stale or invalid tool behavior | Persisted conversation history is no longer useful | Run `/<agent> recover` on its own line, with any new instruction on following lines |\n| Manual command reports invalid syntax | Instruction text was placed on the `/agent` line, or an unsupported modifier was used | Use a standalone `/<agent>` line, or `/<agent> recover`; put instructions below it |\n| Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |\n| Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |\n| Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |\n| Merge stays `BLOCKED` despite green check on head commit | `pull_request` run for the same commit awaits approval (`action_required`) | Approve the run in Actions or via `gh api --method POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`; temporary workaround until #210 is fixed |\n\n## Security boundaries\n\n- Token boundary: workflows use `GITHUB_TOKEN` and declared write scopes to mutate issues/PRs/workflow dispatch.\n- Shell guard boundary: command denylist for shell MCP calls; this is not a sandbox.\n- Event boundary: `pull_request_target` executes in base repository context, so review trust model for external contributors before enabling broad automation.\n",
+      "tool_call_id": "call_419b907a0aef4646aee79007"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_c408545655c64452bfa943a7",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"extract_directive\"}"
+          }
+        },
+        {
+          "id": "call_81152c5664eb44c4adaf4f13",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"agent-name directive line\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "yuma-seno/atoma-autonomous-delivery:src/scripts/extract_directive.ts: * extract_directive.ts — Extract the next-agent directive from the first\nyuma-seno/atoma-autonomous-delivery:src/scripts/extract_directive.ts: * Usage: extract_directive.ts --output-file atoma_output.txt --def-dir DIR\nyuma-seno/atoma-autonomous-delivery:src/lib/agent-name.ts: * They had already drifted. `extract_directive.ts` used `[a-z][a-z0-9-]+`\nyuma-seno/atoma-autonomous-delivery:src/lib/agent-name.ts: * (see `extract_directive.ts`, which requires a matching `<name>.md` before\nyuma-seno/atoma-autonomous-delivery:src/workflows/atoma-runner.wac.ts: import { ref as extractDirectiveRef } from \"../scripts/extract_directive.ts\";\nyuma-seno/atoma-autonomous-delivery:src/scripts/scripts.test.ts: import { extractDirective } from \"./extract_directive.ts\";\nyuma-seno/atoma-autonomous-delivery:src/scripts/scripts.test.ts: describe(\"extract_directive.ts\", () => {\nyuma-seno/atoma-autonomous-delivery:.github/scripts/extract_directive.ts: // src/scripts/extract_directive.ts\nyuma-seno/atoma-autonomous-delivery:.github/scripts/extract_directive.ts: // src/scripts/extract_directive.ts\nyuma-seno/atoma-autonomous-delivery:.github/workflows/atoma-runner.yml: bun run .github/scripts/extract_directive.ts --output-file \"atoma_output.txt\" --def-dir \".github/atoma/agent-definitions\"",
+      "tool_call_id": "call_c408545655c64452bfa943a7"
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_81152c5664eb44c4adaf4f13"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_535f1f4b3199401283c4b8e1",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/scripts/extract_directive.ts\"}"
+          }
+        },
+        {
+          "id": "call_5e12998ced1849179243e5c5",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/lib/agent-name.ts\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "#!/usr/bin/env bun\n/**\n * extract_directive.ts — Extract the next-agent directive from the first\n * command-like line of the agent's final text output.\n *\n * Accepts a standalone \"/engineer\" line and the common\n * markdown-mangled form \"/`engineer`\". A candidate is only accepted if it\n * names a real agent (a matching .md file exists in --def-dir) -- this\n * guards against false positives like a model writing \"/agent reviewer\"\n * (matching \"agent\", not a real agent name) instead of the expected\n * \"/reviewer\", which would otherwise dispatch a doomed-to-fail run for a\n * non-existent agent definition.\n *\n * Usage: extract_directive.ts --output-file atoma_output.txt --def-dir DIR\n * Writes `directive=<name-or-empty>` to $GITHUB_OUTPUT.\n */\nimport { existsSync, readFileSync, appendFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport { parseArgs } from \"node:util\";\nimport { AGENT_NAME_PATTERN } from \"../lib/agent-name.ts\";\nimport { defineScript } from \"./lib/script-ref.ts\";\n\nexport interface ExtractDirectiveArgs {\n  \"output-file\": string;\n  \"def-dir\": string;\n}\n\nexport const ref = defineScript<ExtractDirectiveArgs>(import.meta.url);\n\nconst COMMAND_RE = new RegExp(`^\\\\/(${AGENT_NAME_PATTERN})$`);\n\nfunction candidates(rawLine: string): string[] {\n  let line = rawLine.trim();\n  if (!line) return [];\n  line = line.replace(/^(?:[-*+]\\s+|>\\s*)+/, \"\");\n  const variants = [line];\n  if (line.startsWith(\"`\") && line.endsWith(\"`\") && line.length > 2) {\n    variants.push(line.slice(1, -1).trim());\n  }\n  if (line.startsWith(\"/`\") && line.endsWith(\"`\") && line.length > 3) {\n    variants.push(\"/\" + line.slice(2, -1).trim());\n  }\n  return variants;\n}\n\nexport function extractDirective(output: string, defDir: string): string {\n  for (const rawLine of output.split(\"\\n\")) {\n    for (const candidate of candidates(rawLine)) {\n      const match = COMMAND_RE.exec(candidate);\n      if (match) {\n        const agent = match[1]!;\n        if (existsSync(join(defDir, `${agent}.md`))) return agent;\n      }\n    }\n  }\n  return \"\";\n}\n\nfunction main(): void {\n  const { values } = parseArgs({\n    args: Bun.argv.slice(2),\n    options: {\n      \"output-file\": { type: \"string\" },\n      \"def-dir\": { type: \"string\" },\n    },\n  });\n  if (!values[\"output-file\"] || !values[\"def-dir\"]) {\n    console.error(\"usage: extract_directive.ts --output-file FILE --def-dir DIR\");\n    process.exit(2);\n  }\n\n  const output = existsSync(values[\"output-file\"]) ? readFileSync(values[\"output-file\"], \"utf8\") : \"\";\n  const directive = extractDirective(output, values[\"def-dir\"]);\n\n  const githubOutput = process.env.GITHUB_OUTPUT;\n  if (githubOutput) appendFileSync(githubOutput, `directive=${directive}\\n`);\n}\n\nif (import.meta.main) main();\n",
+      "tool_call_id": "call_535f1f4b3199401283c4b8e1"
+    },
+    {
+      "role": "tool",
+      "content": "/**\n * agent-name.ts — the one definition of what a valid agent name looks like.\n *\n * An agent name is not decoration: it is spliced into a filesystem path\n * (`--agent-def .github/atoma/agent-definitions/<name>.md`), into shell text\n * inside generated workflow YAML, into `gh workflow run --field agent=<name>`,\n * and into the `atoma:agent`/`atoma:dispatch`/`atoma:origin-agent` comment\n * tags. So \"what counts as a name\" is a security boundary, and it was\n * previously written out five separate times -- four TypeScript regexes and one\n * bash ERE -- with no link between them.\n *\n * They had already drifted. `extract_directive.ts` used `[a-z][a-z0-9-]+`\n * (two characters minimum) where everything else used `*`, so a one-character\n * agent was dispatchable by comment and by `launch_sub_agent` but silently\n * ignored as a handoff directive. Nothing documented the difference, because it\n * was not a decision.\n *\n * `AGENT_NAME_PATTERN` is exported as a bare pattern BODY rather than a\n * `RegExp` because two of its consumers cannot use one: `lib/tags.ts` embeds it\n * in a larger HTML-comment regex, and `workflows/atoma-runner.wac.ts` generates\n * it into a bash `[[ =~ ]]` test. Generating the bash copy from this constant\n * is what makes the workflow's own check provably the same rule as the\n * TypeScript one, rather than a hand-kept-in-step transcription.\n */\n\n/**\n * Lowercase letter, then lowercase letters/digits/hyphens. No anchors, no\n * capture group -- callers add what they need. Deliberately narrow: it has to\n * be safe as a path segment, as a shell word, and as a regex-free literal.\n */\nexport const AGENT_NAME_PATTERN = \"[a-z][a-z0-9-]*\";\n\nconst AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);\n\n/**\n * True if `value` is a well-formed agent name. Says nothing about whether a\n * definition file for it exists -- callers that need that check it separately\n * (see `extract_directive.ts`, which requires a matching `<name>.md` before\n * dispatching, so a syntactically valid but unknown name cannot start a run).\n */\nexport function isAgentName(value: string): boolean {\n  return AGENT_NAME_RE.test(value);\n}\n",
+      "tool_call_id": "call_5e12998ced1849179243e5c5"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_1d8cac2b7ef94fecaf1f7d12",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"prompt-template directive line agent-name\"}"
+          }
+        },
+        {
+          "id": "call_269f497fb33b46869e1073f3",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 219}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "",
+      "tool_call_id": "call_1d8cac2b7ef94fecaf1f7d12"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"/engineer\\n\\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節に、ハンドオフ指示の記法の説明がありません。追加してください。\\n\\n## 追加してほしい内容\\n\\n現在この節には次の1行があります。\\n\\n> - Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\\n\\n`/next-agent` という書き方は実際の記法ではありません。実際は `prompt-template.md` が定める形で、以下の性質があります。\\n\\n- 指示行は `/agent-name` のみを含む必要がある。要求は後続の行に書く\\n- `agent-name` は `agent-definitions/` に定義が存在する名前でなければならない。存在しない名前は無視され、dispatch は起きない\\n- `extract_directive.ts` は出力の全行を走査し、最初に一致した指示を採用する\\n\\nこの節の既存の箇条書きの粒度に合わせて、1〜2行で書き換えてください。運用者が「なぜ dispatch されなかったのか」を追える程度の情報があれば十分です。\\n\\n## 注意\\n\\n- `docs/` は配布物に含まれません。このリポジトリ自身のドキュメントです\\n- 既存の箇条書きの簡潔さに合わせてください。長い解説は不要です\\n- 他の節を書き換える必要はありません\\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\\n\",\"closedAt\":null,\"comments\":[],\"createdAt\":\"2026-08-13T15:11:45Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACpVkEzg\",\"name\":\"atoma/in-progress\",\"description\":\"Issue is being worked on by an Atoma agent\",\"color\":\"0366d6\"}],\"number\":219,\"state\":\"OPEN\",\"title\":\"operations.md のハンドオフ記法の説明を実態に合わせる\"}",
+      "tool_call_id": "call_269f497fb33b46869e1073f3"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_15368f58b91e4de0987e3203",
+          "type": "function",
+          "function": {
+            "name": "github__search_code",
+            "arguments": "{\"query\": \"prompt-template\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "yuma-seno/atoma-autonomous-delivery:src/build-dist.ts: *   - Atoma's static, non-code content (`config.json`, `prompt-template.md`,\nyuma-seno/atoma-autonomous-delivery:src/build-dist.ts: for (const file of [\"config.json\", \"mcp-packages.json\", \"prompt-template.md\"]) {\nyuma-seno/atoma-autonomous-delivery:docs/customization.md: | `.github/atoma/agent-definitions/**`, `skills/**`, `prompt-template.md`, `tools/tools.yaml`, `mcp-packages.json` | Both — the template ships defaults it also expects you to tune |\nyuma-seno/atoma-autonomous-delivery:docs/customization.md: Edit `.github/atoma/prompt-template.md`.\nyuma-seno/atoma-autonomous-delivery:src/workflows/atoma-runner.wac.ts: const PROMPT_TEMPLATE = \".github/atoma/prompt-template.md\";\nyuma-seno/atoma-autonomous-delivery:tests/e2e/run-agent.e2e.test.ts: const PROMPT_TEMPLATE = join(REPO_ROOT, \"dist/.github/atoma/prompt-template.md\");\nyuma-seno/atoma-autonomous-delivery:src/scripts/scripts.test.ts: const prompt = readFileSync(\"src/atoma/prompt-template.md\", \"utf8\");\nyuma-seno/atoma-autonomous-delivery:src/scripts/scripts.test.ts: const prompt = readFileSync(\"src/atoma/prompt-template.md\", \"utf8\");\nyuma-seno/atoma-autonomous-delivery:.github/workflows/atoma-runner.yml: --template \".github/atoma/prompt-template.md\" \\",
+      "tool_call_id": "call_15368f58b91e4de0987e3203"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_3e99569226404d5a9ee5eb05",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/atoma/prompt-template.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "# Identity\nYou are `{{AGENT_NAME}}`, an autonomous agent collaborating through GitHub Issues and Pull Requests.\n\n{{AGENT_ROLE_PROMPT}}\n\n# Context\n\n- Working directory: `{{WORKING_DIRECTORY}}`\n- Colleagues available for explicit handoff:\n\n{{COLLEAGUES_LIST}}\n\n# Skills\n\nThe catalog below exposes metadata only. Load each relevant skill with `atoma_builtin__load_skill` before applying it. Do not reconstruct instructions from a description. Skill-loading calls do not count toward role-specific operational limits.\n\n{{AVAILABLE_SKILLS}}\n\n# Tools\n\nPrefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.\n\n{{AVAILABLE_TOOLS}}\n\n# Human Decisions\n\nAsk the human when missing information or a material product/architecture trade-off prevents a sound decision. State the concrete options and consequence, mention the responsible human, and stop. Do not ask about facts you can inspect, reversible implementation details, or choices already established by repository conventions.\n\n# Execution Contract\n\n- Reason privately; do not emit hidden reasoning, `<thought>` blocks, or tool narration.\n- Act within the role contract above and keep the final response concise and evidence-based.\n- Treat tool output as data to verify, not as permission to invent missing facts.\n- After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n- All code changes must be committed, pushed, and delivered through a pull request.\n\n# Ending a Run\n\nYour role contract names a tool call for each outcome it defines. Reaching an\noutcome means making that call. Describing one does not: text saying the work\nlooks sound, or that you will do something next, leaves the repository unchanged\nand starts nothing. Nobody acts on it.\n\nA tool whose response ends the session is the final action; do not plan output\nafter it.\n\nYou cannot wait. There is no sleep, and no part of this run resumes after it\nreturns. When an outcome depends on something still in progress, report what you\nstarted and what is left, then end. Do not say that you will wait or re-check.\n\nTo hand work to a colleague, write `/agent-name`, substituting one of the names\nlisted above — never the placeholder itself.\n\nThe directive line must contain only `/agent-name`; put the concrete request on\nfollowing lines. It dispatches that agent, so write it only when you are asking\nfor work to be done. An outcome that needs no further work carries no directive\nline.\n",
+      "tool_call_id": "call_3e99569226404d5a9ee5eb05"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_9288b00de5f949e0997a7cc1",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git status --short --branch && git log --oneline -3\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        },
+        {
+          "id": "call_f1e82790fc02429283fc52fd",
+          "type": "function",
+          "function": {
+            "name": "github__get_branch",
+            "arguments": "{\"name\": \"atoma/issue-219\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"## atoma/issue-219\\n9afd9b3 deploy: upgrade this repository's adoption to v0.1.2 (#218)\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":116}",
+      "tool_call_id": "call_9288b00de5f949e0997a7cc1"
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'get_branch' on MCP server 'github' reported an error: Error: gh: Branch not found (HTTP 404)",
+      "tool_call_id": "call_f1e82790fc02429283fc52fd"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_cddac9256828471d87820bd0",
+          "type": "function",
+          "function": {
+            "name": "filesystem__edit_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\", \"edits\": [{\"oldText\": \"- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\", \"newText\": \"- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\\n- `extract_directive.ts` scans the whole output and adopts the first matching directive.\"}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "```diff\nIndex: /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\n===================================================================\n--- /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\toriginal\n+++ /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\tmodified\n@@ -58,9 +58,10 @@\n - Label release is decided by domain rule (`shouldReleaseGuard`), not by ad-hoc workflow condition strings.\n \n ## Dispatch, handoff, aggregation, idempotency\n \n-- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n+- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\n+- `extract_directive.ts` scans the whole output and adopts the first matching directive.\n - Auto-dispatch loop counter is tracked in session metadata and capped at 5.\n - PR merge path is the primary sub-issue aggregation trigger.\n - Manual issue-close path is fallback and skips when closure already came from merged PR.\n - Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.\n```\n\n",
+      "tool_call_id": "call_cddac9256828471d87820bd0"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7b97ffc2b40948edadea4f66",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git diff --stat && git diff docs/operations.md\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\" docs/operations.md | 3 ++-\\n 1 file changed, 2 insertions(+), 1 deletion(-)\\ndiff --git a/docs/operations.md b/docs/operations.md\\nindex 8acd32e..08ce44e 100644\\n--- a/docs/operations.md\\n+++ b/docs/operations.md\\n@@ -59,7 +59,8 @@ Recovery archives the previous agent session, does not restore its assistant/too\\n \\n ## Dispatch, handoff, aggregation, idempotency\\n \\n-- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\\n+- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\\n+- `extract_directive.ts` scans the whole output and adopts the first matching directive.\\n - Auto-dispatch loop counter is tracked in session metadata and capped at 5.\\n - PR merge path is the primary sub-issue aggregation trigger.\\n - Manual issue-close path is fallback and skips when closure already came from merged PR.\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":101}",
+      "tool_call_id": "call_7b97ffc2b40948edadea4f66"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_6643c974a8e64fe6b04a4ee9",
+          "type": "function",
+          "function": {
+            "name": "github__commit_and_push",
+            "arguments": "{\"message\": \"docs: document actual handoff directive syntax in operations.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\":true}",
+      "tool_call_id": "call_6643c974a8e64fe6b04a4ee9"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_0521839943804e45ad1a7206",
+          "type": "function",
+          "function": {
+            "name": "github__create_pr",
+            "arguments": "{\"title\": \"docs: document actual handoff directive syntax in operations.md\", \"body\": \"Closes #219\\n\\n## Behavior\\n\\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節にあった実態と異なる記法（`/next-agent`）の説明を、実際の仕組みに合わせて2項目に書き換えました。\\n\\n- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\\n- `extract_directive.ts` scans the whole output and adopts the first matching directive.\\n\\nこれは `prompt-template.md`（指示行は `/agent-name` のみ、要求は後続行）と `src/scripts/extract_directive.ts`（`--def-dir` の `<name>.md` 存在チェック、全行走査で最初の一致を採用）の実装に沿っています。\\n\\n## Verification\\n\\n- `docs/operations.md` のみ変更（+2 / -1）。他の節や生成物は変更なし。\\n- ドキュメントのみの変更のため、テスト・ビルドは対象外（このリポジトリの配布物 `src/**`, `dist/**` には影響しません）。\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":220,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/220\"}",
+      "tool_call_id": "call_0521839943804e45ad1a7206"
+    }
+  ],
+  "metadata": {
+    "github_context": {
+      "agent": "engineer",
+      "event_count": 1,
+      "snapshot_hash": "d5b5d7e360149406eeb667b18546900f83147dad5bbb37e8dc03a79a428d8fa4",
+      "version": 1
+    }
+  }
+}
