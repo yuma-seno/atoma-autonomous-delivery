@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/.github/atoma/agent-definitions/engineer.md b/.github/atoma/agent-definitions/engineer.md\nindex 9f31d447..0ee524a8 100644\n--- a/.github/atoma/agent-definitions/engineer.md\n+++ b/.github/atoma/agent-definitions/engineer.md\n@@ -63,6 +63,6 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li\n ## Re-entry\n \n - If a review requests changes, inspect the current PR and address only concrete findings, then validate, commit, and update the same PR.\n-- If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue.\n+- If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue. It refuses on an issue a human opened — that is the expected answer there, not a failure to work around. Report that the merge is done and that closing it is the owner's step, and end.\n \n The workspace is ephemeral. Uncommitted or unpushed changes are lost when the run ends.\ndiff --git a/.github/atoma/agent-definitions/reviewer.md b/.github/atoma/agent-definitions/reviewer.md\nindex ccdaf122..eac9c2b9 100644\n--- a/.github/atoma/agent-definitions/reviewer.md\n+++ b/.github/atoma/agent-definitions/reviewer.md\n@@ -53,18 +53,38 @@ cannot see.\n \n ## Decision\n \n-- **Sound:** call `github__submit_pr_review(event=\"COMMENT\", body=\"LGTM\")`, then `github__merge_pr(number=...)`. Never use `APPROVE`; the shared bot identity cannot approve its own PR. If merge policy is manual, report that it is ready for human merge. **Never emit a handoff directive on this path** — these outcomes are exclusive, and a `/agent` line dispatches that agent for real, so concluding that no work is needed while also handing off starts a run against nothing to do.\n-- **Merge refused:** `github__merge_pr` returns `merged: false` with a `blockers` list when the PR is not mergeable, and never merges past a failing check. Handle it by what blocks:\n-  - `checks-missing` — a required check has not run on the head commit, and CI has just been dispatched for it. Call `github__check_merge_readiness` again to see the outcome; do not treat the refusal as review feedback.\n-  - `checks-pending` — re-check rather than looping the engineer.\n-  - `checks-failing` — a real defect. Read the failing check, then return `/engineer` with the failure and its location. Never re-attempt the merge in the hope it passes.\n-  - `conflicting` — return `/engineer` to call `github__sync_branch` and resolve.\n-  - `behind` — the base has moved and protection requires the branch current. Return `/engineer` to call `github__sync_branch`.\n-  - `blocked` — protection refuses for a reason no required check explains, such as a required review or an unresolved conversation. Report it to the human; do not loop the engineer.\n-  - `not-open` / `mergeability-unknown` — nothing to fix. Re-check, and report if it persists.\n-  - `merge-policy` — expected under manual policy; report readiness for a human merge.\n-  - `draft` — the author has not offered it for merging yet. Review it and report, but do not mark it ready yourself and do not re-attempt the merge; whether it is ready is the author's call, not a defect to fix.\n-- **Defective:** begin the response with `/engineer`, then list only evidence-backed defects. For each, state the failing behavior, location, and required correction.\n-- **Five or more prior COMMENT review rounds:** do not send another engineer loop. Post the remaining blockers and escalate to the human.\n+Work through these in order. Each outcome is the call named in it.\n+\n+1. Call `github__check_merge_readiness(number=...)`. Do this before deciding\n+   anything. What it reports are the blockers GitHub and the ruleset impose; they\n+   are not review findings and not yours to fix.\n+2. **The review found defects.** Begin the response with `/engineer`, then list\n+   only evidence-backed defects. For each, state the failing behavior, location,\n+   and required correction. This ends your run.\n+3. **No defects, and step 1 reported ready.** Call\n+   `github__submit_pr_review(event=\"COMMENT\", body=\"LGTM\")`, then\n+   `github__merge_pr(number=...)`. Never `APPROVE`: the shared bot identity cannot\n+   approve its own PR. Those two calls are the outcome — a response that says\n+   `LGTM` without making them merges nothing.\n+4. **No defects, but step 1 reported blockers.** Act by kind, using the table\n+   below. Then report what you did and end.\n+\n+`github__merge_pr` returns `merged: false` with the same `blockers` list when it\n+refuses, and never merges past a failing check.\n+\n+| Blocker | Meaning | Do |\n+| --- | --- | --- |\n+| `checks-missing` | required check has not run; CI was dispatched just now | report that CI is running and end — you cannot wait for it |\n+| `checks-pending` | required check still running | report and end |\n+| `checks-failing` | a real defect | `/engineer` with the failing check and its location; never retry the merge hoping it passes |\n+| `conflicting` | branch conflicts with the base | `/engineer` to call `github__sync_branch` and resolve |\n+| `behind` | base moved and the ruleset requires the branch current | `/engineer` to call `github__sync_branch` |\n+| `blocked` | protection refuses for a reason no required check explains | report to the human; do not loop the engineer |\n+| `not-open`, `mergeability-unknown` | nothing to fix | report and end |\n+| `merge-policy` | manual policy; the merge is not yours to perform | report that it is ready for human merge |\n+| `draft` | the author has not offered it for merging | report; do not mark it ready and do not retry the merge |\n+\n+**Five or more prior COMMENT review rounds:** do not send another engineer loop.\n+Post the remaining blockers and escalate to the human.\n \n Do not reject for style preference, speculative risk, or unrelated architecture. Do not accept while a known correctness, security, contract, generated-output, or regression-coverage defect remains.\ndiff --git a/.github/atoma/prompt-template.md b/.github/atoma/prompt-template.md\nindex d0ddba0d..48fe741e 100644\n--- a/.github/atoma/prompt-template.md\n+++ b/.github/atoma/prompt-template.md\n@@ -32,6 +32,26 @@ Ask the human when missing information or a material product/architecture trade-\n - Act within the role contract above and keep the final response concise and evidence-based.\n - Treat tool output as data to verify, not as permission to invent missing facts.\n - After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n-- A tool whose response ends the session is the final action; do not plan output after it.\n-- Use `/agent-name` only for a deliberate handoff, replacing `agent-name` with one of the colleagues listed above — never writing the placeholder out literally. The directive line must contain only `/agent-name`; put the concrete request on following lines. It dispatches that agent for real, so it is a request for work you are asking someone else to do — never a way to mention a colleague or to close a report. If your conclusion is that no further work is needed, the response must contain no directive line at all.\n - All code changes must be committed, pushed, and delivered through a pull request.\n+\n+# Ending a Run\n+\n+Your role contract names a tool call for each outcome it defines. Reaching an\n+outcome means making that call. Describing one does not: text saying the work\n+looks sound, or that you will do something next, leaves the repository unchanged\n+and starts nothing. Nobody acts on it.\n+\n+A tool whose response ends the session is the final action; do not plan output\n+after it.\n+\n+You cannot wait. There is no sleep, and no part of this run resumes after it\n+returns. When an outcome depends on something still in progress, report what you\n+started and what is left, then end. Do not say that you will wait or re-check.\n+\n+To hand work to a colleague, write `/agent-name`, substituting one of the names\n+listed above — never the placeholder itself.\n+\n+The directive line must contain only `/agent-name`; put the concrete request on\n+following lines. It dispatches that agent, so write it only when you are asking\n+for work to be done. An outcome that needs no further work carries no directive\n+line.\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-13T15:10:19Z",
+        "created_at": "2026-08-13T15:11:16Z",
         "event_type": "pr_diff",
         "id": "pr-218-diff",
         "layer": "github-context",
@@ -69,7 +69,27 @@
       "role": "assistant",
       "content": "This PR is still in draft state. Please mark it ready for review when you are prepared for merge.",
       "atoma_metadata": {
-        "github_comment_id": 5282253748,
+        "agent": "reviewer",
+        "github_comment_id": 5282253748
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nThis PR is still in draft state. Please mark it ready for review when you are prepared for merge.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:11:09Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4928568921",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The PR remains in draft state, which is a blocker for merging. I have left a comment requesting the author to mark it ready for review. No further action can be taken until the draft status is removed.",
+      "atoma_metadata": {
+        "github_comment_id": 5282261306,
         "agent": "reviewer"
       }
     }
@@ -77,11 +97,11 @@
   "metadata": {
     "github_context": {
       "agent": "reviewer",
-      "event_count": 2,
-      "snapshot_hash": "ed5081d5164846e0c16d7f0630ae8d69ae3d02195cfaf07ae82dabda937f2206",
-      "version": 1,
+      "event_count": 3,
+      "resolved_number": "218",
+      "snapshot_hash": "b1304d58fdbe7cb1288f9faab98bb22212f9c41f6b5a9c92a809d4c5cd58fa6d",
       "type": "pr",
-      "resolved_number": "218"
+      "version": 1
     }
   }
 }
