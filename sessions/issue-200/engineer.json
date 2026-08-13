@@ -55,7 +55,7 @@
     },
     {
       "role": "user",
-      "content": "Issue #200: ドキュメント最新化\n\nREADME等のドキュメントを実態に合わせて最新化する。",
+      "content": "Issue #200: ドキュメント最新化\n**Labels:** atoma/in-progress\n\nREADME等のドキュメントを実態に合わせて最新化する。",
       "atoma_metadata": {
         "author": "yuma-seno",
         "created_at": "2026-08-12T12:17:46Z",
@@ -3637,14 +3637,158 @@
       "role": "tool",
       "content": "{\"number\":209,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/209\"}",
       "tool_call_id": "call_00cfc02c035c408798b098fc"
+    },
+    {
+      "role": "user",
+      "content": "PR #209: docs: pin both adoption examples to the current v0.1.1 release\n**Labels:** atoma/in-progress\n**Linked Issue:** #200\n\n<!-- atoma:parent-issue=200 -->\n<!-- atoma:origin-agent=engineer -->\n<!-- atoma:notify=hws-yuma-seno -->\nCloses #200 — documentation refresh for the repository changes since the issue was filed (#198, #193, #199, #204/#205).\n\n## Changes\n\n- `README.md` — the pinned-adoption example downloads `v0.1.0`; the current release (and `package.json` version) is `v0.1.1`. Updated the example.\n- `docs/customization.md` — the vendoring example downloads `v0.2.0`, a version that does not exist. Updated the example to `v0.1.1`, matching the current release.\n\n## Scope and verification\n\nThe issue's own guidance and the upstream PRs state that `README.md`, `CONTRIBUTING.md`, `docs/customization.md` were refreshed during #198/#199 and `docs/operations.md` had its stale row removed in #203. I audited all four files against current behavior:\n\n- `dist/` untracked + release-asset distribution: described correctly everywhere.\n- Release tag derived from `package.json` version: described correctly in `CONTRIBUTING.md` (and cd.yml comments).\n- Main branch ruleset (no bypass): described correctly in `CONTRIBUTING.md`.\n- Hooks executable-bit step (#199): present in the generated `atoma-runner.yml`; no adopter-visible doc claims otherwise.\n- Handoff exclusivity (#204) and draft via `isDraft` (#205): shipped in the agent definition / prompt template / merge-readiness domain; the adopter-facing docs (`docs/customization.md` trigger conditions, `docs/operations.md` recovery section) contain no contradicting claims.\n- `.gitignore` entries (`logs/`, `atoma-src/`, `dist/`): README's runtime-artifact list remains accurate; other files are covered by the repo's own `.gitignore`, and `logs/` is not written by the workflows (verified in `atoma-runner.wac.ts` — only `atoma_logs.txt`, `atoma_output.txt`, `atoma_ops.log`, `events.json`, `session.json` are produced).\n\nThe only real inaccuracies found were the two version-pinned download examples, both of which would fail for adopters (no such release asset). No other doc changes were made — per the issue, no forced changes.\n\nNo code, config, or generated files touched.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T17:11:10Z",
+        "event_type": "pr_opened",
+        "id": "pr-209",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T17:11:42Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4919166760",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nThe PR is blocked because the required \"check\" is still queued and has not completed. I will wait for the check to finish before attempting to merge again.\n\n\n\n---\n_Tokens: 42542 total (42369 prompt + 173 completion)_\n_Estimated cost: $0.0065_\n@hws-yuma-seno — **reviewer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\n\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31621353494)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T17:11:57Z",
+        "event_type": "pr_comment",
+        "id": 5270006610,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "/reviewer\n\n承認待ちだったワークフロー実行を承認したため、`check` は head commit で success になり `mergeStateStatus` は `CLEAN` です。マージまで進めてください。\n\n内容は #200 のドキュメント修正で、既に一度レビュー済みです。前回は `check` が queued だったため保留になっていました。\n\nこれはルールセット適用後に `github__merge_pr` が実際に通るかを確認する検証も兼ねています。マージが拒否された場合は、返された `blockers` をそのまま報告してください。\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-13T14:09:51Z",
+        "event_type": "pr_comment",
+        "id": 5281547873,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T14:10:52Z",
+        "event_type": "issue_comment",
+        "id": 5281559021,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/README.md b/README.md\nindex 9181595c..e0afc8b0 100644\n--- a/README.md\n+++ b/README.md\n@@ -31,7 +31,7 @@ you adopted and diff it later — see\n [Upgrading an adopted repository](docs/customization.md#upgrading-an-adopted-repository):\n \n ```bash\n-gh release download v0.1.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n ```\n \n ## Preflight checklist\ndiff --git a/docs/customization.md b/docs/customization.md\nindex 5b439a04..f60463c2 100644\n--- a/docs/customization.md\n+++ b/docs/customization.md\n@@ -89,7 +89,7 @@ and the files look identical either way.\n So treat it as vendoring, and let git do the merge:\n \n ```bash\n-gh release download v0.2.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root\n rm atoma-delivery.zip\n git diff .github/            # every difference is now a decision\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-13T14:10:56Z",
+        "event_type": "pr_diff",
+        "id": "pr-209-diff",
+        "layer": "github-context",
+        "sha": "49db255f",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #209 has been successfully merged. The required \"check\" passed, and the merge was completed without any blockers. The documentation updates for #200 are now live.\n\n\n\n---\n_Tokens: 17959 total (17896 prompt + 63 completion)_\n_Estimated cost: $0.0027_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31708700889)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T14:10:56Z",
+        "event_type": "pr_comment",
+        "id": 5281559889,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_ba35208cc509435d86cd7cd4",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 209}"
+          }
+        },
+        {
+          "id": "call_44ee360045cd42fd9e06294c",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 200}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=200 -->\\n<!-- atoma:origin-agent=engineer -->\\n<!-- atoma:notify=hws-yuma-seno -->\\nCloses #200 — documentation refresh for the repository changes since the issue was filed (#198, #193, #199, #204/#205).\\n\\n## Changes\\n\\n- `README.md` — the pinned-adoption example downloads `v0.1.0`; the current release (and `package.json` version) is `v0.1.1`. Updated the example.\\n- `docs/customization.md` — the vendoring example downloads `v0.2.0`, a version that does not exist. Updated the example to `v0.1.1`, matching the current release.\\n\\n## Scope and verification\\n\\nThe issue's own guidance and the upstream PRs state that `README.md`, `CONTRIBUTING.md`, `docs/customization.md` were refreshed during #198/#199 and `docs/operations.md` had its stale row removed in #203. I audited all four files against current behavior:\\n\\n- `dist/` untracked + release-asset distribution: described correctly everywhere.\\n- Release tag derived from `package.json` version: described correctly in `CONTRIBUTING.md` (and cd.yml comments).\\n- Main branch ruleset (no bypass): described correctly in `CONTRIBUTING.md`.\\n- Hooks executable-bit step (#199): present in the generated `atoma-runner.yml`; no adopter-visible doc claims otherwise.\\n- Handoff exclusivity (#204) and draft via `isDraft` (#205): shipped in the agent definition / prompt template / merge-readiness domain; the adopter-facing docs (`docs/customization.md` trigger conditions, `docs/operations.md` recovery section) contain no contradicting claims.\\n- `.gitignore` entries (`logs/`, `atoma-src/`, `dist/`): README's runtime-artifact list remains accurate; other files are covered by the repo's own `.gitignore`, and `logs/` is not written by the workflows (verified in `atoma-runner.wac.ts` — only `atoma_logs.txt`, `atoma_output.txt`, `atoma_ops.log`, `events.json`, `session.json` are produced).\\n\\nThe only real inaccuracies found were the two version-pinned download examples, both of which would fail for adopters (no such release asset). No other doc changes were made — per the issue, no forced changes.\\n\\nNo code, config, or generated files touched.\",\"createdAt\":\"2026-08-12T17:11:10Z\",\"headRefName\":\"atoma/issue-200\",\"number\":209,\"state\":\"MERGED\",\"title\":\"docs: pin both adoption examples to the current v0.1.1 release\"}",
+      "tool_call_id": "call_ba35208cc509435d86cd7cd4"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"README等のドキュメントを実態に合わせて最新化する。\",\"closedAt\":null,\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABOhe3pw\",\"author\":{\"login\":\"hws-yuma-seno\"},\"authorAssociation\":\"COLLABORATOR\",\"body\":\"/engineer\\n\\nドキュメントを実態に合わせて最新化してください。この Issue の起票後にリポジトリの構造が大きく変わっており、記述が追いついていない箇所が残っている可能性があります。\\n\\n## 何が変わったか\\n\\n- **#198** — `dist/` を git 追跡からリリース配布に移しました。`dist/` は gitignore され、`bun run synth` でビルドし、cd.yml が `atoma-delivery.zip` としてリリースに添付します。adopter はリリースからダウンロードして展開します。\\n- **#198 続き** — リリースのタグは `package.json` の `version` から導出されます。手でタグを打つ手順はなくなり、「`version` を上げて merge する」だけになりました。\\n- **#193** — main にブランチルールセットが適用されました。直 push・force push は拒否され、`check` がグリーンな pull request 経由でのみ main に入ります。bypass actor はありません。\\n- **#199** — runner が `.github/atoma/tools/scripts/hooks` の実行ビットを毎回立て直すようになりました。\\n- **#204 / #205** — ハンドオフ指示の排他性を明記し、draft 判定を `isDraft` から読むようにしました。\\n\\n## 調査してほしい範囲\\n\\n`README.md`、`CONTRIBUTING.md`、`docs/customization.md`、`docs/operations.md` が対象です。\\n\\nただし **`README.md` / `CONTRIBUTING.md` / `docs/customization.md` は #198・#199 の作業中に一度更新済み**です。`docs/operations.md` からは既に古い1行を削除しました（PR #203）。したがって残っている不整合は多くないと見込んでいます。\\n\\n**見つからなければ「更新すべき箇所はなかった」と報告してください。** 無理に変更を作る必要はありません。実態と合っていない記述が実際にある場合にのみ修正してください。\\n\\n## 注意\\n\\n- `.github/atoma/` は配布物のデプロイ先です。ドキュメントの修正対象ではありません\\n- `dist/` は gitignore されているので、そこを編集しても意味がありません\\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\\n\",\"createdAt\":\"2026-08-12T16:33:41Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/200#issuecomment-5269600167\",\"viewerDidAuthor\":false},{\"id\":\"IC_kwDOS6gmSM8AAAABOh3N1A\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: PR #209 created (https://github.com/yuma-seno/atoma-autonomous-delivery/pull/209). Dispatching reviewer.\",\"createdAt\":\"2026-08-12T17:11:13Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/200#issuecomment-5269999060\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABOs4x7Q\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\",\"createdAt\":\"2026-08-13T14:10:52Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/200#issuecomment-5281559021\",\"viewerDidAuthor\":true}],\"createdAt\":\"2026-08-12T12:17:46Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACpVkEzg\",\"name\":\"atoma/in-progress\",\"description\":\"Issue is being worked on by an Atoma agent\",\"color\":\"0366d6\"}],\"number\":200,\"state\":\"OPEN\",\"title\":\"ドキュメント最新化\"}",
+      "tool_call_id": "call_44ee360045cd42fd9e06294c"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_91be14f92e6b4665a31ed1e6",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 200}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #200: opened by a human, not a bot",
+      "tool_call_id": "call_91be14f92e6b4665a31ed1e6"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #209 was merged and the documentation work for #200 is complete. Confirmed:\n\n- **PR #209** (`docs: pin both adoption examples to the current v0.1.1 release`): state `MERGED`, base `main`, head `atoma/issue-200`. The reviewer's two rounds (initial `check` queued hold, then merge after approval) both reported success, and the diff shows exactly the two intended one-line changes (`README.md`: `v0.1.0`→`v0.1.1`; `docs/customization.md`: `v0.2.0`→`v0.1.1`).\n- **Issue #200**: all work delivered. The investigation found only the two version-pinned download examples were inaccurate; everything else in the four audited docs was already aligned with current behavior per the issue's own baseline (docs refreshed in #198/#199, stale row removed in #203).\n\nI attempted `github__close_issue(200)` to let parent aggregation continue, but the tool refused: issue #200 was opened by a human (`hws-yuma-seno`), so it cannot be bot-closed. Per the observed pattern in this repository (the same failure occurred in #196/#180), closing it is the human owner's step.\n\nNo agent will be automatically executed next. Please close issue #200 manually to unblock aggregation.",
+      "atoma_metadata": {
+        "github_comment_id": 5281571554,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 6,
-      "snapshot_hash": "e0a79a22c734906551e1ae899a7fe169d9780642df90698060f0426bd508b82a",
-      "version": 1
+      "event_count": 13,
+      "snapshot_hash": "f140e194f89bc4070dd15f322c2644eafe1654603b4c2fcebe68e55c16a5a5e7",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "200"
     }
   }
 }
