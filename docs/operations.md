@@ -59,7 +59,8 @@ Recovery archives the previous agent session, does not restore its assistant/too
 
 ## Dispatch, handoff, aggregation, idempotency
 
-- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.
+- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.
+- `extract_directive.ts` scans the whole output and adopts the first matching directive.
 - Auto-dispatch loop counter is tracked in session metadata and capped at 5.
 - PR merge path is the primary sub-issue aggregation trigger.
 - Manual issue-close path is fallback and skips when closure already came from merged PR.
