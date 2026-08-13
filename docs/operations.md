@@ -77,6 +77,8 @@ Recovery archives the previous agent session, does not restore its assistant/too
 | Manual command reports invalid syntax | Instruction text was placed on the `/agent` line, or an unsupported modifier was used | Use a standalone `/<agent>` line, or `/<agent> recover`; put instructions below it |
 | Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |
 | Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |
+| Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |
+| Merge stays `BLOCKED` despite green check on head commit | `pull_request` run for the same commit awaits approval (`action_required`) | Approve the run in Actions or via `gh api --method POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`; temporary workaround until #210 is fixed |
 
 ## Security boundaries
 
