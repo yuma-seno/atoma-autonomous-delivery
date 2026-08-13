@@ -82,7 +82,7 @@
       "content": "```diff\ndiff --git a/README.md b/README.md\nindex 9181595c..e0afc8b0 100644\n--- a/README.md\n+++ b/README.md\n@@ -31,7 +31,7 @@ you adopted and diff it later — see\n [Upgrading an adopted repository](docs/customization.md#upgrading-an-adopted-repository):\n \n ```bash\n-gh release download v0.1.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n ```\n \n ## Preflight checklist\ndiff --git a/docs/customization.md b/docs/customization.md\nindex 5b439a04..f60463c2 100644\n--- a/docs/customization.md\n+++ b/docs/customization.md\n@@ -89,7 +89,7 @@ and the files look identical either way.\n So treat it as vendoring, and let git do the merge:\n \n ```bash\n-gh release download v0.2.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\n unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root\n rm atoma-delivery.zip\n git diff .github/            # every difference is now a decision\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-12T17:11:10Z",
+        "created_at": "2026-08-13T14:09:51Z",
         "event_type": "pr_diff",
         "id": "pr-209-diff",
         "layer": "github-context",
@@ -179,7 +179,57 @@
       "role": "assistant",
       "content": "The PR is blocked because the required \"check\" is still queued and has not completed. I will wait for the check to finish before attempting to merge again.",
       "atoma_metadata": {
-        "github_comment_id": 5270006610,
+        "agent": "reviewer",
+        "github_comment_id": 5270006610
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-12T17:11:42Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4919166760",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "/reviewer\n\n承認待ちだったワークフロー実行を承認したため、`check` は head commit で success になり `mergeStateStatus` は `CLEAN` です。マージまで進めてください。\n\n内容は #200 のドキュメント修正で、既に一度レビュー済みです。前回は `check` が queued だったため保留になっていました。\n\nこれはルールセット適用後に `github__merge_pr` が実際に通るかを確認する検証も兼ねています。マージが拒否された場合は、返された `blockers` をそのまま報告してください。\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-13T14:09:51Z",
+        "event_type": "pr_comment",
+        "id": 5281547873,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_af537e4f37814a5390c6b7",
+          "type": "function",
+          "function": {
+            "name": "github__merge_pr",
+            "arguments": " {\"number\": 209}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"merged\":true,\"closed_issue\":null,\"reinvoked_agent\":\"engineer\"}",
+      "tool_call_id": "call_af537e4f37814a5390c6b7"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #209 has been successfully merged. The required \"check\" passed, and the merge was completed without any blockers. The documentation updates for #200 are now live.",
+      "atoma_metadata": {
+        "github_comment_id": 5281559889,
         "agent": "reviewer"
       }
     }
@@ -187,11 +237,11 @@
   "metadata": {
     "github_context": {
       "agent": "reviewer",
-      "event_count": 7,
-      "snapshot_hash": "3e42ef2e2f4d913277886039eddb7b43b20fe3b6a833b23dfc66df6d80a42f28",
-      "version": 1,
+      "event_count": 9,
+      "resolved_number": "200",
+      "snapshot_hash": "1e1c04b52fcb11a75ed85a15a33a7853ce1b2ebf2cde6c987907204224efb985",
       "type": "issue",
-      "resolved_number": "200"
+      "version": 1
     }
   }
 }
