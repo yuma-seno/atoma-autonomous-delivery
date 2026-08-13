@@ -6,7 +6,7 @@
     },
     {
       "role": "user",
-      "content": "Issue #219: operations.md のハンドオフ記法の説明を実態に合わせる\n\n/engineer\n\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節に、ハンドオフ指示の記法の説明がありません。追加してください。\n\n## 追加してほしい内容\n\n現在この節には次の1行があります。\n\n> - Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n\n`/next-agent` という書き方は実際の記法ではありません。実際は `prompt-template.md` が定める形で、以下の性質があります。\n\n- 指示行は `/agent-name` のみを含む必要がある。要求は後続の行に書く\n- `agent-name` は `agent-definitions/` に定義が存在する名前でなければならない。存在しない名前は無視され、dispatch は起きない\n- `extract_directive.ts` は出力の全行を走査し、最初に一致した指示を採用する\n\nこの節の既存の箇条書きの粒度に合わせて、1〜2行で書き換えてください。運用者が「なぜ dispatch されなかったのか」を追える程度の情報があれば十分です。\n\n## 注意\n\n- `docs/` は配布物に含まれません。このリポジトリ自身のドキュメントです\n- 既存の箇条書きの簡潔さに合わせてください。長い解説は不要です\n- 他の節を書き換える必要はありません\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\n",
+      "content": "Issue #219: operations.md のハンドオフ記法の説明を実態に合わせる\n**Labels:** atoma/in-progress\n\n/engineer\n\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節に、ハンドオフ指示の記法の説明がありません。追加してください。\n\n## 追加してほしい内容\n\n現在この節には次の1行があります。\n\n> - Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n\n`/next-agent` という書き方は実際の記法ではありません。実際は `prompt-template.md` が定める形で、以下の性質があります。\n\n- 指示行は `/agent-name` のみを含む必要がある。要求は後続の行に書く\n- `agent-name` は `agent-definitions/` に定義が存在する名前でなければならない。存在しない名前は無視され、dispatch は起きない\n- `extract_directive.ts` は出力の全行を走査し、最初に一致した指示を採用する\n\nこの節の既存の箇条書きの粒度に合わせて、1〜2行で書き換えてください。運用者が「なぜ dispatch されなかったのか」を追える程度の情報があれば十分です。\n\n## 注意\n\n- `docs/` は配布物に含まれません。このリポジトリ自身のドキュメントです\n- 既存の箇条書きの簡潔さに合わせてください。長い解説は不要です\n- 他の節を書き換える必要はありません\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\n",
       "atoma_metadata": {
         "author": "hws-yuma-seno",
         "created_at": "2026-08-13T15:11:45Z",
@@ -291,14 +291,158 @@
       "role": "tool",
       "content": "{\"number\":220,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/220\"}",
       "tool_call_id": "call_0521839943804e45ad1a7206"
+    },
+    {
+      "role": "user",
+      "content": "PR #220: docs: document actual handoff directive syntax in operations.md\n**Labels:** atoma/in-progress\n**Linked Issue:** #219\n\n<!-- atoma:parent-issue=219 -->\n<!-- atoma:origin-agent=engineer -->\n<!-- atoma:notify=hws-yuma-seno -->\nCloses #219\n\n## Behavior\n\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節にあった実態と異なる記法（`/next-agent`）の説明を、実際の仕組みに合わせて2項目に書き換えました。\n\n- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\n- `extract_directive.ts` scans the whole output and adopts the first matching directive.\n\nこれは `prompt-template.md`（指示行は `/agent-name` のみ、要求は後続行）と `src/scripts/extract_directive.ts`（`--def-dir` の `<name>.md` 存在チェック、全行走査で最初の一致を採用）の実装に沿っています。\n\n## Verification\n\n- `docs/operations.md` のみ変更（+2 / -1）。他の節や生成物は変更なし。\n- ドキュメントのみの変更のため、テスト・ビルドは対象外（このリポジトリの配布物 `src/**`, `dist/**` には影響しません）。",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:14:12Z",
+        "event_type": "pr_opened",
+        "id": "pr-220",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nCI is running for the head commit. Re-check after it completes.\n\n\n\n---\n_Tokens: 14936 total (14895 prompt + 41 completion)_\n_Estimated cost: $0.0023_\n@hws-yuma-seno — **reviewer** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\n\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31714316249)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:14:44Z",
+        "event_type": "pr_comment",
+        "id": 5282294534,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "/reviewer\n\nhead commit の `check` は完了して success です（2件とも）。`mergeStateStatus` は `CLEAN` です。\n\n先の実行では check が実行中だったため、readiness の blocker で終了していました。今は解消しているので、手順を進めてください。\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-13T15:29:43Z",
+        "event_type": "pr_comment",
+        "id": 5282468408,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:30:39Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4928752667",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:30:48Z",
+        "event_type": "issue_comment",
+        "id": 5282481604,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/docs/operations.md b/docs/operations.md\nindex 8acd32e..08ce44e 100644\n--- a/docs/operations.md\n+++ b/docs/operations.md\n@@ -59,7 +59,8 @@ Recovery archives the previous agent session, does not restore its assistant/too\n \n ## Dispatch, handoff, aggregation, idempotency\n \n-- Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\n+- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\n+- `extract_directive.ts` scans the whole output and adopts the first matching directive.\n - Auto-dispatch loop counter is tracked in session metadata and capped at 5.\n - PR merge path is the primary sub-issue aggregation trigger.\n - Manual issue-close path is fallback and skips when closure already came from merged PR.\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-13T15:30:53Z",
+        "event_type": "pr_diff",
+        "id": "pr-220-diff",
+        "layer": "github-context",
+        "sha": "f9d2c3bd",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #220 has been merged. The issue #219 is now closed.\n\n\n\n---\n_Tokens: 23259 total (23151 prompt + 108 completion)_\n_Estimated cost: $0.0035_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31715704923)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-13T15:30:53Z",
+        "event_type": "pr_comment",
+        "id": 5282482732,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_8537908bccec4e45b19154a8",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 220}"
+          }
+        },
+        {
+          "id": "call_a1482fe8cd2940d7889ceba8",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 219}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=219 -->\\n<!-- atoma:origin-agent=engineer -->\\n<!-- atoma:notify=hws-yuma-seno -->\\nCloses #219\\n\\n## Behavior\\n\\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節にあった実態と異なる記法（`/next-agent`）の説明を、実際の仕組みに合わせて2項目に書き換えました。\\n\\n- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\\n- `extract_directive.ts` scans the whole output and adopts the first matching directive.\\n\\nこれは `prompt-template.md`（指示行は `/agent-name` のみ、要求は後続行）と `src/scripts/extract_directive.ts`（`--def-dir` の `<name>.md` 存在チェック、全行走査で最初の一致を採用）の実装に沿っています。\\n\\n## Verification\\n\\n- `docs/operations.md` のみ変更（+2 / -1）。他の節や生成物は変更なし。\\n- ドキュメントのみの変更のため、テスト・ビルドは対象外（このリポジトリの配布物 `src/**`, `dist/**` には影響しません）。\",\"createdAt\":\"2026-08-13T15:14:12Z\",\"headRefName\":\"atoma/issue-219\",\"number\":220,\"state\":\"MERGED\",\"title\":\"docs: document actual handoff directive syntax in operations.md\"}",
+      "tool_call_id": "call_8537908bccec4e45b19154a8"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"/engineer\\n\\n`docs/operations.md` の「Dispatch, handoff, aggregation, idempotency」節に、ハンドオフ指示の記法の説明がありません。追加してください。\\n\\n## 追加してほしい内容\\n\\n現在この節には次の1行があります。\\n\\n> - Agent textual handoff (`/next-agent`) triggers follow-up runner dispatch.\\n\\n`/next-agent` という書き方は実際の記法ではありません。実際は `prompt-template.md` が定める形で、以下の性質があります。\\n\\n- 指示行は `/agent-name` のみを含む必要がある。要求は後続の行に書く\\n- `agent-name` は `agent-definitions/` に定義が存在する名前でなければならない。存在しない名前は無視され、dispatch は起きない\\n- `extract_directive.ts` は出力の全行を走査し、最初に一致した指示を採用する\\n\\nこの節の既存の箇条書きの粒度に合わせて、1〜2行で書き換えてください。運用者が「なぜ dispatch されなかったのか」を追える程度の情報があれば十分です。\\n\\n## 注意\\n\\n- `docs/` は配布物に含まれません。このリポジトリ自身のドキュメントです\\n- 既存の箇条書きの簡潔さに合わせてください。長い解説は不要です\\n- 他の節を書き換える必要はありません\\n- 変更は pull request で届けてください。main への直 push はルールセットが拒否します\\n\",\"closedAt\":null,\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABOtlVOw\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: PR #220 created (https://github.com/yuma-seno/atoma-autonomous-delivery/pull/220). Dispatching reviewer.\",\"createdAt\":\"2026-08-13T15:14:15Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/219#issuecomment-5282288955\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABOtxFxA\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\",\"createdAt\":\"2026-08-13T15:30:48Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/219#issuecomment-5282481604\",\"viewerDidAuthor\":true}],\"createdAt\":\"2026-08-13T15:11:45Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACpVkEzg\",\"name\":\"atoma/in-progress\",\"description\":\"Issue is being worked on by an Atoma agent\",\"color\":\"0366d6\"}],\"number\":219,\"state\":\"OPEN\",\"title\":\"operations.md のハンドオフ記法の説明を実態に合わせる\"}",
+      "tool_call_id": "call_a1482fe8cd2940d7889ceba8"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_e817309ae12243bf8237620f",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 219}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #219: opened by a human, not a bot",
+      "tool_call_id": "call_e817309ae12243bf8237620f"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #220 は main にマージ済みであることを確認しました（state: `MERGED`）。ドキュメント変更はそのまま反映されたため、追加のコード変更はありません。\n\n`github__close_issue(219)` を試みましたが、issue #219 は人間が開いた issue のためツールが拒否しました。これは想定どおりの応答です。クローズはオーナー（`@hws-yuma-seno`）の手順として残っています。",
+      "atoma_metadata": {
+        "github_comment_id": 5282492520,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 1,
-      "snapshot_hash": "d5b5d7e360149406eeb667b18546900f83147dad5bbb37e8dc03a79a428d8fa4",
-      "version": 1
+      "event_count": 8,
+      "snapshot_hash": "3154aa092b673d9555d14a0c8179bb419dd11fe92c78460a4345e8aca416a146",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "219"
     }
   }
 }
