@@ -89,7 +89,7 @@ and the files look identical either way.
 So treat it as vendoring, and let git do the merge:
 
 ```bash
-gh release download v0.2.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
 unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root
 rm atoma-delivery.zip
 git diff .github/            # every difference is now a decision

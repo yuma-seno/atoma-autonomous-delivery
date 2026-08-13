@@ -31,7 +31,7 @@ you adopted and diff it later — see
 [Upgrading an adopted repository](docs/customization.md#upgrading-an-adopted-repository):
 
 ```bash
-gh release download v0.1.0 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
+gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
 ```
 
 ## Preflight checklist
