@@ -62,6 +62,7 @@ Recovery archives the previous agent session, does not restore its assistant/too
 - Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.
 - `extract_directive.ts` scans the whole output and adopts the first matching directive.
 - Auto-dispatch loop counter is tracked in session metadata and capped at 5.
+- `create_pr` dispatches `atoma-validate-pr.yml`, which runs the configured CI on the branch, writes the result as a check run, then dispatches reviewer on green or engineer on failure.
 - PR merge path is the primary sub-issue aggregation trigger.
 - Manual issue-close path is fallback and skips when closure already came from merged PR.
 - Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.
