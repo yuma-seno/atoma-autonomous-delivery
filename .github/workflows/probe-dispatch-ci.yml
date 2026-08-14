@@ -1,0 +1,44 @@
+name: Probe Dispatch CI
+
+# TEMPORARY. Delete alongside the other probes.
+#
+# Measures the one case that decides whether this project needs a PAT at all:
+# does a CI run started by `workflow_dispatch` *from GITHUB_TOKEN* fire
+# `workflow_run` when it completes?
+#
+# GitHub's recursion rule names two exceptions -- "events triggered by the
+# GITHUB_TOKEN, with the exception of workflow_dispatch and repository_dispatch,
+# will not create a new workflow run". That is why `dispatchCi` works at all. What
+# it does not say is whether the resulting run's *completion* is also exempt.
+#
+# The earlier probe answered the `pull_request` case (it does not fire). This is
+# the different case, and the useful one: if it fires, the whole chain closes with
+# no PAT, no App, no added adoption step and no human action.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch to run CI against
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Deliberately `github.token`, not a personal token. Using anything else
+      # would measure a different question.
+      - name: Dispatch CI as github-actions[bot]
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REF: ${{ inputs.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --repo "$REPO" --ref "$TARGET_REF"
+          echo "Dispatched ci.yml against ${TARGET_REF} using GITHUB_TOKEN."
