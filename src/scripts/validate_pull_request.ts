@@ -77,6 +77,7 @@ import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { decideValidationOutcome } from "../domain/pr-validation.ts";
 import { gh } from "../lib/gh.ts";
+import { CI_RETRY_TAG, LLM_CONTEXT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface ValidatePullRequestArgs {
@@ -151,6 +152,40 @@ export function pickDispatchedRun(
   return run ? { id: run.id, status: run.status, conclusion: run.conclusion } : undefined;
 }
 
+/** Comments this script has left on the pull request, each marking one hand-back. */
+function countPriorRetries(repo: string, number: string): number {
+  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}/comments?per_page=100`);
+  if (code) return 0;
+  try {
+    const comments = JSON.parse(stdout || "[]") as { body?: string }[];
+    return comments.filter((c) => CI_RETRY_TAG.has(c.body ?? "")).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Leave the engineer what it needs to act, and leave the count its next turn
+ * reads.
+ *
+ * The failing job's URL rather than its log: the engineer can fetch what it wants
+ * from there, and pasting a log costs tokens on every retry whether or not the
+ * relevant lines are in the part that fits.
+ */
+function reportFailure(repo: string, number: string, attempt: number, runUrl: string, summary: string): void {
+  const body = [
+    LLM_CONTEXT_TAG.write("include"),
+    CI_RETRY_TAG.write(attempt),
+    `Atoma: ${summary}`,
+    "",
+    runUrl ? `Failing run: ${runUrl}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const posted = gh("issue", "comment", number, "--repo", repo, "--body", body);
+  if (posted.code) log(`WARN could not post the failure comment: ${posted.stderr}`);
+}
+
 function main(): void {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -200,6 +235,7 @@ function main(): void {
   const timeoutSeconds = Number(values["timeout-seconds"] ?? "1800");
   const deadline = Date.now() + timeoutSeconds * 1000;
   let conclusion = "";
+  let runUrl = "";
 
   while (Date.now() < deadline) {
     Bun.sleepSync(10_000);
@@ -218,17 +254,24 @@ function main(): void {
     if (!run) continue;
     if (run.status !== "completed") continue;
     conclusion = run.conclusion ?? "";
+    runUrl = `https://github.com/${repo}/actions/runs/${run.id}`;
     log(`dispatched run ${run.id} concluded ${conclusion}`);
     break;
   }
 
   if (!conclusion) log(`no conclusion within ${timeoutSeconds}s`);
 
+  // How many times validation already sent this pull request back. Counted from
+  // its own comments rather than held anywhere, so it survives a re-dispatch and
+  // needs no state of its own.
+  const priorRetries = countPriorRetries(repo, values.number ?? "");
+
   const outcome = decideValidationOutcome(
     conclusion,
     requiredContexts,
     values.reviewer ?? "",
     values.engineer ?? "",
+    priorRetries,
   );
 
   for (const check of outcome.checks) {
@@ -251,6 +294,12 @@ function main(): void {
     if (created.code) log(`WARN could not write check "${check.name}": ${created.stderr}`);
     else log(`wrote check "${check.name}" as ${check.conclusion}`);
   }
+
+  // Posted whenever CI did not pass, including the turn that gives up: the
+  // comment is both the engineer's brief and the tally the next turn counts, and
+  // the last one is what tells a human why nothing is moving.
+  const passed = outcome.checks.every((check) => check.conclusion === "success");
+  if (!passed) reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
 
   write(`next_agent=${outcome.nextAgent}`);
   write(`conclusion=${conclusion}`);

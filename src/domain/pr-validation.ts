@@ -11,6 +11,17 @@
 /** Conclusions GitHub reports for a completed run that should count as passing. */
 const PASSING = new Set(["success", "skipped", "neutral"]);
 
+/**
+ * How many times validation may hand the same pull request back to the engineer.
+ *
+ * Bounds a loop nothing else bounds. `manage_dispatch_loop.ts`'s counter only
+ * advances on a directive an agent wrote, and here the engineer is dispatched by
+ * a workflow, so failing CI would otherwise cycle forever at the cost of a model
+ * run per turn. Three is enough for a fix that needed another look and few enough
+ * that a genuinely stuck pull request reaches a human quickly.
+ */
+export const CI_RETRY_LIMIT = 3;
+
 export interface ValidationOutcome {
   /** Check runs to create, one per context the ruleset requires. */
   checks: { name: string; conclusion: "success" | "failure" }[];
@@ -35,6 +46,7 @@ export function decideValidationOutcome(
   requiredContexts: string[],
   reviewerAgent: string,
   engineerAgent: string,
+  priorRetries = 0,
 ): ValidationOutcome {
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
@@ -53,6 +65,16 @@ export function decideValidationOutcome(
       checks,
       nextAgent: "",
       summary: "CI never reported a conclusion. Nothing was dispatched; a human should look.",
+    };
+  }
+
+  if (priorRetries >= CI_RETRY_LIMIT) {
+    return {
+      checks,
+      nextAgent: "",
+      summary:
+        `CI concluded ${normalised} after ${priorRetries} attempts at fixing it. ` +
+        `Stopping rather than dispatching the engineer again; a human should look.`,
     };
   }
 

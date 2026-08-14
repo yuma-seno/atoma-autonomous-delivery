@@ -58,6 +58,18 @@ export const LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 export const AGGREGATED_TAG = numericTag("aggregated");
 /** Progress marker: which sub-issue's completion a progress comment reports on. Write-only (nothing parses it back); written as plain `N`. */
 export const SUB_RESULT_TAG = numericTag("sub-result");
+/**
+ * Counts how many times validation has sent a pull request back to the engineer.
+ *
+ * The auto-dispatch counter in `manage_dispatch_loop.ts` cannot bound this loop:
+ * it only advances on a directive the agent itself wrote, and here the engineer
+ * is dispatched by the validation workflow instead. So CI failing, the engineer
+ * pushing, and CI failing again would repeat without limit, each turn costing a
+ * model run. Counting the comments validation leaves is what stops it, and the
+ * comments are worth leaving anyway -- they are where the engineer reads which
+ * job failed.
+ */
+export const CI_RETRY_TAG = numericTag("ci-retry");
 
 /**
  * Resolve a `parent` link from EITHER `atoma:parent` (issue -> issue) or

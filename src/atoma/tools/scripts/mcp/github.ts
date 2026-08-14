@@ -445,6 +445,30 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
     if (code) mcpFail(stderr || stdout);
   }
   logOp("commit_and_push", {});
+
+  // A push to a branch that already has a pull request has to be validated the
+  // same way the first push was. Nothing else will do it: GitHub raises no event
+  // for a push made with GITHUB_TOKEN, so neither CI nor any routing workflow
+  // hears about this commit, and the pull request would keep whatever check the
+  // previous head commit had -- on a commit that is no longer the head, so the
+  // ruleset sees the required context as missing and the merge stays refused.
+  //
+  // Skipped when there is no pull request yet, which is the ordinary first push:
+  // `create_pr` dispatches validation itself once the pull request exists, and
+  // validating a branch with nothing to merge into would only burn a CI run.
+  //
+  // Repeated pushes within one run each dispatch, and the validation workflow's
+  // own concurrency group collapses them, keeping the last.
+  const open = gh("pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number");
+  if (!open.code) {
+    try {
+      const [pr] = JSON.parse(open.stdout || "[]") as { number: number }[];
+      if (pr) dispatchPrValidation(pr.number, branch);
+    } catch {
+      log("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+    }
+  }
+
   return JSON.stringify({ ok: true });
 }
 
