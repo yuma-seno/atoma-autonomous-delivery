@@ -1,0 +1,53 @@
+name: Probe CI Completed
+
+# TEMPORARY. Delete once #210 is decided.
+#
+# Answers one question that no documentation settles: does a `workflow_run` event
+# fire for a CI run that GitHub held at `action_required` and a human then
+# approved?
+#
+# It matters because the whole post-#210 design hangs on it. GitHub's recursion
+# rule is that events triggered by GITHUB_TOKEN start no workflow run, and an
+# agent's pull request is created with GITHUB_TOKEN. Since June 2026 that event
+# does produce a `pull_request` run, but a held one -- and approving it moves
+# `triggering_actor` to the human who approved. Whether the origin or the actor
+# decides recursion is what this observes.
+#
+# If it fires, an adopter with no token configured pays one click per pull
+# request and the rest chains automatically. If it does not, they pay two
+# actions: approve, then start the reviewer by hand.
+#
+# Logs only. It dispatches nothing, so a wrong guess here costs nothing.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      # Through `env:`, not `${{ }}` inside the script. A branch name is
+      # attacker-supplied text in the general case, and this file is a pattern
+      # someone may copy.
+      - name: Report what fired this run
+        shell: bash
+        env:
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          UPSTREAM_EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+          TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+          UPSTREAM_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "upstream_run_id=${UPSTREAM_ID}"
+          echo "upstream_event=${UPSTREAM_EVENT}"
+          echo "conclusion=${CONCLUSION}"
+          echo "head_branch=${HEAD_BRANCH}"
+          echo "head_sha=${HEAD_SHA}"
+          echo "actor=${ACTOR}"
+          echo "triggering_actor=${TRIGGERING_ACTOR}"
