@@ -329,26 +329,35 @@ function injectParentIssue(body: string): string {
 }
 
 /**
- * Directly dispatch whichever agent config.json's auto_triggers designates
- * for a newly opened PR ("pull_request.opened", normally "reviewer" -- but
- * read from config, never hardcoded). GitHub suppresses further
- * workflow-triggering events for actions performed with the default
- * GITHUB_TOKEN, so a bot-created PR does NOT reliably cause
- * atoma-auto-trigger.yml to fire. workflow_dispatch is exempt from that
- * restriction, so dispatch directly here, the same way dispatchSubAgent
- * handles orchestrator -> sub-agent handoffs. Best-effort: a dispatch
- * failure does not fail PR creation itself.
+ * Hand the new pull request to validation rather than straight to a reviewer.
+ *
+ * The reviewer used to be dispatched from here, and arrived before CI had a
+ * verdict -- so it either reported that it would wait, with nothing able to wake
+ * it, or merged without one. Validation runs CI first and dispatches the agent
+ * the result calls for: the reviewer when it passes, the engineer when it does
+ * not. See `scripts/validate_pull_request.ts`.
+ *
+ * Dispatch rather than an event, because GitHub starts no workflow run for
+ * events GITHUB_TOKEN triggers and this pull request was created with it.
+ * `workflow_dispatch` is the documented exception, which is also why
+ * atoma-auto-trigger.yml cannot be relied on here.
+ *
+ * Best-effort: a dispatch failure does not fail PR creation itself.
  */
-function dispatchPostPrAgent(prNumber: number): void {
-  const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  dispatchRunner({
-    context: `dispatchPostPrAgent: dispatching ${agent} for PR #${prNumber}`,
-    agent,
-    type: "pr",
-    number: prNumber,
-    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
+function dispatchPrValidation(prNumber: number, branch: string): void {
+  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
+  dispatchWorkflow(
+    `dispatchPrValidation: validating PR #${prNumber}`,
+    "atoma-validate-pr.yml",
+    [
+      "--repo", REPO,
+      "-f", `number=${prNumber}`,
+      "-f", `branch=${branch}`,
+      "-f", `reviewer=${reviewer}`,
+      "-f", "engineer=engineer",
+    ],
     log,
-  });
+  );
 }
 
 function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
@@ -393,7 +402,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (!Number.isFinite(num)) mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
 
   logOp("create_pr", { number: num, title });
-  dispatchPostPrAgent(num);
+  dispatchPrValidation(num, branch);
 
   // Traceability: the reviewer dispatch above is fire-and-forget, and (since
   // this call now ends the session immediately, see the returned
@@ -404,7 +413,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (currentIssue) {
     gh(
       "issue", "comment", currentIssue, "--repo", REPO,
-      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). Dispatching reviewer.`,
+      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). Running CI; the reviewer follows if it passes.`,
     );
   }
 
