@@ -1,11 +1,11 @@
-import { Workflow } from "@github-actions-workflow-ts/lib";
+import { Workflow, type GWT } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
-import { scriptCommandWithArgs } from "./actions/script-call.ts";
+import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { ref as validatePullRequestRef } from "../scripts/validate_pull_request.ts";
-import { ref as getConfigValueRef } from "../scripts/get_config_value.ts";
+import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
 
 // Runs CI against an agent's pull request and decides who works next.
 //
@@ -30,7 +30,7 @@ const configStep = new TypedOutputsStep(
     shell: "bash",
     // Falls back to `ci.yml`, matching `getWorkflowName`'s own default on the
     // tool side, so a repository that never set `workflows.ci` still validates.
-    run: `WORKFLOW=$(${scriptCommandWithArgs(getConfigValueRef, { key: "workflows.ci", fallback: "ci.yml" })})
+    run: `WORKFLOW=$(${scriptCommand(getConfigValueRef, configValueArgv("workflows.ci", "ci.yml"))})
 echo "workflow=\${WORKFLOW}" >> "$GITHUB_OUTPUT"
 `,
   },
@@ -57,16 +57,29 @@ const validateStep = new TypedOutputsStep(
 
 export const atomaValidatePr = new Workflow("atoma-validate-pr", {
   name: "Atoma Validate PR",
+  // Cast for the same upstream reason atoma-runner.wac.ts casts: the generated
+  // `WorkflowDispatchInput.default` type is a json-schema-to-typescript quirk.
+  // Structurally this is valid `workflow_dispatch` YAML.
   on: {
     workflow_dispatch: {
       inputs: {
-        number: { description: "Pull request number", required: true },
-        branch: { description: "Head branch of the pull request", required: true },
-        reviewer: { description: "Agent to dispatch when CI passes", required: false, default: "reviewer" },
-        engineer: { description: "Agent to dispatch when CI fails", required: false, default: "engineer" },
+        number: { description: "Pull request number", required: true, type: "string" },
+        branch: { description: "Head branch of the pull request", required: true, type: "string" },
+        reviewer: {
+          description: "Agent to dispatch when CI passes",
+          required: false,
+          type: "string",
+          default: "reviewer",
+        },
+        engineer: {
+          description: "Agent to dispatch when CI fails",
+          required: false,
+          type: "string",
+          default: "engineer",
+        },
       },
     },
-  },
+  } as unknown as GWT.Workflow["on"],
   permissions: {
     ...ATOMA_WORKFLOW_PERMISSIONS,
     // Writing the mirrored check run. Without this the pull request can never
@@ -117,5 +130,5 @@ echo "Dispatched $AGENT for #$NUMBER: $SUMMARY"
 `,
       }),
     ],
-  ),
+  ).jobs(),
 );

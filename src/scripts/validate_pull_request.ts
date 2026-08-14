@@ -86,7 +86,10 @@ export interface ValidatePullRequestArgs {
   workflow: string;
   reviewer: string;
   engineer: string;
-  "timeout-seconds": string;
+  /** Defaults to 1800. The job's own `timeout-minutes` is deliberately longer,
+   *  so a stall is reported as "no conclusion" here rather than killed there
+   *  with nothing written. */
+  "timeout-seconds"?: string;
 }
 
 export const ref = defineScript<ValidatePullRequestArgs>(import.meta.url);
