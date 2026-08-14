@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/.github/workflows/probe-dispatch-ci.yml b/.github/workflows/probe-dispatch-ci.yml\nnew file mode 100644\nindex 0000000..4cf80c4\n--- /dev/null\n+++ b/.github/workflows/probe-dispatch-ci.yml\n@@ -0,0 +1,44 @@\n+name: Probe Dispatch CI\n+\n+# TEMPORARY. Delete alongside the other probes.\n+#\n+# Measures the one case that decides whether this project needs a PAT at all:\n+# does a CI run started by `workflow_dispatch` *from GITHUB_TOKEN* fire\n+# `workflow_run` when it completes?\n+#\n+# GitHub's recursion rule names two exceptions -- \"events triggered by the\n+# GITHUB_TOKEN, with the exception of workflow_dispatch and repository_dispatch,\n+# will not create a new workflow run\". That is why `dispatchCi` works at all. What\n+# it does not say is whether the resulting run's *completion* is also exempt.\n+#\n+# The earlier probe answered the `pull_request` case (it does not fire). This is\n+# the different case, and the useful one: if it fires, the whole chain closes with\n+# no PAT, no App, no added adoption step and no human action.\n+on:\n+  workflow_dispatch:\n+    inputs:\n+      ref:\n+        description: Branch to run CI against\n+        required: true\n+\n+permissions:\n+  contents: read\n+\n+jobs:\n+  dispatch:\n+    runs-on: ubuntu-latest\n+    permissions:\n+      actions: write\n+    steps:\n+      # Deliberately `github.token`, not a personal token. Using anything else\n+      # would measure a different question.\n+      - name: Dispatch CI as github-actions[bot]\n+        shell: bash\n+        env:\n+          GH_TOKEN: ${{ github.token }}\n+          TARGET_REF: ${{ inputs.ref }}\n+          REPO: ${{ github.repository }}\n+        run: |\n+          set -euo pipefail\n+          gh workflow run ci.yml --repo \"$REPO\" --ref \"$TARGET_REF\"\n+          echo \"Dispatched ci.yml against ${TARGET_REF} using GITHUB_TOKEN.\"\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-14T13:36:47Z",
+        "created_at": "2026-08-14T13:38:02Z",
         "event_type": "pr_diff",
         "id": "pr-223-diff",
         "layer": "github-context",
@@ -51,7 +51,15 @@
       "role": "assistant",
       "content": "The pull request is currently in draft state. Please mark it ready for review before proceeding.\n\nNo further action can be taken until the draft status is removed.",
       "atoma_metadata": {
-        "github_comment_id": 5293941411,
+        "agent": "reviewer",
+        "github_comment_id": 5293941411
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The pull request is in draft state and cannot be merged. Please mark it ready for review first.\n\nNo defects found in the code — this is purely a workflow state issue.",
+      "atoma_metadata": {
+        "github_comment_id": 5293951327,
         "agent": "reviewer"
       }
     }
@@ -60,10 +68,10 @@
     "github_context": {
       "agent": "reviewer",
       "event_count": 2,
-      "snapshot_hash": "d8084aa3340e0c56b4879b507432770b53068651d0ce6d98ba610fa461399a4c",
-      "version": 1,
+      "resolved_number": "223",
+      "snapshot_hash": "ffd3e5ab8ba239af1f0018c98fdac14f3e23f35ecce6f114ff54f2ecfff11d58",
       "type": "pr",
-      "resolved_number": "223"
+      "version": 1
     }
   }
 }
