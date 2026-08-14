@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/.github/workflows/probe-bot-pr.yml b/.github/workflows/probe-bot-pr.yml\nnew file mode 100644\nindex 00000000..f83680bf\n--- /dev/null\n+++ b/.github/workflows/probe-bot-pr.yml\n@@ -0,0 +1,45 @@\n+name: Probe Bot PR\n+\n+# TEMPORARY. Delete alongside probe-ci-completed.yml.\n+#\n+# Reproduces the condition being measured without spending an agent run: a pull\n+# request authored by GITHUB_TOKEN, which is what GitHub holds at\n+# `action_required`. Using a real agent would work too, but it would mix model\n+# behaviour into an observation about GitHub's plumbing.\n+on:\n+  workflow_dispatch:\n+\n+permissions:\n+  contents: read\n+\n+jobs:\n+  open:\n+    runs-on: ubuntu-latest\n+    permissions:\n+      contents: write\n+      pull-requests: write\n+    steps:\n+      - uses: actions/checkout@v4\n+      - name: Open a pull request as github-actions[bot]\n+        shell: bash\n+        env:\n+          GH_TOKEN: ${{ github.token }}\n+        run: |\n+          set -euo pipefail\n+          BRANCH=\"probe/bot-pr-${GITHUB_RUN_ID}\"\n+          git config user.name \"github-actions[bot]\"\n+          git config user.email \"github-actions[bot]@users.noreply.github.com\"\n+          git checkout -b \"$BRANCH\"\n+\n+          # Touches a file CI reads, so the run has something real to do and its\n+          # conclusion means something.\n+          printf '\\n' >> docs/operations.md\n+          git add docs/operations.md\n+          git commit -m \"probe: whitespace change to give CI something to run\"\n+          git push origin \"$BRANCH\"\n+\n+          gh pr create \\\n+            --base main \\\n+            --head \"$BRANCH\" \\\n+            --title \"probe: measuring whether workflow_run fires after approval\" \\\n+            --body \"Temporary. Opened by \\`probe-bot-pr.yml\\` to observe whether a held \\`pull_request\\` CI run fires \\`workflow_run\\` once approved. Close and delete the branch afterwards.\"\ndiff --git a/.github/workflows/probe-ci-completed.yml b/.github/workflows/probe-ci-completed.yml\nnew file mode 100644\nindex 00000000..d896ff31\n--- /dev/null\n+++ b/.github/workflows/probe-ci-completed.yml\n@@ -0,0 +1,53 @@\n+name: Probe CI Completed\n+\n+# TEMPORARY. Delete once #210 is decided.\n+#\n+# Answers one question that no documentation settles: does a `workflow_run` event\n+# fire for a CI run that GitHub held at `action_required` and a human then\n+# approved?\n+#\n+# It matters because the whole post-#210 design hangs on it. GitHub's recursion\n+# rule is that events triggered by GITHUB_TOKEN start no workflow run, and an\n+# agent's pull request is created with GITHUB_TOKEN. Since June 2026 that event\n+# does produce a `pull_request` run, but a held one -- and approving it moves\n+# `triggering_actor` to the human who approved. Whether the origin or the actor\n+# decides recursion is what this observes.\n+#\n+# If it fires, an adopter with no token configured pays one click per pull\n+# request and the rest chains automatically. If it does not, they pay two\n+# actions: approve, then start the reviewer by hand.\n+#\n+# Logs only. It dispatches nothing, so a wrong guess here costs nothing.\n+on:\n+  workflow_run:\n+    workflows: [CI]\n+    types: [completed]\n+\n+permissions:\n+  contents: read\n+\n+jobs:\n+  log:\n+    runs-on: ubuntu-latest\n+    steps:\n+      # Through `env:`, not `${{ }}` inside the script. A branch name is\n+      # attacker-supplied text in the general case, and this file is a pattern\n+      # someone may copy.\n+      - name: Report what fired this run\n+        shell: bash\n+        env:\n+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}\n+          UPSTREAM_EVENT: ${{ github.event.workflow_run.event }}\n+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}\n+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}\n+          ACTOR: ${{ github.event.workflow_run.actor.login }}\n+          TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}\n+          UPSTREAM_ID: ${{ github.event.workflow_run.id }}\n+        run: |\n+          echo \"upstream_run_id=${UPSTREAM_ID}\"\n+          echo \"upstream_event=${UPSTREAM_EVENT}\"\n+          echo \"conclusion=${CONCLUSION}\"\n+          echo \"head_branch=${HEAD_BRANCH}\"\n+          echo \"head_sha=${HEAD_SHA}\"\n+          echo \"actor=${ACTOR}\"\n+          echo \"triggering_actor=${TRIGGERING_ACTOR}\"\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-14T12:21:15Z",
+        "created_at": "2026-08-14T12:22:07Z",
         "event_type": "pr_diff",
         "id": "pr-221-diff",
         "layer": "github-context",
@@ -51,7 +51,15 @@
       "role": "assistant",
       "content": "The pull request is currently in draft state and cannot be merged. Please mark it ready for review first.\n\nNo defects found in the code changes themselves — the workflows are correctly structured as temporary probes with clear documentation and no dispatch logic that could cause unintended side effects. The design choice to avoid agent involvement and use direct GitHub Actions is appropriate for isolating the behavior being tested.\n\nOnce you mark the PR as ready for review, I will re-check merge readiness and proceed with the review process.",
       "atoma_metadata": {
-        "github_comment_id": 5293227395,
+        "agent": "reviewer",
+        "github_comment_id": 5293227395
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The pull request is currently in draft state and cannot be merged. Please mark it ready for review first.\n\nNo defects found in the code changes themselves — the workflows are correctly structured as temporary probes with clear documentation and no dispatch logic that could cause unintended side effects. The design choice to avoid agent involvement and use direct GitHub Actions is appropriate for isolating the behavior being tested.\n\nOnce you mark the PR as ready for review, I will re-check merge readiness and proceed with the review process.",
+      "atoma_metadata": {
+        "github_comment_id": 5293234021,
         "agent": "reviewer"
       }
     }
@@ -60,10 +68,10 @@
     "github_context": {
       "agent": "reviewer",
       "event_count": 2,
-      "snapshot_hash": "91fbf59d39262628171feb2c30963009ec5de3c0faa59c0996190e3520dd652a",
-      "version": 1,
+      "resolved_number": "221",
+      "snapshot_hash": "177e77504ee3201db2558b92c65f140e8d227e3c53275d056911bc62c23cf476",
       "type": "pr",
-      "resolved_number": "221"
+      "version": 1
     }
   }
 }
