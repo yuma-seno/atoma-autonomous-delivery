@@ -216,14 +216,121 @@
       "role": "tool",
       "content": "{\"number\":236,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/236\"}",
       "tool_call_id": "call_4efb9032d8504cfe8ec5ac56"
+    },
+    {
+      "role": "user",
+      "content": "PR #236: docs: add PR validation path to dispatch section in operations.md\n**Labels:** atoma/in-progress\n**Linked Issue:** #235\n\n<!-- atoma:parent-issue=235 -->\n<!-- atoma:origin-agent=engineer -->\nCloses #235\n<!-- atoma:notify=hws-yuma-seno -->\n## What\n\nAdds one bullet to the \"Dispatch, handoff, aggregation, idempotency\" section of `docs/operations.md` describing how a pull request is validated before a reviewer is dispatched:\n\n- `create_pr` dispatches `atoma-validate-pr.yml` (not the reviewer directly)\n- that workflow runs the configured CI on the branch and writes the result as a check run\n- on green it dispatches reviewer, on failure engineer\n\nThe new line matches the existing bullets' concise style; no other section was changed.\n\n## Verification\n\n- `git diff --check` passes\n- Diff is a single insertion into `docs/operations.md`\n- Verified against `.github/workflows/atoma-validate-pr.yml`, which dispatches `validate_pull_request.ts` and then `atoma-runner.yml` with the agent chosen by the CI result",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-14T15:46:50Z",
+        "event_type": "pr_opened",
+        "id": "pr-236",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-14T15:48:10Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4938953432",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-14T15:48:16Z",
+        "event_type": "issue_comment",
+        "id": 5295313760,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/docs/operations.md b/docs/operations.md\nindex 08ce44e..b74086a 100644\n--- a/docs/operations.md\n+++ b/docs/operations.md\n@@ -62,6 +62,7 @@ Recovery archives the previous agent session, does not restore its assistant/too\n - Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\n - `extract_directive.ts` scans the whole output and adopts the first matching directive.\n - Auto-dispatch loop counter is tracked in session metadata and capped at 5.\n+- `create_pr` dispatches `atoma-validate-pr.yml`, which runs the configured CI on the branch, writes the result as a check run, then dispatches reviewer on green or engineer on failure.\n - PR merge path is the primary sub-issue aggregation trigger.\n - Manual issue-close path is fallback and skips when closure already came from merged PR.\n - Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-14T15:48:20Z",
+        "event_type": "pr_diff",
+        "id": "pr-236-diff",
+        "layer": "github-context",
+        "sha": "995eef7a",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nLGTM\n\n\n\n---\n_Tokens: 22314 total (22223 prompt + 91 completion)_\n_Estimated cost: $0.0034_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31816227908)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-14T15:48:20Z",
+        "event_type": "pr_comment",
+        "id": 5295314339,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_edc7d35c3597419c8df152a4",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 236}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=235 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #235\\n<!-- atoma:notify=hws-yuma-seno -->\\n## What\\n\\nAdds one bullet to the \\\"Dispatch, handoff, aggregation, idempotency\\\" section of `docs/operations.md` describing how a pull request is validated before a reviewer is dispatched:\\n\\n- `create_pr` dispatches `atoma-validate-pr.yml` (not the reviewer directly)\\n- that workflow runs the configured CI on the branch and writes the result as a check run\\n- on green it dispatches reviewer, on failure engineer\\n\\nThe new line matches the existing bullets' concise style; no other section was changed.\\n\\n## Verification\\n\\n- `git diff --check` passes\\n- Diff is a single insertion into `docs/operations.md`\\n- Verified against `.github/workflows/atoma-validate-pr.yml`, which dispatches `validate_pull_request.ts` and then `atoma-runner.yml` with the agent chosen by the CI result\",\"createdAt\":\"2026-08-14T15:46:50Z\",\"headRefName\":\"atoma/issue-235\",\"number\":236,\"state\":\"MERGED\",\"title\":\"docs: add PR validation path to dispatch section in operations.md\"}",
+      "tool_call_id": "call_edc7d35c3597419c8df152a4"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_3130fdb7d5154427afd9f27e",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 235}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #235: opened by a human, not a bot",
+      "tool_call_id": "call_3130fdb7d5154427afd9f27e"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #236 is merged. Issue #235 was opened by a human, so closing it is the repository owner's step — the close tool correctly refuses bot closure. The work itself is complete: `docs/operations.md` now documents the pull request validation path (`create_pr` → `atoma-validate-pr.yml` → CI check run → reviewer on green / engineer on failure) as a single concise bullet matching the existing list.",
+      "atoma_metadata": {
+        "github_comment_id": 5295321104,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 1,
-      "snapshot_hash": "592dcbe4b60216787637d3995025facdb87a75c364a73e30394adedfa5483e34",
-      "version": 1
+      "event_count": 6,
+      "snapshot_hash": "674abafd8db485c53e7fb9dc5f1a1c979ec49f5dc1a1d456b8ec455ced7c4116",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "235"
     }
   }
 }
