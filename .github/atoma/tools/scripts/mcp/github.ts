@@ -18507,16 +18507,20 @@ function injectParentIssue(body) {
   return `${PARENT_ISSUE_TAG.write(Number(parent))}
 ${originLine}${closesLine}${body}`;
 }
-function dispatchPostPrAgent(prNumber) {
-  const agent = getTriggerAgent("pull_request.opened", "reviewer");
-  dispatchRunner({
-    context: `dispatchPostPrAgent: dispatching ${agent} for PR #${prNumber}`,
-    agent,
-    type: "pr",
-    number: prNumber,
-    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
-    log: log2
-  });
+function dispatchPrValidation(prNumber, branch) {
+  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
+  dispatchWorkflow(`dispatchPrValidation: validating PR #${prNumber}`, "atoma-validate-pr.yml", [
+    "--repo",
+    REPO,
+    "-f",
+    `number=${prNumber}`,
+    "-f",
+    `branch=${branch}`,
+    "-f",
+    `reviewer=${reviewer}`,
+    "-f",
+    "engineer=engineer"
+  ], log2);
 }
 function createPr(a) {
   const title = a.title;
@@ -18559,11 +18563,11 @@ function createPr(a) {
   if (!Number.isFinite(num))
     mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
   logOp("create_pr", { number: num, title });
-  dispatchPostPrAgent(num);
+  dispatchPrValidation(num, branch);
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
     gh("issue", "comment", currentIssue, "--repo", REPO, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
-Atoma: PR #${num} created (${stdout.trim()}). Dispatching reviewer.`);
+Atoma: PR #${num} created (${stdout.trim()}). Running CI; the reviewer follows if it passes.`);
   }
   return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
 }
