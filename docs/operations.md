@@ -13,6 +13,13 @@ Entry workflows:
 - `atoma-pr-merged.yml` for merged PR aggregation
 - `atoma-sub-issue-closed.yml` for manual sub-issue close fallback
 
+Dispatched, not event-driven:
+
+- `atoma-validate-pr.yml` runs the configured CI against an agent's pull request,
+  publishes the result as a check run, and dispatches whoever comes next.
+  `create_pr` starts it. It cannot listen for the pull request itself, because
+  GitHub starts no workflow run for events `GITHUB_TOKEN` triggers.
+
 Shared executor:
 
 - `atoma-runner.yml` is a reusable workflow called by routing workflows.
@@ -80,7 +87,8 @@ Recovery archives the previous agent session, does not restore its assistant/too
 | Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |
 | Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |
 | Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |
-| Merge stays `BLOCKED` despite green check on head commit | `pull_request` run for the same commit awaits approval (`action_required`) | Approve the run in Actions or via `gh api --method POST repos/{owner}/{repo}/actions/runs/{run_id}/approve`; temporary workaround until #210 is fixed |
+| Agent's pull request shows a check stuck at `action_required` | GitHub holds `pull_request` runs for pull requests opened with `GITHUB_TOKEN` | Expected; the merge does not depend on it. Approve it to clear the display, but never delete the run — that breaks the commit's check rollup permanently |
+| Required check never fills on an agent's pull request | The workflow behind that context has no `workflow_dispatch` trigger, so Atoma cannot run it | Add `workflow_dispatch` to it, or drop the context from the ruleset's required list |
 
 ## Security boundaries
 
