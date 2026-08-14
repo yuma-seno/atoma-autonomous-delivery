@@ -7,7 +7,8 @@ import { parseArgs } from "util";
 
 // src/domain/pr-validation.ts
 var PASSING = new Set(["success", "skipped", "neutral"]);
-function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, engineerAgent) {
+var CI_RETRY_LIMIT = 3;
+function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0) {
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
   const checks = requiredContexts.map((name) => ({
@@ -22,6 +23,13 @@ function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, en
       checks,
       nextAgent: "",
       summary: "CI never reported a conclusion. Nothing was dispatched; a human should look."
+    };
+  }
+  if (priorRetries >= CI_RETRY_LIMIT) {
+    return {
+      checks,
+      nextAgent: "",
+      summary: `CI concluded ${normalised} after ${priorRetries} attempts at fixing it. ` + `Stopping rather than dispatching the engineer again; a human should look.`
     };
   }
   return {
@@ -47,6 +55,39 @@ function run(cmd) {
 function gh(...args) {
   return run(["gh", ...args]);
 }
+
+// src/lib/agent-name.ts
+var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
+var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
+
+// src/lib/tags.ts
+function makeTag(key, valuePattern, parse, render) {
+  const re = new RegExp(`<!--\\s*atoma:${key}=(${valuePattern})\\s*-->`);
+  return {
+    write: (value) => `<!-- atoma:${key}=${render(value)} -->`,
+    read: (text) => {
+      const m = re.exec(text);
+      return m ? parse(m[1]) : undefined;
+    },
+    has: (text) => re.test(text)
+  };
+}
+function numericTag(key) {
+  return makeTag(key, "\\d+", Number, String);
+}
+function stringTag(key, valuePattern) {
+  return makeTag(key, valuePattern, (raw) => raw, (value) => value);
+}
+var PARENT_TAG = numericTag("parent");
+var PARENT_ISSUE_TAG = numericTag("parent-issue");
+var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
+var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
+var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
+var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
+var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
+var AGGREGATED_TAG = numericTag("aggregated");
+var SUB_RESULT_TAG = numericTag("sub-result");
+var CI_RETRY_TAG = numericTag("ci-retry");
 
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
@@ -79,6 +120,30 @@ function pickDispatchedRun(runs, headSha, since) {
   const candidates = runs.filter((run3) => run3.event === "workflow_dispatch").filter((run3) => run3.head_sha === headSha).filter((run3) => run3.created_at >= since).sort((a, b) => a.created_at < b.created_at ? 1 : -1);
   const run2 = candidates[0];
   return run2 ? { id: run2.id, status: run2.status, conclusion: run2.conclusion } : undefined;
+}
+function countPriorRetries(repo, number) {
+  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}/comments?per_page=100`);
+  if (code)
+    return 0;
+  try {
+    const comments = JSON.parse(stdout || "[]");
+    return comments.filter((c) => CI_RETRY_TAG.has(c.body ?? "")).length;
+  } catch {
+    return 0;
+  }
+}
+function reportFailure(repo, number, attempt, runUrl, summary) {
+  const body = [
+    LLM_CONTEXT_TAG.write("include"),
+    CI_RETRY_TAG.write(attempt),
+    `Atoma: ${summary}`,
+    "",
+    runUrl ? `Failing run: ${runUrl}` : ""
+  ].filter(Boolean).join(`
+`);
+  const posted = gh("issue", "comment", number, "--repo", repo, "--body", body);
+  if (posted.code)
+    log(`WARN could not post the failure comment: ${posted.stderr}`);
 }
 function main() {
   const { values } = parseArgs({
@@ -125,6 +190,7 @@ function main() {
   const timeoutSeconds = Number(values["timeout-seconds"] ?? "1800");
   const deadline = Date.now() + timeoutSeconds * 1000;
   let conclusion = "";
+  let runUrl = "";
   while (Date.now() < deadline) {
     Bun.sleepSync(1e4);
     const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
@@ -135,12 +201,14 @@ function main() {
     if (run2.status !== "completed")
       continue;
     conclusion = run2.conclusion ?? "";
+    runUrl = `https://github.com/${repo}/actions/runs/${run2.id}`;
     log(`dispatched run ${run2.id} concluded ${conclusion}`);
     break;
   }
   if (!conclusion)
     log(`no conclusion within ${timeoutSeconds}s`);
-  const outcome = decideValidationOutcome(conclusion, requiredContexts, values.reviewer ?? "", values.engineer ?? "");
+  const priorRetries = countPriorRetries(repo, values.number ?? "");
+  const outcome = decideValidationOutcome(conclusion, requiredContexts, values.reviewer ?? "", values.engineer ?? "", priorRetries);
   for (const check of outcome.checks) {
     const created = gh("api", "--method", "POST", `repos/${repo}/check-runs`, "-f", `name=${check.name}`, "-f", `head_sha=${headSha}`, "-f", "status=completed", "-f", `conclusion=${check.conclusion}`);
     if (created.code)
@@ -148,6 +216,9 @@ function main() {
     else
       log(`wrote check "${check.name}" as ${check.conclusion}`);
   }
+  const passed = outcome.checks.every((check) => check.conclusion === "success");
+  if (!passed)
+    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
   write(`next_agent=${outcome.nextAgent}`);
   write(`conclusion=${conclusion}`);
   write(`summary=${outcome.summary}`);

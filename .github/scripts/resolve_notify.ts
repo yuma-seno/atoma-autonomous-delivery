@@ -60,6 +60,7 @@ var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
+var CI_RETRY_TAG = numericTag("ci-retry");
 function readAnyParentTag(text) {
   return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
 }

@@ -17964,6 +17964,7 @@ var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
+var CI_RETRY_TAG = numericTag("ci-retry");
 function readAnyParentTag(text) {
   return PARENT_TAG.read(text) ?? PARENT_ISSUE_TAG.read(text);
 }
@@ -18590,6 +18591,16 @@ function commitAndPush(a) {
       mcpFail(stderr || stdout);
   }
   logOp("commit_and_push", {});
+  const open = gh("pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number");
+  if (!open.code) {
+    try {
+      const [pr] = JSON.parse(open.stdout || "[]");
+      if (pr)
+        dispatchPrValidation(pr.number, branch);
+    } catch {
+      log2("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+    }
+  }
   return JSON.stringify({ ok: true });
 }
 function syncBranch(a) {
