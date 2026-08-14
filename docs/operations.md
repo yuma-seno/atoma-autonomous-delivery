@@ -86,3 +86,4 @@ Recovery archives the previous agent session, does not restore its assistant/too
 - Token boundary: workflows use `GITHUB_TOKEN` and declared write scopes to mutate issues/PRs/workflow dispatch.
 - Shell guard boundary: command denylist for shell MCP calls; this is not a sandbox.
 - Event boundary: `pull_request_target` executes in base repository context, so review trust model for external contributors before enabling broad automation.
+
