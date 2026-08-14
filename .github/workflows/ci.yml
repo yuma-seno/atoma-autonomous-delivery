@@ -21,7 +21,7 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
+  # pull_request:  # TEMPORARY: removed for the #224 measurement
   workflow_dispatch:
 
 permissions:
