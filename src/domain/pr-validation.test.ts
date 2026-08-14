@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decideValidationOutcome } from "./pr-validation.ts";
+import { CI_RETRY_LIMIT, decideValidationOutcome } from "./pr-validation.ts";
 
 const contexts = ["check"];
 
@@ -60,5 +60,37 @@ describe("decideValidationOutcome", () => {
 
   test("conclusions are matched case- and space-insensitively", () => {
     expect(decideValidationOutcome("  SUCCESS ", contexts, "reviewer", "engineer").nextAgent).toBe("reviewer");
+  });
+
+  // The loop this bounds is the one `manage_dispatch_loop.ts` cannot see: the
+  // engineer is dispatched by a workflow rather than by a directive it wrote, so
+  // that counter never advances and failing CI would cycle indefinitely.
+  describe("retry limit", () => {
+    test("keeps returning to the engineer below the limit", () => {
+      for (let prior = 0; prior < CI_RETRY_LIMIT; prior++) {
+        expect(
+          decideValidationOutcome("failure", contexts, "reviewer", "engineer", prior).nextAgent,
+          `prior=${prior}`,
+        ).toBe("engineer");
+      }
+    });
+
+    test("stops dispatching at the limit and says why", () => {
+      const outcome = decideValidationOutcome("failure", contexts, "reviewer", "engineer", CI_RETRY_LIMIT);
+      expect(outcome.nextAgent).toBe("");
+      expect(outcome.summary).toContain("human");
+    });
+
+    // The check still has to be written, or the pull request would look
+    // unvalidated rather than failing.
+    test("still writes a failing check when it gives up", () => {
+      const outcome = decideValidationOutcome("failure", contexts, "reviewer", "engineer", CI_RETRY_LIMIT);
+      expect(outcome.checks).toEqual([{ name: "check", conclusion: "failure" }]);
+    });
+
+    test("a passing run is unaffected by earlier retries", () => {
+      const outcome = decideValidationOutcome("success", contexts, "reviewer", "engineer", CI_RETRY_LIMIT + 5);
+      expect(outcome.nextAgent).toBe("reviewer");
+    });
   });
 });
