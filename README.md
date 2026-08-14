@@ -43,6 +43,11 @@ Required before first run:
 - Repository secret for at least one model path:
   - `OPENAI_API_KEY` (OpenAI-compatible path), or
   - `ANTHROPIC_API_KEY` (Anthropic path).
+- If a branch ruleset requires a status check, the workflow that produces it must
+  be startable with `workflow_dispatch`. Agents run it themselves; a workflow they
+  cannot start leaves the check unfilled and the pull request unmergeable
+  forever. See
+  [Requiring a check that agents can satisfy](docs/customization.md#requiring-a-check-that-agents-can-satisfy).
 - Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and
   `atoma/launched` are created on first use. Rename them in `config.json` if your
   taxonomy differs.

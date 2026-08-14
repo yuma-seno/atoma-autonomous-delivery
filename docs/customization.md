@@ -206,16 +206,71 @@ lives in the documentation.)
 }
 ```
 
-`ci` is the workflow the reviewer dispatches to put a required check on a pull
-request's head commit before merging. Defaults to `ci.yml`; set it if yours is
-named differently, or the dispatch fails silently and every merge is refused for a
-missing check.
+`ci` is the workflow Atoma runs against an agent's pull request before anyone
+reviews it. Defaults to `ci.yml`; set it if yours is named differently, or the
+dispatch fails silently and every merge is refused for a missing check.
+
+Its result decides what happens next: the reviewer is dispatched when it passes,
+the engineer when it fails. See below for what that workflow has to support.
 
 `cd` is dispatched after a successful merge. Leave it unset unless your deployment
 is chained off CI or off a push to the base branch — in that case it is required,
 not optional. An agent merge is performed with `GITHUB_TOKEN`, and GitHub starts no
 workflow run for events its own token triggers, so nothing downstream of that merge
 fires by itself and your deployment would silently never run.
+
+### Requiring a check that agents can satisfy
+
+A branch ruleset that requires a status check is the normal way to keep unreviewed
+work off your default branch, and it is worth keeping. It applies to agents
+exactly as it applies to you — nothing here asks you to exempt them.
+
+Two conditions make it work.
+
+**The workflow producing the check must accept `workflow_dispatch`.** Keep
+whatever triggers you already have; just add that one:
+
+```yaml
+on:
+  pull_request:      # keep it — this is what serves humans and forks
+  workflow_dispatch: # add it — this is how Atoma runs the same workflow
+```
+
+Atoma starts that workflow itself for an agent's pull request, waits for it, and
+publishes the result. A workflow it cannot start leaves the required check
+unfilled, and the pull request can never merge.
+
+**Only require checks from workflows Atoma can start.** Contexts that come from
+somewhere else — a coverage service, a scanner, a workflow written for
+`pull_request` alone — cannot be filled on an agent's pull request. Either drop
+them from the ruleset's required list or give them a `workflow_dispatch` trigger
+too.
+
+Set required approvals to **0**. Atoma's agents share one bot identity and GitHub
+forbids self-approval, so requiring even one review deadlocks every agent pull
+request.
+
+#### What you will see, and what not to touch
+
+An agent's pull request carries a workflow run stuck at `action_required`,
+showing as a pending check that nobody approves. **Leave it there.** GitHub holds
+it because the pull request was opened with `GITHUB_TOKEN`, and the merge does not
+depend on it: the check Atoma publishes is what satisfies the ruleset, and the
+pull request settles at `UNSTABLE`, which a ruleset permits.
+
+Deleting that held run is the tempting cleanup and it is destructive. It breaks
+the commit's check rollup in a way no re-run repairs, and the pull request becomes
+permanently unmergeable. If the pending entry bothers you, approve it.
+
+#### If your workflow reads pull request context
+
+A `workflow_dispatch` run has no `github.event.pull_request`. A step that reads
+the PR number or its diff from the event payload gets nothing when Atoma starts
+it. Resolve it from the branch instead:
+
+```bash
+PR=$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')
+```
 
 ### Rename labels
 
