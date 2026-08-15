@@ -18189,8 +18189,8 @@ function nextBranchName(branches, issueNumber) {
 function log(message) {
   console.error(`[atoma-issue-branch] ${message}`);
 }
-function collectIssueBranches(repo) {
-  const refs = gh("api", `repos/${repo}/git/matching-refs/heads/atoma/issue-`);
+function collectIssueBranches(repo, issueNumber) {
+  const refs = gh("api", `repos/${repo}/git/matching-refs/heads/atoma/issue-${issueNumber}`);
   if (refs.code) {
     log(`WARN could not list branches: ${refs.stderr || refs.stdout}`);
     return [];
@@ -18203,22 +18203,22 @@ function collectIssueBranches(repo) {
     log("WARN branch list was not valid JSON");
     return [];
   }
-  const prs = gh("api", `repos/${repo}/pulls?state=all&per_page=100`);
-  const mergedHeads = new Set;
+  const owner = repo.split("/", 1)[0] ?? "";
+  return names.map((name) => ({ name, merged: headBranchMerged(repo, owner, name) }));
+}
+function headBranchMerged(repo, owner, branch) {
+  const prs = gh("api", `repos/${repo}/pulls?state=all&per_page=100&head=${owner}:${branch}`);
   if (prs.code) {
-    log("WARN could not read pull requests; treating every branch as unmerged");
-  } else {
-    try {
-      const parsed = JSON.parse(prs.stdout || "[]");
-      for (const pr of parsed) {
-        if (pr.merged_at && pr.head?.ref)
-          mergedHeads.add(pr.head.ref);
-      }
-    } catch {
-      log("WARN pull request list was not valid JSON");
-    }
+    log(`WARN could not read pull requests for ${branch}; treating it as unmerged`);
+    return false;
   }
-  return names.map((name) => ({ name, merged: mergedHeads.has(name) }));
+  try {
+    const parsed = JSON.parse(prs.stdout || "[]");
+    return parsed.some((pr) => Boolean(pr.merged_at));
+  } catch {
+    log(`WARN pull request list for ${branch} was not valid JSON`);
+    return false;
+  }
 }
 
 // src/domain/merge-readiness.ts
@@ -18652,7 +18652,7 @@ function branchForCommit() {
   if (process.env.ATOMA_RUN_TYPE !== "issue" || !Number.isInteger(issue2) || issue2 <= 0) {
     return resolveBranch();
   }
-  const name = nextBranchName(collectIssueBranches(REPO), issue2);
+  const name = nextBranchName(collectIssueBranches(REPO, issue2), issue2);
   const created = gitRun("checkout", "-b", name);
   if (created.code)
     mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
