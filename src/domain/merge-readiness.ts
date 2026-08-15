@@ -46,6 +46,20 @@ export interface MergeSignals {
    * of the pull request rather than a computed verdict, so it does not move.
    */
   isDraft: boolean;
+  /**
+   * Whether the pull request was opened by an agent rather than by a person.
+   *
+   * Read from the author's type, not from a name, so it does not depend on which
+   * identity a deployment runs under.
+   *
+   * `merge_policy` bounds how much an agent decides on its own, and the work it
+   * was meant to bound is the agent's own. A person opening a pull request is
+   * proposing something and asking what a reviewer makes of it; merging it for
+   * them takes that decision away, and does it before they have read the review.
+   * So the policy applies to agent-authored pull requests, and a person's own
+   * stays theirs to merge.
+   */
+  authoredByAgent: boolean;
   /** Check runs on the head commit, used to name what is failing or pending. */
   checks: CheckRun[];
   /**
@@ -68,7 +82,8 @@ export type BlockerKind =
   | "checks-pending"
   | "checks-failing"
   | "mergeability-unknown"
-  | "merge-policy";
+  | "merge-policy"
+  | "human-authored";
 
 export interface Blocker {
   kind: BlockerKind;
@@ -176,6 +191,16 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
         kind: "mergeability-unknown",
         detail: `GitHub reports mergeStateStatus=${signals.mergeStateStatus ?? "null"}; retry shortly`,
       });
+  }
+
+  // A person's pull request is theirs to merge, whatever the policy says. They
+  // opened it to hear what a reviewer makes of it, and merging it for them ends
+  // that before they have read the answer.
+  if (!signals.authoredByAgent) {
+    blockers.push({
+      kind: "human-authored",
+      detail: "a person opened this pull request; review it and report, but leave the merge to them",
+    });
   }
 
   if (signals.mergePolicy !== "auto") {
