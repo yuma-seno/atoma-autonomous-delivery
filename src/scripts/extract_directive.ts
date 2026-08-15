@@ -11,6 +11,14 @@
  * "/reviewer", which would otherwise dispatch a doomed-to-fail run for a
  * non-existent agent definition.
  *
+ * That tolerance stays even though the prompt now states the line must be bare.
+ * It was considered for removal on the theory that a strict reader would force
+ * the prompt to be obeyed, but the two failures fix nothing in common: a
+ * backtick makes a real handoff disappear, while the failure worth preventing
+ * (#204) was a directive written alongside a conclusion that needed none. Only
+ * the exclusivity of the outcome prevents that one, and it is stated where the
+ * agent decides. Strictness here would cost handoffs and buy nothing.
+ *
  * Usage: extract_directive.ts --output-file atoma_output.txt --def-dir DIR
  * Writes `directive=<name-or-empty>` to $GITHUB_OUTPUT.
  */
