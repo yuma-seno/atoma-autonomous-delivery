@@ -203,9 +203,15 @@ const buildContextStep = new TypedOutputsStep(
     name: "Merge GitHub context into session",
     id: "context",
     shell: "bash",
+    // A token, because this step now fetches the images an issue references —
+    // an attachment on a private repository is not public.
+    env: { GH_TOKEN: "${{ github.token }}" },
     run: `${scriptCommandWithArgs(reconcileGithubSessionRef, {
       events: "events.json",
       "agent-name": "${{ inputs.agent }}",
+      // Read for its `vision` field: an agent whose model cannot see a picture
+      // must not be sent one.
+      "agent-def": `${AGENT_DEF_DIR}/\${{ inputs.agent }}.md`,
       config: ORCHESTRATION_FILE,
       session: "session.json",
       out: "session.json",
