@@ -16,8 +16,34 @@ const SHELL_EXECUTE_SCHEMA = z.object({
   execution_mode: z.literal("foreground").optional().default("foreground").describe("Only foreground execution is supported."),
 });
 
+/** Longest command echoed to the run log. Long enough to identify a command. */
+const LOGGED_COMMAND_CHARS = 200;
+
+/**
+ * Record what the agent ran, so a run's cost can be read from its log.
+ *
+ * One engineer run was measured making 111 of these calls out of 152 tool calls,
+ * across 134 inference iterations — and the log said only that
+ * `shell__shell_execute` had been called, which cannot tell repeated searching
+ * from repeated test runs from an agent going in circles.
+ *
+ * `console.error`, never the other one: this process's stdout is the JSON-RPC
+ * transport.
+ *
+ * Commands are truncated rather than logged whole. GitHub Actions masks the
+ * secrets it knows about, so an API key reaching a log comes out as `***`, but a
+ * value derived from one does not. Truncating bounds how much of an unmasked
+ * value can appear until masking is handled properly.
+ */
+function logCommand(command: string): void {
+  const flat = command.replace(/\s+/g, " ").trim();
+  const shown = flat.length > LOGGED_COMMAND_CHARS ? `${flat.slice(0, LOGGED_COMMAND_CHARS)}…` : flat;
+  console.error(`[atoma-shell] exec: ${shown}`);
+}
+
 async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise<string> {
   const startedAt = Date.now();
+  logCommand(args.command);
   const child = Bun.spawn(["bash", "-lc", args.command], {
     cwd: args.working_directory ?? process.cwd(),
     env: { ...process.env, ...args.environment_variables },
@@ -52,6 +78,16 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
   };
   const out = truncate(stdout);
   const err = truncate(stderr);
+  const elapsedMs = Date.now() - startedAt;
+
+  // Size matters as much as count. Every byte returned here enters the session
+  // and is resent on each later inference, so a few large outputs explain a
+  // growing prompt better than a call count does.
+  console.error(
+    `[atoma-shell] exit=${exitCode} ${elapsedMs}ms ` +
+      `stdout=${Buffer.from(out.text).length}B stderr=${Buffer.from(err.text).length}B` +
+      (out.truncated || err.truncated ? " (truncated)" : ""),
+  );
 
   return JSON.stringify({
     status: timedOut ? "timeout" : exitCode === 0 ? "completed" : "failed",
@@ -59,7 +95,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
     stdout: out.text,
     stderr: err.text,
     output_truncated: out.truncated || err.truncated,
-    execution_time_ms: Date.now() - startedAt,
+    execution_time_ms: elapsedMs,
   });
 }
 
