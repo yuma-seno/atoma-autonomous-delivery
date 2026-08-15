@@ -24,6 +24,8 @@ export interface PullRequestRefs {
 interface PullRequestView {
   mergeStateStatus?: string;
   isDraft?: boolean;
+  /** `is_bot` distinguishes an agent's pull request from a person's. */
+  author?: { is_bot?: boolean };
   state?: string;
   headRefOid?: string;
   headRefName?: string;
@@ -101,7 +103,7 @@ export function gatherMergeSignals(
     // `isDraft` is not that: it is an attribute of the pull request, not a second
     // opinion on mergeability. It is here because `mergeStateStatus` came back
     // `CLEAN` for a draft, so the verdict alone reported one as ready to merge.
-    "--json", "mergeStateStatus,isDraft,state,headRefOid,headRefName,baseRefName",
+    "--json", "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName",
   );
 
   // Check runs hang off the commit, so a `workflow_dispatch` run against the
@@ -116,6 +118,9 @@ export function gatherMergeSignals(
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
       isDraft: pr?.isDraft ?? false,
+      // Defaults to treating the author as a person. If the field is missing the
+      // safe reading is "do not merge this for someone", not "merge it".
+      authoredByAgent: pr?.author?.is_bot ?? false,
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run) => ({
         name: run.name,

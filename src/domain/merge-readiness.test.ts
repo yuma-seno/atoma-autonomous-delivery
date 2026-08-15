@@ -5,6 +5,9 @@ function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
   return {
     mergeStateStatus: "CLEAN",
     isDraft: false,
+    // The agent path is what most of these cases are about, so it is the default
+    // here. The human case is its own test below.
+    authoredByAgent: true,
     state: "OPEN",
     checks: [{ name: "check", status: "completed", conclusion: "success" }],
     requiredChecks: ["check"],
@@ -109,6 +112,33 @@ describe("decideMergeReadiness", () => {
 
   test("a draft is reported once when GitHub does return DRAFT", () => {
     expect(kinds(signals({ isDraft: true, mergeStateStatus: "DRAFT" }))).toEqual(["draft"]);
+  });
+
+  // `merge_policy` bounds what an agent decides on its own, and what it was meant
+  // to bound is the agent's own work. Merging a person's pull request for them
+  // takes the decision away, and does it before they have read the review.
+  describe("a person's pull request", () => {
+    test("blocks the merge even when everything else is clean", () => {
+      const result = decideMergeReadiness(signals({ authoredByAgent: false }));
+      expect(result.ready).toBe(false);
+      expect(result.blockers.map((b) => b.kind)).toEqual(["human-authored"]);
+    });
+
+    test("says to review and report rather than naming a defect", () => {
+      const [blocker] = decideMergeReadiness(signals({ authoredByAgent: false })).blockers;
+      expect(blocker?.detail).toContain("leave the merge to them");
+    });
+
+    // The reviewer still has to see the real blockers, or it would report "this
+    // is yours to merge" on a pull request that cannot merge yet.
+    test("is reported alongside whatever else blocks", () => {
+      const result = decideMergeReadiness(signals({ authoredByAgent: false, mergeStateStatus: "DIRTY" }));
+      expect(result.blockers.map((b) => b.kind)).toEqual(["conflicting", "human-authored"]);
+    });
+
+    test("an agent's own pull request is unaffected", () => {
+      expect(decideMergeReadiness(signals({ authoredByAgent: true })).ready).toBe(true);
+    });
   });
 
   test("an uncomputed merge state blocks as unknown", () => {
