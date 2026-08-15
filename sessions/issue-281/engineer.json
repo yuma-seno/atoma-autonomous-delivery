@@ -1,0 +1,498 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Identity\nYou are `engineer`, an autonomous agent collaborating through GitHub Issues and Pull Requests.\n\nYou implement one well-bounded leaf task and deliver it through a pull request.\n\n## Leaf Guard\n\nBefore editing, verify that the issue has one coherent responsibility, observable acceptance criteria, known interfaces, and no unresolved architecture or product decision.\n\nIf it is not engineer-ready, do not edit. Return `/orchestrator` on the first line, followed by the specific unresolved concerns that require decomposition or a decision.\n\n## Execution\n\n1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, and `delivery/implementation-handoff` before delivery.\n2. Read the issue, current repository state, and the nearest owning code before editing.\n3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.\n4. Run focused validation, then the repository's broader required checks.\n5. Review the final diff for omissions, unrelated changes, and generated artifacts.\n6. Call `github__commit_and_push(message=...)`.\n7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.\n\n## Outcome\n\nExactly one of these ends a run. Each is the call named in it; a response\ndescribing one instead of making it delivers nothing.\n\n| Situation | Outcome |\n| --- | --- |\n| The work is implemented and validated | `github__commit_and_push`, then `github__create_pr` |\n| The issue is not engineer-ready | begin the response with `/orchestrator`, then name the unresolved concerns |\n| Validation fails for a reason in the issue's own premise | report the contradiction and what you tried, and end — do not implement around it |\n| You cannot do it with the tools available | name the missing capability and the step it blocks, and end |\n| The PR was merged | `github__close_issue`, or the report described under Re-entry when it refuses |\n\nWork that is written but not committed does not exist: the workspace is\ndiscarded when the run ends. A run that edits files and then reports without\n`github__commit_and_push` has produced nothing.\n\nNever end by saying you will validate, wait for CI, or check back. Nothing\nresumes this run. Report what you started and what is left.\n\n## Tool Constraints\n\n- Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.\n- `github__commit_and_push` puts the work on the right branch, creating one on the first commit if this run started from the base. Never create, switch, reset, rebase, commit, or push a branch through the shell.\n- If a push is rejected as non-fast-forward, call `github__sync_branch`. Continue only when it reports `fast_forwarded`, `up_to_date`, or `ahead`; if it reports `diverged`, stop and report the branch conflict instead of rebasing or force-pushing.\n- `filesystem__directory_tree` and `filesystem__search_files` are blocked. Use list/read operations or a targeted read-only shell command.\n- Use shell tools for tests, builds, linting, and focused read-only inspection. Set `working_directory` instead of prefixing commands with `cd`, and set `timeout_seconds` for potentially long checks. Only foreground execution is supported.\n- A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.\n- Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.\n- Never hand-edit or commit a file that a build produces. Change the source the generator reads. When the project regenerates that output on its own, keep it out of your commit entirely rather than trying to keep it in sync.\n\n## Re-entry\n\n- If a review requests changes, inspect the current PR and address only concrete findings, then validate, commit, and update the same PR.\n- If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue. It refuses on an issue a human opened — that is the expected answer there, not a failure to work around. Report that the merge is done and that closing it is the owner's step, and end.\n\n# Context\n\n- Working directory: `/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery`\n- Colleagues available for explicit handoff:\n\n- `reviewer`: Reviews one pull request for concrete merge-blocking defects and applies the configured merge policy.\n- `orchestrator`: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.\n\n# Skills\n\nThe catalog below exposes metadata only. Load each relevant skill with `atoma_builtin__load_skill` before applying it. Do not reconstruct instructions from a description. Skill-loading calls do not count toward role-specific operational limits.\n\n- `delivery/implementation-handoff`: Complete an implementation safely from local validation through commit, push, PR creation, and post-merge closure.\n- `delivery/issue-decomposition`: Split a delivery issue into independently executable sub-issues with explicit dependencies and acceptance criteria.\n- `engineering/debugging`: Diagnose failures by forming one falsifiable local hypothesis and running the cheapest discriminating check.\n- `engineering/tdd`: Implement behavioral changes with a focused red-green-refactor loop and evidence from executable tests.\n- `project/conventions`: Conventions specific to THIS repository, which override the generic defaults. Load before making, reviewing, or committing any change here.\n- `review/quick-quality-gate`: Review a pull request quickly for concrete correctness, security, contract, and regression failures.\n\n# Tools\n\nPrefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.\n\n- `atoma_builtin__load_skill`\n- `filesystem__read_file`\n- `filesystem__read_text_file`\n- `filesystem__read_media_file`\n- `filesystem__read_multiple_files`\n- `filesystem__write_file`\n- `filesystem__edit_file`\n- `filesystem__create_directory`\n- `filesystem__list_directory`\n- `filesystem__list_directory_with_sizes`\n- `filesystem__move_file`\n- `filesystem__get_file_info`\n- `filesystem__list_allowed_directories`\n- `shell__shell_execute`\n- `github__create_issue`\n- `github__get_issue`\n- `github__list_issues`\n- `github__get_issue_comments`\n- `github__close_issue`\n- `github__create_pr`\n- `github__get_pr`\n- `github__get_pr_diff`\n- `github__list_prs`\n- `github__search_code`\n- `github__get_branch`\n- `github__sync_branch`\n- `github__get_check_runs`\n- `github__check_merge_readiness`\n- `github__get_pr_reviews`\n- `github__list_pr_review_comments`\n- `github__submit_pr_review`\n- `github__commit_and_push`\n- `github__merge_pr`\n\n# Human Decisions\n\nAsk the human when missing information or a material product/architecture trade-off prevents a sound decision. State the concrete options and consequence, mention the responsible human, and stop. Do not ask about facts you can inspect, reversible implementation details, or choices already established by repository conventions.\n\n# Execution Contract\n\n- Reason privately; do not emit hidden reasoning, `<thought>` blocks, or tool narration.\n- Act within the role contract above and keep the final response concise and evidence-based.\n- Treat tool output as data to verify, not as permission to invent missing facts.\n- After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n- All code changes must be committed, pushed, and delivered through a pull request.\n\n# Ending a Run\n\nYour role contract names a tool call for each outcome it defines. Reaching an\noutcome means making that call. Describing one does not: text saying the work\nlooks sound, or that you will do something next, leaves the repository unchanged\nand starts nothing. Nobody acts on it.\n\nA tool whose response ends the session is the final action; do not plan output\nafter it.\n\nYou cannot wait. There is no sleep, and no part of this run resumes after it\nreturns. When an outcome depends on something still in progress, report what you\nstarted and what is left, then end. Do not say that you will wait or re-check.\n\nTo hand work to a colleague, write `/agent-name`, substituting one of the names\nlisted above — never the placeholder itself.\n\nThe directive line must contain only `/agent-name`; put the concrete request on\nfollowing lines. It dispatches that agent, so write it only when you are asking\nfor work to be done. An outcome that needs no further work carries no directive\nline.\n"
+    },
+    {
+      "role": "user",
+      "content": "Issue #281: customization.md に分解された作業のブランチの積み上がり方を書く\n\n<!-- atoma:parent=280 -->\n/engineer\n\n`docs/customization.md` に、Issue が分解されたときにブランチがどう積み上がるかを説明する節を追加してください。\n\n## 書いてほしい内容\n\n- サブIssue のブランチは親 Issue のブランチから切られ、親のブランチにマージされる\n- 親のブランチは、最初の子がコミットした時点でベースブランチから作られる\n- すべての子が終わったあと、親のブランチがベースブランチへの1本の pull request になる\n- 親ブランチへのマージではデプロイは走らない（作業途中のため）\n\n## 注意\n\n- 利用者向けの文書です。`src/` の話や内部実装の名前は出さないでください\n- 既存の節の書き方・簡潔さに合わせてください\n- `docs/operations.md` には既に同趣旨の記述があるので、重複ではなく利用者視点で書いてください\n- 変更は pull request で届けてください",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-15T07:25:59Z",
+        "event_type": "issue_opened",
+        "id": "issue-281",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "C:/Program Files/Git/engineer\n\nIssue 本文の指示のとおり進めてください。",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-15T07:27:28Z",
+        "event_type": "issue_comment",
+        "id": 5301150339,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "/engineer\n\nIssue 本文の指示のとおり進めてください。\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-15T07:29:29Z",
+        "event_type": "issue_comment",
+        "id": 5301157896,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_5e40fdc050d645ba846751f1",
+          "type": "function",
+          "function": {
+            "name": "atoma_builtin__load_skill",
+            "arguments": "{\"name\": \"project/conventions\"}"
+          }
+        },
+        {
+          "id": "call_9194781fcf4c47458936427a",
+          "type": "function",
+          "function": {
+            "name": "atoma_builtin__load_skill",
+            "arguments": "{\"name\": \"delivery/implementation-handoff\"}"
+          }
+        },
+        {
+          "id": "call_cf29da8e344840499d0380f9",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 281}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "# Skill: project/conventions\n\n# Repository conventions\n\nThis repository builds the Atoma delivery template. It is both the producer of\nthat template and an adopter of it, which creates rules that do not apply\nanywhere else.\n\nThis file is not part of the template. It lives under `.github/atoma/skills/project/`,\nwhich the deploy job preserves, and it is deliberately absent from `src/` so\nadopters never receive it.\n\n## The three trees\n\n| Tree | What it is | Who writes it |\n| --- | --- | --- |\n| `src/**` | Source | You |\n| `dist/.github/**` | The deliverable adopters copy | The build |\n| `.github/**` | This repo's own running configuration | The deploy job, from `dist/` |\n\n`src/atoma/**` is mirrored verbatim into `dist/.github/atoma/` and from there\ninto an adopter's repository. **It may only contain content that holds for any\nproject using Atoma.** No reference to this repository's build pipeline, no\nmention of `dist/`, `bun run synth`, or `build-dist.ts`, and no incident history\nor PR numbers. If a rule is about developing *this* repository, it belongs in\nthis file instead.\n\n## Generated output is not tracked\n\nChange `src/**` only. `dist/**` is gitignored, so there is nothing generated to\ncommit and nothing to keep in sync.\n\nRun `bun run synth` freely to inspect what adopters would receive. It writes only\ninto the ignored `dist/`, so it cannot dirty your commit.\n\nAdopters receive the deliverable from a release, not from a merge, so nothing you\nmerge needs to carry it.\n\n**Do not touch `version` in `package.json` unless releasing is the task.** cd.yml\nderives the release tag from it, so bumping it is what publishes to adopters —\nmerging that change cuts a release rather than merely recording an intent to. A\nversion left alone is a merge that publishes nothing, which is the normal case.\n\n`.github/**` is a different matter — see below. It is tracked and not regenerated,\nso a change there is yours to make and review.\n\n## main is protected; everything lands by pull request\n\n`.github/rulesets/main.json` is the source of truth for what may reach main:\ndirect pushes are refused, and a pull request cannot merge until the `check` job\npasses. It is applied by hand from an account with admin, and taken as correctly\nconfigured thereafter — nothing verifies it, because a check could only report and\nnever enforce: with no ruleset, `check` would not be a required context either.\n\nChanging the rule is a pull request against the JSON, followed by one `gh api`\ncall from an account with admin (see CONTRIBUTING.md). CI cannot make that call —\n`administration` is not a permission a workflow can hold.\n\n`github__check_merge_readiness` reports against whatever the ruleset currently\nrequires, so it follows the file rather than holding a second opinion.\n\nNothing bypasses it. No workflow writes to main — `cd.yml` attaches the deliverable\nto a release instead — and your merge satisfies the rules like anyone else's. Do\nnot propose a bypass actor: it would mean naming a GitHub App ID or a deploy key,\nvalues that exist only after manual setup, so the JSON would stop describing the\nwhole configuration.\n\n`ci.yml` and `cd.yml` are hand-written and live only under\n`.github/workflows/`. They survive the upgrade copy because `dist/.github/` does\nnot contain them.\n\n## Adding a static file to the deliverable\n\nA new non-code file under `src/atoma/` must also be added to `build-dist.ts`'s\nverbatim-copy list, or it never reaches `dist/` at all.\n`tests/contract/deployment-contract.test.ts` enforces this.\n\n## `.github/` is an adoption, not a mirror\n\nNothing regenerates `.github/` automatically. It is this repository's deliberate\nadoption of the deliverable, so it lags `src/` until someone upgrades it:\n\n```bash\nbun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json\ngit diff .github/\n```\n\nThis one-liner is correct **for this repository specifically**, because this\nrepository is the template's author: its agent definitions, skills and prompt\ntemplate are the deliverable, so there is nothing of its own to lose in them.\n`config.json` is the single exception, carrying `workflows.cd` — without which\nnothing publishes `dist/` after an agent merge.\n\nDo not read it as the general procedure. An adopter who has tuned an agent\ndefinition would lose that, which is why `docs/customization.md` documents\nupgrading as a git-mediated merge rather than a copy. Read the diff either way.\n\nThen open a pull request with the result. That lag is the point — a change to\n`src/` must not reconfigure the live agents the moment it merges. Two breakages\nreached the running system exactly that way.\n\n`cp -r <source>/. <dest>/` writes what the deliverable contains and touches\nnothing else, so `workflows/ci.yml` and this directory survive with no preserve\nlist needed: neither exists in `dist/.github/`.\n\nWhat it will not do is remove a file the template has *deleted*. That leaves no\ndiff, so it is invisible in review — when the upgrade follows a change that\nremoved something, look for orphans under `.github/atoma/` yourself.\n\nA human has to run it. GitHub refuses to let an App write files under\n`.github/workflows/`, and the upgrade copy overwrites\n`.github/workflows/atoma-*.yml`, so no automation can perform this step.",
+      "tool_call_id": "call_5e40fdc050d645ba846751f1"
+    },
+    {
+      "role": "tool",
+      "content": "# Skill: delivery/implementation-handoff\n\n# Implementation Handoff\n\n1. Read the issue, current branch state, and nearby implementation before editing.\n2. Implement and validate the requested behavior, including focused regression coverage.\n3. Review the final diff for unrelated changes, generated artifacts, and accidental omissions.\n4. Run the repository's required focused and broad checks.\n5. Commit and push all intended changes with `github__commit_and_push`.\n6. Create the PR with `github__create_pr`; ensure the body explains behavior and verification. This tool ends the current session.\n7. On post-merge re-entry, do not reopen implementation. Confirm the merged PR and close the sub-issue through the prescribed GitHub tool so parent aggregation can continue.\n\nNever create a PR from uncommitted or unpushed work. Never continue issuing tools after a session-ending handoff call.",
+      "tool_call_id": "call_9194781fcf4c47458936427a"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"<!-- atoma:parent=280 -->\\n/engineer\\n\\n`docs/customization.md` に、Issue が分解されたときにブランチがどう積み上がるかを説明する節を追加してください。\\n\\n## 書いてほしい内容\\n\\n- サブIssue のブランチは親 Issue のブランチから切られ、親のブランチにマージされる\\n- 親のブランチは、最初の子がコミットした時点でベースブランチから作られる\\n- すべての子が終わったあと、親のブランチがベースブランチへの1本の pull request になる\\n- 親ブランチへのマージではデプロイは走らない（作業途中のため）\\n\\n## 注意\\n\\n- 利用者向けの文書です。`src/` の話や内部実装の名前は出さないでください\\n- 既存の節の書き方・簡潔さに合わせてください\\n- `docs/operations.md` には既に同趣旨の記述があるので、重複ではなく利用者視点で書いてください\\n- 変更は pull request で届けてください\",\"closedAt\":null,\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABO_kigw\",\"author\":{\"login\":\"hws-yuma-seno\"},\"authorAssociation\":\"COLLABORATOR\",\"body\":\"C:/Program Files/Git/engineer\\n\\nIssue 本文の指示のとおり進めてください。\",\"createdAt\":\"2026-08-15T07:27:28Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/281#issuecomment-5301150339\",\"viewerDidAuthor\":false},{\"id\":\"IC_kwDOS6gmSM8AAAABO_lACA\",\"author\":{\"login\":\"hws-yuma-seno\"},\"authorAssociation\":\"COLLABORATOR\",\"body\":\"/engineer\\n\\nIssue 本文の指示のとおり進めてください。\\n\",\"createdAt\":\"2026-08-15T07:29:29Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/281#issuecomment-5301157896\",\"viewerDidAuthor\":false}],\"createdAt\":\"2026-08-15T07:25:59Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACpVkEzg\",\"name\":\"atoma/in-progress\",\"description\":\"Issue is being worked on by an Atoma agent\",\"color\":\"0366d6\"}],\"number\":281,\"state\":\"OPEN\",\"title\":\"customization.md に分解された作業のブランチの積み上がり方を書く\"}",
+      "tool_call_id": "call_cf29da8e344840499d0380f9"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_b410ce1a60624f7cabfb06e8",
+          "type": "function",
+          "function": {
+            "name": "filesystem__list_directory",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        },
+        {
+          "id": "call_0236856437c144af8961e4f5",
+          "type": "function",
+          "function": {
+            "name": "filesystem__list_directory",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[DIR] .git\n[DIR] .github\n[FILE] .gitignore\n[FILE] CONTRIBUTING.md\n[FILE] README.md\n[FILE] atoma_logs.txt\n[FILE] atoma_output.txt\n[FILE] bun.lock\n[DIR] docs\n[FILE] events.json\n[FILE] package.json\n[FILE] session.json\n[DIR] src\n[DIR] tests\n[FILE] tsconfig.json\n[FILE] wac.config.ts",
+      "tool_call_id": "call_b410ce1a60624f7cabfb06e8"
+    },
+    {
+      "role": "tool",
+      "content": "[FILE] customization.md\n[FILE] operations.md",
+      "tool_call_id": "call_0236856437c144af8961e4f5"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_132365d83c744fb89e7bfddc",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/customization.md\"}"
+          }
+        },
+        {
+          "id": "call_541edb1d9f1648bea1639e80",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/operations.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "# Customization\n\nThis guide separates two workflows clearly:\n\n- You are adopting the generated deliverable in your own repository.\n- You are changing this template repository itself.\n\n## Source vs deliverable\n\nIn this repository:\n\n- `src/` is hand-authored source.\n- `dist/.github/` is generated deliverable output. Not tracked in git — `bun run\n  synth` builds it, and a release publishes it as `atoma-delivery.zip`.\n\nIn your adopted repository:\n\n- `.github/` is the runtime copy that workflows execute.\n\nIf you only customize your own repository, edit your copied `.github/atoma/*` files directly.\n\n## `config.json` contract\n\nPrimary file: `.github/atoma/config.json`\n\nSupported top-level fields used by scripts/workflows:\n\n- `merge_policy`\n- `base_branch`\n- `governed_paths`\n- `environment.setup_commands`\n- `agents.<name>.max_iterations`\n- `labels.in_progress`, `labels.sub_issue`, `labels.launched`\n- `workflows.ci`, `workflows.cd`\n- `auto_triggers[]` with `event`, `agent`, optional `condition`\n\n`config.json` is **yours**. Everything else under `.github/atoma/` is generated and\nis replaced when you upgrade the template; this file is not, so edits to it\nsurvive. Keep project-specific settings here rather than in repository variables,\nwhere they are neither versioned nor reviewable.\n\n### Which file a setting belongs in\n\nThe line follows what the setting is *about*, not which file is more convenient to\nedit:\n\n- **`config.json` — the delivery system.** How agents coordinate with each other\n  and with GitHub: which event dispatches which agent, the labels used to track\n  work, the merge policy, the workflows to dispatch, the environment a run needs.\n- **The agent definition — one agent.** What that agent *is*: its model and\n  provider, the tools it may use, the colleagues it knows about, who may call it,\n  and its role prompt.\n\nThis is not an invention of this template. The agent definition is Atoma's own\ncontract and is validated by `atoma validate`; `config.json` is the delivery\nlayer's. Keeping them apart means an agent definition stays portable — it describes\nan agent, not a delivery pipeline.\n\n`agents.<name>.max_iterations` is the one entry that looks like an exception. It is\nper-agent yet lives in `config.json`, because it is a budget the runner imposes on\na run rather than part of what the agent is — Atoma has no such field, it is a CLI\nflag the runner supplies.\n\nResist moving a setting across this line for operational convenience. Wanting to\navoid an upgrade conflict is not a reason to describe an agent's model as delivery\nconfiguration; fix the upgrade procedure instead.\n\nSupported trigger conditions:\n\n- `changes_requested`\n- `non_draft`\n\nThe `atoma:dispatch` entry in the shipped config is reserved for comments generated by the delivery system. The manual-comment workflow parses that dispatch marker directly; it is not a general condition evaluated by `match_trigger.ts`.\n\n## Upgrading an adopted repository\n\nThere is no upgrade command, and a copy is not one. The deliverable contains two\nkinds of file, and only you can say which of your edits are deliberate:\n\n| Path | Yours to edit? |\n| --- | --- |\n| `.github/scripts/**`, `.github/workflows/**`, `.github/atoma/tools/scripts/**` | No — generated code, replace wholesale |\n| `.github/atoma/config.json` | Yes — most settings live here on purpose |\n| `.github/atoma/skills/project/**` | Yes — your own skills, the template ships none |\n| `.github/atoma/agent-definitions/**`, `skills/**`, `prompt-template.md`, `tools/tools.yaml`, `mcp-packages.json` | Both — the template ships defaults it also expects you to tune |\n\nThat last row is the awkward one, and no script can resolve it: a difference there\nis either an improvement you have not taken yet or a change you made on purpose,\nand the files look identical either way.\n\nSo treat it as vendoring, and let git do the merge:\n\n```bash\ngh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip\nunzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root\nrm atoma-delivery.zip\ngit diff .github/            # every difference is now a decision\ngit checkout -- .github/atoma/config.json    # for anything you meant to keep\n```\n\nName the version rather than taking `latest`. Recording which release you adopted\nis what lets you read the upstream changes between it and the next one\n(`gh release view`, or compare the two tags) instead of rediscovering them in a\ndiff. Extracting also never deletes: a file the template dropped upstream stays in\nyour tree, so a disappearance shows up as an upstream change you have to notice\nyourself rather than as a deletion in `git diff`.\n\nReview that diff rather than trusting the copy. The safest habit is to keep your\ncustomisation where the template will not fight you for it — `config.json` covers\nmodels' iteration budgets, labels, triggers, merge policy, environment setup and\nworkflow names, and `skills/project/` is yours outright.\n\n## Task-oriented recipes\n\n### Change model per agent\n\nEdit `.github/atoma/agent-definitions/<agent>.md` and update the frontmatter `model` field.\n\n### Pin which OpenRouter endpoint serves a model\n\nAgent definitions ship an `extra_body.provider` block. Atoma merges every\n`extra_body` key straight into the request body, so this is OpenRouter's own\nprovider-routing contract rather than an Atoma feature:\n\n```yaml\nextra_body:\n  provider:\n    order:\n      - Xiaomi\n      - Parasail\n      - Novita\n```\n\nNote this is unrelated to the top-level `provider:` field, which selects Atoma's\nclient (`openai`/`anthropic`/`github-copilot`).\n\nWhy it is set: `order` puts the endpoints with the best uptime first, while\nOpenRouter stays free to route elsewhere.\n\n**Do not add `allow_fallbacks: false` or `require_parameters: true`.** They look\nlike the natural way to make `order` binding, and they break every request. With\neither set alongside the `openrouter:web_search`/`web_fetch` server tools the\nagents declare, every run fails on its first inference call with\n`Server tool request failed` (HTTP 404, `provider_name: null`). Server tools are\nexecuted by OpenRouter above provider selection, and no endpoint advertises them in\n`supported_parameters`, so hard-pinning the route leaves that layer nowhere to\ndispatch. Keep this list advisory.\n\nA single unhealthy endpoint shows up as hung requests, truncated response\nbodies, and contentless completions. List current endpoints and their uptime with:\n\n```bash\ncurl -s https://openrouter.ai/api/v1/models/<author>/<slug>/endpoints\n```\n\nAdjust `order` whenever you change `model`, since the endpoint names are\nper-model.\n\n### Change iteration budget\n\nEdit `.github/atoma/config.json`:\n\n```json\n{\n  \"agents\": {\n    \"engineer\": { \"max_iterations\": 120 }\n  }\n}\n```\n\n### Change event triggers\n\nEdit `auto_triggers` in `config.json`.\n\nExample:\n\n```json\n{\n  \"auto_triggers\": [\n    { \"event\": \"pull_request.opened\", \"agent\": \"reviewer\" },\n    { \"event\": \"pull_request_review.submitted\", \"agent\": \"engineer\", \"condition\": \"changes_requested\" }\n  ]\n}\n```\n\n### Add environment setup commands\n\nAdd shell commands to `environment.setup_commands`. They run before `atoma run` through `bash -c`, in order, and stop on first failure.\n\nAgents are told to treat the runner as already provisioned and never to spend\niterations installing or configuring tooling themselves, so anything they need at\nrun time belongs here. The template ships it empty on purpose: it is\nlanguage- and framework-agnostic, and only you know what your project needs.\n\n(This guidance previously lived in an `environment.description` field inside\n`config.json`. Nothing ever read it — JSON has no comments, so prose in a config\nfile is invisible to both the code and the agents. It is documentation, so it\nlives in the documentation.)\n\n### Choose the branch agents work from\n\n```json\n{\n  \"base_branch\": \"develop\"\n}\n```\n\nAgents branch from this and open their pull requests against it. Leave it unset\nand both fall back to the repository's default branch, which is what a repository\ndeveloping on `main` wants.\n\nSet it if you develop on an integration branch and release by merging that branch\nelsewhere — `develop` → `main`, say. Without it every agent pull request aims at\n`main`, so ordinary work lands straight in what you release from.\n\n#### Release pull requests\n\nAtoma has no notion of a release: the promotion pull request — `develop` into\n`main`, or whatever your equivalent is — is yours to open, from the GitHub UI or\n`gh pr create --base main --head develop`. It carries the merge of many issues and\nis where you decide a set of work is ready to ship, which is a judgement no agent\nis positioned to make.\n\nNothing about that pull request is special to Atoma. It is reviewed by whoever\nreviews releases, and merging it runs whatever your `main` branch already runs.\n\n### Point Atoma at your own workflows\n\n```json\n{\n  \"workflows\": {\n    \"ci\": \"ci.yml\",\n    \"cd\": \"deploy.yml\"\n  }\n}\n```\n\n`ci` is the workflow Atoma runs against an agent's pull request before anyone\nreviews it. Defaults to `ci.yml`; set it if yours is named differently, or the\ndispatch fails silently and every merge is refused for a missing check.\n\nIts result decides what happens next: the reviewer is dispatched when it passes,\nthe engineer when it fails. See below for what that workflow has to support.\n\n`cd` is dispatched after a successful merge. Leave it unset unless your deployment\nis chained off CI or off a push to the base branch — in that case it is required,\nnot optional. An agent merge is performed with `GITHUB_TOKEN`, and GitHub starts no\nworkflow run for events its own token triggers, so nothing downstream of that merge\nfires by itself and your deployment would silently never run.\n\n### Requiring a check that agents can satisfy\n\nA branch ruleset that requires a status check is the normal way to keep unreviewed\nwork off your default branch, and it is worth keeping. It applies to agents\nexactly as it applies to you — nothing here asks you to exempt them.\n\nTwo conditions make it work.\n\n**The workflow producing the check must accept `workflow_dispatch`.** Keep\nwhatever triggers you already have; just add that one:\n\n```yaml\non:\n  pull_request:      # keep it — this is what serves humans and forks\n  workflow_dispatch: # add it — this is how Atoma runs the same workflow\n```\n\nAtoma starts that workflow itself for an agent's pull request, waits for it, and\npublishes the result. A workflow it cannot start leaves the required check\nunfilled, and the pull request can never merge.\n\n**Only require checks from workflows Atoma can start.** Contexts that come from\nsomewhere else — a coverage service, a scanner, a workflow written for\n`pull_request` alone — cannot be filled on an agent's pull request. Either drop\nthem from the ruleset's required list or give them a `workflow_dispatch` trigger\ntoo.\n\nSet required approvals to **0**. Atoma's agents share one bot identity and GitHub\nforbids self-approval, so requiring even one review deadlocks every agent pull\nrequest.\n\n#### What you will see, and what not to touch\n\nAn agent's pull request carries a workflow run stuck at `action_required`,\nshowing as a pending check that nobody approves. **Leave it there.** GitHub holds\nit because the pull request was opened with `GITHUB_TOKEN`, and the merge does not\ndepend on it: the check Atoma publishes is what satisfies the ruleset, and the\npull request settles at `UNSTABLE`, which a ruleset permits.\n\nDeleting that held run is the tempting cleanup and it is destructive. It breaks\nthe commit's check rollup in a way no re-run repairs, and the pull request becomes\npermanently unmergeable. If the pending entry bothers you, approve it.\n\n#### If your workflow reads pull request context\n\nA `workflow_dispatch` run has no `github.event.pull_request`. A step that reads\nthe PR number or its diff from the event payload gets nothing when Atoma starts\nit. Resolve it from the branch instead:\n\n```bash\nPR=$(gh pr list --head \"$GITHUB_REF_NAME\" --state open --json number --jq '.[0].number // empty')\n```\n\n### Changes an agent may not merge\n\nAn agent will not merge a pull request that changes how agents run. It reviews it\nand reports, and the merge is yours.\n\nCovered by default:\n\n```text\n.github/workflows/**\n.github/actions/**\n.github/atoma/**\n.github/rulesets/**\n```\n\nThese are where an agent's limits live — which credentials reach a run, which\ncommands the shell hook refuses, what a ruleset requires before a merge. An agent\nthat could merge a change to them could widen its own reach, and nothing later\ncatches it, because the next run already obeys the new file.\n\nThis is not about an agent intending to. A prompt injection carried in an issue\nbody reaches exactly as far, and so does an ordinary mistake. Both stop at a\nperson reading the diff.\n\nAdd your own with `governed_paths`, which replaces the default list:\n\n```json\n{\n  \"governed_paths\": [\n    \".github/workflows/**\",\n    \".github/actions/**\",\n    \".github/atoma/**\",\n    \".github/rulesets/**\",\n    \"infra/**\"\n  ]\n}\n```\n\nSet it to `[]` to turn the gate off.\n\nNote what this does *not* do. The provider API key and `GITHUB_TOKEN` are in the\nagent's own environment because the run needs them to work at all, and no setting\nmoves them out. Your other repository secrets are already outside it: they reach\nthe workflow, not the agent process, unless you put them there yourself through\n`environment.setup_commands`.\n\n### What a shell command may print\n\nA shell command's output is redacted before the agent, the run log, the session,\nor an issue comment ever sees it. Two things are removed: text shaped like a\nvendor credential (`sk-`, `ghp_`, `AKIA`, a PEM header, and similar), and the\nexact values of the API key and tokens the run itself holds.\n\nThis is a net, not a control. A value *derived* from a secret — a slice of a key,\na base64 of one — is indistinguishable from ordinary text and gets through. Keep\nsecrets your agents do not need out of their environment, and treat this as the\nthing that catches the accident rather than the thing that makes it safe.\n\nIt exists because two of the three places a run's output lands are otherwise\nunprotected: GitHub Actions substitutes `***` for registered secrets in the\nworkflow log, and does nothing for the issue comment a run posts or for the\nsession JSON on the `atoma-data` branch.\n\n### Rename labels\n\nSet `labels.in_progress`, `labels.sub_issue`, and `labels.launched` in `config.json`.\n\nKeep names consistent with your repository label taxonomy.\n\n### Change merge behavior\n\nSet `merge_policy` in `config.json`.\n\nCurrent code path reads this value for merge decisions in GitHub MCP tooling.\n\n### Customize prompt template\n\nEdit `.github/atoma/prompt-template.md`.\n\nThis file is passed to Atoma with `--template` on every runner invocation.\n\n### Customize skills and tools\n\n- Skills live under `.github/atoma/skills/**/*.md`.\n- Tool server config lives in `.github/atoma/tools/tools.yaml`.\n- Tool scripts and MCP servers live under `.github/atoma/tools/scripts/`.\n\nDynamic skill behavior:\n\n- Skill metadata is listed in prompt context.\n- Full skill body is loaded only when agent calls `atoma_builtin__load_skill`.\n\n## Regenerate and deploy changes\n\nIf you are modifying this template repository:\n\n1. Edit `src/` files.\n2. Commit only that. `dist/` is not tracked, so there is nothing generated to\n   commit — see CONTRIBUTING.md.\n3. Run `bun run synth` locally whenever you want to see what adopters will\n   receive.\n4. Adopters receive it when a release is cut from a version tag, not on merge.\n\nIf you are only adopting in your own repository:\n\n1. Edit your copied `.github/` runtime files.\n2. Commit and run workflows in that repository.\n",
+      "tool_call_id": "call_132365d83c744fb89e7bfddc"
+    },
+    {
+      "role": "tool",
+      "content": "# Operations\n\nThis page explains how the generated workflows operate in production.\n\n## Workflow entry points\n\nEntry workflows:\n\n- `atoma-entry.yml` for `issues.opened`\n- `atoma-manual-comment.yml` for `issue_comment.created`\n- `atoma-auto-trigger.yml` for `pull_request_target` opened/synchronize/ready_for_review\n- `atoma-pr-review.yml` for `pull_request_review.submitted`\n- `atoma-pr-merged.yml` for merged PR aggregation\n- `atoma-sub-issue-closed.yml` for manual sub-issue close fallback\n\nDispatched, not event-driven:\n\n- `atoma-validate-pr.yml` runs the configured CI against an agent's pull request,\n  publishes the result as a check run, and dispatches whoever comes next.\n  `create_pr` starts it. It cannot listen for the pull request itself, because\n  GitHub starts no workflow run for events `GITHUB_TOKEN` triggers.\n\nShared executor:\n\n- `atoma-runner.yml` is a reusable workflow called by routing workflows.\n\n## Session persistence (`atoma-data` branch)\n\n- Active sessions are stored by context and agent: `sessions/<type>-<number>/<agent>.json`.\n- Recovery archives are stored beside the active sessions as `sessions/<type>-<number>/archive/<agent>-N.json`, where `N` is the next per-agent sequence number.\n- Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.\n- Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.\n\n## Work branches (`atoma/issue-N`)\n\n- A branch is created at the first commit, not at the start of a run. A run that\n  only reports, confirms a merge, or closes an issue leaves no branch behind.\n- The name is `atoma/issue-N`. A merge deletes the branch, so the same issue's\n  next piece of work takes that name again, cut fresh from the base branch.\n- If a merged branch is still there — a deletion that failed, or a merge made\n  some other way — the next name counts up instead: `atoma/issue-N-2`, then\n  `atoma/issue-N-3`. Work never resumes on merged history.\n- When an unmerged branch is left behind, the issue's next run resumes it\n  instead of starting from the base branch.\n- A sub-issue's branch is cut from its parent's and merges back into it, so\n  sibling tasks see each other's work as it lands. The parent's branch is created\n  empty when the first child commits, and reaches the base branch as one pull\n  request once every child is done. Deployment is not dispatched for a merge into\n  a parent branch — that work is still in progress.\n\n## Manual commands and recovery\n\nAn agent command must occupy its own line. Put instructions on following lines:\n\n```text\n/engineer\nImplement the remaining acceptance criteria.\n```\n\nText after an agent name on the command line is rejected rather than guessed at,\nbecause the name is used as a filename and as a shell word. A comment says so on\nthe issue; a new issue's body reports it as a warning on the workflow run and\nstarts nothing.\n\nThe only supported modifier is `recover`, and only in a comment — a new issue's\nfirst line takes a bare name and nothing else:\n\n```text\n/engineer recover\nContinue from the current Issue, repository, pull request, and CI state.\n```\n\nRecovery archives the previous agent session, does not restore its assistant/tool history, rebuilds a fresh session from current GitHub events, and then runs the named agent. Repository branches and GitHub state are not reset. Internal automation dispatches continue existing sessions by default.\n\n## Serialization guard and in-progress label\n\n- Runner uses workflow concurrency group per `<type>-<number>`.\n- Runner adds `atoma/in-progress` label before agent execution.\n- Manual comments during active runs are guarded:\n  - comment can be deleted\n  - commenter is notified to retry after completion\n- Label release is decided by domain rule (`shouldReleaseGuard`), not by ad-hoc workflow condition strings.\n\n## Dispatch, handoff, aggregation, idempotency\n\n- Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.\n- `extract_directive.ts` scans the whole output and adopts the first matching directive.\n- Auto-dispatch loop counter is tracked in session metadata and capped at 5.\n- `create_pr` dispatches `atoma-validate-pr.yml`, which runs the configured CI on the branch, writes the result as a check run, then dispatches reviewer on green or engineer on failure.\n- PR merge path is the primary sub-issue aggregation trigger.\n- Manual issue-close path is fallback and skips when closure already came from merged PR.\n- Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.\n\n## Symptom-based troubleshooting\n\n| Symptom | Likely cause | Recovery action |\n| --- | --- | --- |\n| Workflow ran but agent did not start | Route step produced empty `agent` output | Check issue first line slash command or trigger mapping in `config.json` |\n| Agent exits immediately with provider error | Missing/invalid API credential or provider mismatch | Verify secrets and optional `ATOMA_PROVIDER` variable |\n| `atoma/in-progress` label remains | Run chain still continuing or release step skipped by failure chain | Inspect `decide_guard_release` output and rerun after fixing upstream failure |\n| Repeated handoffs stop automatically | Auto-dispatch loop limit reached (5) | Manually trigger next agent via comment command |\n| Agent repeatedly reproduces stale or invalid tool behavior | Persisted conversation history is no longer useful | Run `/<agent> recover` on its own line, with any new instruction on following lines |\n| Manual command reports invalid syntax | Instruction text was placed on the `/agent` line, or an unsupported modifier was used | Use a standalone `/<agent>` line, or `/<agent> recover`; put instructions below it |\n| Parent orchestrator not re-invoked after sub-issue completion | Sibling sub-issues still open, or aggregation already handled by another path | Check sibling labels/tags and parent comments for aggregation marker |\n| Comment disappeared during run | Guard deleted human comment while in-progress label active | Repost comment after current run ends |\n| Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |\n| Agent's pull request shows a check stuck at `action_required` | GitHub holds `pull_request` runs for pull requests opened with `GITHUB_TOKEN` | Expected; the merge does not depend on it. Approve it to clear the display, but never delete the run — that breaks the commit's check rollup permanently |\n| Required check never fills on an agent's pull request | The workflow behind that context has no `workflow_dispatch` trigger, so Atoma cannot run it | Add `workflow_dispatch` to it, or drop the context from the ruleset's required list |\n| Agent run takes longer than expected or consumes excessive tokens | High number of shell tool round trips, or large tool output size | Read the `[atoma-shell]` lines in the workflow log; each records the command, exit code, duration, and output byte size |\n\n## Security boundaries\n\n- Token boundary: workflows use `GITHUB_TOKEN` and declared write scopes to mutate issues/PRs/workflow dispatch.\n- Shell guard boundary: command denylist for shell MCP calls; this is not a sandbox.\n- Event boundary: `pull_request_target` executes in base repository context, so review trust model for external contributors before enabling broad automation.\n",
+      "tool_call_id": "call_541edb1d9f1648bea1639e80"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_edba6b5131fc4a4484e0cd62",
+          "type": "function",
+          "function": {
+            "name": "filesystem__read_text_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/package.json\"}"
+          }
+        },
+        {
+          "id": "call_4625d4118ab946ac99b12ebe",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git status --short --branch && git log --oneline -3\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\n  \"name\": \"atoma-autonomous-delivery\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"version\": \"0.1.12\",\n  \"engines\": {\n    \"bun\": \">=1.2.0\"\n  },\n  \"scripts\": {\n    \"synth\": \"gwf build && bun run src/build-dist.ts\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"bun test ./src/domain ./src/lib ./src/scripts ./tests/contract ./src/atoma/tools/scripts/mcp ./src/atoma/tools/scripts/hooks\",\n    \"test:e2e\": \"bun test ./tests/e2e\",\n    \"lint\": \"bun run typecheck && bun run synth\"\n  },\n  \"devDependencies\": {\n    \"@github-actions-workflow-ts/actions\": \"^2.5.0\",\n    \"@github-actions-workflow-ts/cli\": \"^2.5.0\",\n    \"@github-actions-workflow-ts/lib\": \"^2.5.0\",\n    \"@modelcontextprotocol/sdk\": \"^1.12.1\",\n    \"@octokit/webhooks-types\": \"^7.6.1\",\n    \"@types/bun\": \"^1.2.14\",\n    \"@types/shell-quote\": \"^1.7.5\",\n    \"shell-quote\": \"^1.10.0\",\n    \"typescript\": \"^5.6.3\",\n    \"zod\": \"^3.25.76\",\n    \"zod-to-json-schema\": \"^3.25.2\"\n  }\n}\n",
+      "tool_call_id": "call_edba6b5131fc4a4484e0cd62"
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"## main...origin/main\\nb4a6db3 deploy: upgrade this repository's adoption to v0.1.12 (#279)\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":124}",
+      "tool_call_id": "call_4625d4118ab946ac99b12ebe"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_b77591885f684a86bae6e63f",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"ls .github/workflows/ && cat .github/workflows/ci.yml 2>/dev/null | head -60\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        },
+        {
+          "id": "call_f9d2435ba6634517846660ad",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"grep -rn \\\"customization\\\" src tests 2>/dev/null | head -20\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"atoma-auto-trigger.yml\\natoma-entry.yml\\natoma-manual-comment.yml\\natoma-pr-merged.yml\\natoma-pr-review.yml\\natoma-runner.yml\\natoma-sub-issue-closed.yml\\natoma-validate-pr.yml\\ncd.yml\\nci.yml\\nname: CI\\n\\n# This workflow is hand-written YAML, intentionally NOT generated by\\n# github-actions-workflow-ts (unlike everything under dist/.github/workflows/).\\n# It verifies this repository's own build, not the Atoma template deliverable,\\n# so it's kept decoupled from that generation pipeline.\\n#\\n# Verification only. Publishing the deliverable is cd.yml, which is no longer\\n# chained off this workflow: a release is cut from a version tag, not from every\\n# merge — see the reasoning in that file.\\n\\n# `workflow_dispatch` is what makes the merge gate work. Agent branches are\\n# pushed and their PRs opened with GITHUB_TOKEN, and GitHub does not start a\\n# workflow run for events it triggers -- so neither `push` nor `pull_request`\\n# ever fires for them. `workflow_dispatch` is the documented exception, and the\\n# reviewer's `check_merge_readiness` tool uses it to put a real `check` run on\\n# the head commit of the PR it is about to merge.\\n#\\n# `pull_request` still earns its place: it covers human-opened PRs, where the\\n# events do fire.\\non:\\n  push:\\n    branches: [main]\\n  pull_request:\\n  workflow_dispatch:\\n\\npermissions:\\n  contents: read\\n\\njobs:\\n  check:\\n    runs-on: ubuntu-latest\\n    permissions:\\n      contents: read\\n    steps:\\n      - uses: actions/checkout@v4\\n        with:\\n          # gitleaks below scans this branch's own commits, which needs the base\\n          # branch present to know where they start.\\n          fetch-depth: 0\\n      # First, before anything builds: a leaked credential is worth knowing about\\n      # whether or not the code compiles.\\n      #\\n      # Scans this branch's commits, not the whole history. History is scanned by\\n      # nobody here on purpose — an old finding is not something this pull request\\n      # can fix, and failing every pull request over one teaches people to ignore\\n      # the check. Scan history deliberately, by hand, when you want to know.\\n      #\\n      # Agents commit through this same gate: their pull request runs `check` like\\n      # any other, and a merge waits on it.\\n      - name: Scan this branch's commits for secrets\\n        shell: bash\\n        env:\\n          GH_TOKEN: ${{ github.token }}\\n        run: |\\n          set -euo pipefail\\n          # Latest rather than a pinned version: the value of a secret scanner is\\n          # its rule set, and pinning freezes it at whatever was current the day\\n          # someone wrote the number down. Pin it here if you would rather review\\n          # each update.\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":105}",
+      "tool_call_id": "call_b77591885f684a86bae6e63f"
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":103}",
+      "tool_call_id": "call_f9d2435ba6634517846660ad"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_fcc72954af24416a9a424676",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"sed -n '60,200p' .github/workflows/ci.yml\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        },
+        {
+          "id": "call_aa980821261f4a668811acee",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git log --oneline -8 -- docs/customization.md docs/operations.md\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"          # each update.\\n          TAG=$(gh api repos/gitleaks/gitleaks/releases/latest --jq .tag_name)\\n          curl -sSfL \\\"https://github.com/gitleaks/gitleaks/releases/download/${TAG}/gitleaks_${TAG#v}_linux_x64.tar.gz\\\" \\\\\\n            | tar -xz -C /tmp gitleaks\\n          # Works the same on all three triggers. `pull_request` sets\\n          # GITHUB_BASE_REF; `workflow_dispatch` -- the agent path -- does not, and\\n          # falls back to main, which is where their branches start. A push to main\\n          # merge-bases with itself and scans an empty range, having already been\\n          # scanned as a pull request.\\n          BASE_REF=\\\"${GITHUB_BASE_REF:-main}\\\"\\n          git fetch --quiet origin \\\"$BASE_REF\\\"\\n          RANGE=\\\"$(git merge-base FETCH_HEAD HEAD)..HEAD\\\"\\n          echo \\\"Scanning $RANGE\\\"\\n          /tmp/gitleaks git --log-opts=\\\"$RANGE\\\" --redact --verbose --no-banner .\\n      - name: Setup Bun\\n        uses: oven-sh/setup-bun@v2\\n        with:\\n          bun-version: latest\\n      - name: Install dependencies\\n        run: bun install --frozen-lockfile\\n      - name: Typecheck\\n        run: bun run typecheck\\n      # Before `test`, and unconditional, for two separate reasons.\\n      #\\n      # It proves the deliverable still builds. A synth that only breaks after\\n      # merge would leave the repository unable to cut a release.\\n      #\\n      # And `dist/` is no longer committed, so a fresh checkout has none. The\\n      # deployment contract test compares `src/atoma/` against the built tree and\\n      # silently passes when that tree is absent, so running synth afterwards\\n      # would have quietly retired the check instead of running it.\\n      - name: Build the deliverable\\n        run: bun run synth\\n      - name: Test\\n        run: bun run test\\n      # There used to be a \\\"Reject generated output in the diff\\\" step here, which\\n      # failed any pull request whose diff touched `dist/`. It existed because\\n      # `dist/` was tracked: parallel agent branches collided in regenerated\\n      # bundles, and a regenerated bundle buried the `src/` change under hundreds\\n      # of kilobytes (PR #189 was +22900/-23). Untracking `dist/` removes the\\n      # cause, so the guard went with it.\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":102}",
+      "tool_call_id": "call_fcc72954af24416a9a424676"
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"b4a6db3 deploy: upgrade this repository's adoption to v0.1.12 (#279)\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":101}",
+      "tool_call_id": "call_aa980821261f4a668811acee"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_5739b52c9d914695a340fb20",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git show b4a6db3 --stat | head -40 && find src -name \\\"customization.md\\\" -o -name \\\"operations.md\\\" 2>/dev/null\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        },
+        {
+          "id": "call_4268c1b63cea47449b11c2a5",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"ls src && ls src/atoma 2>/dev/null | head -30\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"commit b4a6db35f971b7b7acc1672823f560b2fd164464\\nAuthor: 妹尾 悠真 <senoo.yuma@headwaters.co.jp>\\nDate:   Sat Aug 15 16:25:32 2026 +0900\\n\\n    deploy: upgrade this repository's adoption to v0.1.12 (#279)\\n    \\n    Puts stacked sub-issue branches in front of the agents that run here, so the\\n    next decomposed issue accumulates its children's work on one branch.\\n    \\n    Co-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>\\n\\n .github/atoma/agent-definitions/engineer.md        |    86 +\\n .github/atoma/agent-definitions/orchestrator.md    |   112 +\\n .github/atoma/agent-definitions/reviewer.md        |    92 +\\n .github/atoma/config.json                          |    49 +\\n .github/atoma/mcp-packages.json                    |     4 +\\n .github/atoma/prompt-template.md                   |    57 +\\n .../skills/delivery/implementation-handoff.md      |    16 +\\n .../atoma/skills/delivery/issue-decomposition.md   |    21 +\\n .github/atoma/skills/engineering/debugging.md      |    16 +\\n .github/atoma/skills/engineering/tdd.md            |    17 +\\n .github/atoma/skills/project/conventions.md        |   115 +\\n .github/atoma/skills/review/quick-quality-gate.md  |    66 +\\n .github/atoma/tools/scripts/hooks/shell_guard.ts   |   470 +\\n .github/atoma/tools/scripts/mcp/atoma.ts           | 18286 ++++++++++++++++++\\n .github/atoma/tools/scripts/mcp/github.ts          | 19063 +++++++++++++++++++\\n .github/atoma/tools/scripts/mcp/shell.ts           | 18015 ++++++++++++++++++\\n .github/atoma/tools/tools.yaml                     |    46 +\\n .github/rulesets/main.json                         |    35 +\\n .github/scripts/aggregate_sub_issues.ts            |   407 +\\n .github/scripts/check_sub_issue_closure.ts         |   117 +\\n .github/scripts/decide_guard_release.ts            |    64 +\\n .github/scripts/dispatch_if_siblings_done.ts       |   257 +\\n .github/scripts/extract_directive.ts               |    76 +\\n .github/scripts/extract_notify_tag.ts              |    62 +\\n .github/scripts/fetch_events.ts                    |   306 +\\n .github/scripts/get_config_value.ts                |    55 +\\n .github/scripts/guard_comment_during_run.ts        |    93 +\\n .github/scripts/inject_uncommitted_notice.ts       |    68 +\\n .github/scripts/manage_dispatch_loop.ts            |    70 +\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":122}",
+      "tool_call_id": "call_5739b52c9d914695a340fb20"
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"atoma\\nbuild-dist.ts\\ndomain\\nlib\\nscripts\\nworkflows\\nagent-definitions\\nconfig.json\\nmcp-packages.json\\nprompt-template.md\\nskills\\ntools\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":99}",
+      "tool_call_id": "call_4268c1b63cea47449b11c2a5"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_45db95ce80094514b5f6b95b",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"grep -n \\\"docs\\\" src/build-dist.ts | head; grep -rn \\\"operations.md\\\\|customization.md\\\" src .github/workflows 2>/dev/null | head\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"src/domain/merge-readiness.test.ts:230:    expect(governedPathsIn([\\\"src/lib/config.ts\\\", \\\"docs/operations.md\\\"], DEFAULT_GOVERNED_PATHS)).toEqual([]);\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":103}",
+      "tool_call_id": "call_45db95ce80094514b5f6b95b"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_d59c0a5e17414aaab00dd9ac",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"head -60 src/build-dist.ts\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"#!/usr/bin/env bun\\n/**\\n * build-dist.ts — Bundles every deployable entry-point script (via\\n * `Bun.build`) from its `src/` source into the mirrored `dist/.github/`\\n * location:\\n *   - `src/scripts/**` (this repo's own workflow-automation glue, invoked\\n *     directly from a `*.wac.ts` file's `run:` step) -> `dist/.github/scripts/`.\\n *   - `src/atoma/tools/scripts/**` (Atoma's own MCP servers, `before_tool`\\n *     hook, and the one-shot scripts they use) -> `dist/.github/atoma/tools/scripts/`.\\n *   - Atoma's static, non-code content (`config.json`, `prompt-template.md`,\\n *     agent definitions, recursive skill Markdown, and `tools/tools.yaml`) ->\\n *     `dist/.github/atoma/`,\\n *     copied verbatim (nothing to bundle).\\n *\\n * Every entry point is bundled with ALL of its imports inlined -- including\\n * the shared `src/lib/**` kernel (so `src/scripts/**` and\\n * `src/atoma/tools/scripts/**` can freely import shared code without any\\n * hand-duplicated files between them) and npm dependencies like\\n * `@modelcontextprotocol/sdk`/`shell-quote` (so the deployed output needs no\\n * `node_modules`/`package.json`/`bun install` step at all -- verified: a\\n * bundled `mcp/github.ts` runs standalone with zero dependencies nearby).\\n * Bundled output keeps a `.ts` extension (Bun happily runs plain JS through\\n * a `.ts`-named file) so every existing `bun run .github/.../foo.ts`\\n * reference -- in generated workflow YAML, `tools.yaml`, `ScriptRef`'s\\n * runtime-path derivation -- needs no change.\\n *\\n * `.test.ts` files are excluded from entry-point discovery -- tests are a\\n * dev-time concern for this repo, not something end users need in their\\n * own `.github/`. `dist/.github/` is fully generated output: nothing under\\n * it should ever be hand-edited directly.\\n */\\nimport { cpSync, mkdirSync, readdirSync, rmSync } from \\\"node:fs\\\";\\nimport { dirname, join } from \\\"node:path\\\";\\nimport { fileURLToPath } from \\\"node:url\\\";\\n\\nconst REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), \\\"..\\\");\\nconst SRC_DIR = join(REPO_ROOT, \\\"src\\\");\\nconst DIST_GITHUB_DIR = join(REPO_ROOT, \\\"dist\\\", \\\".github\\\");\\n\\n/** Recursively collects every entry-point `*.ts` file under `dir`, skipping `excludeDirs` (by name, at any depth) and `*.test.ts` files. */\\nfunction collectEntryPoints(dir: string, excludeDirs: ReadonlySet<string>): string[] {\\n  const results: string[] = [];\\n  for (const entry of readdirSync(dir, { withFileTypes: true })) {\\n    if (entry.isDirectory()) {\\n      if (excludeDirs.has(entry.name)) continue;\\n      results.push(...collectEntryPoints(join(dir, entry.name), excludeDirs));\\n    } else if (entry.isFile() && entry.name.endsWith(\\\".ts\\\") && !entry.name.endsWith(\\\".test.ts\\\")) {\\n      results.push(join(dir, entry.name));\\n    }\\n  }\\n  return results;\\n}\\n\\n/** Bundles every entry point under `srcDir` into `distDir`, preserving its subdirectory structure (e.g. `mcp/github.ts` -> `<distDir>/mcp/github.ts`). */\\nasync function bundleTree(srcDir: string, distDir: string, excludeDirs: ReadonlySet<string> = new Set()): Promise<void> {\\n  const entrypoints = collectEntryPoints(srcDir, excludeDirs);\\n  rmSync(distDir, { recursive: true, force: true });\\n\\n  // Build each deployable entry point independently. Imported implementation\\n  // modules live under excluded `lib/` directories and are inlined here.\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":99}",
+      "tool_call_id": "call_d59c0a5e17414aaab00dd9ac"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7bb1f50a7beb444f845c5911",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"grep -n \\\"atoma\\\\b\\\\|static\\\\|verbatim\\\\|copy\\\" src/build-dist.ts | head -40\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"8: *   - `src/atoma/tools/scripts/**` (Atoma's own MCP servers, `before_tool`\\n9: *     hook, and the one-shot scripts they use) -> `dist/.github/atoma/tools/scripts/`.\\n10: *   - Atoma's static, non-code content (`config.json`, `prompt-template.md`,\\n12: *     `dist/.github/atoma/`,\\n13: *     copied verbatim (nothing to bundle).\\n17: * `src/atoma/tools/scripts/**` can freely import shared code without any\\n80:function copyDirectoryFresh(source: string, destination: string): void {\\n85:function copyStaticAtomaContent(): void {\\n86:  const srcAtomaDir = join(SRC_DIR, \\\"atoma\\\");\\n87:  const distAtomaDir = join(DIST_GITHUB_DIR, \\\"atoma\\\");\\n89:  // Every static file the generated workflows read at runtime must be listed\\n93:  // `deployment-contract.test.ts` keeps this list in step with `src/atoma/`.\\n97:  copyDirectoryFresh(join(srcAtomaDir, \\\"agent-definitions\\\"), join(distAtomaDir, \\\"agent-definitions\\\"));\\n98:  copyDirectoryFresh(join(srcAtomaDir, \\\"skills\\\"), join(distAtomaDir, \\\"skills\\\"));\\n102:  console.log(`build-dist: copied static content: ${srcAtomaDir} -> ${distAtomaDir}`);\\n108:    join(SRC_DIR, \\\"atoma\\\", \\\"tools\\\", \\\"scripts\\\"),\\n109:    join(DIST_GITHUB_DIR, \\\"atoma\\\", \\\"tools\\\", \\\"scripts\\\"),\\n112:  copyStaticAtomaContent();\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":100}",
+      "tool_call_id": "call_7bb1f50a7beb444f845c5911"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7ffb5487dfb74305a1992aed",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"sed -n '80,105p' src/build-dist.ts\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"function copyDirectoryFresh(source: string, destination: string): void {\\n  rmSync(destination, { recursive: true, force: true });\\n  cpSync(source, destination, { recursive: true });\\n}\\n\\nfunction copyStaticAtomaContent(): void {\\n  const srcAtomaDir = join(SRC_DIR, \\\"atoma\\\");\\n  const distAtomaDir = join(DIST_GITHUB_DIR, \\\"atoma\\\");\\n\\n  // Every static file the generated workflows read at runtime must be listed\\n  // here, or it never reaches `dist/` and so never reaches an adopter. A file\\n  // missing from this list is invisible in review: it keeps working in whatever\\n  // `.github/` already has it and is simply absent from everyone else's.\\n  // `deployment-contract.test.ts` keeps this list in step with `src/atoma/`.\\n  for (const file of [\\\"config.json\\\", \\\"mcp-packages.json\\\", \\\"prompt-template.md\\\"]) {\\n    cpSync(join(srcAtomaDir, file), join(distAtomaDir, file));\\n  }\\n  copyDirectoryFresh(join(srcAtomaDir, \\\"agent-definitions\\\"), join(distAtomaDir, \\\"agent-definitions\\\"));\\n  copyDirectoryFresh(join(srcAtomaDir, \\\"skills\\\"), join(distAtomaDir, \\\"skills\\\"));\\n  mkdirSync(join(distAtomaDir, \\\"tools\\\"), { recursive: true });\\n  cpSync(join(srcAtomaDir, \\\"tools\\\", \\\"tools.yaml\\\"), join(distAtomaDir, \\\"tools\\\", \\\"tools.yaml\\\"));\\n\\n  console.log(`build-dist: copied static content: ${srcAtomaDir} -> ${distAtomaDir}`);\\n}\\n\\nasync function main(): Promise<void> {\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":99}",
+      "tool_call_id": "call_7ffb5487dfb74305a1992aed"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_1021bbe9b20e4a96bf2f889c",
+          "type": "function",
+          "function": {
+            "name": "filesystem__edit_file",
+            "arguments": "{\"path\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/customization.md\", \"edits\": [{\"oldText\": \"Nothing about that pull request is special to Atoma. It is reviewed by whoever\\nreviews releases, and merging it runs whatever your `main` branch already runs.\\n\\n### Point Atoma at your own workflows\", \"newText\": \"Nothing about that pull request is special to Atoma. It is reviewed by whoever\\nreviews releases, and merging it runs whatever your `main` branch already runs.\\n\\n### Work with decomposed issues\\n\\nWhen an issue is decomposed into sub-issues, the work stacks on branches\\ninstead of landing on the base branch one piece at a time:\\n\\n- Each sub-issue's branch is cut from its parent issue's branch and merges back\\n  into it, so siblings see each other's work as it lands.\\n- The parent's branch is created from the base branch when the first child\\n  commits; until then it does not exist.\\n- Once every child is done, the parent's branch becomes one pull request into\\n  the base branch.\\n- A merge into a parent branch runs no deployment — the work is still in\\n  progress, and only the final pull request into the base branch carries it to\\n  release.\\n\\n### Point Atoma at your own workflows\"}]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "````diff\nIndex: /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/customization.md\n===================================================================\n--- /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/customization.md\toriginal\n+++ /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/docs/customization.md\tmodified\n@@ -223,8 +223,23 @@\n \n Nothing about that pull request is special to Atoma. It is reviewed by whoever\n reviews releases, and merging it runs whatever your `main` branch already runs.\n \n+### Work with decomposed issues\n+\n+When an issue is decomposed into sub-issues, the work stacks on branches\n+instead of landing on the base branch one piece at a time:\n+\n+- Each sub-issue's branch is cut from its parent issue's branch and merges back\n+  into it, so siblings see each other's work as it lands.\n+- The parent's branch is created from the base branch when the first child\n+  commits; until then it does not exist.\n+- Once every child is done, the parent's branch becomes one pull request into\n+  the base branch.\n+- A merge into a parent branch runs no deployment — the work is still in\n+  progress, and only the final pull request into the base branch carries it to\n+  release.\n+\n ### Point Atoma at your own workflows\n \n ```json\n {\n````\n\n",
+      "tool_call_id": "call_1021bbe9b20e4a96bf2f889c"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7519f82c88284a72a84b3383",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"bun run lint\", \"timeout_seconds\": 600, \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"failed\",\"exit_code\":1,\"stdout\":\"error TS2688: Cannot find type definition file for 'bun'.\\n  The file is in the program because:\\n    Entry point of type library 'bun' specified in compilerOptions\\n\",\"stderr\":\"$ bun run typecheck && bun run synth\\n$ tsc --noEmit\\nerror: script \\\"typecheck\\\" exited with code 1\\nerror: script \\\"lint\\\" exited with code 1\\n\",\"output_truncated\":false,\"execution_time_ms\":2300}",
+      "tool_call_id": "call_7519f82c88284a72a84b3383"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_0b90b55857fb4c4e8e2f710b",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"ls node_modules 2>/dev/null | head -3; ls node_modules/@types 2>/dev/null | head\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":99}",
+      "tool_call_id": "call_0b90b55857fb4c4e8e2f710b"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_87af1ff06009485d8e0d8218",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"bun install --frozen-lockfile\", \"timeout_seconds\": 600, \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"bun install v1.3.14 (0d9b296a)\\n\\n+ @github-actions-workflow-ts/actions@2.5.0\\n+ @github-actions-workflow-ts/cli@2.5.0\\n+ @github-actions-workflow-ts/lib@2.5.0\\n+ @modelcontextprotocol/sdk@1.29.0\\n+ @octokit/webhooks-types@7.6.1\\n+ @types/bun@1.3.14\\n+ @types/shell-quote@1.7.5\\n+ shell-quote@1.10.0\\n+ typescript@5.9.3\\n+ zod@3.25.76\\n+ zod-to-json-schema@3.25.2\\n\\n142 packages installed [358.00ms]\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":460}",
+      "tool_call_id": "call_87af1ff06009485d8e0d8218"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_a8bb1f92cbc7477aa3ba2c32",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"bun run lint\", \"timeout_seconds\": 600, \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\"[github-actions-workflow-ts] wac.config.ts config file found in root dir\\n[github-actions-workflow-ts] Detected following .wac.ts files:\\n[github-actions-workflow-ts] --> src/workflows/atoma-auto-trigger.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-entry.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-manual-comment.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-pr-merged.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-pr-review.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-runner.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-sub-issue-closed.wac.ts\\n[github-actions-workflow-ts] --> src/workflows/atoma-validate-pr.wac.ts\\n[github-actions-workflow-ts] dist/.github/workflows directory not found. Creating it.\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-auto-trigger.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-entry.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-manual-comment.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-pr-merged.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-pr-review.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-runner.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-sub-issue-closed.yml:\\n[github-actions-workflow-ts] Writing to dist/.github/workflows/atoma-validate-pr.yml:\\n[github-actions-workflow-ts] Successfully generated 8 workflow file(s)\\nbuild-dist: bundled 27 script(s): /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/scripts -> /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/dist/.github/scripts\\nbuild-dist: bundled 4 script(s): /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/atoma/tools/scripts -> /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/dist/.github/atoma/tools/scripts\\nbuild-dist: copied static content: /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/src/atoma -> /home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery/dist/.github/atoma\\n\",\"stderr\":\"$ bun run typecheck && bun run synth\\n$ tsc --noEmit\\n$ gwf build && bun run src/build-dist.ts\\n\",\"output_truncated\":false,\"execution_time_ms\":3781}",
+      "tool_call_id": "call_a8bb1f92cbc7477aa3ba2c32"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_ecd44627fa394b859a9327ab",
+          "type": "function",
+          "function": {
+            "name": "shell__shell_execute",
+            "arguments": "{\"command\": \"git status --short && git diff --stat\", \"working_directory\": \"/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"status\":\"completed\",\"exit_code\":0,\"stdout\":\" M docs/customization.md\\n docs/customization.md | 15 +++++++++++++++\\n 1 file changed, 15 insertions(+)\\n\",\"stderr\":\"\",\"output_truncated\":false,\"execution_time_ms\":103}",
+      "tool_call_id": "call_ecd44627fa394b859a9327ab"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_bf5523634de8401594558552",
+          "type": "function",
+          "function": {
+            "name": "github__commit_and_push",
+            "arguments": "{\"message\": \"docs: explain branch stacking for decomposed issues in customization.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\":true}",
+      "tool_call_id": "call_bf5523634de8401594558552"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_c43655d6baa64999831e6270",
+          "type": "function",
+          "function": {
+            "name": "github__create_pr",
+            "arguments": "{\"title\": \"docs: explain branch stacking for decomposed issues\", \"body\": \"Closes #281\\n\\nAdds a \\\"Work with decomposed issues\\\" section to `docs/customization.md`, covering how branches stack when an issue is decomposed:\\n\\n- Sub-issue branches are cut from the parent issue's branch and merge back into it, so siblings see each other's work.\\n- The parent branch is created from the base branch when the first child commits.\\n- Once all children are done, the parent branch becomes one pull request into the base branch.\\n- A merge into a parent branch runs no deployment — that work is still in progress; only the final pull request into the base branch carries it to release.\\n\\nThe section is written from the user's perspective, matches the surrounding section style, and complements (rather than duplicates) the internal branch mechanics already in `docs/operations.md` — no `src/` or internal implementation names are referenced.\\n\\n## Verification\\n\\n- `bun run lint` (typecheck + `synth` build) passes.\\n- `git status` shows only `docs/customization.md` modified; no generated artifacts are included.\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":284,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/284\"}",
+      "tool_call_id": "call_c43655d6baa64999831e6270"
+    }
+  ],
+  "metadata": {
+    "github_context": {
+      "agent": "engineer",
+      "event_count": 3,
+      "snapshot_hash": "f5be45ca8cf97e4302c8f91078eaa265e2aaf90017cccf9e9aaa91ba7af2cc70",
+      "version": 1
+    }
+  }
+}
