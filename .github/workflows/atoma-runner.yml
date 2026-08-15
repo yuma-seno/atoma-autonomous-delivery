@@ -33,7 +33,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.9
+        default: v0.1.10
   workflow_dispatch:
     inputs:
       agent:
@@ -68,7 +68,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.9
+        default: v0.1.10
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -230,8 +230,10 @@ jobs:
       - name: Merge GitHub context into session
         id: context
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          bun run .github/scripts/reconcile_github_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --config ".github/atoma/config.json" --session "session.json" --out "session.json"
+          bun run .github/scripts/reconcile_github_session.ts --events "events.json" --agent-name "${{ inputs.agent }}" --agent-def ".github/atoma/agent-definitions/${{ inputs.agent }}.md" --config ".github/atoma/config.json" --session "session.json" --out "session.json"
       - name: Read max_iterations from config
         id: cfg
         shell: bash
