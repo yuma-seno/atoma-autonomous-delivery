@@ -81,10 +81,10 @@ function mimeTypeFor(url: string): string {
  * redirect to the signed URL the token earns.
  */
 export function fetchImageBlock(url: string): ImageBlock | undefined {
-  const { code, stdout } = gh("api", url, "--method", "GET", "--header", "Accept: application/vnd.github.raw");
-  if (code !== 0 || !stdout) return undefined;
+  const { code, bytes } = ghBytes("api", url, "--method", "GET", "--header", "Accept: application/vnd.github.raw");
+  if (code !== 0 || bytes.length === 0) return undefined;
 
-  const data = Buffer.from(stdout, "binary").toString("base64");
+  const data = Buffer.from(bytes).toString("base64");
   if (!data || data.length > MAX_IMAGE_BYTES) return undefined;
 
   return { type: "image", data, mimeType: mimeTypeFor(url) };

@@ -16,6 +16,7 @@
  * interfaces exists specifically so a script that only cares about a few
  * fields can still round-trip the rest of a real session.json untouched.
  */
+import type { ContentBlock } from "./issue-images.ts";
 
 export interface SessionMessageMetadata {
   /** Set by record_run_metadata.ts, read by reconcile_github_session.ts to exclude an agent's own past result comments from its own future shared context. */
@@ -41,7 +42,7 @@ export interface SessionMessage {
    * picture travels with the text — see `lib/issue-images.ts` — and matches the
    * shape atoma's LLM adapters map to each provider.
    */
-  content?: string | { type: string; [key: string]: unknown }[];
+  content?: string | ContentBlock[];
   atoma_metadata?: SessionMessageMetadata;
   [key: string]: unknown;
 }
