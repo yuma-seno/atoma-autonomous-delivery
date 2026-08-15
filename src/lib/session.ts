@@ -34,7 +34,14 @@ export interface SessionMessageMetadata {
 
 export interface SessionMessage {
   role: string;
-  content?: string;
+  /**
+   * Text, or content blocks when the message carries something text cannot hold.
+   *
+   * A plain string in nearly every message. The block form appears when a
+   * picture travels with the text — see `lib/issue-images.ts` — and matches the
+   * shape atoma's LLM adapters map to each provider.
+   */
+  content?: string | { type: string; [key: string]: unknown }[];
   atoma_metadata?: SessionMessageMetadata;
   [key: string]: unknown;
 }

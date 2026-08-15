@@ -31,10 +31,13 @@ import { defineScript } from "./lib/script-ref.ts";
 import type { GithubEvent } from "./fetch_events.ts";
 import type { Session, SessionMessage, SessionMessageMetadata } from "../lib/session.ts";
 import { AGENT_TAG, LLM_CONTEXT_TAG } from "../lib/tags.ts";
+import { contentWithImages, type ContentBlock } from "../lib/issue-images.ts";
 
 export interface ReconcileGithubSessionArgs {
   events: string;
   "agent-name": string;
+  /** Path to the running agent's definition, read for its `vision` field. */
+  "agent-def"?: string;
   config?: string;
   session?: string;
   out: string;
@@ -50,7 +53,13 @@ interface SharedContextConfig {
 
 interface GithubEventMessage extends SessionMessage {
   role: "user";
-  content: string;
+  /**
+   * Text, or blocks when the event referenced a picture the agent can read.
+   *
+   * A string for every event that has none, which is nearly all of them, so a
+   * session written before this looks no different from one written after.
+   */
+  content: string | ContentBlock[];
   atoma_metadata: SessionMessageMetadata & {
     source: "github";
     layer: string;
@@ -215,10 +224,22 @@ function filterEventsForAgent(
   return filtered;
 }
 
-function eventToUserMessage(event: GithubEvent): GithubEventMessage {
+/**
+ * Whether the agent's model can look at a picture.
+ *
+ * Read from the definition's `vision` field, and false when it cannot be read.
+ * Sending an image to a model that has no way to take one is an API error that
+ * loses the whole run, so the safe answer is the default.
+ */
+export function agentReadsImages(agentDefPath: string | undefined): boolean {
+  if (!agentDefPath || !existsSync(agentDefPath)) return false;
+  return /^vision:\s*true\s*$/m.test(readFileSync(agentDefPath, "utf8"));
+}
+
+function eventToUserMessage(event: GithubEvent, vision: boolean): GithubEventMessage {
   return {
     role: "user",
-    content: event.content,
+    content: vision ? contentWithImages(event.content) : event.content,
     atoma_metadata: {
       source: "github",
       layer: GITHUB_CONTEXT_LAYER,
@@ -253,12 +274,13 @@ export function reconcileGithubSession(
   events: GithubEvent[],
   agentName: string,
   config: SharedContextConfig = {},
+  vision = false,
 ): ReconcileGithubSessionResult {
   const ownCommentIds = buildOwnCommentIds(session, agentName);
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
   const currentHash = snapshotHashForEvents(filteredEvents);
   const previousHash = previousSnapshotHash(session);
-  const contextMessages = filteredEvents.map(eventToUserMessage);
+  const contextMessages = filteredEvents.map((event) => eventToUserMessage(event, vision));
   const fetchedEventKeys = new Set(events.map(githubEventKeyFromEvent));
 
   let changedCount: number;
@@ -309,7 +331,13 @@ function main(): void {
   const events = JSON.parse(readFileSync(values.events, "utf8")) as GithubEvent[];
   const config: SharedContextConfig = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
 
-  const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(session, events, values["agent-name"], config);
+  const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(
+    session,
+    events,
+    values["agent-name"],
+    config,
+    agentReadsImages(values["agent-def"]),
+  );
 
   writeFileSync(values.out, JSON.stringify(mergedSession, null, 2) + "\n");
 

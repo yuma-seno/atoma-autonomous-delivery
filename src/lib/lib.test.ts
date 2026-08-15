@@ -19,6 +19,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeConfigDir, runWithFakeGh, type FakeGhRule } from "../scripts/testing/harness.ts";
+import { extractImageUrls } from "./issue-images.ts";
 
 const LIB_DIR = import.meta.dir;
 
@@ -289,5 +290,35 @@ describe("issue-branches.ts collectIssueBranches", () => {
       { match: ["head=owner:atoma/issue-12"], code: 1 },
     ]);
     expect(JSON.parse(r.stdout.trim())).toEqual([{ name: "atoma/issue-12", merged: false }]);
+  });
+});
+
+describe("issue-images.ts extractImageUrls", () => {
+  test("finds a markdown image", () => {
+    const urls = extractImageUrls("see ![shot](https://github.com/user-attachments/assets/abc) here");
+    expect(urls).toEqual(["https://github.com/user-attachments/assets/abc"]);
+  });
+
+  // People paste this spelling when they want to set a width.
+  test("finds an html image", () => {
+    expect(extractImageUrls('<img src="https://example.com/a.png" width="400">')).toEqual([
+      "https://example.com/a.png",
+    ]);
+  });
+
+  test("returns nothing for a body with no image", () => {
+    expect(extractImageUrls("just text, and a [link](https://example.com)")).toEqual([]);
+  });
+
+  test("keeps each url once", () => {
+    const body = "![a](https://x/1.png)\n![b](https://x/1.png)";
+    expect(extractImageUrls(body)).toEqual(["https://x/1.png"]);
+  });
+
+  // A body with thirty screenshots would otherwise put thirty images into every
+  // later inference of that run.
+  test("caps how many it takes", () => {
+    const body = Array.from({ length: 9 }, (_, i) => `![](https://x/${i}.png)`).join("\n");
+    expect(extractImageUrls(body).length).toBe(4);
   });
 });

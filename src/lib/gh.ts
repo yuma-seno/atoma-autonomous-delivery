@@ -30,6 +30,19 @@ export function gh(...args: string[]): RunResult {
   return run(["gh", ...args]);
 }
 
+/**
+ * Run `gh` and keep its stdout as bytes.
+ *
+ * `gh` above decodes stdout as UTF-8 and trims it, which is right for JSON and
+ * ruinous for anything else: a PNG through that comes out as replacement
+ * characters with its ends shaved off. Anything binary — an attached image, a
+ * downloaded asset — has to come through here instead.
+ */
+export function ghBytes(...args: string[]): { code: number; bytes: Uint8Array } {
+  const proc = Bun.spawnSync({ cmd: ["gh", ...args], stdout: "pipe", stderr: "pipe" });
+  return { code: proc.exitCode ?? 1, bytes: proc.stdout ?? new Uint8Array() };
+}
+
 /** Run `gh` and parse its stdout as JSON. Throws on non-zero exit. */
 export function ghJson<T = unknown>(...args: string[]): T {
   const { code, stdout, stderr } = gh(...args);
