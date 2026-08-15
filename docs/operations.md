@@ -89,6 +89,7 @@ Recovery archives the previous agent session, does not restore its assistant/too
 | Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |
 | Agent's pull request shows a check stuck at `action_required` | GitHub holds `pull_request` runs for pull requests opened with `GITHUB_TOKEN` | Expected; the merge does not depend on it. Approve it to clear the display, but never delete the run — that breaks the commit's check rollup permanently |
 | Required check never fills on an agent's pull request | The workflow behind that context has no `workflow_dispatch` trigger, so Atoma cannot run it | Add `workflow_dispatch` to it, or drop the context from the ruleset's required list |
+| Agent run takes longer than expected or consumes excessive tokens | High number of shell tool round trips, or large tool output size | Read the `[atoma-shell]` lines in the workflow log; each records the command, exit code, duration, and output byte size |
 
 ## Security boundaries
 
