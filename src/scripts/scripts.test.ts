@@ -901,6 +901,35 @@ describe("post_result_comment.ts buildCommentBody", () => {
     expect(body).not.toContain("@octocat");
   });
 
+  // Closing a sub-issue is what wakes its parent, in a later workflow run that
+  // this one cannot see -- so `chainContinues` is false here and the mention
+  // would otherwise ask a person to act on work that is still moving.
+  test("omits the mention when a closed sub-issue hands back to its parent", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      notify: "octocat",
+      isSubIssue: true,
+      issueClosed: true,
+      runUrl: "http://example.com/run/1",
+      output: "Merged in PR #173. Closing this sub-task.",
+      usageLines: [],
+    });
+    expect(body).not.toContain("@octocat");
+  });
+
+  test("keeps the mention when a sub-issue run ends with the sub-issue open", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      notify: "octocat",
+      isSubIssue: true,
+      issueClosed: false,
+      runUrl: "http://example.com/run/1",
+      output: "I could not finish this.",
+      usageLines: [],
+    });
+    expect(body).toContain("@octocat");
+  });
+
   test("appends the max-iterations warning", () => {
     const body = buildCommentBody({
       agent: "engineer",
@@ -957,6 +986,49 @@ describe("post_result_comment.ts main", () => {
       );
       expect(r.status).toBe(0);
       expect(r.ghCalls.some((c) => c.join(" ").includes("comments"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reads the issue's own state to decide the mention, and only for an issue run", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    writeFileSync(join(dir, "atoma_output.txt"), "Merged and closed.");
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "post_result_comment.ts"),
+        // prettier-ignore
+        ["--number", "5", "--type", "issue", "--agent", "engineer", "--notify", "octocat", "--run-url", "http://example.com/run/1"],
+        {
+          cwd: dir,
+          env: { GITHUB_REPOSITORY: "owner/repo" },
+          rules: [
+            { match: ["issue", "view", "5"], stdout: JSON.stringify({ state: "CLOSED", body: "<!-- atoma:parent=4 -->" }) },
+            { match: ["api", "comments"], stdout: "42" },
+          ],
+        },
+      );
+      expect(r.status).toBe(0);
+      const posted = r.ghCalls.find((c) => c.join(" ").includes("comments"))?.join(" ") ?? "";
+      expect(posted).not.toContain("@octocat");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // A pull request run's `--number` is a PR number, and `gh issue view` on one
+  // is an error rather than an answer.
+  test("does not look the number up as an issue on a pull request run", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    writeFileSync(join(dir, "atoma_output.txt"), "Reviewed.");
+    try {
+      const r = runWithFakeGh(
+        join(process.cwd(), SCRIPTS_DIR, "post_result_comment.ts"),
+        ["--number", "7", "--type", "pr", "--agent", "reviewer", "--run-url", "http://example.com/run/1"],
+        { cwd: dir, env: { GITHUB_REPOSITORY: "owner/repo" }, rules: [{ match: ["api", "comments"], stdout: "42" }] },
+      );
+      expect(r.status).toBe(0);
+      expect(r.ghCalls.some((c) => c.includes("view"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -411,6 +411,10 @@ const postResultCommentStep = new TypedOutputsStep(
     run: `${scriptCommandWithArgs(postResultCommentRef, {
       number: "${{ inputs.number }}",
       agent: "${{ inputs.agent }}",
+      // Says whether `number` is an issue or a pull request, so the mention
+      // decision can read the issue's own state without asking `gh issue view`
+      // about a pull request.
+      type: "${{ inputs.type }}",
       notify: notifyStep.outputs.notify,
       directive: runAgentStep.outputs.directive,
       "chain-continues": runAgentStep.outputs.chain_continues,
