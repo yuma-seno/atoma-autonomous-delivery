@@ -314,6 +314,7 @@ function main(): void {
     options: {
       events: { type: "string" },
       "agent-name": { type: "string" },
+      "agent-def": { type: "string" },
       config: { type: "string" },
       session: { type: "string" },
       out: { type: "string" },
