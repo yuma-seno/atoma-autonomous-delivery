@@ -17895,8 +17895,42 @@ function buildMcpTools(specs) {
   };
 }
 
+// src/domain/redaction.ts
+var PATTERNS = [
+  /\bsk-[A-Za-z0-9_-]{16,}/g,
+  /\bsk-ant-[A-Za-z0-9_-]{16,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{16,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\bASIA[0-9A-Z]{16}\b/g,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/g,
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/g
+];
+var REDACTED = "[redacted]";
+var MIN_LITERAL_LENGTH = 12;
+function literalsFrom(env, names) {
+  return names.map((name) => env[name] ?? "").filter((value) => value.length >= MIN_LITERAL_LENGTH).sort((a, b) => b.length - a.length);
+}
+function redact(text, literals = []) {
+  let out = text;
+  for (const literal3 of literals)
+    out = out.split(literal3).join(REDACTED);
+  for (const pattern of PATTERNS)
+    out = out.replace(pattern, REDACTED);
+  return out;
+}
+
 // src/atoma/tools/scripts/mcp/shell.ts
 var MAX_OUTPUT_BYTES = 1e6;
+var SECRET_ENV_NAMES = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "GITHUB_PERSONAL_ACCESS_TOKEN"
+];
+var SECRET_LITERALS = literalsFrom(process.env, SECRET_ENV_NAMES);
 var SHELL_EXECUTE_SCHEMA = exports_external.object({
   command: exports_external.string().min(1).describe("Shell command to execute with bash."),
   working_directory: exports_external.string().optional().describe("Directory in which to run the command. Defaults to the server working directory."),
@@ -17907,7 +17941,7 @@ var SHELL_EXECUTE_SCHEMA = exports_external.object({
 });
 var LOGGED_COMMAND_CHARS = 200;
 function logCommand(command) {
-  const flat = command.replace(/\s+/g, " ").trim();
+  const flat = redact(command, SECRET_LITERALS).replace(/\s+/g, " ").trim();
   const shown = flat.length > LOGGED_COMMAND_CHARS ? `${flat.slice(0, LOGGED_COMMAND_CHARS)}\u2026` : flat;
   console.error(`[atoma-shell] exec: ${shown}`);
 }
@@ -17937,7 +17971,8 @@ async function executeShell(args) {
     new Response(child.stdout).text(),
     new Response(child.stderr).text()
   ]).finally(() => clearTimeout(timer));
-  const truncate = (value) => {
+  const truncate = (raw) => {
+    const value = redact(raw, SECRET_LITERALS);
     const bytes = Buffer.from(value);
     return bytes.length <= MAX_OUTPUT_BYTES ? { text: value, truncated: false } : { text: bytes.subarray(0, MAX_OUTPUT_BYTES).toString("utf8"), truncated: true };
   };
