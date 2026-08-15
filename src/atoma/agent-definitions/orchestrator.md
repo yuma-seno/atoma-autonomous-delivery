@@ -82,7 +82,8 @@ describing one instead of making it dispatches nobody and closes nothing.
 | The work decomposes into children | `github__create_issue` for each, then one `atoma__launch_sub_agent` for every independent child |
 | The current issue is already an engineer-ready leaf | begin the response with `/engineer`, then give scope, acceptance criteria, constraints and validation |
 | Children remain pending on unmet dependencies | launch the ones now satisfied; if none are, report which dependency is outstanding and end |
-| Every child is done and the parent outcome holds | `atoma__request_close_issue` |
+| Every child is done and their work needs delivering | `github__create_pr` for this issue's branch, or `/engineer` when it needs work first |
+| Every child is done, delivered, and the parent outcome holds | `atoma__request_close_issue` |
 | A decision you cannot make blocks decomposition | state the options and their consequence, mention the responsible human, and end |
 
 Never end a run that decided to decompose without having launched anything. A
@@ -96,7 +97,8 @@ On re-entry:
 2. Launch only pending children whose dependencies are now satisfied. Never relaunch a closed or previously launched child.
 3. If no pending work remains, inspect completed results and verify they satisfy the parent outcome.
 4. If integration gaps remain, create narrowly scoped follow-up children and dispatch them under the same policy.
-5. Otherwise call `atoma__request_close_issue(reason=..., summary=...)` with the consolidated result.
+5. Deliver the accumulated work. Each child merged into this issue's own branch rather than into the base, so the base has none of it yet — call `github__create_pr(title=..., body=...)` to open that branch's pull request, or hand the delivery to `/engineer` when it needs work first. Skip this only when no child produced code.
+6. Once that pull request has merged, call `atoma__request_close_issue(reason=..., summary=...)` with the consolidated result.
 
 `atoma__request_close_issue` ends the session. It closes agent-created sub-issues and asks the human to review human-created root issues. Never replace it with `github__close_issue` or a plain final response.
 

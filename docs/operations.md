@@ -42,6 +42,11 @@ Shared executor:
   `atoma/issue-N-3`. Work never resumes on merged history.
 - When an unmerged branch is left behind, the issue's next run resumes it
   instead of starting from the base branch.
+- A sub-issue's branch is cut from its parent's and merges back into it, so
+  sibling tasks see each other's work as it lands. The parent's branch is created
+  empty when the first child commits, and reaches the base branch as one pull
+  request once every child is done. Deployment is not dispatched for a merge into
+  a parent branch — that work is still in progress.
 
 ## Manual commands and recovery
 
