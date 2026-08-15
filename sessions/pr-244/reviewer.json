@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/package.json b/package.json\nindex c023943..d0eea79 100644\n--- a/package.json\n+++ b/package.json\n@@ -2,7 +2,7 @@\n   \"name\": \"atoma-autonomous-delivery\",\n   \"private\": true,\n   \"type\": \"module\",\n-  \"version\": \"0.1.4\",\n+  \"version\": \"0.1.5\",\n   \"engines\": {\n     \"bun\": \">=1.2.0\"\n   },\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-15T02:03:50Z",
+        "created_at": "2026-08-15T02:04:13Z",
         "event_type": "pr_diff",
         "id": "pr-244-diff",
         "layer": "github-context",
@@ -51,7 +51,15 @@
       "role": "assistant",
       "content": "The PR is already merged (state is MERGED, not OPEN), and GitHub reports an unknown merge state. No further action is needed — the change has been delivered.\n\nIf you need to verify the final state or inspect the merged commit, use `github__get_pr` or check the repository history directly.",
       "atoma_metadata": {
-        "github_comment_id": 5299975643,
+        "agent": "reviewer",
+        "github_comment_id": 5299975643
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "The PR #244 has already been merged, and no further action is required. The version bump to `0.1.5` is now live in the repository.\n\nIf you need to verify the final state or inspect the merged commit, use `github__get_pr` or check the repository history directly.",
+      "atoma_metadata": {
+        "github_comment_id": 5299977436,
         "agent": "reviewer"
       }
     }
@@ -60,10 +68,10 @@
     "github_context": {
       "agent": "reviewer",
       "event_count": 2,
-      "snapshot_hash": "f8117314b72aa422dde14557e893dbb4e3904292fcc974efe1a0a93c2a9fb800",
-      "version": 1,
+      "resolved_number": "244",
+      "snapshot_hash": "f1289bdeb7c41b7b11062af935f8b6849bc0ad193be68dcb9e3405d3e10bdff8",
       "type": "pr",
-      "resolved_number": "244"
+      "version": 1
     }
   }
 }
