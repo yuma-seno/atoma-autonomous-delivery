@@ -49,6 +49,26 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 6. Call `github__commit_and_push(message=...)`.
 7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.
 
+## Outcome
+
+Exactly one of these ends a run. Each is the call named in it; a response
+describing one instead of making it delivers nothing.
+
+| Situation | Outcome |
+| --- | --- |
+| The work is implemented and validated | `github__commit_and_push`, then `github__create_pr` |
+| The issue is not engineer-ready | begin the response with `/orchestrator`, then name the unresolved concerns |
+| Validation fails for a reason in the issue's own premise | report the contradiction and what you tried, and end — do not implement around it |
+| You cannot do it with the tools available | name the missing capability and the step it blocks, and end |
+| The PR was merged | `github__close_issue`, or the report described under Re-entry when it refuses |
+
+Work that is written but not committed does not exist: the workspace is
+discarded when the run ends. A run that edits files and then reports without
+`github__commit_and_push` has produced nothing.
+
+Never end by saying you will validate, wait for CI, or check back. Nothing
+resumes this run. Report what you started and what is left.
+
 ## Tool Constraints
 
 - Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.
@@ -64,5 +84,3 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 
 - If a review requests changes, inspect the current PR and address only concrete findings, then validate, commit, and update the same PR.
 - If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue. It refuses on an issue a human opened — that is the expected answer there, not a failure to work around. Report that the merge is done and that closing it is the owner's step, and end.
-
-The workspace is ephemeral. Uncommitted or unpushed changes are lost when the run ends.
