@@ -6,6 +6,7 @@
  * how every Atoma workflow step and MCP server invocation runs.
  */
 import { readFileSync } from "node:fs";
+import { DEFAULT_GOVERNED_PATHS } from "../domain/merge-readiness.ts";
 import type { AtomaConfig } from "./types.ts";
 
 const CONFIG_PATH = ".github/atoma/config.json";
@@ -48,6 +49,18 @@ export function getBaseBranch(fallback = ""): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Paths whose change makes a merge a person's to perform.
+ *
+ * Configurable because "how agents run here" is not the same set of files in
+ * every repository — one that keeps its workflows generated from source has a
+ * second place to name. An empty array in config.json is a deliberate choice to
+ * turn the gate off, and is honoured; an absent key takes the default.
+ */
+export function getGovernedPaths(): readonly string[] {
+  return loadConfig().governed_paths ?? DEFAULT_GOVERNED_PATHS;
 }
 
 /**

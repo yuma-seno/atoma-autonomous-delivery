@@ -70,6 +70,15 @@ export interface MergeSignals {
   requiredChecks: string[];
   /** `merge_policy` from config.json. Atoma's own gate, not GitHub's. */
   mergePolicy: string;
+  /**
+   * Paths this pull request changes that govern how agents run — workflows,
+   * agent definitions, tool configuration, rulesets.
+   *
+   * Empty for ordinary work, which is nearly every pull request. Non-empty means
+   * the change alters the machinery that decides what an agent may do, including
+   * the parts that hold credentials and the parts that gate this very merge.
+   */
+  governancePaths: string[];
 }
 
 export type BlockerKind =
@@ -83,7 +92,8 @@ export type BlockerKind =
   | "checks-failing"
   | "mergeability-unknown"
   | "merge-policy"
-  | "human-authored";
+  | "human-authored"
+  | "governance-change";
 
 export interface Blocker {
   kind: BlockerKind;
@@ -100,6 +110,36 @@ export interface MergeReadiness {
 
 /** Conclusions that satisfy a required check. Skipped and neutral are not failures. */
 const PASSING = new Set(["success", "neutral", "skipped"]);
+
+/**
+ * The deployed files that decide how an agent runs, and so what it may reach.
+ *
+ * Deployed paths, not source paths: this is what an adopter's repository looks
+ * like. A template repository developing the same files under `src/` is doing
+ * ordinary work on ordinary files, and adds its own patterns if it wants them
+ * covered.
+ */
+export const DEFAULT_GOVERNED_PATHS = [
+  ".github/workflows/**",
+  ".github/actions/**",
+  ".github/atoma/**",
+  ".github/rulesets/**",
+] as const;
+
+/**
+ * Which of `files` a pattern claims.
+ *
+ * Deliberately not a glob library. A pattern is either a literal path or a
+ * directory followed by `/**`, because that is what naming a control surface
+ * needs, and a half-implemented glob would be read as a full one.
+ */
+export function governedPathsIn(files: string[], patterns: readonly string[]): string[] {
+  return files.filter((file) =>
+    patterns.some((pattern) =>
+      pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern,
+    ),
+  );
+}
 
 /**
  * Explain a BLOCKED verdict in terms of the required checks, so a refusal names
@@ -207,6 +247,29 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
     blockers.push({
       kind: "merge-policy",
       detail: `merge_policy is '${signals.mergePolicy}', not 'auto'; a human performs the merge`,
+    });
+  }
+
+  // Every other gate here is something an agent may satisfy and then merge. This
+  // one it may not, because the change would alter the gates themselves.
+  //
+  // Workflows, agent definitions, tool configuration and rulesets are where an
+  // agent's limits live — which credentials reach a run, which commands a hook
+  // refuses, what a ruleset requires before a merge. An agent that can merge a
+  // change to those can widen its own reach, and no later check catches it: the
+  // next run already obeys the new file.
+  //
+  // Not a suspicion that an agent means to. A prompt injection carried in an
+  // issue body, or a plain mistake, reaches just as far, and both stop at a
+  // person reading the diff.
+  if (signals.governancePaths.length > 0) {
+    const shown = signals.governancePaths.slice(0, 5).join(", ");
+    const rest = signals.governancePaths.length - 5;
+    blockers.push({
+      kind: "governance-change",
+      detail:
+        `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` +
+        "review it and report, but leave the merge to a person",
     });
   }
 
