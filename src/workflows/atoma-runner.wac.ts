@@ -48,7 +48,7 @@ const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
-const ATOMA_DEFAULT_VERSION = "v0.1.9";
+const ATOMA_DEFAULT_VERSION = "v0.1.10";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
