@@ -17905,8 +17905,15 @@ var SHELL_EXECUTE_SCHEMA = exports_external.object({
   timeout_seconds: exports_external.number().int().min(1).max(3600).optional().default(300).describe("Maximum foreground execution time in seconds. Defaults to 300."),
   execution_mode: exports_external.literal("foreground").optional().default("foreground").describe("Only foreground execution is supported.")
 });
+var LOGGED_COMMAND_CHARS = 200;
+function logCommand(command) {
+  const flat = command.replace(/\s+/g, " ").trim();
+  const shown = flat.length > LOGGED_COMMAND_CHARS ? `${flat.slice(0, LOGGED_COMMAND_CHARS)}\u2026` : flat;
+  console.error(`[atoma-shell] exec: ${shown}`);
+}
 async function executeShell(args) {
   const startedAt = Date.now();
+  logCommand(args.command);
   const child = Bun.spawn(["bash", "-lc", args.command], {
     cwd: args.working_directory ?? process.cwd(),
     env: { ...process.env, ...args.environment_variables },
@@ -17936,13 +17943,15 @@ async function executeShell(args) {
   };
   const out = truncate(stdout);
   const err = truncate(stderr);
+  const elapsedMs = Date.now() - startedAt;
+  console.error(`[atoma-shell] exit=${exitCode} ${elapsedMs}ms ` + `stdout=${Buffer.from(out.text).length}B stderr=${Buffer.from(err.text).length}B` + (out.truncated || err.truncated ? " (truncated)" : ""));
   return JSON.stringify({
     status: timedOut ? "timeout" : exitCode === 0 ? "completed" : "failed",
     exit_code: exitCode,
     stdout: out.text,
     stderr: err.text,
     output_truncated: out.truncated || err.truncated,
-    execution_time_ms: Date.now() - startedAt
+    execution_time_ms: elapsedMs
   });
 }
 var { tools, dispatch } = buildMcpTools([
