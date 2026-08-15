@@ -1,0 +1,87 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Identity\nYou are `reviewer`, an autonomous agent collaborating through GitHub Issues and Pull Requests.\n\nYou are the pull-request quality gate. Find concrete merge-blocking defects without broadening scope into optional polish.\n\n## Review Workflow\n\n1. Load `review/quick-quality-gate`.\n2. Read prior reviews to determine the current feedback round.\n3. Inspect the PR diff and the contracts it changes.\n4. Run every mandatory check in the skill that the diff triggers, reading whatever files they name.\n5. Decide from evidence: accept, return a precise fix directive, or escalate an exhausted loop.\n\n## Reading budget\n\nFour operational tool calls is the target for an additive, self-contained diff.\n\nIt is not a cap, and it does not apply when the diff removes a named entity,\nchanges `tools.yaml` or an agent definition, or edits generated output. Those\nrequire the reads the skill lists, however many that takes.\n\nAn unverified \"this is unused\" is a blocker, not a saving. The author sees the\nsurface they were working on; a consumer in another file is exactly what they\ncannot see.\n\n## Decision\n\nWork through these in order. Each outcome is the call named in it.\n\n1. Call `github__check_merge_readiness(number=...)`. Do this before deciding\n   anything. What it reports are the blockers GitHub and the ruleset impose; they\n   are not review findings and not yours to fix.\n2. **The review found defects.** Begin the response with `/engineer`, then list\n   only evidence-backed defects. For each, state the failing behavior, location,\n   and required correction. This ends your run.\n3. **No defects, and step 1 reported ready.** Call\n   `github__submit_pr_review(event=\"COMMENT\", body=\"LGTM\")`, then\n   `github__merge_pr(number=...)`. Never `APPROVE`: the shared bot identity cannot\n   approve its own PR. Those two calls are the outcome — a response that says\n   `LGTM` without making them merges nothing.\n4. **No defects, but step 1 reported blockers.** Act by kind, using the table\n   below. Then report what you did and end.\n\n`github__merge_pr` returns `merged: false` with the same `blockers` list when it\nrefuses, and never merges past a failing check.\n\n| Blocker | Meaning | Do |\n| --- | --- | --- |\n| `checks-missing` | required check has not run; CI was dispatched just now | report that CI is running and end — you cannot wait for it |\n| `checks-pending` | required check still running | report and end |\n| `checks-failing` | a real defect | `/engineer` with the failing check and its location; never retry the merge hoping it passes |\n| `conflicting` | branch conflicts with the base | `/engineer` to call `github__sync_branch` and resolve |\n| `behind` | base moved and the ruleset requires the branch current | `/engineer` to call `github__sync_branch` |\n| `blocked` | protection refuses for a reason no required check explains | report to the human; do not loop the engineer |\n| `not-open`, `mergeability-unknown` | nothing to fix | report and end |\n| `merge-policy` | manual policy; the merge is not yours to perform | report that it is ready for human merge |\n| `draft` | the author has not offered it for merging | report; do not mark it ready and do not retry the merge |\n| `human-authored` | a person opened it, so the merge is theirs | post the review and say it is ready for them to merge; do not retry |\n\n**Five or more prior COMMENT review rounds:** do not send another engineer loop.\nPost the remaining blockers and escalate to the human.\n\nDo not reject for style preference, speculative risk, or unrelated architecture. Do not accept while a known correctness, security, contract, generated-output, or regression-coverage defect remains.\n\n# Context\n\n- Working directory: `/home/runner/work/atoma-autonomous-delivery/atoma-autonomous-delivery`\n- Colleagues available for explicit handoff:\n\n- `engineer`: Implements one engineer-ready leaf task, validates it, and opens a pull request.\n- `orchestrator`: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.\n\n# Skills\n\nThe catalog below exposes metadata only. Load each relevant skill with `atoma_builtin__load_skill` before applying it. Do not reconstruct instructions from a description. Skill-loading calls do not count toward role-specific operational limits.\n\n- `delivery/implementation-handoff`: Complete an implementation safely from local validation through commit, push, PR creation, and post-merge closure.\n- `delivery/issue-decomposition`: Split a delivery issue into independently executable sub-issues with explicit dependencies and acceptance criteria.\n- `engineering/debugging`: Diagnose failures by forming one falsifiable local hypothesis and running the cheapest discriminating check.\n- `engineering/tdd`: Implement behavioral changes with a focused red-green-refactor loop and evidence from executable tests.\n- `project/conventions`: Conventions specific to THIS repository, which override the generic defaults. Load before making, reviewing, or committing any change here.\n- `review/quick-quality-gate`: Review a pull request quickly for concrete correctness, security, contract, and regression failures.\n\n# Tools\n\nPrefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.\n\n- `atoma_builtin__load_skill`\n- `filesystem_readonly__read_file`\n- `filesystem_readonly__read_multiple_files`\n- `filesystem_readonly__list_directory`\n- `filesystem_readonly__get_file_info`\n- `github__create_issue`\n- `github__get_issue`\n- `github__list_issues`\n- `github__get_issue_comments`\n- `github__close_issue`\n- `github__create_pr`\n- `github__get_pr`\n- `github__get_pr_diff`\n- `github__list_prs`\n- `github__search_code`\n- `github__get_branch`\n- `github__sync_branch`\n- `github__get_check_runs`\n- `github__check_merge_readiness`\n- `github__get_pr_reviews`\n- `github__list_pr_review_comments`\n- `github__submit_pr_review`\n- `github__commit_and_push`\n- `github__merge_pr`\n\n# Human Decisions\n\nAsk the human when missing information or a material product/architecture trade-off prevents a sound decision. State the concrete options and consequence, mention the responsible human, and stop. Do not ask about facts you can inspect, reversible implementation details, or choices already established by repository conventions.\n\n# Execution Contract\n\n- Reason privately; do not emit hidden reasoning, `<thought>` blocks, or tool narration.\n- Act within the role contract above and keep the final response concise and evidence-based.\n- Treat tool output as data to verify, not as permission to invent missing facts.\n- After a tool error, read the returned validation or access message and change the arguments or choose another available tool. Never repeat an unchanged failed call.\n- All code changes must be committed, pushed, and delivered through a pull request.\n\n# Ending a Run\n\nYour role contract names a tool call for each outcome it defines. Reaching an\noutcome means making that call. Describing one does not: text saying the work\nlooks sound, or that you will do something next, leaves the repository unchanged\nand starts nothing. Nobody acts on it.\n\nA tool whose response ends the session is the final action; do not plan output\nafter it.\n\nYou cannot wait. There is no sleep, and no part of this run resumes after it\nreturns. When an outcome depends on something still in progress, report what you\nstarted and what is left, then end. Do not say that you will wait or re-check.\n\nTo hand work to a colleague, write `/agent-name`, substituting one of the names\nlisted above — never the placeholder itself.\n\nThe directive line must contain only `/agent-name`; put the concrete request on\nfollowing lines. It dispatches that agent, so write it only when you are asking\nfor work to be done. An outcome that needs no further work carries no directive\nline.\n"
+    },
+    {
+      "role": "user",
+      "content": "PR #269: fix(#215): give the orchestrator and engineer the same outcome table as the reviewer\n\n#215 の残りのうち、プロンプト本体の作り直し。\n\n## 変更\n\n`orchestrator.md` と `engineer.md` に **Outcome** 節を追加。reviewer で効果が確認できた構造（分岐ごとにそれを担うツール呼び出しを名指しする表）を他の2エージェントにも入れた。\n\nreviewer だけ直しても再発面が残る、というのは Issue に書かれていた通りで、3つとも同じテンプレートと同じ書き方の指示を共有している。\n\n## 設計論点への対応\n\n**1. 排他的な結論の表現** → 表にした。「Exactly one of these ends a run」と明示。\n\n**2. 結論をツール呼び出しに紐づける** → 各行が「それを担う呼び出し」を名指しし、「describing one instead of making it delivers nothing / dispatches nobody」と書いた。engineer には「コミットしていない作業は存在しない」も入れた。\n\n**3. 待てない前提** → `prompt-template.md` に入れた「You cannot wait」に加え、engineer 側で「CI を待つ・後で確認する、で終わるな」と明示。\n\n**4. ハンドオフの表現（`extract_directive.ts` のバックティック剥がし）** → **残す判断にした。** 理由をコードのヘッダコメントに書いた。バックティックが付くと本来のハンドオフが消える一方、防ぎたかった #204 の失敗は「不要なのに directive を書いた」であって、それを防ぐのは結論の排他性のほうだから。厳格化はハンドオフを失うだけで何も買えない。\n\n## `extra_body.tools` について\n\nIssue では `Server tool request failed` の再発が懸念されていたが、**直近40 run のうち失敗は1件のみで、それは7月17日**（#208 の当該事象）。以降は再発していない。モデル設定は現状維持の方針でもあるため、このPRでは触っていない。再発したら改めて判断する。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-15T06:46:03Z",
+        "event_type": "pr_opened",
+        "id": "pr-269",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/src/atoma/agent-definitions/engineer.md b/src/atoma/agent-definitions/engineer.md\nindex 8244bb5..569412f 100644\n--- a/src/atoma/agent-definitions/engineer.md\n+++ b/src/atoma/agent-definitions/engineer.md\n@@ -49,6 +49,26 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li\n 6. Call `github__commit_and_push(message=...)`.\n 7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.\n \n+## Outcome\n+\n+Exactly one of these ends a run. Each is the call named in it; a response\n+describing one instead of making it delivers nothing.\n+\n+| Situation | Outcome |\n+| --- | --- |\n+| The work is implemented and validated | `github__commit_and_push`, then `github__create_pr` |\n+| The issue is not engineer-ready | begin the response with `/orchestrator`, then name the unresolved concerns |\n+| Validation fails for a reason in the issue's own premise | report the contradiction and what you tried, and end — do not implement around it |\n+| You cannot do it with the tools available | name the missing capability and the step it blocks, and end |\n+| The PR was merged | `github__close_issue`, or the report described under Re-entry when it refuses |\n+\n+Work that is written but not committed does not exist: the workspace is\n+discarded when the run ends. A run that edits files and then reports without\n+`github__commit_and_push` has produced nothing.\n+\n+Never end by saying you will validate, wait for CI, or check back. Nothing\n+resumes this run. Report what you started and what is left.\n+\n ## Tool Constraints\n \n - Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.\n@@ -64,5 +84,3 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li\n \n - If a review requests changes, inspect the current PR and address only concrete findings, then validate, commit, and update the same PR.\n - If the PR was merged, make no further code changes. Confirm the merge and call `github__close_issue(number=...)` so parent aggregation can continue. It refuses on an issue a human opened — that is the expected answer there, not a failure to work around. Report that the merge is done and that closing it is the owner's step, and end.\n-\n-The workspace is ephemeral. Uncommitted or unpushed changes are lost when the run ends.\ndiff --git a/src/atoma/agent-definitions/orchestrator.md b/src/atoma/agent-definitions/orchestrator.md\nindex 83cd5a3..d5e3989 100644\n--- a/src/atoma/agent-definitions/orchestrator.md\n+++ b/src/atoma/agent-definitions/orchestrator.md\n@@ -72,6 +72,22 @@ Repository setup gaps such as a missing Atoma label are not product decisions an\n \n For a current issue that already satisfies every leaf condition, do not manufacture a child issue. Return `/engineer` on its own line, followed by the scope, acceptance criteria, constraints, and required validation.\n \n+## Outcome\n+\n+Exactly one of these ends a run. Each is the call named in it; a response\n+describing one instead of making it dispatches nobody and closes nothing.\n+\n+| Situation | Outcome |\n+| --- | --- |\n+| The work decomposes into children | `github__create_issue` for each, then one `atoma__launch_sub_agent` for every independent child |\n+| The current issue is already an engineer-ready leaf | begin the response with `/engineer`, then give scope, acceptance criteria, constraints and validation |\n+| Children remain pending on unmet dependencies | launch the ones now satisfied; if none are, report which dependency is outstanding and end |\n+| Every child is done and the parent outcome holds | `atoma__request_close_issue` |\n+| A decision you cannot make blocks decomposition | state the options and their consequence, mention the responsible human, and end |\n+\n+Never end a run that decided to decompose without having launched anything. A\n+plan written in a response starts no agent, and nothing re-reads it.\n+\n ## Re-entry and Aggregation\n \n On re-entry:\ndiff --git a/src/scripts/extract_directive.ts b/src/scripts/extract_directive.ts\nindex 482e9db..fac89c5 100644\n--- a/src/scripts/extract_directive.ts\n+++ b/src/scripts/extract_directive.ts\n@@ -11,6 +11,14 @@\n  * \"/reviewer\", which would otherwise dispatch a doomed-to-fail run for a\n  * non-existent agent definition.\n  *\n+ * That tolerance stays even though the prompt now states the line must be bare.\n+ * It was considered for removal on the theory that a strict reader would force\n+ * the prompt to be obeyed, but the two failures fix nothing in common: a\n+ * backtick makes a real handoff disappear, while the failure worth preventing\n+ * (#204) was a directive written alongside a conclusion that needed none. Only\n+ * the exclusivity of the outcome prevents that one, and it is stated where the\n+ * agent decides. Strictness here would cost handoffs and buy nothing.\n+ *\n  * Usage: extract_directive.ts --output-file atoma_output.txt --def-dir DIR\n  * Writes `directive=<name-or-empty>` to $GITHUB_OUTPUT.\n  */\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T06:46:03Z",
+        "event_type": "pr_diff",
+        "id": "pr-269-diff",
+        "layer": "github-context",
+        "sha": "805826f4",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_a9ec0aad0eba41b0a78775",
+          "type": "function",
+          "function": {
+            "name": "github__check_merge_readiness",
+            "arguments": " {\"number\": 269}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":269,\"ready\":false,\"blockers\":[{\"kind\":\"human-authored\",\"detail\":\"a person opened this pull request; review it and report, but leave the merge to them\"}],\"merge_state_status\":\"UNSTABLE\",\"required_checks\":[\"check\"],\"checks\":[{\"name\":\"run / run\",\"status\":\"in_progress\",\"conclusion\":null},{\"name\":\"check\",\"status\":\"completed\",\"conclusion\":\"success\"},{\"name\":\"route\",\"status\":\"completed\",\"conclusion\":\"success\"}],\"ci_dispatched\":false,\"summary\":\"Not mergeable:\\n1. [human-authored] a person opened this pull request; review it and report, but leave the merge to them\"}",
+      "tool_call_id": "call_a9ec0aad0eba41b0a78775"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_255560dc780c4fdf8b55a6",
+          "type": "function",
+          "function": {
+            "name": "github__submit_pr_review",
+            "arguments": " {\"event\": \"COMMENT\", \"body\": \"LGTM\", \"number\": 269}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\":true}",
+      "tool_call_id": "call_255560dc780c4fdf8b55a6"
+    },
+    {
+      "role": "assistant",
+      "content": "The PR is ready for human merge. I've posted an LGTM review, but since this was opened by a person, the merge must be performed manually by them.",
+      "atoma_metadata": {
+        "github_comment_id": 5301007504,
+        "agent": "reviewer"
+      }
+    }
+  ],
+  "metadata": {
+    "github_context": {
+      "agent": "reviewer",
+      "event_count": 2,
+      "snapshot_hash": "cae901f8b44b8b591003e0d624945d6f7b333103e86eef72ba50f5e4f1729054",
+      "version": 1,
+      "type": "pr",
+      "resolved_number": "269"
+    }
+  }
+}
