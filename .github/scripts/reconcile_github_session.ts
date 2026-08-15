@@ -47,6 +47,59 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
+// src/lib/gh.ts
+function ghBytes(...args) {
+  const proc = Bun.spawnSync({ cmd: ["gh", ...args], stdout: "pipe", stderr: "pipe" });
+  return { code: proc.exitCode ?? 1, bytes: proc.stdout ?? new Uint8Array };
+}
+
+// src/lib/issue-images.ts
+var MAX_IMAGE_BYTES = 4000000;
+var MAX_IMAGES = 4;
+var IMAGE_MARKDOWN = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+var IMAGE_HTML = /<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi;
+var EXTENSION_MIME = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp"
+};
+function extractImageUrls(body) {
+  const urls = [];
+  for (const pattern of [IMAGE_MARKDOWN, IMAGE_HTML]) {
+    pattern.lastIndex = 0;
+    for (const match of body.matchAll(pattern)) {
+      const url = match[1];
+      if (url && !urls.includes(url))
+        urls.push(url);
+    }
+  }
+  return urls.slice(0, MAX_IMAGES);
+}
+function mimeTypeFor(url) {
+  const extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
+  return EXTENSION_MIME[extension] ?? "image/png";
+}
+function fetchImageBlock(url) {
+  const { code, bytes } = ghBytes("api", url, "--method", "GET", "--header", "Accept: application/vnd.github.raw");
+  if (code !== 0 || bytes.length === 0)
+    return;
+  const data = Buffer.from(bytes).toString("base64");
+  if (!data || data.length > MAX_IMAGE_BYTES)
+    return;
+  return { type: "image", data, mimeType: mimeTypeFor(url) };
+}
+function contentWithImages(text) {
+  const urls = extractImageUrls(text);
+  if (urls.length === 0)
+    return text;
+  const images = urls.map(fetchImageBlock).filter((block) => block !== undefined);
+  if (images.length === 0)
+    return text;
+  return [{ type: "text", text }, ...images];
+}
+
 // src/scripts/reconcile_github_session.ts
 var ref = defineScript(import.meta.url);
 var GITHUB_CONTEXT_LAYER = "github-context";
@@ -175,10 +228,15 @@ function filterEventsForAgent(events, agentName, ownCommentIds, config) {
   }
   return filtered;
 }
-function eventToUserMessage(event) {
+function agentReadsImages(agentDefPath) {
+  if (!agentDefPath || !existsSync(agentDefPath))
+    return false;
+  return /^vision:\s*true\s*$/m.test(readFileSync(agentDefPath, "utf8"));
+}
+function eventToUserMessage(event, vision) {
   return {
     role: "user",
-    content: event.content,
+    content: vision ? contentWithImages(event.content) : event.content,
     atoma_metadata: {
       source: "github",
       layer: GITHUB_CONTEXT_LAYER,
@@ -205,12 +263,12 @@ function snapshotHashForEvents(events) {
 function previousSnapshotHash(session) {
   return session.metadata?.github_context?.snapshot_hash;
 }
-function reconcileGithubSession(session, events, agentName, config = {}) {
+function reconcileGithubSession(session, events, agentName, config = {}, vision = false) {
   const ownCommentIds = buildOwnCommentIds(session, agentName);
   const filteredEvents = filterEventsForAgent(events, agentName, ownCommentIds, config);
   const currentHash = snapshotHashForEvents(filteredEvents);
   const previousHash = previousSnapshotHash(session);
-  const contextMessages = filteredEvents.map(eventToUserMessage);
+  const contextMessages = filteredEvents.map((event) => eventToUserMessage(event, vision));
   const fetchedEventKeys = new Set(events.map(githubEventKeyFromEvent));
   let changedCount;
   if (previousHash === currentHash)
@@ -243,6 +301,7 @@ function main() {
     options: {
       events: { type: "string" },
       "agent-name": { type: "string" },
+      "agent-def": { type: "string" },
       config: { type: "string" },
       session: { type: "string" },
       out: { type: "string" }
@@ -255,7 +314,7 @@ function main() {
   const session = existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
   const events = JSON.parse(readFileSync(values.events, "utf8"));
   const config = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
-  const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(session, events, values["agent-name"], config);
+  const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(session, events, values["agent-name"], config, agentReadsImages(values["agent-def"]));
   writeFileSync(values.out, JSON.stringify(mergedSession, null, 2) + `
 `);
   const githubOutput = process.env.GITHUB_OUTPUT;
@@ -272,5 +331,6 @@ if (import.meta.main)
 export {
   ref,
   reconcileGithubSession,
-  mergeGithubContext
+  mergeGithubContext,
+  agentReadsImages
 };
