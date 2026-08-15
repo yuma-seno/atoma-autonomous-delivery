@@ -18627,10 +18627,23 @@ function dispatchPrValidation(prNumber, branch) {
     "engineer=engineer"
   ], log3);
 }
+function stackedPrBase() {
+  if (process.env.ATOMA_RUN_TYPE !== "issue")
+    return;
+  const issue2 = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  if (!Number.isInteger(issue2) || issue2 <= 0)
+    return;
+  const parent = parentIssueOf(issue2);
+  if (!parent)
+    return;
+  const parentBranch = `atoma/issue-${parent}`;
+  const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  return code === 0 && stdout.trim() ? parentBranch : undefined;
+}
 function createPr(a) {
   const title = a.title;
   let body = a.body ?? "";
-  const base = a.base ?? getBaseBranch();
+  const base = a.base ?? stackedPrBase() ?? getBaseBranch();
   body = injectParentIssue(body);
   log3(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
   const branch = resolveBranch();
@@ -18685,12 +18698,49 @@ function branchForCommit() {
   if (process.env.ATOMA_RUN_TYPE !== "issue" || !Number.isInteger(issue2) || issue2 <= 0) {
     return resolveBranch();
   }
+  const from = stackedBaseFor(issue2);
   const name = nextBranchName(collectIssueBranches(REPO, issue2), issue2);
-  const created = gitRun("checkout", "-b", name);
+  const created = from ? gitRun("checkout", "-b", name, `origin/${from}`) : gitRun("checkout", "-b", name);
   if (created.code)
     mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
-  log3(`commitAndPush: created branch ${name}`);
+  log3(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
   return name;
+}
+function parentIssueOf(issue2) {
+  const { code, stdout } = gh("issue", "view", String(issue2), "--repo", REPO, "--json", "body", "--jq", ".body");
+  if (code) {
+    log3(`WARN could not read issue #${issue2}; treating it as a root issue`);
+    return 0;
+  }
+  return PARENT_TAG.read(stdout) ?? 0;
+}
+function stackedBaseFor(issue2) {
+  const parent = parentIssueOf(issue2);
+  if (!parent)
+    return "";
+  const parentBranch = `atoma/issue-${parent}`;
+  const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  if (existing.code === 0 && existing.stdout.trim()) {
+    const fetched2 = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+    if (fetched2.code) {
+      log3(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
+      return "";
+    }
+    return parentBranch;
+  }
+  const head = gitRun("rev-parse", "HEAD");
+  if (head.code)
+    return "";
+  const { code, stderr, stdout } = gh("api", `repos/${REPO}/git/refs`, "-X", "POST", "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`);
+  if (code) {
+    log3(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
+    return "";
+  }
+  const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+  if (fetched.code)
+    return "";
+  log3(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
+  return parentBranch;
 }
 function commitAndPush(a) {
   const message = a.message;
@@ -18846,6 +18896,10 @@ function dispatchCd(baseRef) {
   const workflow = getWorkflowName("cd");
   if (!workflow)
     return false;
+  if (baseRef.startsWith("atoma/issue-")) {
+    log3(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
+    return false;
+  }
   return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log3);
 }
 function checkMergeReadiness(a) {
