@@ -349,14 +349,134 @@
       "role": "tool",
       "content": "{\"number\":285,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/285\"}",
       "tool_call_id": "call_25177929de5c4358abaf5dc4"
+    },
+    {
+      "role": "user",
+      "content": "PR #285: docs: README prerequisites note that agents do not merge governance changes\n**Labels:** atoma/in-progress\n**Linked Issue:** #282\n\n<!-- atoma:parent-issue=282 -->\n<!-- atoma:origin-agent=engineer -->\nCloses #282\n<!-- atoma:notify=hws-yuma-seno -->\n## 変更内容\n\n`README.md` の前提条件（Preflight checklist）の箇条書きに、エージェントが「エージェント自身の動き方を決めるファイル」を変更する pull request をマージしない旨を1項目追加しました。\n\n- 追加した内容: エージェントはワークフローやエージェント定義など「エージェントの動き方を決めるファイル」を変更する PR をマージしない。レビューはするがマージは人間が行う。\n- `docs/customization.md` の該当節「Changes an agent may not merge」へのリンクを添付。\n- 既存の箇条書きと同じ長さ・調子（3行・折返し形式）に合わせています。\n\n## 検証\n\n- `bun run lint`（typecheck + synth）を実行し成功を確認。\n- `dist/**` は gitignored のため生成物はコミットに含まれません。\n- 変更は `README.md` のみ（+3行）。他ファイルへの変更なし。",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:35:37Z",
+        "event_type": "pr_opened",
+        "id": "pr-285",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:36:51Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4943257083",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:36:58Z",
+        "event_type": "issue_comment",
+        "id": 5301188539,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/README.md b/README.md\nindex 442fe71..6541efb 100644\n--- a/README.md\n+++ b/README.md\n@@ -48,6 +48,9 @@ Required before first run:\n   cannot start leaves the check unfilled and the pull request unmergeable\n   forever. See\n   [Requiring a check that agents can satisfy](docs/customization.md#requiring-a-check-that-agents-can-satisfy).\n+- An agent will not merge a pull request that changes how agents run — workflows,\n+  agent definitions, and similar. It reviews and reports; the merge is yours. See\n+  [Changes an agent may not merge](docs/customization.md#changes-an-agent-may-not-merge).\n - Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and\n   `atoma/launched` are created on first use. Rename them in `config.json` if your\n   taxonomy differs.\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T07:37:02Z",
+        "event_type": "pr_diff",
+        "id": "pr-285-diff",
+        "layer": "github-context",
+        "sha": "1a27d6ed",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #285 は正常にマージされました。関連Issue #282 も自動的にクローズされています。\n\n\n\n---\n_Tokens: 22327 total (22210 prompt + 117 completion)_\n_Estimated cost: $0.0034_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31872373367)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:37:02Z",
+        "event_type": "pr_comment",
+        "id": 5301188975,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_613e8af6bc154910b8ad5eab",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 285}"
+          }
+        },
+        {
+          "id": "call_f0c8b9d5742f49b5bb50175d",
+          "type": "function",
+          "function": {
+            "name": "github__get_issue",
+            "arguments": "{\"number\": 282}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"atoma/issue-280\",\"body\":\"<!-- atoma:parent-issue=282 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #282\\n<!-- atoma:notify=hws-yuma-seno -->\\n## 変更内容\\n\\n`README.md` の前提条件（Preflight checklist）の箇条書きに、エージェントが「エージェント自身の動き方を決めるファイル」を変更する pull request をマージしない旨を1項目追加しました。\\n\\n- 追加した内容: エージェントはワークフローやエージェント定義など「エージェントの動き方を決めるファイル」を変更する PR をマージしない。レビューはするがマージは人間が行う。\\n- `docs/customization.md` の該当節「Changes an agent may not merge」へのリンクを添付。\\n- 既存の箇条書きと同じ長さ・調子（3行・折返し形式）に合わせています。\\n\\n## 検証\\n\\n- `bun run lint`（typecheck + synth）を実行し成功を確認。\\n- `dist/**` は gitignored のため生成物はコミットに含まれません。\\n- 変更は `README.md` のみ（+3行）。他ファイルへの変更なし。\",\"createdAt\":\"2026-08-15T07:35:37Z\",\"headRefName\":\"atoma/issue-282\",\"number\":285,\"state\":\"MERGED\",\"title\":\"docs: README prerequisites note that agents do not merge governance changes\"}",
+      "tool_call_id": "call_613e8af6bc154910b8ad5eab"
+    },
+    {
+      "role": "tool",
+      "content": "{\"body\":\"<!-- atoma:parent=280 -->\\n/engineer\\n\\n`README.md` の前提条件（Prerequisites）の箇条書きに、1項目追加してください。\\n\\n## 追加する内容\\n\\nエージェントは、ワークフローやエージェント定義など「エージェント自身の動き方を決めるファイル」を変更する pull request をマージしません。レビューはしますが、マージは人間が行います。詳細は `docs/customization.md` の該当節（Changes an agent may not merge）へのリンクを貼ってください。\\n\\n## 注意\\n\\n- 既存の箇条書きと同じ長さ・調子に合わせてください。1〜3行で十分です\\n- `README.md` 以外は変更しないでください\\n- 変更は pull request で届けてください\",\"closedAt\":\"2026-08-15T07:37:10Z\",\"comments\":[{\"id\":\"IC_kwDOS6gmSM8AAAABO_l_rA\",\"author\":{\"login\":\"hws-yuma-seno\"},\"authorAssociation\":\"COLLABORATOR\",\"body\":\"/engineer\\n\\nIssue 本文の指示のとおり進めてください。\\n\",\"createdAt\":\"2026-08-15T07:33:42Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/282#issuecomment-5301174188\",\"viewerDidAuthor\":false},{\"id\":\"IC_kwDOS6gmSM8AAAABO_mcjw\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- atoma:llm-context=exclude -->\\nAtoma: PR #285 created (https://github.com/yuma-seno/atoma-autonomous-delivery/pull/285). Running CI; the reviewer follows if it passes.\",\"createdAt\":\"2026-08-15T07:35:39Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/282#issuecomment-5301181583\",\"viewerDidAuthor\":true},{\"id\":\"IC_kwDOS6gmSM8AAAABO_m3uw\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"Atoma: Your PR was merged. Please confirm completion and close this sub-task.\",\"createdAt\":\"2026-08-15T07:36:58Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/282#issuecomment-5301188539\",\"viewerDidAuthor\":true}],\"createdAt\":\"2026-08-15T07:26:11Z\",\"labels\":[{\"id\":\"LA_kwDOS6gmSM8AAAACpVkEzg\",\"name\":\"atoma/in-progress\",\"description\":\"Issue is being worked on by an Atoma agent\",\"color\":\"0366d6\"}],\"number\":282,\"state\":\"CLOSED\",\"title\":\"README の前提条件にエージェントがマージしない変更の説明を1行足す\"}",
+      "tool_call_id": "call_f0c8b9d5742f49b5bb50175d"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_211327946a7046ed9ee7a24d",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 282}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #282: opened by a human, not a bot",
+      "tool_call_id": "call_211327946a7046ed9ee7a24d"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #285 はマージ済み、Issue #282 もクローズ済みです（`closedAt: 2026-08-15T07:37:10Z`）。\n\n- 実装: `README.md` の Preflight checklist に、エージェントが「エージェント自身の動き方を決めるファイル」（ワークフロー・エージェント定義など）を変更する PR をマージしない旨の箇条書きを1項目（3行）追加し、`docs/customization.md#changes-an-agent-may-not-merge` へのリンクを添付。\n- 検証: `bun run lint`（typecheck + synth）成功。変更は `README.md` のみ（+3行）、生成物なし。\n- PR #285 はマージ済み。関連 Issue #282 は自動的にクローズ済み。\n- 補足: `github__close_issue` は人により開かれた Issue のため拒否されました。クローズはすでに完了しているため、追加対応は不要です。",
+      "atoma_metadata": {
+        "github_comment_id": 5301191592,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 2,
-      "snapshot_hash": "eee46f1179736247b5401cdf739eeebbd249c703f6f16873f4d373be491b115f",
-      "version": 1
+      "event_count": 7,
+      "snapshot_hash": "71bf60aee741d50aa7f2d644d7b521b603b1b038940c89e0b952ca568cd6be3b",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "282"
     }
   }
 }
