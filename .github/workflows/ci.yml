@@ -34,6 +34,43 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks below scans this branch's own commits, which needs the base
+          # branch present to know where they start.
+          fetch-depth: 0
+      # First, before anything builds: a leaked credential is worth knowing about
+      # whether or not the code compiles.
+      #
+      # Scans this branch's commits, not the whole history. History is scanned by
+      # nobody here on purpose — an old finding is not something this pull request
+      # can fix, and failing every pull request over one teaches people to ignore
+      # the check. Scan history deliberately, by hand, when you want to know.
+      #
+      # Agents commit through this same gate: their pull request runs `check` like
+      # any other, and a merge waits on it.
+      - name: Scan this branch's commits for secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Latest rather than a pinned version: the value of a secret scanner is
+          # its rule set, and pinning freezes it at whatever was current the day
+          # someone wrote the number down. Pin it here if you would rather review
+          # each update.
+          TAG=$(gh api repos/gitleaks/gitleaks/releases/latest --jq .tag_name)
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/${TAG}/gitleaks_${TAG#v}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          # Works the same on all three triggers. `pull_request` sets
+          # GITHUB_BASE_REF; `workflow_dispatch` -- the agent path -- does not, and
+          # falls back to main, which is where their branches start. A push to main
+          # merge-bases with itself and scans an empty range, having already been
+          # scanned as a pull request.
+          BASE_REF="${GITHUB_BASE_REF:-main}"
+          git fetch --quiet origin "$BASE_REF"
+          RANGE="$(git merge-base FETCH_HEAD HEAD)..HEAD"
+          echo "Scanning $RANGE"
+          /tmp/gitleaks git --log-opts="$RANGE" --redact --verbose --no-banner .
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
