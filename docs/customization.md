@@ -224,6 +224,21 @@ is positioned to make.
 Nothing about that pull request is special to Atoma. It is reviewed by whoever
 reviews releases, and merging it runs whatever your `main` branch already runs.
 
+### Work with decomposed issues
+
+When an issue is decomposed into sub-issues, the work stacks on branches
+instead of landing on the base branch one piece at a time:
+
+- Each sub-issue's branch is cut from its parent issue's branch and merges back
+  into it, so siblings see each other's work as it lands.
+- The parent's branch is created from the base branch when the first child
+  commits; until then it does not exist.
+- Once every child is done, the parent's branch becomes one pull request into
+  the base branch.
+- A merge into a parent branch runs no deployment — the work is still in
+  progress, and only the final pull request into the base branch carries it to
+  release.
+
 ### Point Atoma at your own workflows
 
 ```json
