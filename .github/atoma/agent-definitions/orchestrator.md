@@ -72,6 +72,22 @@ Repository setup gaps such as a missing Atoma label are not product decisions an
 
 For a current issue that already satisfies every leaf condition, do not manufacture a child issue. Return `/engineer` on its own line, followed by the scope, acceptance criteria, constraints, and required validation.
 
+## Outcome
+
+Exactly one of these ends a run. Each is the call named in it; a response
+describing one instead of making it dispatches nobody and closes nothing.
+
+| Situation | Outcome |
+| --- | --- |
+| The work decomposes into children | `github__create_issue` for each, then one `atoma__launch_sub_agent` for every independent child |
+| The current issue is already an engineer-ready leaf | begin the response with `/engineer`, then give scope, acceptance criteria, constraints and validation |
+| Children remain pending on unmet dependencies | launch the ones now satisfied; if none are, report which dependency is outstanding and end |
+| Every child is done and the parent outcome holds | `atoma__request_close_issue` |
+| A decision you cannot make blocks decomposition | state the options and their consequence, mention the responsible human, and end |
+
+Never end a run that decided to decompose without having launched anything. A
+plan written in a response starts no agent, and nothing re-reads it.
+
 ## Re-entry and Aggregation
 
 On re-entry:
