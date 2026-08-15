@@ -18,7 +18,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeConfigDir, runWithFakeGh } from "../scripts/testing/harness.ts";
+import { makeConfigDir, runWithFakeGh, type FakeGhRule } from "../scripts/testing/harness.ts";
 
 const LIB_DIR = import.meta.dir;
 
@@ -234,5 +234,60 @@ describe("mcp-tool schema helpers", () => {
     }) as Record<string, any>;
     expect(labelsSchema.type).toBe("array");
     expect(labelsSchema.items.type).toBe("string");
+  });
+});
+
+describe("issue-branches.ts collectIssueBranches", () => {
+  const REFS = JSON.stringify([{ ref: "refs/heads/atoma/issue-12" }, { ref: "refs/heads/atoma/issue-12-2" }]);
+
+  function run(rules: FakeGhRule[]) {
+    const configDir = makeConfigDir({});
+    const { file, dir } = makeShim(`
+      import { collectIssueBranches } from "${join(LIB_DIR, "issue-branches.ts")}";
+      console.log(JSON.stringify(collectIssueBranches("owner/repo", 12)));
+    `);
+    try {
+      return runWithFakeGh(file, [], { cwd: configDir, rules });
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // The merged flag decides whether a run resumes a branch or starts a new one,
+  // and asking for it by head branch is what keeps that answer correct in a
+  // repository with more pull requests than one page holds -- scanning the
+  // repository's own list would read anything older than the first page as
+  // unmerged and resume a branch whose commits are already released.
+  test("asks about merged state per head branch, never as one repository-wide list", () => {
+    const r = run([
+      { match: ["matching-refs/heads/atoma/issue-12"], stdout: REFS },
+      { match: ["head=owner:atoma/issue-12-2"], stdout: "[]" },
+      { match: ["head=owner:atoma/issue-12"], stdout: JSON.stringify([{ merged_at: "2026-01-01T00:00:00Z" }]) },
+    ]);
+
+    expect(JSON.parse(r.stdout.trim())).toEqual([
+      { name: "atoma/issue-12", merged: true },
+      { name: "atoma/issue-12-2", merged: false },
+    ]);
+    for (const call of r.ghCalls) {
+      const pulls = call.find((arg) => arg.includes("/pulls?"));
+      if (pulls) expect(pulls).toContain("head=owner:");
+    }
+  });
+
+  // A run that cannot see the branches has to start from the base branch, not
+  // fail before the agent has said anything.
+  test("reports no branches when the ref listing fails", () => {
+    const r = run([{ match: ["matching-refs"], code: 1 }]);
+    expect(JSON.parse(r.stdout.trim())).toEqual([]);
+  });
+
+  test("treats a branch whose pull requests cannot be read as unmerged", () => {
+    const r = run([
+      { match: ["matching-refs/heads/atoma/issue-12"], stdout: JSON.stringify([{ ref: "refs/heads/atoma/issue-12" }]) },
+      { match: ["head=owner:atoma/issue-12"], code: 1 },
+    ]);
+    expect(JSON.parse(r.stdout.trim())).toEqual([{ name: "atoma/issue-12", merged: false }]);
   });
 });

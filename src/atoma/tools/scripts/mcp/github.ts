@@ -459,7 +459,7 @@ function branchForCommit(): string {
     return resolveBranch();
   }
 
-  const name = nextBranchName(collectIssueBranches(REPO), issue);
+  const name = nextBranchName(collectIssueBranches(REPO, issue), issue);
   const created = gitRun("checkout", "-b", name);
   if (created.code) mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
   log(`commitAndPush: created branch ${name}`);
