@@ -4,8 +4,35 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { buildMcpTools, defineMcpTool, z } from "../../../../lib/mcp-tool.ts";
+import { literalsFrom, redact } from "../../../../domain/redaction.ts";
 
 const MAX_OUTPUT_BYTES = 1_000_000;
+
+/**
+ * Variables holding a credential this process was handed.
+ *
+ * These are in the environment because the run cannot work without them: the
+ * provider key is what inference is billed to, and the token is what every
+ * GitHub tool authenticates with. They cannot be moved elsewhere, so what is
+ * left is to keep their values from leaving through a command's output.
+ *
+ * `ATOMA_PROVIDER` and the rest of the run's configuration are absent on
+ * purpose. They are not secret, and redacting a value like `openai` would blank
+ * every mention of the word.
+ */
+const SECRET_ENV_NAMES = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "GITHUB_PERSONAL_ACCESS_TOKEN",
+] as const;
+
+/**
+ * Read once, at startup: the values do not change during a run, and rebuilding
+ * the list per command would sort them on every call.
+ */
+const SECRET_LITERALS = literalsFrom(process.env, SECRET_ENV_NAMES);
 
 const SHELL_EXECUTE_SCHEMA = z.object({
   command: z.string().min(1).describe("Shell command to execute with bash."),
@@ -30,13 +57,13 @@ const LOGGED_COMMAND_CHARS = 200;
  * `console.error`, never the other one: this process's stdout is the JSON-RPC
  * transport.
  *
- * Commands are truncated rather than logged whole. GitHub Actions masks the
- * secrets it knows about, so an API key reaching a log comes out as `***`, but a
- * value derived from one does not. Truncating bounds how much of an unmasked
- * value can appear until masking is handled properly.
+ * Redacted, then truncated. A command line is a place credentials appear —
+ * pasted into a curl, exported before a script — and this log is written by the
+ * process rather than by Actions, so nothing else would catch one. Truncation
+ * still bounds what a shape nobody recognises can reveal.
  */
 function logCommand(command: string): void {
-  const flat = command.replace(/\s+/g, " ").trim();
+  const flat = redact(command, SECRET_LITERALS).replace(/\s+/g, " ").trim();
   const shown = flat.length > LOGGED_COMMAND_CHARS ? `${flat.slice(0, LOGGED_COMMAND_CHARS)}…` : flat;
   console.error(`[atoma-shell] exec: ${shown}`);
 }
@@ -70,7 +97,12 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
     new Response(child.stderr).text(),
   ]).finally(() => clearTimeout(timer));
 
-  const truncate = (value: string): { text: string; truncated: boolean } => {
+  // Redact before truncating, so the size reported is the size of what is
+  // actually returned, and before anything is returned at all: this value goes
+  // into the session on the `atoma-data` branch and can be quoted into an issue
+  // comment, neither of which GitHub Actions masks.
+  const truncate = (raw: string): { text: string; truncated: boolean } => {
+    const value = redact(raw, SECRET_LITERALS);
     const bytes = Buffer.from(value);
     return bytes.length <= MAX_OUTPUT_BYTES
       ? { text: value, truncated: false }

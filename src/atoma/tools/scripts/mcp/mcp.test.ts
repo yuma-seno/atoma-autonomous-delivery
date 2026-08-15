@@ -332,6 +332,25 @@ describe("mcp/shell.ts", () => {
     expect(result).toMatchObject({ status: "completed", exit_code: 0, stdout: "hello", stderr: "" });
   });
 
+  // The output goes into the session on the `atoma-data` branch and can be
+  // quoted into an issue comment, neither of which GitHub Actions masks. So it
+  // has to leave this process already redacted.
+  test("keeps a credential in its output from reaching the caller", async () => {
+    const response = await sendRequest(
+      "shell.ts",
+      {
+        jsonrpc: "2.0", id: 3, method: "tools/call",
+        params: {
+          name: "shell_execute",
+          arguments: { command: 'printf "key=$OPENAI_API_KEY shape=ghp_abcdefghijklmnopqrstuvwx"', timeout_seconds: 5 },
+        },
+      },
+      { OPENAI_API_KEY: "sekrit-value-from-the-environment" },
+    );
+    const result = JSON.parse(response.result.content[0].text);
+    expect(result.stdout).toBe("key=[redacted] shape=[redacted]");
+  });
+
   test("terminates commands that exceed their timeout", async () => {
     const response = await sendRequest("shell.ts", {
       jsonrpc: "2.0", id: 2, method: "tools/call",

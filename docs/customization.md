@@ -346,6 +346,23 @@ moves them out. Your other repository secrets are already outside it: they reach
 the workflow, not the agent process, unless you put them there yourself through
 `environment.setup_commands`.
 
+### What a shell command may print
+
+A shell command's output is redacted before the agent, the run log, the session,
+or an issue comment ever sees it. Two things are removed: text shaped like a
+vendor credential (`sk-`, `ghp_`, `AKIA`, a PEM header, and similar), and the
+exact values of the API key and tokens the run itself holds.
+
+This is a net, not a control. A value *derived* from a secret — a slice of a key,
+a base64 of one — is indistinguishable from ordinary text and gets through. Keep
+secrets your agents do not need out of their environment, and treat this as the
+thing that catches the accident rather than the thing that makes it safe.
+
+It exists because two of the three places a run's output lands are otherwise
+unprotected: GitHub Actions substitutes `***` for registered secrets in the
+workflow log, and does nothing for the issue comment a run posts or for the
+session JSON on the `atoma-data` branch.
+
 ### Rename labels
 
 Set `labels.in_progress`, `labels.sub_issue`, and `labels.launched` in `config.json`.
