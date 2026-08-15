@@ -32,13 +32,29 @@ const MAX_IMAGES = 4;
 const IMAGE_MARKDOWN = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
 const IMAGE_HTML = /<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi;
 
-const EXTENSION_MIME: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-};
+/**
+ * The media type of some image bytes, read from the bytes.
+ *
+ * Not from the URL. GitHub's own attachments — the ones you get by dropping a
+ * file into the comment box — are served from
+ * `github.com/user-attachments/assets/<uuid>`, which carries no extension and
+ * says nothing about the format. A JPEG announced as a PNG is rejected by the
+ * providers that check, so guessing from the address is not good enough.
+ *
+ * Returns "" for bytes that are not an image format worth sending, which is the
+ * signal to skip that attachment rather than send something unreadable.
+ */
+export function sniffMimeType(bytes: Uint8Array): string {
+  const starts = (...sig: number[]) => sig.every((b, i) => bytes[i] === b);
+  if (starts(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (starts(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  // RIFF....WEBP — the size sits between the two markers.
+  if (starts(0x52, 0x49, 0x46, 0x46) && [0x57, 0x45, 0x42, 0x50].every((b, i) => bytes[8 + i] === b)) {
+    return "image/webp";
+  }
+  return "";
+}
 
 /**
  * Image URLs referenced by a body, in the order they appear, deduplicated.
@@ -62,18 +78,6 @@ export function extractImageUrls(body: string): string[] {
 }
 
 /**
- * The media type for a URL, or "" when its extension says nothing.
- *
- * GitHub's own attachment URLs (`user-attachments/assets/<uuid>`) carry no
- * extension, so those fall back to PNG — the format a pasted screenshot takes,
- * and the one every vision model reads.
- */
-function mimeTypeFor(url: string): string {
-  const extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
-  return EXTENSION_MIME[extension] ?? "image/png";
-}
-
-/**
  * Fetch one image as a block, or undefined if it cannot be had.
  *
  * Through `gh api`, not a bare fetch, because an attachment on a private
@@ -84,10 +88,13 @@ export function fetchImageBlock(url: string): ImageBlock | undefined {
   const { code, bytes } = ghBytes("api", url, "--method", "GET", "--header", "Accept: application/vnd.github.raw");
   if (code !== 0 || bytes.length === 0) return undefined;
 
+  const mimeType = sniffMimeType(bytes);
+  if (!mimeType) return undefined;
+
   const data = Buffer.from(bytes).toString("base64");
   if (!data || data.length > MAX_IMAGE_BYTES) return undefined;
 
-  return { type: "image", data, mimeType: mimeTypeFor(url) };
+  return { type: "image", data, mimeType };
 }
 
 /**
