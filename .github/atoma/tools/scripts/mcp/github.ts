@@ -18230,6 +18230,12 @@ function decideMergeReadiness(signals) {
         detail: `GitHub reports mergeStateStatus=${signals.mergeStateStatus ?? "null"}; retry shortly`
       });
   }
+  if (!signals.authoredByAgent) {
+    blockers.push({
+      kind: "human-authored",
+      detail: "a person opened this pull request; review it and report, but leave the merge to them"
+    });
+  }
   if (signals.mergePolicy !== "auto") {
     blockers.push({
       kind: "merge-policy",
@@ -18271,7 +18277,7 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
       throwOnFailure(stderr || stdout);
     return stdout ? JSON.parse(stdout) : null;
   };
-  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,isDraft,state,headRefOid,headRefName,baseRefName");
+  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName");
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
   const baseRefName = pr?.baseRefName ?? "";
@@ -18279,6 +18285,7 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
       isDraft: pr?.isDraft ?? false,
+      authoredByAgent: pr?.author?.is_bot ?? false,
       state: pr?.state ?? "UNKNOWN",
       checks: (runs?.check_runs ?? []).map((run2) => ({
         name: run2.name,
