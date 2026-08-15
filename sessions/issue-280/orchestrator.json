@@ -274,14 +274,85 @@
       "role": "tool",
       "content": "{\"number\":286,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/286\"}",
       "tool_call_id": "call_556a9503154144e4baf211cc"
+    },
+    {
+      "role": "user",
+      "content": "PR #286: docs: 分解された作業のブランチとマージの見え方をドキュメントに反映\n**Linked Issue:** #280\n\n<!-- atoma:parent-issue=280 -->\n<!-- atoma:origin-agent=orchestrator -->\n<!-- atoma:notify=hws-yuma-seno -->\n## 概要\n\nIssue #280 の作業成果です。ブランチ運用とマージの挙動が変わったので、利用者向けドキュメントに反映します。\n\n## 変更内容\n\n### `docs/customization.md`\n\n- 「Work with decomposed issues」節を追加\n  - サブIssue のブランチが親ブランチから切られて親にマージされること\n  - 親ブランチは最初の子がコミットした時点でベースブランチから作られること\n  - すべての子が終わったあと、親ブランチがベースブランチへの1本の PR になること\n  - 親ブランチへのマージではデプロイが走らないこと\n\n### `README.md`\n\n- Preflight checklist に1項目追加: エージェントがガバナンス関連ファイル（ワークフロー、エージェント定義など）の変更をマージしない旨を明記し、`docs/customization.md` の該当節へのリンクを付与\n\n## 検証\n\n- `bun run lint`（typecheck + synth）が両 PR ともに成功済み\n- 変更は `docs/customization.md` と `README.md` のみ\n\n## 関連 Issue\n\n- Closes #280\n- 子タスク: #281, #282（ともに完了・マージ済み）",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:39:23Z",
+        "event_type": "pr_opened",
+        "id": "pr-286",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/README.md b/README.md\nindex 442fe71..6541efb 100644\n--- a/README.md\n+++ b/README.md\n@@ -48,6 +48,9 @@ Required before first run:\n   cannot start leaves the check unfilled and the pull request unmergeable\n   forever. See\n   [Requiring a check that agents can satisfy](docs/customization.md#requiring-a-check-that-agents-can-satisfy).\n+- An agent will not merge a pull request that changes how agents run — workflows,\n+  agent definitions, and similar. It reviews and reports; the merge is yours. See\n+  [Changes an agent may not merge](docs/customization.md#changes-an-agent-may-not-merge).\n - Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and\n   `atoma/launched` are created on first use. Rename them in `config.json` if your\n   taxonomy differs.\ndiff --git a/docs/customization.md b/docs/customization.md\nindex 2d4450a..5af3ea9 100644\n--- a/docs/customization.md\n+++ b/docs/customization.md\n@@ -224,6 +224,21 @@ is positioned to make.\n Nothing about that pull request is special to Atoma. It is reviewed by whoever\n reviews releases, and merging it runs whatever your `main` branch already runs.\n \n+### Work with decomposed issues\n+\n+When an issue is decomposed into sub-issues, the work stacks on branches\n+instead of landing on the base branch one piece at a time:\n+\n+- Each sub-issue's branch is cut from its parent issue's branch and merges back\n+  into it, so siblings see each other's work as it lands.\n+- The parent's branch is created from the base branch when the first child\n+  commits; until then it does not exist.\n+- Once every child is done, the parent's branch becomes one pull request into\n+  the base branch.\n+- A merge into a parent branch runs no deployment — the work is still in\n+  progress, and only the final pull request into the base branch carries it to\n+  release.\n+\n ### Point Atoma at your own workflows\n \n ```json\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T07:39:23Z",
+        "event_type": "pr_diff",
+        "id": "pr-286-diff",
+        "layer": "github-context",
+        "sha": "e3e8d371",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_135ed8d53ac04f2fbbc790a1",
+          "type": "function",
+          "function": {
+            "name": "github__check_merge_readiness",
+            "arguments": "{\"number\": 286}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"number\":286,\"ready\":false,\"blockers\":[{\"kind\":\"checks-pending\",\"detail\":\"required check \\\"check\\\" is in_progress\"}],\"merge_state_status\":\"BLOCKED\",\"required_checks\":[\"check\"],\"checks\":[{\"name\":\"check\",\"status\":\"in_progress\",\"conclusion\":null}],\"ci_dispatched\":false,\"summary\":\"Not mergeable:\\n1. [checks-pending] required check \\\"check\\\" is in_progress\"}",
+      "tool_call_id": "call_135ed8d53ac04f2fbbc790a1"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_4d382ab394e449938589d01e",
+          "type": "function",
+          "function": {
+            "name": "github__get_check_runs",
+            "arguments": "{\"ref\": \"atoma/issue-280\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[{\"id\":94983229541,\"name\":\"check\",\"node_id\":\"CR_kwDOS6gmSM8AAAAWHXEQZQ\",\"head_sha\":\"e3e8d371720bf154ec7b6fa54c46b953d762d7a3\",\"external_id\":\"992f097b-06de-571f-9df8-987cd6ff837d\",\"url\":\"https://api.github.com/repos/yuma-seno/atoma-autonomous-delivery/check-runs/94983229541\",\"html_url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31872512661/job/94983229541\",\"details_url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31872512661/job/94983229541\",\"status\":\"in_progress\",\"conclusion\":null,\"started_at\":\"2026-08-15T07:39:40Z\",\"completed_at\":null,\"output\":{\"title\":null,\"summary\":null,\"text\":null,\"annotations_count\":0,\"annotations_url\":\"https://api.github.com/repos/yuma-seno/atoma-autonomous-delivery/check-runs/94983229541/annotations\"},\"check_suite\":{\"id\":86460485490},\"app\":{\"id\":15368,\"client_id\":\"Iv1.05c79e9ad1f6bdfa\",\"slug\":\"github-actions\",\"node_id\":\"MDM6QXBwMTUzNjg=\",\"owner\":{\"login\":\"github\",\"id\":9919,\"node_id\":\"MDEyOk9yZ2FuaXphdGlvbjk5MTk=\",\"avatar_url\":\"https://avatars.githubusercontent.com/u/9919?v=4\",\"gravatar_id\":\"\",\"url\":\"https://api.github.com/users/github\",\"html_url\":\"https://github.com/github\",\"followers_url\":\"https://api.github.com/users/github/followers\",\"following_url\":\"https://api.github.com/users/github/following{/other_user}\",\"gists_url\":\"https://api.github.com/users/github/gists{/gist_id}\",\"starred_url\":\"https://api.github.com/users/github/starred{/owner}{/repo}\",\"subscriptions_url\":\"https://api.github.com/users/github/subscriptions\",\"organizations_url\":\"https://api.github.com/users/github/orgs\",\"repos_url\":\"https://api.github.com/users/github/repos\",\"events_url\":\"https://api.github.com/users/github/events{/privacy}\",\"received_events_url\":\"https://api.github.com/users/github/received_events\",\"type\":\"Organization\",\"user_view_type\":\"public\",\"site_admin\":false},\"name\":\"GitHub Actions\",\"description\":\"Automate your workflow from idea to production\",\"external_url\":\"https://help.github.com/en/actions\",\"html_url\":\"https://github.com/apps/github-actions\",\"created_at\":\"2018-07-30T09:30:17Z\",\"updated_at\":\"2026-06-18T16:17:48Z\",\"permissions\":{\"actions\":\"write\",\"administration\":\"read\",\"artifact_metadata\":\"write\",\"attestations\":\"write\",\"checks\":\"write\",\"code_quality\":\"write\",\"contents\":\"write\",\"copilot_requests\":\"write\",\"deployments\":\"write\",\"discussions\":\"write\",\"drives\":\"write\",\"issues\":\"write\",\"merge_queues\":\"write\",\"metadata\":\"read\",\"models\":\"read\",\"packages\":\"write\",\"pages\":\"write\",\"pull_requests\":\"write\",\"repository_hooks\":\"write\",\"repository_projects\":\"write\",\"security_events\":\"write\",\"statuses\":\"write\",\"vulnerability_alerts\":\"read\"},\"events\":[\"branch_protection_rule\",\"check_run\",\"check_suite\",\"create\",\"delete\",\"deployment\",\"deployment_status\",\"discussion\",\"discussion_comment\",\"fork\",\"gollum\",\"issues\",\"issue_comment\",\"label\",\"merge_group\",\"milestone\",\"page_build\",\"public\",\"pull_request\",\"pull_request_review\",\"pull_request_review_comment\",\"push\",\"registry_package\",\"release\",\"repository\",\"repository_dispatch\",\"status\",\"watch\",\"workflow_dispatch\",\"workflow_run\"]},\"pull_requests\":[{\"url\":\"https://api.github.com/repos/yuma-seno/atoma-autonomous-delivery/pulls/286\",\"id\":4285358662,\"number\":286,\"head\":{\"ref\":\"atoma/issue-280\",\"sha\":\"e3e8d371720bf154ec7b6fa54c46b953d762d7a3\",\"repo\":{\"id\":1269311048,\"url\":\"https://api.github.com/repos/yuma-seno/atoma-autonomous-delivery\",\"name\":\"atoma-autonomous-delivery\"}},\"base\":{\"ref\":\"main\",\"sha\":\"a11806c1ef2c0342cfbfd274b79a750ffd0bd8c3\",\"repo\":{\"id\":1269311048,\"url\":\"https://api.github.com/repos/yuma-seno/atoma-autonomous-delivery\",\"name\":\"atoma-autonomous-delivery\"}}}]}]",
+      "tool_call_id": "call_4d382ab394e449938589d01e"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #286 を作成しました。CI が実行中です（`check` が `in_progress`）。\n\n**完了した作業:**\n- 子タスク #281 と #282 が完了し、それぞれの PR が `atoma/issue-280` ブランチにマージ済み\n- `docs/customization.md` に「Work with decomposed issues」節を追加\n- `README.md` の Preflight checklist にガバナンス関連ファイルのマージ制限を追記\n- PR #286 を作成（base: `main`, head: `atoma/issue-280`）\n\n**保留中の作業:**\n- CI チェックが完了するのを待ってからマージ\n- マージ後に Issue #280 をクローズ\n\n@hws-yuma-seno — CI が green になり次第、PR #286 を確認・マージしてください。",
+      "atoma_metadata": {
+        "github_comment_id": 5301201714,
+        "agent": "orchestrator"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "orchestrator",
-      "event_count": 3,
-      "snapshot_hash": "dc873a667be898e1ede8a2a6e9451b7260ab7f0df9cb4d7a6ad2ebc5c5e9788b",
-      "version": 1
+      "event_count": 5,
+      "snapshot_hash": "e87c72c058a6c1bde283fa1e1487db14b4a8fb3d8cff69169b1cdc7bdb01b8a3",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "280"
     }
   }
 }
