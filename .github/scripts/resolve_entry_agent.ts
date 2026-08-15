@@ -21,6 +21,18 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/resolve_entry_agent.ts
 var ref = defineScript(import.meta.url);
+function commandLine(body) {
+  for (const raw of body.split(`
+`)) {
+    const line = raw.trim();
+    if (!line)
+      continue;
+    if (line.startsWith("<!--") && line.endsWith("-->"))
+      continue;
+    return line;
+  }
+  return "";
+}
 function main() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const number = process.env.NUMBER ?? "";
@@ -32,11 +44,9 @@ function main() {
   }
   const event = JSON.parse(readFileSync(eventPath, "utf8"));
   const body = event.issue?.body ?? "";
-  const firstLine = (body.trim().split(`
-`)[0] ?? "").trim();
-  if (!firstLine.startsWith("/"))
+  if (!commandLine(body).startsWith("/"))
     return;
-  const agent = firstLine.slice(1).trim();
+  const agent = commandLine(body).slice(1).trim();
   if (!agent)
     return;
   if (!isAgentName(agent)) {
