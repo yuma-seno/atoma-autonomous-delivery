@@ -55,6 +55,19 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
+// src/domain/completion-mention.ts
+function shouldMentionOnCompletion(signals) {
+  if (!signals.notify)
+    return false;
+  if (signals.directive)
+    return false;
+  if (signals.chainContinues)
+    return false;
+  if (signals.isSubIssue && signals.issueClosed)
+    return false;
+  return true;
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -82,9 +95,31 @@ function tokenUsageLines() {
   }
   return lines;
 }
+function subIssueState(number, type) {
+  if (type !== "issue")
+    return { isSubIssue: false, issueClosed: false };
+  const { code, stdout } = gh("issue", "view", number, "--repo", process.env.GITHUB_REPOSITORY ?? "", "--json", "state,body");
+  if (code !== 0)
+    return { isSubIssue: false, issueClosed: false };
+  try {
+    const issue = JSON.parse(stdout);
+    return {
+      isSubIssue: PARENT_TAG.read(issue.body ?? "") !== undefined,
+      issueClosed: issue.state === "CLOSED"
+    };
+  } catch {
+    return { isSubIssue: false, issueClosed: false };
+  }
+}
 function buildCommentBody(args) {
   const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
-  if (!args.directive && args.chainContinues !== "true" && args.notify) {
+  if (shouldMentionOnCompletion({
+    directive: args.directive,
+    chainContinues: args.chainContinues === "true",
+    notify: args.notify,
+    isSubIssue: args.isSubIssue ?? false,
+    issueClosed: args.issueClosed ?? false
+  })) {
     lines.push(`@${args.notify} \u2014 **${args.agent}** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.`, "");
   }
   lines.push("---", `_run by [${args.agent}](${args.runUrl})_`);
@@ -100,6 +135,7 @@ function main() {
     options: {
       number: { type: "string" },
       agent: { type: "string" },
+      type: { type: "string" },
       notify: { type: "string" },
       directive: { type: "string" },
       "chain-continues": { type: "string" },
@@ -124,7 +160,8 @@ function main() {
     maxIterationsReached: values["max-iterations-reached"],
     runUrl: values["run-url"],
     output,
-    usageLines: tokenUsageLines()
+    usageLines: tokenUsageLines(),
+    ...subIssueState(values.number, values.type)
   });
   const { code, stdout, stderr } = gh("api", `repos/${process.env.GITHUB_REPOSITORY}/issues/${values.number}/comments`, "--method", "POST", "-f", `body=${body}`, "--jq", ".id");
   if (code !== 0) {
