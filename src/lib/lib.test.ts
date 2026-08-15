@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeConfigDir, runWithFakeGh, type FakeGhRule } from "../scripts/testing/harness.ts";
-import { extractImageUrls } from "./issue-images.ts";
+import { extractImageUrls, sniffMimeType } from "./issue-images.ts";
 
 const LIB_DIR = import.meta.dir;
 
@@ -320,5 +320,31 @@ describe("issue-images.ts extractImageUrls", () => {
   test("caps how many it takes", () => {
     const body = Array.from({ length: 9 }, (_, i) => `![](https://x/${i}.png)`).join("\n");
     expect(extractImageUrls(body).length).toBe(4);
+  });
+});
+
+describe("issue-images.ts sniffMimeType", () => {
+  const bytes = (...b: number[]) => new Uint8Array([...b, ...Array(12).fill(0)]);
+
+  // The case that made this necessary: GitHub serves an attachment from
+  // `user-attachments/assets/<uuid>`, which has no extension. A real one turned
+  // out to be a JPEG, and the URL said nothing.
+  test("reads the format from the bytes, not the name", () => {
+    expect(sniffMimeType(bytes(0xff, 0xd8, 0xff, 0xe0))).toBe("image/jpeg");
+    expect(sniffMimeType(bytes(0x89, 0x50, 0x4e, 0x47))).toBe("image/png");
+    expect(sniffMimeType(bytes(0x47, 0x49, 0x46, 0x38))).toBe("image/gif");
+  });
+
+  test("recognises webp by both of its markers", () => {
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50]);
+    expect(sniffMimeType(webp)).toBe("image/webp");
+    // RIFF alone is a container, not necessarily an image.
+    expect(sniffMimeType(new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0, 0, 0, 0]))).toBe("");
+  });
+
+  // Better to skip an attachment than to announce a format that is not there.
+  test("says nothing for bytes that are not a known image", () => {
+    expect(sniffMimeType(bytes(0x25, 0x50, 0x44, 0x46))).toBe("");
+    expect(sniffMimeType(new Uint8Array())).toBe("");
   });
 });
