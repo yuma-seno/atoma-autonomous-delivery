@@ -362,14 +362,42 @@ function dispatchPrValidation(prNumber: number, branch: string): void {
   );
 }
 
+/**
+ * The parent's branch, when this run is a sub-issue's and that branch exists.
+ *
+ * Returns undefined for a root issue, and for a sub-issue whose parent branch
+ * was never created — a run that reports rather than commits reaches no
+ * `commit_and_push`, so nothing made one, and there is nothing to stack on.
+ *
+ * The parent's own run is a root run by this test: its issue carries no parent
+ * tag, so its pull request — the integration one, carrying every child's work —
+ * targets the base branch like any other.
+ */
+function stackedPrBase(): string | undefined {
+  if (process.env.ATOMA_RUN_TYPE !== "issue") return undefined;
+  const issue = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  if (!Number.isInteger(issue) || issue <= 0) return undefined;
+
+  const parent = parentIssueOf(issue);
+  if (!parent) return undefined;
+
+  const parentBranch = `atoma/issue-${parent}`;
+  const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  return code === 0 && stdout.trim() ? parentBranch : undefined;
+}
+
 function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   const title = a.title;
   let body = a.body ?? "";
-  // `base_branch` is how an adopter says where day-to-day work lands — a repo
-  // that develops on `develop` and deploys by merging into `main` cannot have
-  // every agent PR aimed at the default branch. An explicit `base` still wins,
-  // and with neither set `gh` targets the default branch.
-  const base = a.base ?? getBaseBranch();
+  // Three answers, most specific first.
+  //
+  // An explicit `base` wins. Otherwise a sub-issue aims at its parent's branch,
+  // so the parent's work accumulates in one place and reaches the base as a
+  // single reviewed change. Otherwise `base_branch` — how an adopter says where
+  // day-to-day work lands, since a repo that develops on `develop` cannot have
+  // every agent PR aimed at the default branch. With none set, `gh` targets the
+  // default branch.
+  const base = a.base ?? stackedPrBase() ?? getBaseBranch();
   body = injectParentIssue(body);
   log(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
 
@@ -459,11 +487,82 @@ function branchForCommit(): string {
     return resolveBranch();
   }
 
+  const from = stackedBaseFor(issue);
   const name = nextBranchName(collectIssueBranches(REPO, issue), issue);
-  const created = gitRun("checkout", "-b", name);
+  const created = from
+    ? gitRun("checkout", "-b", name, `origin/${from}`)
+    : gitRun("checkout", "-b", name);
   if (created.code) mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
-  log(`commitAndPush: created branch ${name}`);
+  log(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
   return name;
+}
+
+/**
+ * The parent issue this one was split out of, or 0 for a root issue.
+ *
+ * Read from the issue body's `atoma:parent` tag, which `create_issue` writes
+ * when an orchestrator creates a child. Nothing here asks which agent is
+ * running: a sub-issue is a sub-issue whoever picks it up.
+ */
+function parentIssueOf(issue: number): number {
+  const { code, stdout } = gh("issue", "view", String(issue), "--repo", REPO, "--json", "body", "--jq", ".body");
+  if (code) {
+    log(`WARN could not read issue #${issue}; treating it as a root issue`);
+    return 0;
+  }
+  return PARENT_TAG.read(stdout) ?? 0;
+}
+
+/**
+ * The branch a sub-issue's work should be cut from, or "" for the base branch.
+ *
+ * Sub-issues of one parent are split from a single piece of work and usually
+ * depend on each other — an interface one defines is what the next one consumes.
+ * Cutting each from the base hides those from one another until every part has
+ * landed separately, which is where integration surprises come from.
+ *
+ * So they stack: each is cut from the parent's branch and merges back into it,
+ * and the parent's branch reaches the base as one reviewed change. The parent's
+ * branch is created here, empty, if the first child gets there first — an
+ * orchestrator plans and dispatches without committing, so its branch would
+ * otherwise not exist yet.
+ *
+ * Best-effort throughout. Every failure returns "" and the work is cut from the
+ * base, which is the behaviour before stacking existed: a slower integration is
+ * not worth failing a commit over.
+ */
+function stackedBaseFor(issue: number): string {
+  const parent = parentIssueOf(issue);
+  if (!parent) return "";
+
+  const parentBranch = `atoma/issue-${parent}`;
+  const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  if (existing.code === 0 && existing.stdout.trim()) {
+    const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+    if (fetched.code) {
+      log(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
+      return "";
+    }
+    return parentBranch;
+  }
+
+  // The parent has no branch yet. Create it where this run started, which is the
+  // base branch — the run resumed nothing, or `branchForCommit` would not be
+  // naming a branch at all.
+  const head = gitRun("rev-parse", "HEAD");
+  if (head.code) return "";
+  const { code, stderr, stdout } = gh(
+    "api", `repos/${REPO}/git/refs`, "-X", "POST",
+    "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`,
+  );
+  if (code) {
+    log(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
+    return "";
+  }
+  const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+  if (fetched.code) return "";
+  log(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
+  return parentBranch;
 }
 
 function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
@@ -674,6 +773,13 @@ function dispatchCi(branch: string): boolean {
 function dispatchCd(baseRef: string): boolean {
   const workflow = getWorkflowName("cd");
   if (!workflow) return false;
+  // Only a merge that actually lands work deploys. A sub-issue's pull request
+  // merges into its parent's branch, which is still in progress — deploying
+  // there would ship half a feature, once per child.
+  if (baseRef.startsWith("atoma/issue-")) {
+    log(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
+    return false;
+  }
   return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log);
 }
 
