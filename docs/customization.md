@@ -27,6 +27,7 @@ Supported top-level fields used by scripts/workflows:
 
 - `merge_policy`
 - `base_branch`
+- `governed_paths`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
@@ -299,6 +300,51 @@ it. Resolve it from the branch instead:
 ```bash
 PR=$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')
 ```
+
+### Changes an agent may not merge
+
+An agent will not merge a pull request that changes how agents run. It reviews it
+and reports, and the merge is yours.
+
+Covered by default:
+
+```text
+.github/workflows/**
+.github/actions/**
+.github/atoma/**
+.github/rulesets/**
+```
+
+These are where an agent's limits live — which credentials reach a run, which
+commands the shell hook refuses, what a ruleset requires before a merge. An agent
+that could merge a change to them could widen its own reach, and nothing later
+catches it, because the next run already obeys the new file.
+
+This is not about an agent intending to. A prompt injection carried in an issue
+body reaches exactly as far, and so does an ordinary mistake. Both stop at a
+person reading the diff.
+
+Add your own with `governed_paths`, which replaces the default list:
+
+```json
+{
+  "governed_paths": [
+    ".github/workflows/**",
+    ".github/actions/**",
+    ".github/atoma/**",
+    ".github/rulesets/**",
+    "infra/**"
+  ]
+}
+```
+
+Set it to `[]` to turn the gate off.
+
+Note what this does *not* do. The provider API key and `GITHUB_TOKEN` are in the
+agent's own environment because the run needs them to work at all, and no setting
+moves them out. Your other repository secrets are already outside it: they reach
+the workflow, not the agent process, unless you put them there yourself through
+`environment.setup_commands`.
 
 ### Rename labels
 

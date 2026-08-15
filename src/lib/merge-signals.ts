@@ -13,8 +13,8 @@
  * server's tool registry.
  */
 import { gh } from "./gh.ts";
-import { getMergePolicy } from "./config.ts";
-import type { MergeSignals } from "../domain/merge-readiness.ts";
+import { getGovernedPaths, getMergePolicy } from "./config.ts";
+import { governedPathsIn, type MergeSignals } from "../domain/merge-readiness.ts";
 
 export interface PullRequestRefs {
   headRefName: string;
@@ -78,6 +78,31 @@ function readRequiredChecks(repo: string, baseRef: string): string[] {
 }
 
 /**
+ * The files this pull request changes that govern how agents run.
+ *
+ * Fails CLOSED, unlike `readRequiredChecks` above: when the file list cannot be
+ * read, this reports the pull request as touching governance so the merge falls
+ * to a person. The two differ because of what each failure costs. An unreadable
+ * rule list only makes a refusal less specific; an unreadable file list, treated
+ * as empty, would let an agent merge exactly the change this exists to stop.
+ */
+function readGovernancePaths(repo: string, num: number): string[] {
+  // `--jq` rather than parsing the response: with `--paginate` the pages arrive
+  // as separate JSON documents, which `JSON.parse` cannot read, and dropping
+  // `--paginate` would silently stop at 100 files — a large pull request could
+  // then hide a workflow change on page two.
+  const { code, stdout } = gh(
+    "api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", ".[].filename",
+  );
+  if (code) {
+    log(`WARN could not read changed files for #${num}; treating the merge as a person's`);
+    return ["(could not read the changed files)"];
+  }
+  const files = stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+  return governedPathsIn(files, getGovernedPaths());
+}
+
+/**
  * GitHub's view of one pull request, plus the check runs on its head commit.
  *
  * `throwOnFailure` is injected rather than imported so the caller keeps ownership
@@ -130,6 +155,7 @@ export function gatherMergeSignals(
       })),
       requiredChecks: readRequiredChecks(repo, baseRefName),
       mergePolicy: getMergePolicy(),
+      governancePaths: readGovernancePaths(repo, num),
     },
     refs: { headRefName: pr?.headRefName ?? "", baseRefName },
   };

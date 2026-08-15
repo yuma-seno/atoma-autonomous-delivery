@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { decideMergeReadiness, formatBlockers, type MergeSignals } from "./merge-readiness.ts";
+import {
+  DEFAULT_GOVERNED_PATHS,
+  decideMergeReadiness,
+  formatBlockers,
+  governedPathsIn,
+  type MergeSignals,
+} from "./merge-readiness.ts";
 
 function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
   return {
@@ -12,6 +18,7 @@ function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
     checks: [{ name: "check", status: "completed", conclusion: "success" }],
     requiredChecks: ["check"],
     mergePolicy: "auto",
+    governancePaths: [],
     ...overrides,
   };
 }
@@ -185,6 +192,21 @@ describe("decideMergeReadiness", () => {
     expect(result.blockers.length).toBeGreaterThan(1);
   });
 
+  // The one gate an agent cannot satisfy and then merge past: the change would
+  // alter the gates themselves.
+  test("a change to the machinery agents run on is a person's merge", () => {
+    const result = decideMergeReadiness(signals({ governancePaths: [".github/workflows/ci.yml"] }));
+    expect(result.ready).toBe(false);
+    expect(kinds(signals({ governancePaths: [".github/workflows/ci.yml"] }))).toEqual(["governance-change"]);
+    expect(result.blockers[0]?.detail).toContain(".github/workflows/ci.yml");
+  });
+
+  test("the blocker names a few paths rather than every one", () => {
+    const many = Array.from({ length: 8 }, (_, i) => `.github/workflows/w${i}.yml`);
+    const { blockers } = decideMergeReadiness(signals({ governancePaths: many }));
+    expect(blockers[0]?.detail).toContain("+3 more");
+  });
+
   test("blockers render as a numbered, kind-tagged list", () => {
     const { blockers } = decideMergeReadiness(
       signals({ mergeStateStatus: "DIRTY", mergePolicy: "manual" }),
@@ -192,5 +214,36 @@ describe("decideMergeReadiness", () => {
     const text = formatBlockers(blockers);
     expect(text).toContain("1. [conflicting]");
     expect(text).toContain("2. [merge-policy]");
+  });
+});
+
+describe("governedPathsIn", () => {
+  test("claims everything under a named directory", () => {
+    const files = [".github/workflows/ci.yml", ".github/atoma/config.json", "src/index.ts"];
+    expect(governedPathsIn(files, DEFAULT_GOVERNED_PATHS)).toEqual([
+      ".github/workflows/ci.yml",
+      ".github/atoma/config.json",
+    ]);
+  });
+
+  test("ordinary work is not governance", () => {
+    expect(governedPathsIn(["src/lib/config.ts", "docs/operations.md"], DEFAULT_GOVERNED_PATHS)).toEqual([]);
+  });
+
+  // The default names an adopter's deployed tree. A template repository develops
+  // the same files under `src/`, where they are ordinary source until deployed.
+  test("the default covers the deployed tree, not a template's source", () => {
+    expect(governedPathsIn(["src/atoma/agent-definitions/engineer.md"], DEFAULT_GOVERNED_PATHS)).toEqual([]);
+    expect(governedPathsIn(["src/atoma/agent-definitions/engineer.md"], ["src/atoma/**"])).toEqual([
+      "src/atoma/agent-definitions/engineer.md",
+    ]);
+  });
+
+  test("a pattern without a wildcard matches that one file", () => {
+    expect(governedPathsIn(["a.yml", "a.yml.bak"], ["a.yml"])).toEqual(["a.yml"]);
+  });
+
+  test("an empty pattern list turns the gate off", () => {
+    expect(governedPathsIn([".github/workflows/ci.yml"], [])).toEqual([]);
   });
 });

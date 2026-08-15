@@ -84,6 +84,7 @@ refuses, and never merges past a failing check.
 | `merge-policy` | manual policy; the merge is not yours to perform | report that it is ready for human merge |
 | `draft` | the author has not offered it for merging | report; do not mark it ready and do not retry the merge |
 | `human-authored` | a person opened it, so the merge is theirs | post the review and say it is ready for them to merge; do not retry |
+| `governance-change` | it changes how agents themselves run | review it as carefully as any change and post that review, then say it is ready for a person to merge; do not retry |
 
 **Five or more prior COMMENT review rounds:** do not send another engineer loop.
 Post the remaining blockers and escalate to the human.
