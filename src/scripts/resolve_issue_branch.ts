@@ -51,7 +51,7 @@ function main(): void {
   // said anything.
   let branch = "";
   if (repo && Number.isInteger(issue) && issue > 0) {
-    branch = branchToResume(collectIssueBranches(repo), issue);
+    branch = branchToResume(collectIssueBranches(repo, issue), issue);
   } else {
     log("missing --repo or --issue; staying on the base branch");
   }
