@@ -116,6 +116,59 @@ workflow names, and `skills/project/` is yours outright.
 
 Edit `.github/atoma/agent-definitions/<agent>.md` and update the frontmatter `model` field.
 
+### Let an agent read images
+
+An agent gets pictures from a tool only when its definition says so:
+
+```yaml
+vision: true
+```
+
+Set it when the model reads images, and leave it off when it does not. Without
+it, a tool that returns a picture delivers text in its place saying the image was
+withheld and naming this setting — so a model that could have read one tells you,
+instead of the picture disappearing.
+
+The default is off because the two mistakes cost differently. Sending a picture
+to a text-only model is an API error that loses the run; withholding one from a
+model that could have read it costs a single tool result, and says why.
+
+Check the model before setting it. On OpenRouter:
+
+```bash
+curl -s https://openrouter.ai/api/v1/models/<author>/<slug>/endpoints \
+  | grep -o '"input_modalities":\[[^]]*\]'
+```
+
+The shipped agents are set this way: the reviewer and orchestrator read images,
+the engineer does not.
+
+### Choose which API an agent's provider speaks
+
+The frontmatter `provider` field selects the client, not the vendor:
+
+| Value | API |
+| --- | --- |
+| `openai` | Chat Completions (`/chat/completions`) — the default, and what OpenAI-compatible servers speak |
+| `openai-responses` | OpenAI's Responses API (`/responses`) |
+| `anthropic` | Anthropic Messages |
+| `github-copilot` | Copilot, over Chat Completions |
+
+The two OpenAI entries reach the same models by different routes. Prefer
+`openai` unless you need the other: it is what vLLM, Ollama, LM Studio, Azure and
+every gateway built to that shape accept, so it is the one that keeps your choice
+of host open.
+
+`openai-responses` earns its place in one case — **a tool that returns an
+image**. Chat Completions cannot carry a picture in a tool result at all, so on
+that route the image is moved into a following message; the Responses API's
+`function_call_output` takes it directly. If your agents never receive pictures,
+the two behave alike and `openai` is the safer default.
+
+Both read `OPENAI_API_KEY` and `OPENAI_BASE_URL`. Point `OPENAI_BASE_URL` at a
+host that serves the endpoint you picked — not every OpenAI-compatible gateway
+implements `/responses`.
+
 ### Pin which OpenRouter endpoint serves a model
 
 Agent definitions ship an `extra_body.provider` block. Atoma merges every

@@ -1,8 +1,12 @@
 ---
 name: engineer
 description: Implements one engineer-ready leaf task, validates it, and opens a pull request.
-provider: openai # openrouter
+provider: openai-responses # openrouter
 model: deepseek/deepseek-v4-flash-0731
+# This model reads text only, so a tool that returns a picture gets text saying
+# the image was withheld and naming this setting. That is the wanted behaviour
+# here: the reviewer is the agent that looks at screens.
+vision: false
 callable_by:
   - user
   - agent
