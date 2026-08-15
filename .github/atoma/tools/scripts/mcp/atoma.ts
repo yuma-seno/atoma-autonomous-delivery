@@ -17896,6 +17896,11 @@ function isAgentName(value) {
 
 // src/lib/config.ts
 import { readFileSync } from "fs";
+
+// src/domain/merge-readiness.ts
+var PASSING = new Set(["success", "neutral", "skipped"]);
+
+// src/lib/config.ts
 var CONFIG_PATH = ".github/atoma/config.json";
 var cached2;
 function loadConfig() {

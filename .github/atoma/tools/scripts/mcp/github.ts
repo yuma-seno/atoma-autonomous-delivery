@@ -17907,6 +17907,118 @@ function dispatchWorkflow(context, workflow, args = [], log = (m) => console.err
 
 // src/lib/config.ts
 import { readFileSync } from "fs";
+
+// src/domain/merge-readiness.ts
+var PASSING = new Set(["success", "neutral", "skipped"]);
+var DEFAULT_GOVERNED_PATHS = [
+  ".github/workflows/**",
+  ".github/actions/**",
+  ".github/atoma/**",
+  ".github/rulesets/**"
+];
+function governedPathsIn(files, patterns) {
+  return files.filter((file) => patterns.some((pattern) => pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern));
+}
+function explainRequiredChecks(signals) {
+  const blockers = [];
+  const byName = new Map(signals.checks.map((c) => [c.name, c]));
+  for (const context of signals.requiredChecks) {
+    const run2 = byName.get(context);
+    if (!run2) {
+      blockers.push({
+        kind: "checks-missing",
+        detail: `required check "${context}" has not run on the head commit`
+      });
+    } else if (run2.status !== "completed") {
+      blockers.push({
+        kind: "checks-pending",
+        detail: `required check "${context}" is ${run2.status}`
+      });
+    } else if (!PASSING.has((run2.conclusion ?? "").toLowerCase())) {
+      const where = run2.detailsUrl ? ` (${run2.detailsUrl})` : "";
+      blockers.push({
+        kind: "checks-failing",
+        detail: `required check "${context}" concluded ${run2.conclusion}${where}`
+      });
+    }
+  }
+  return blockers;
+}
+function decideMergeReadiness(signals) {
+  const blockers = [];
+  if (signals.state?.toUpperCase() !== "OPEN") {
+    blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
+  }
+  if (signals.isDraft) {
+    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+  }
+  switch (signals.mergeStateStatus?.toUpperCase()) {
+    case "CLEAN":
+    case "UNSTABLE":
+      break;
+    case "DRAFT":
+      if (!signals.isDraft) {
+        blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
+      }
+      break;
+    case "DIRTY":
+      blockers.push({
+        kind: "conflicting",
+        detail: "branch conflicts with the base; call github__sync_branch and resolve before merging"
+      });
+      break;
+    case "BEHIND":
+      blockers.push({
+        kind: "behind",
+        detail: "branch is behind the base and the ruleset requires it current; call github__sync_branch"
+      });
+      break;
+    case "BLOCKED": {
+      const explained = explainRequiredChecks(signals);
+      if (explained.length > 0)
+        blockers.push(...explained);
+      else
+        blockers.push({
+          kind: "blocked",
+          detail: "branch protection blocks this merge for a reason outside the required checks " + "(for example a required review or an unresolved conversation); inspect the pull request"
+        });
+      break;
+    }
+    default:
+      blockers.push({
+        kind: "mergeability-unknown",
+        detail: `GitHub reports mergeStateStatus=${signals.mergeStateStatus ?? "null"}; retry shortly`
+      });
+  }
+  if (!signals.authoredByAgent) {
+    blockers.push({
+      kind: "human-authored",
+      detail: "a person opened this pull request; review it and report, but leave the merge to them"
+    });
+  }
+  if (signals.mergePolicy !== "auto") {
+    blockers.push({
+      kind: "merge-policy",
+      detail: `merge_policy is '${signals.mergePolicy}', not 'auto'; a human performs the merge`
+    });
+  }
+  if (signals.governancePaths.length > 0) {
+    const shown = signals.governancePaths.slice(0, 5).join(", ");
+    const rest = signals.governancePaths.length - 5;
+    blockers.push({
+      kind: "governance-change",
+      detail: `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` + "review it and report, but leave the merge to a person"
+    });
+  }
+  const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
+  return { ready: blockers.length === 0, blockers, needsCiDispatch };
+}
+function formatBlockers(blockers) {
+  return blockers.map((b, i) => `${i + 1}. [${b.kind}] ${b.detail}`).join(`
+`);
+}
+
+// src/lib/config.ts
 var CONFIG_PATH = ".github/atoma/config.json";
 var cached2;
 function loadConfig() {
@@ -17927,6 +18039,9 @@ function getBaseBranch(fallback = "") {
   } catch {
     return fallback;
   }
+}
+function getGovernedPaths() {
+  return loadConfig().governed_paths ?? DEFAULT_GOVERNED_PATHS;
 }
 function getTriggerAgent(event, fallback = "") {
   for (const trigger of loadConfig().auto_triggers ?? []) {
@@ -18221,99 +18336,6 @@ function headBranchMerged(repo, owner, branch) {
   }
 }
 
-// src/domain/merge-readiness.ts
-var PASSING = new Set(["success", "neutral", "skipped"]);
-function explainRequiredChecks(signals) {
-  const blockers = [];
-  const byName = new Map(signals.checks.map((c) => [c.name, c]));
-  for (const context of signals.requiredChecks) {
-    const run2 = byName.get(context);
-    if (!run2) {
-      blockers.push({
-        kind: "checks-missing",
-        detail: `required check "${context}" has not run on the head commit`
-      });
-    } else if (run2.status !== "completed") {
-      blockers.push({
-        kind: "checks-pending",
-        detail: `required check "${context}" is ${run2.status}`
-      });
-    } else if (!PASSING.has((run2.conclusion ?? "").toLowerCase())) {
-      const where = run2.detailsUrl ? ` (${run2.detailsUrl})` : "";
-      blockers.push({
-        kind: "checks-failing",
-        detail: `required check "${context}" concluded ${run2.conclusion}${where}`
-      });
-    }
-  }
-  return blockers;
-}
-function decideMergeReadiness(signals) {
-  const blockers = [];
-  if (signals.state?.toUpperCase() !== "OPEN") {
-    blockers.push({ kind: "not-open", detail: `pull request state is ${signals.state}, not OPEN` });
-  }
-  if (signals.isDraft) {
-    blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
-  }
-  switch (signals.mergeStateStatus?.toUpperCase()) {
-    case "CLEAN":
-    case "UNSTABLE":
-      break;
-    case "DRAFT":
-      if (!signals.isDraft) {
-        blockers.push({ kind: "draft", detail: "pull request is a draft; mark it ready for review first" });
-      }
-      break;
-    case "DIRTY":
-      blockers.push({
-        kind: "conflicting",
-        detail: "branch conflicts with the base; call github__sync_branch and resolve before merging"
-      });
-      break;
-    case "BEHIND":
-      blockers.push({
-        kind: "behind",
-        detail: "branch is behind the base and the ruleset requires it current; call github__sync_branch"
-      });
-      break;
-    case "BLOCKED": {
-      const explained = explainRequiredChecks(signals);
-      if (explained.length > 0)
-        blockers.push(...explained);
-      else
-        blockers.push({
-          kind: "blocked",
-          detail: "branch protection blocks this merge for a reason outside the required checks " + "(for example a required review or an unresolved conversation); inspect the pull request"
-        });
-      break;
-    }
-    default:
-      blockers.push({
-        kind: "mergeability-unknown",
-        detail: `GitHub reports mergeStateStatus=${signals.mergeStateStatus ?? "null"}; retry shortly`
-      });
-  }
-  if (!signals.authoredByAgent) {
-    blockers.push({
-      kind: "human-authored",
-      detail: "a person opened this pull request; review it and report, but leave the merge to them"
-    });
-  }
-  if (signals.mergePolicy !== "auto") {
-    blockers.push({
-      kind: "merge-policy",
-      detail: `merge_policy is '${signals.mergePolicy}', not 'auto'; a human performs the merge`
-    });
-  }
-  const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
-  return { ready: blockers.length === 0, blockers, needsCiDispatch };
-}
-function formatBlockers(blockers) {
-  return blockers.map((b, i) => `${i + 1}. [${b.kind}] ${b.detail}`).join(`
-`);
-}
-
 // src/lib/merge-signals.ts
 function log2(message) {
   console.error(`[atoma-merge-signals] ${message}`);
@@ -18333,6 +18355,16 @@ function readRequiredChecks(repo, baseRef) {
     log2(`WARN branch rules for ${baseRef} were not valid JSON`);
     return [];
   }
+}
+function readGovernancePaths(repo, num) {
+  const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", ".[].filename");
+  if (code) {
+    log2(`WARN could not read changed files for #${num}; treating the merge as a person's`);
+    return ["(could not read the changed files)"];
+  }
+  const files = stdout.split(`
+`).map((line) => line.trim()).filter(Boolean);
+  return governedPathsIn(files, getGovernedPaths());
 }
 function gatherMergeSignals(repo, num, throwOnFailure) {
   const json = (...args) => {
@@ -18358,7 +18390,8 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
         ...run2.details_url ? { detailsUrl: run2.details_url } : {}
       })),
       requiredChecks: readRequiredChecks(repo, baseRefName),
-      mergePolicy: getMergePolicy()
+      mergePolicy: getMergePolicy(),
+      governancePaths: readGovernancePaths(repo, num)
     },
     refs: { headRefName: pr?.headRefName ?? "", baseRefName }
   };
