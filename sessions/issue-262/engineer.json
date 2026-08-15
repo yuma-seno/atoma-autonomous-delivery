@@ -319,14 +319,121 @@
       "role": "tool",
       "content": "{\"number\":263,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/263\"}",
       "tool_call_id": "call_afb00bdebfe9416bb52439a9"
+    },
+    {
+      "role": "user",
+      "content": "PR #263: docs: document when Atoma creates issue work branches\n**Labels:** atoma/in-progress\n**Linked Issue:** #262\n\n<!-- atoma:parent-issue=262 -->\n<!-- atoma:origin-agent=engineer -->\nCloses #262\n<!-- atoma:notify=hws-yuma-seno -->\nAdds a short \"Work branches (`atoma/issue-N`)\" section to `docs/operations.md` explaining when and how Atoma creates branches, matching the issue's requested content and the file's existing bullet style:\n\n- Branches are created at the first commit, not at run start; report/close-only runs leave no branch behind.\n- Names are `atoma/issue-N`, with `-2`, `-3`, ... suffixes after earlier work has merged.\n- An unmerged branch is resumed by the issue's next run.\n\nThe statements match the implementation (`src/scripts/resolve_issue_branch.ts`, `src/domain/issue-branch.ts`, and `branchForCommit` in `src/atoma/tools/scripts/mcp/github.ts`). `docs/` is not part of the deliverable, so no build or test impact is expected; this is a documentation-only change.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T06:12:24Z",
+        "event_type": "pr_opened",
+        "id": "pr-263",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T06:13:38Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4943070136",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T06:13:46Z",
+        "event_type": "issue_comment",
+        "id": 5300889559,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/docs/operations.md b/docs/operations.md\nindex a0a0c7e..05bf9ca 100644\n--- a/docs/operations.md\n+++ b/docs/operations.md\n@@ -31,6 +31,15 @@ Shared executor:\n - Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.\n - Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.\n \n+## Work branches (`atoma/issue-N`)\n+\n+- A branch is created at the first commit, not at the start of a run. A run that\n+  only reports, confirms a merge, or closes an issue leaves no branch behind.\n+- The name is `atoma/issue-N`. Once that issue's work has merged, further work\n+  gets a suffixed name: `atoma/issue-N-2`, then `atoma/issue-N-3`, and so on.\n+- When an unmerged branch is left behind, the issue's next run resumes it\n+  instead of starting from the base branch.\n+\n ## Manual commands and recovery\n \n An agent command must occupy its own line. Put instructions on following lines:\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T06:13:53Z",
+        "event_type": "pr_diff",
+        "id": "pr-263-diff",
+        "layer": "github-context",
+        "sha": "82cd97a3",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #263 has been merged. The documentation update for issue #262 is now live in `docs/operations.md`.\n\n\n\n---\n_Tokens: 22157 total (22040 prompt + 117 completion)_\n_Estimated cost: $0.0034_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31868894466)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T06:13:53Z",
+        "event_type": "pr_comment",
+        "id": 5300889969,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7f96f0cb81cc43aeb4d9a00d",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 263}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=262 -->\\n<!-- atoma:origin-agent=engineer -->\\nCloses #262\\n<!-- atoma:notify=hws-yuma-seno -->\\nAdds a short \\\"Work branches (`atoma/issue-N`)\\\" section to `docs/operations.md` explaining when and how Atoma creates branches, matching the issue's requested content and the file's existing bullet style:\\n\\n- Branches are created at the first commit, not at run start; report/close-only runs leave no branch behind.\\n- Names are `atoma/issue-N`, with `-2`, `-3`, ... suffixes after earlier work has merged.\\n- An unmerged branch is resumed by the issue's next run.\\n\\nThe statements match the implementation (`src/scripts/resolve_issue_branch.ts`, `src/domain/issue-branch.ts`, and `branchForCommit` in `src/atoma/tools/scripts/mcp/github.ts`). `docs/` is not part of the deliverable, so no build or test impact is expected; this is a documentation-only change.\",\"createdAt\":\"2026-08-15T06:12:24Z\",\"headRefName\":\"atoma/issue-262\",\"number\":263,\"state\":\"MERGED\",\"title\":\"docs: document when Atoma creates issue work branches\"}",
+      "tool_call_id": "call_7f96f0cb81cc43aeb4d9a00d"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_111ce503a7c94e49b701b689",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 262}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #262: opened by a human, not a bot",
+      "tool_call_id": "call_111ce503a7c94e49b701b689"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #263 is merged — the documentation update for issue #262 is live in `docs/operations.md`.\n\nClosing issue #262 is the owner's step: the close tool refuses on issues a human opened (expected behavior, not a workaround to force), so the merge is confirmed as complete and the owner can close #262 to let parent aggregation continue.",
+      "atoma_metadata": {
+        "github_comment_id": 5300891484,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 1,
-      "snapshot_hash": "b0bcab6e3cccf45bb67a1acbe93edebc9d0c1a02fedf77b83e75f4722f4aef7e",
-      "version": 1
+      "event_count": 6,
+      "snapshot_hash": "2942be73fc3628fc6a9f9491b3542cc9dea719af46273df14d03d5e406d3ba6a",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "262"
     }
   }
 }
