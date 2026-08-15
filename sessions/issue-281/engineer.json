@@ -485,14 +485,121 @@
       "role": "tool",
       "content": "{\"number\":284,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/284\"}",
       "tool_call_id": "call_c43655d6baa64999831e6270"
+    },
+    {
+      "role": "user",
+      "content": "PR #284: docs: explain branch stacking for decomposed issues\n**Labels:** atoma/in-progress\n**Linked Issue:** #281\n\n<!-- atoma:parent-issue=281 -->\n<!-- atoma:origin-agent=engineer -->\n<!-- atoma:notify=hws-yuma-seno -->\nCloses #281\n\nAdds a \"Work with decomposed issues\" section to `docs/customization.md`, covering how branches stack when an issue is decomposed:\n\n- Sub-issue branches are cut from the parent issue's branch and merge back into it, so siblings see each other's work.\n- The parent branch is created from the base branch when the first child commits.\n- Once all children are done, the parent branch becomes one pull request into the base branch.\n- A merge into a parent branch runs no deployment — that work is still in progress; only the final pull request into the base branch carries it to release.\n\nThe section is written from the user's perspective, matches the surrounding section style, and complements (rather than duplicates) the internal branch mechanics already in `docs/operations.md` — no `src/` or internal implementation names are referenced.\n\n## Verification\n\n- `bun run lint` (typecheck + `synth` build) passes.\n- `git status` shows only `docs/customization.md` modified; no generated artifacts are included.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:33:14Z",
+        "event_type": "pr_opened",
+        "id": "pr-284",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:34:32Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4943248712",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:34:39Z",
+        "event_type": "issue_comment",
+        "id": 5301177809,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/docs/customization.md b/docs/customization.md\nindex 2d4450a..5af3ea9 100644\n--- a/docs/customization.md\n+++ b/docs/customization.md\n@@ -224,6 +224,21 @@ is positioned to make.\n Nothing about that pull request is special to Atoma. It is reviewed by whoever\n reviews releases, and merging it runs whatever your `main` branch already runs.\n \n+### Work with decomposed issues\n+\n+When an issue is decomposed into sub-issues, the work stacks on branches\n+instead of landing on the base branch one piece at a time:\n+\n+- Each sub-issue's branch is cut from its parent issue's branch and merges back\n+  into it, so siblings see each other's work as it lands.\n+- The parent's branch is created from the base branch when the first child\n+  commits; until then it does not exist.\n+- Once every child is done, the parent's branch becomes one pull request into\n+  the base branch.\n+- A merge into a parent branch runs no deployment — the work is still in\n+  progress, and only the final pull request into the base branch carries it to\n+  release.\n+\n ### Point Atoma at your own workflows\n \n ```json\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T07:34:44Z",
+        "event_type": "pr_diff",
+        "id": "pr-284-diff",
+        "layer": "github-context",
+        "sha": "4b6adeb2",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nMerged PR #284. The documentation update for branch stacking in decomposed issues is now live.\n\n\n\n---\n_Tokens: 22666 total (22555 prompt + 111 completion)_\n_Estimated cost: $0.0034_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31872274287)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T07:34:44Z",
+        "event_type": "pr_comment",
+        "id": 5301178056,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_69bfabba256544f091ab371a",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 284}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"atoma/issue-280\",\"body\":\"<!-- atoma:parent-issue=281 -->\\n<!-- atoma:origin-agent=engineer -->\\n<!-- atoma:notify=hws-yuma-seno -->\\nCloses #281\\n\\nAdds a \\\"Work with decomposed issues\\\" section to `docs/customization.md`, covering how branches stack when an issue is decomposed:\\n\\n- Sub-issue branches are cut from the parent issue's branch and merge back into it, so siblings see each other's work.\\n- The parent branch is created from the base branch when the first child commits.\\n- Once all children are done, the parent branch becomes one pull request into the base branch.\\n- A merge into a parent branch runs no deployment — that work is still in progress; only the final pull request into the base branch carries it to release.\\n\\nThe section is written from the user's perspective, matches the surrounding section style, and complements (rather than duplicates) the internal branch mechanics already in `docs/operations.md` — no `src/` or internal implementation names are referenced.\\n\\n## Verification\\n\\n- `bun run lint` (typecheck + `synth` build) passes.\\n- `git status` shows only `docs/customization.md` modified; no generated artifacts are included.\",\"createdAt\":\"2026-08-15T07:33:14Z\",\"headRefName\":\"atoma/issue-281\",\"number\":284,\"state\":\"MERGED\",\"title\":\"docs: explain branch stacking for decomposed issues\"}",
+      "tool_call_id": "call_69bfabba256544f091ab371a"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_7a748999135c494792092837",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 281}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #281: opened by a human, not a bot",
+      "tool_call_id": "call_7a748999135c494792092837"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #284 was merged into `atoma/issue-280` (base branch), delivering the new \"Work with decomposed issues\" section in `docs/customization.md`.\n\nClosing the issue was attempted via `github__close_issue(281)`, but the tool refused: issue #281 was opened by a human, so only the issue owner can close it. That refusal is the expected answer — no workaround applies.\n\nSummary:\n- **Delivered:** a user-facing section in `docs/customization.md` covering sub-issue branches cut from the parent branch and merged back into it, the parent branch being created from the base branch at the first child's commit, the parent branch becoming one pull request into the base branch once all children finish, and no deployment on parent-branch merges.\n- **Validated:** `bun run lint` (typecheck + `synth`) passes; only `docs/customization.md` is changed.\n- **Next step for the owner:** close issue #281 (the merge is complete).",
+      "atoma_metadata": {
+        "github_comment_id": 5301180022,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 3,
-      "snapshot_hash": "f5be45ca8cf97e4302c8f91078eaa265e2aaf90017cccf9e9aaa91ba7af2cc70",
-      "version": 1
+      "event_count": 8,
+      "snapshot_hash": "5fdf5792fc3518b9e530d38f09d13ee386585e8ac63ce00dc711fb475a694ed2",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "281"
     }
   }
 }
