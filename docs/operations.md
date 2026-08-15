@@ -31,6 +31,15 @@ Shared executor:
 - Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.
 - Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.
 
+## Work branches (`atoma/issue-N`)
+
+- A branch is created at the first commit, not at the start of a run. A run that
+  only reports, confirms a merge, or closes an issue leaves no branch behind.
+- The name is `atoma/issue-N`. Once that issue's work has merged, further work
+  gets a suffixed name: `atoma/issue-N-2`, then `atoma/issue-N-3`, and so on.
+- When an unmerged branch is left behind, the issue's next run resumes it
+  instead of starting from the base branch.
+
 ## Manual commands and recovery
 
 An agent command must occupy its own line. Put instructions on following lines:
