@@ -55,9 +55,14 @@ export function branchToResume(branches: IssueBranch[], issueNumber: number): st
  * What to call the branch for work starting now.
  *
  * Only called when nothing is resumable, so every existing branch here has
- * merged and the name has to be a new one. The first is unsuffixed, keeping the
- * common case readable; later ones count up from the highest already taken
- * rather than from how many exist, so a deleted branch cannot cause a collision.
+ * merged and the name has to be a new one.
+ *
+ * Normally there are none: a merge deletes its branch, so `atoma/issue-N` is
+ * free again and the common case stays readable. The suffix is for when one
+ * survived anyway — a deletion that failed, or a merge made outside Atoma —
+ * where reusing the name would build on history the base already contains. It
+ * counts from the highest taken rather than from how many exist, so removing an
+ * old branch cannot hand out a name that was already used.
  */
 export function nextBranchName(branches: IssueBranch[], issueNumber: number): string {
   const prefix = `atoma/issue-${issueNumber}`;
