@@ -16,12 +16,14 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
-import { AGENT_TAG } from "../lib/tags.ts";
+import { AGENT_TAG, PARENT_TAG } from "../lib/tags.ts";
+import { shouldMentionOnCompletion } from "../domain/completion-mention.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
   number: string | number;
   agent: string;
+  type?: string;
   notify?: string;
   directive?: string;
   "chain-continues"?: string;
@@ -50,6 +52,33 @@ function tokenUsageLines(): string[] {
   return lines;
 }
 
+/**
+ * Whether this issue is an agent-created sub-task, and whether it is closed.
+ *
+ * Both answers come from one read, and a failed read answers "no" — a run
+ * mentioning a person it need not have is a smaller harm than a run that
+ * silently drops the only signal that work has stopped.
+ *
+ * Skipped entirely for a pull request run: `--number` is a PR number there, and
+ * `gh issue view` on one is an error rather than an answer.
+ */
+function subIssueState(number: string, type?: string): { isSubIssue: boolean; issueClosed: boolean } {
+  if (type !== "issue") return { isSubIssue: false, issueClosed: false };
+  const { code, stdout } = gh(
+    "issue", "view", number, "--repo", process.env.GITHUB_REPOSITORY ?? "", "--json", "state,body",
+  );
+  if (code !== 0) return { isSubIssue: false, issueClosed: false };
+  try {
+    const issue = JSON.parse(stdout) as { state?: string; body?: string };
+    return {
+      isSubIssue: PARENT_TAG.read(issue.body ?? "") !== undefined,
+      issueClosed: issue.state === "CLOSED",
+    };
+  } catch {
+    return { isSubIssue: false, issueClosed: false };
+  }
+}
+
 export function buildCommentBody(args: {
   agent: string;
   notify?: string;
@@ -59,10 +88,20 @@ export function buildCommentBody(args: {
   runUrl: string;
   output: string;
   usageLines: string[];
+  isSubIssue?: boolean;
+  issueClosed?: boolean;
 }): string {
   const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
 
-  if (!args.directive && args.chainContinues !== "true" && args.notify) {
+  if (
+    shouldMentionOnCompletion({
+      directive: args.directive,
+      chainContinues: args.chainContinues === "true",
+      notify: args.notify,
+      isSubIssue: args.isSubIssue ?? false,
+      issueClosed: args.issueClosed ?? false,
+    })
+  ) {
     lines.push(
       `@${args.notify} — **${args.agent}** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.`,
       "",
@@ -83,6 +122,7 @@ function main(): void {
     options: {
       number: { type: "string" },
       agent: { type: "string" },
+      type: { type: "string" },
       notify: { type: "string" },
       directive: { type: "string" },
       "chain-continues": { type: "string" },
@@ -121,6 +161,7 @@ function main(): void {
     runUrl: values["run-url"],
     output,
     usageLines: tokenUsageLines(),
+    ...subIssueState(values.number, values.type),
   });
 
   const { code, stdout, stderr } = gh(
