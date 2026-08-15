@@ -58,13 +58,19 @@ var MAX_IMAGE_BYTES = 4000000;
 var MAX_IMAGES = 4;
 var IMAGE_MARKDOWN = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
 var IMAGE_HTML = /<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi;
-var EXTENSION_MIME = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp"
-};
+function sniffMimeType(bytes) {
+  const starts = (...sig) => sig.every((b, i) => bytes[i] === b);
+  if (starts(137, 80, 78, 71))
+    return "image/png";
+  if (starts(255, 216, 255))
+    return "image/jpeg";
+  if (starts(71, 73, 70, 56))
+    return "image/gif";
+  if (starts(82, 73, 70, 70) && [87, 69, 66, 80].every((b, i) => bytes[8 + i] === b)) {
+    return "image/webp";
+  }
+  return "";
+}
 function extractImageUrls(body) {
   const urls = [];
   for (const pattern of [IMAGE_MARKDOWN, IMAGE_HTML]) {
@@ -77,18 +83,17 @@ function extractImageUrls(body) {
   }
   return urls.slice(0, MAX_IMAGES);
 }
-function mimeTypeFor(url) {
-  const extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
-  return EXTENSION_MIME[extension] ?? "image/png";
-}
 function fetchImageBlock(url) {
   const { code, bytes } = ghBytes("api", url, "--method", "GET", "--header", "Accept: application/vnd.github.raw");
   if (code !== 0 || bytes.length === 0)
     return;
+  const mimeType = sniffMimeType(bytes);
+  if (!mimeType)
+    return;
   const data = Buffer.from(bytes).toString("base64");
   if (!data || data.length > MAX_IMAGE_BYTES)
     return;
-  return { type: "image", data, mimeType: mimeTypeFor(url) };
+  return { type: "image", data, mimeType };
 }
 function contentWithImages(text) {
   const urls = extractImageUrls(text);
