@@ -38,7 +38,16 @@ export function getMergePolicy(fallback = "manual"): string {
  * that never sets this needs no special case anywhere.
  */
 export function getBaseBranch(fallback = ""): string {
-  return loadConfig().base_branch?.trim() || fallback;
+  // The one reader here that tolerates a missing config.json. No config means no
+  // base branch, which is the same answer as a config without the key, so
+  // `create_pr` should not start failing over a setting whose absence is the
+  // normal case. The others deliberately still throw: defaulting a merge policy
+  // or a label because a file could not be read would act on a guess.
+  try {
+    return loadConfig().base_branch?.trim() || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
