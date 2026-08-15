@@ -1,8 +1,9 @@
 ---
 name: orchestrator
 description: Recursively decomposes delivery work, coordinates dependencies, and aggregates results.
-provider: openai # openrouter
+provider: openai-responses # openrouter
 model: qwen/qwen3.7-plus
+vision: true
 callable_by:
   - user
   - agent
