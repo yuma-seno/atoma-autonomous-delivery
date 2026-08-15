@@ -703,6 +703,31 @@ function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>)
   });
 }
 
+/**
+ * Deletes the branch a merged pull request came from.
+ *
+ * A branch now appears only when a run commits, but an implemented issue still
+ * leaves one behind for good, and they accumulate one per issue. Its work is in
+ * the base by the time this runs, so the branch holds nothing the base does not.
+ *
+ * Deleting it is also what lets the next piece of work on the same issue take
+ * the plain `atoma/issue-N` name again: with the merged branch gone, nothing is
+ * left to count up from, and the new branch is cut from the base rather than
+ * from released history — the same outcome the suffix exists to produce.
+ *
+ * Never fails the merge. The merge is the outcome the agent was asked for, and a
+ * branch that outlives it is untidy, not broken.
+ */
+function deleteMergedBranch(branch: string): void {
+  if (!branch) return;
+  const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
+  if (code) {
+    log(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    return;
+  }
+  log(`mergePr: deleted merged branch ${branch}`);
+}
+
 async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   const num = a.number;
 
@@ -729,6 +754,7 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
   log(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code) mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
+  deleteMergedBranch(headRefName);
 
   // Nothing else will: this merge produced no `push` event, because GitHub starts
   // no workflow run for events GITHUB_TOKEN triggers.

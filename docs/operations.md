@@ -35,8 +35,11 @@ Shared executor:
 
 - A branch is created at the first commit, not at the start of a run. A run that
   only reports, confirms a merge, or closes an issue leaves no branch behind.
-- The name is `atoma/issue-N`. Once that issue's work has merged, further work
-  gets a suffixed name: `atoma/issue-N-2`, then `atoma/issue-N-3`, and so on.
+- The name is `atoma/issue-N`. A merge deletes the branch, so the same issue's
+  next piece of work takes that name again, cut fresh from the base branch.
+- If a merged branch is still there — a deletion that failed, or a merge made
+  some other way — the next name counts up instead: `atoma/issue-N-2`, then
+  `atoma/issue-N-3`. Work never resumes on merged history.
 - When an unmerged branch is left behind, the issue's next run resumes it
   instead of starting from the base branch.
 
