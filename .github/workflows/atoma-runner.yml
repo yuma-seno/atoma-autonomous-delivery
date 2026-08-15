@@ -118,23 +118,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}
-      - name: Create feature branch for issue
-        if: inputs.type == 'issue'
-        shell: bash
-        run: |
-          BRANCH="atoma/issue-${{ inputs.number }}"
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
-            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
-            git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"
-          else
-            STATUS=$?
-            if [[ "$STATUS" -ne 2 ]]; then
-              echo "Failed to inspect remote branch $BRANCH" >&2
-              exit "$STATUS"
-            fi
-            git checkout -b "$BRANCH"
-          fi
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
       - name: Set branch env for PR type
         if: inputs.type != 'issue'
         shell: bash
@@ -144,6 +127,28 @@ jobs:
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
+      - name: Resolve the issue's branch
+        id: issue-branch
+        if: inputs.type == 'issue'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bun run .github/scripts/resolve_issue_branch.ts --repo "${{ github.repository }}" --issue "${{ inputs.number }}"
+      - name: Check out the branch this run starts from
+        if: inputs.type == 'issue'
+        shell: bash
+        env:
+          BRANCH_NAME: ${{ steps.issue-branch.outputs.branch }}
+        run: |
+          if [ -z "${BRANCH_NAME}" ]; then
+            BRANCH_NAME=$(bun run .github/scripts/get_config_value.ts "base_branch" "")
+            [ -n "${BRANCH_NAME}" ] || exit 0
+          else
+            echo "BRANCH=${BRANCH_NAME}" >> $GITHUB_ENV
+          fi
+          git fetch origin "refs/heads/${BRANCH_NAME}:refs/remotes/origin/${BRANCH_NAME}"
+          git checkout -B "${BRANCH_NAME}" "refs/remotes/origin/${BRANCH_NAME}"
       - name: Cache MCP server package downloads
         with:
           path: ~/.npm
@@ -286,6 +291,7 @@ jobs:
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
+          ATOMA_RUN_TYPE: ${{ inputs.type }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
           ATOMA_OPS_LOG: atoma_ops.log
           OPENAI_API_KEY_IN: ${{ secrets.OPENAI_API_KEY }}
