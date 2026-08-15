@@ -92,16 +92,23 @@ describe("generated workflows", () => {
     expect(restore?.run).toContain('--session-mode "${{ inputs.session_mode }}"');
   });
 
-  test("restores an existing remote issue branch before an agent run", () => {
+  // The runner may resume a branch but must never create one: a run that only
+  // reports or closes something would otherwise leave a branch behind, which is
+  // how the repository accumulated 72 of them. Creation belongs to the first
+  // commit, in `commit_and_push`.
+  test("checks out the branch a run starts from without creating one", () => {
     type WorkflowStep = { name?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
 
     const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
-    const step = workflow.jobs?.run?.steps?.find((candidate) => candidate.name === "Create feature branch for issue");
+    const steps = workflow.jobs?.run?.steps ?? [];
+    const step = steps.find((candidate) => candidate.name === "Check out the branch this run starts from");
     expect(step, "atoma-runner issue branch step").toBeDefined();
-    expect(step?.run).toContain("git ls-remote --exit-code --heads origin");
-    expect(step?.run).toContain("refs/heads/$BRANCH:refs/remotes/origin/$BRANCH");
-    expect(step?.run).toContain('git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"');
+    expect(step?.run).toContain("refs/heads/${BRANCH_NAME}:refs/remotes/origin/${BRANCH_NAME}");
+    expect(step?.run).toContain('git checkout -B "${BRANCH_NAME}" "refs/remotes/origin/${BRANCH_NAME}"');
+    // Falls back to the adopter's configured base branch, not to a new branch.
+    expect(step?.run).toContain("base_branch");
+    expect(steps.some((candidate) => /git (checkout|switch) -[bc]\b/.test(candidate.run ?? ""))).toBe(false);
   });
 
   // Guards a failure that is otherwise silent until a tool call is denied: Atoma

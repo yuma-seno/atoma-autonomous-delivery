@@ -9,6 +9,7 @@ import { SetupBunAction } from "./actions/third-party.ts";
 import { CacheAction } from "./actions/cache.ts";
 import { ref as resolveNotifyRef } from "../scripts/resolve_notify.ts";
 import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
+import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
 import { ref as runEnvironmentSetupRef } from "../scripts/run_environment_setup.ts";
@@ -59,6 +60,21 @@ const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
 const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
+
+const resolveIssueBranchStep = new TypedOutputsStep(
+  {
+    name: "Resolve the issue's branch",
+    id: "issue-branch",
+    if: "inputs.type == 'issue'",
+    shell: "bash",
+    env: { GH_TOKEN: "${{ github.token }}" },
+    run: `${scriptCommandWithArgs(resolveIssueBranchRef, {
+      repo: "${{ github.repository }}",
+      issue: "${{ inputs.number }}",
+    })}\n`,
+  },
+  ["branch"] as const,
+);
 // Hook scripts named by `tools.yaml`. Atoma resolves a relative hook path
 // against the directory holding that file, so these two have to agree.
 const TOOL_HOOKS_DIR = ".github/atoma/tools/scripts/hooks";
@@ -250,6 +266,10 @@ const runAgentStep = new TypedOutputsStep(
       GITHUB_PERSONAL_ACCESS_TOKEN: "${{ github.token }}",
       GITHUB_RUN_ID: "${{ github.run_id }}",
       ISSUE_NUMBER: fetchEventsStep.outputs.resolved_number,
+      // Whether ISSUE_NUMBER is an issue or a pull request. `commit_and_push`
+      // creates a branch on an issue run and never on a pull request run, where
+      // the checkout is already the branch under review.
+      ATOMA_RUN_TYPE: "${{ inputs.type }}",
       ISSUE_NOTIFY: notifyStep.outputs.notify,
       // Structured JSON-lines log every MCP tool mutation/dispatch decision
       // is written to (see lib/ops-log.ts) -- read back below to determine
@@ -646,25 +666,6 @@ const runJob = new NormalJob("run", {
     },
   }),
   new TypedOutputsStep({
-    name: "Create feature branch for issue",
-    if: "inputs.type == 'issue'",
-    shell: "bash",
-    run: `BRANCH="atoma/issue-\${{ inputs.number }}"
-if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
-  git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
-  git checkout -B "$BRANCH" "refs/remotes/origin/$BRANCH"
-else
-  STATUS=$?
-  if [[ "$STATUS" -ne 2 ]]; then
-    echo "Failed to inspect remote branch $BRANCH" >&2
-    exit "$STATUS"
-  fi
-  git checkout -b "$BRANCH"
-fi
-echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-`,
-  }),
-  new TypedOutputsStep({
     name: "Set branch env for PR type",
     if: "inputs.type != 'issue'",
     shell: "bash",
@@ -675,6 +676,37 @@ echo "BRANCH=$BRANCH" >> $GITHUB_ENV
   // (tools.yaml spawns the atoma MCP servers via `bun run ...`) --
   // GitHub-hosted runners do not ship Bun preinstalled.
   new SetupBunAction({ name: "Setup Bun" }),
+  // The two branch steps sit after Bun and before everything that reads the
+  // working tree: they run Atoma's own scripts, and a later checkout would swap
+  // the files under steps that already inspected them.
+  //
+  // No branch is created here. Most runs never commit -- reporting a CI failure,
+  // confirming a merge, closing an issue -- and creating one for those left a
+  // branch behind per run. `commit_and_push` names one when a run turns out to
+  // need it.
+  //
+  // Deciding by what a run does rather than by which agent it is: agents are the
+  // adopter's to rename, edit and add to, so nothing may key off an agent's name.
+  resolveIssueBranchStep,
+  new TypedOutputsStep({
+    name: "Check out the branch this run starts from",
+    if: "inputs.type == 'issue'",
+    shell: "bash",
+    env: { BRANCH_NAME: resolveIssueBranchStep.outputs.branch },
+    // Resuming sets BRANCH; starting from the base deliberately does not. BRANCH
+    // is what `create_pr` reads as the head branch, and naming the base there
+    // would open a pull request from the base onto itself. With it unset, the
+    // branch `commit_and_push` creates is read back from HEAD.
+    run: `if [ -z "\${BRANCH_NAME}" ]; then
+  BRANCH_NAME=$(${scriptCommand(getConfigValueRef, configValueArgv("base_branch", ""))})
+  [ -n "\${BRANCH_NAME}" ] || exit 0
+else
+  echo "BRANCH=\${BRANCH_NAME}" >> $GITHUB_ENV
+fi
+git fetch origin "refs/heads/\${BRANCH_NAME}:refs/remotes/origin/\${BRANCH_NAME}"
+git checkout -B "\${BRANCH_NAME}" "refs/remotes/origin/\${BRANCH_NAME}"
+`,
+  }),
   // MCP サーバーパッケージのキャッシュ + グローバルインストール
   // npm のダウンロードキャッシュを保存し、`npm install -g` を高速化
   new CacheAction({

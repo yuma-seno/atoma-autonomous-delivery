@@ -31,6 +31,17 @@ export function getMergePolicy(fallback = "manual"): string {
 }
 
 /**
+ * Branch an issue's work starts from and targets, or "" for the default branch.
+ *
+ * Empty is deliberately the normal answer: callers pass it straight to `gh`,
+ * which falls back to the repository's default branch on its own, so a project
+ * that never sets this needs no special case anywhere.
+ */
+export function getBaseBranch(fallback = ""): string {
+  return loadConfig().base_branch?.trim() || fallback;
+}
+
+/**
  * Look up the agent configured for an unconditional `auto_triggers` event.
  *
  * Entries with a `condition` (e.g. changes_requested) are evaluated by
