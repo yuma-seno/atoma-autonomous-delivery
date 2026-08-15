@@ -31,6 +31,26 @@ export function getMergePolicy(fallback = "manual"): string {
 }
 
 /**
+ * Branch an issue's work starts from and targets, or "" for the default branch.
+ *
+ * Empty is deliberately the normal answer: callers pass it straight to `gh`,
+ * which falls back to the repository's default branch on its own, so a project
+ * that never sets this needs no special case anywhere.
+ */
+export function getBaseBranch(fallback = ""): string {
+  // The one reader here that tolerates a missing config.json. No config means no
+  // base branch, which is the same answer as a config without the key, so
+  // `create_pr` should not start failing over a setting whose absence is the
+  // normal case. The others deliberately still throw: defaulting a merge policy
+  // or a label because a file could not be read would act on a guess.
+  try {
+    return loadConfig().base_branch?.trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Look up the agent configured for an unconditional `auto_triggers` event.
  *
  * Entries with a `condition` (e.g. changes_requested) are evaluated by

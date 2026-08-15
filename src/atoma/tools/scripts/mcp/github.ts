@@ -18,7 +18,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { dispatchWorkflow, gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
-import { getLabel, getMergePolicy, getTriggerAgent, getWorkflowName } from "../../../../lib/config.ts";
+import { getBaseBranch, getLabel, getMergePolicy, getTriggerAgent, getWorkflowName } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
 import { dispatchRunner } from "../../../../lib/dispatch.ts";
@@ -27,6 +27,8 @@ import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
+import { nextBranchName } from "../../../../domain/issue-branch.ts";
+import { collectIssueBranches } from "../../../../lib/issue-branches.ts";
 import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
 import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
 
@@ -144,7 +146,7 @@ const LIST_ISSUES_SCHEMA = z.object({
 const CREATE_PR_SCHEMA = z.object({
   title: z.string().min(1).describe("Concise pull request title."),
   body: z.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
-  base: z.string().optional().describe("Target branch name. Omit to use the repository default branch."),
+  base: z.string().optional().describe("Target branch name. Omit to use the repository's configured base branch, or its default branch when none is configured."),
 });
 
 const LIST_PRS_SCHEMA = z.object({
@@ -363,7 +365,11 @@ function dispatchPrValidation(prNumber: number, branch: string): void {
 function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   const title = a.title;
   let body = a.body ?? "";
-  const base = a.base;
+  // `base_branch` is how an adopter says where day-to-day work lands — a repo
+  // that develops on `develop` and deploys by merging into `main` cannot have
+  // every agent PR aimed at the default branch. An explicit `base` still wins,
+  // and with neither set `gh` targets the default branch.
+  const base = a.base ?? getBaseBranch();
   body = injectParentIssue(body);
   log(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
 
@@ -429,8 +435,42 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
 }
 
+/**
+ * The branch this commit belongs on, creating one if the run has none yet.
+ *
+ * A run starts on the base branch unless it had work to resume, because most
+ * runs never commit and creating a branch for those left one behind every time.
+ * The first commit is what turns a run into work, so that is where the branch
+ * appears.
+ *
+ * When every earlier branch for this issue has merged, the name counts up:
+ * reusing a merged branch would build on history the base already contains.
+ */
+function branchForCommit(): string {
+  const current = gitRun("rev-parse", "--abbrev-ref", "HEAD");
+  const onBranch = current.code === 0 ? current.stdout.trim() : "";
+  if (onBranch.startsWith("atoma/issue-")) return onBranch;
+
+  // Only an issue run may name a branch. On a pull request run `ISSUE_NUMBER`
+  // holds the PR's number and the checkout is already the branch under review,
+  // so naming one from it would move the work off the pull request.
+  const issue = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  if (process.env.ATOMA_RUN_TYPE !== "issue" || !Number.isInteger(issue) || issue <= 0) {
+    return resolveBranch();
+  }
+
+  const name = nextBranchName(collectIssueBranches(REPO), issue);
+  const created = gitRun("checkout", "-b", name);
+  if (created.code) mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
+  log(`commitAndPush: created branch ${name}`);
+  return name;
+}
+
 function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
   const message = a.message;
+  // Before the commit, so a failure to name a branch does not leave a commit
+  // stranded on the base branch.
+  const branch = branchForCommit();
   {
     const { code, stdout, stderr } = gitRun("add", "-A");
     if (code) mcpFail(stderr || stdout);
@@ -439,7 +479,6 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
     const { code, stdout, stderr } = gitRun("commit", "-m", message);
     if (code) mcpFail(stderr || stdout);
   }
-  const branch = resolveBranch();
   {
     const { code, stdout, stderr } = gitRun("push", "-u", "origin", branch);
     if (code) mcpFail(stderr || stdout);

@@ -11,6 +11,19 @@ export interface AutoTrigger {
 
 export interface AtomaConfig {
   merge_policy: "auto" | "manual" | string;
+  /**
+   * Branch an issue's work starts from and its pull request targets.
+   *
+   * Unset means the repository's default branch, which is what most projects
+   * want and why this ships unset. It exists for the one arrangement the default
+   * cannot express: keeping `main` as the default branch, for releases and for
+   * what GitHub shows first, while agents' work accumulates somewhere else.
+   *
+   * Fixing a branching strategy here would be the wrong trade. Requiring `main`
+   * shuts out projects with an integration branch; assuming one saddles every
+   * other project with a branch it does not use.
+   */
+  base_branch?: string;
   environment?: {
     setup_commands?: string[];
   };

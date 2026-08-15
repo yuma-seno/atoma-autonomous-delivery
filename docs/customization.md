@@ -26,6 +26,7 @@ Primary file: `.github/atoma/config.json`
 Supported top-level fields used by scripts/workflows:
 
 - `merge_policy`
+- `base_branch`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
@@ -194,6 +195,33 @@ language- and framework-agnostic, and only you know what your project needs.
 `config.json`. Nothing ever read it — JSON has no comments, so prose in a config
 file is invisible to both the code and the agents. It is documentation, so it
 lives in the documentation.)
+
+### Choose the branch agents work from
+
+```json
+{
+  "base_branch": "develop"
+}
+```
+
+Agents branch from this and open their pull requests against it. Leave it unset
+and both fall back to the repository's default branch, which is what a repository
+developing on `main` wants.
+
+Set it if you develop on an integration branch and release by merging that branch
+elsewhere — `develop` → `main`, say. Without it every agent pull request aims at
+`main`, so ordinary work lands straight in what you release from.
+
+#### Release pull requests
+
+Atoma has no notion of a release: the promotion pull request — `develop` into
+`main`, or whatever your equivalent is — is yours to open, from the GitHub UI or
+`gh pr create --base main --head develop`. It carries the merge of many issues and
+is where you decide a set of work is ready to ship, which is a judgement no agent
+is positioned to make.
+
+Nothing about that pull request is special to Atoma. It is reviewed by whoever
+reviews releases, and merging it runs whatever your `main` branch already runs.
 
 ### Point Atoma at your own workflows
 

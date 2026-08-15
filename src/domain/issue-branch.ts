@@ -1,0 +1,67 @@
+/**
+ * issue-branch.ts — decides which branch an issue's work belongs on.
+ *
+ * Two questions, both pure: which existing branch a run should resume, and what
+ * to call a new one. The I/O half — listing refs and asking GitHub which pull
+ * requests merged — lives in the callers.
+ *
+ * The rule everything here follows is that a branch belongs to a unit of work,
+ * not to an issue. An issue can produce a second piece of work after the first
+ * has merged, and reusing the merged branch for it would build on a history the
+ * base already contains.
+ */
+
+/** A branch that exists on the remote, and whether its work already landed. */
+export interface IssueBranch {
+  name: string;
+  /** True when a pull request from this branch was merged. */
+  merged: boolean;
+}
+
+const SUFFIX = /-(\d+)$/;
+
+/** `atoma/issue-12` -> 1, `atoma/issue-12-3` -> 3. Unsuffixed counts as the first. */
+function ordinalOf(name: string, prefix: string): number {
+  const rest = name.slice(prefix.length);
+  if (rest === "") return 1;
+  const match = SUFFIX.exec(rest);
+  return match ? Number(match[1]) : 0;
+}
+
+/** Every branch this issue could own, newest first. */
+function ownedBranches(branches: IssueBranch[], issueNumber: number): { branch: IssueBranch; ordinal: number }[] {
+  const prefix = `atoma/issue-${issueNumber}`;
+  return branches
+    .filter((branch) => branch.name === prefix || SUFFIX.test(branch.name.slice(prefix.length)))
+    .map((branch) => ({ branch, ordinal: ordinalOf(branch.name, prefix) }))
+    .filter((entry) => entry.ordinal > 0)
+    .sort((a, b) => b.ordinal - a.ordinal);
+}
+
+/**
+ * The branch a run should check out, or "" to stay on the base branch.
+ *
+ * Returns the newest branch whose work has not merged, so a run that follows an
+ * interrupted one continues where it stopped. Once everything has merged there
+ * is nothing to resume, and staying on the base is what keeps a run that only
+ * reports or closes something from creating a branch it will never commit to.
+ */
+export function branchToResume(branches: IssueBranch[], issueNumber: number): string {
+  const unmerged = ownedBranches(branches, issueNumber).find((entry) => !entry.branch.merged);
+  return unmerged?.branch.name ?? "";
+}
+
+/**
+ * What to call the branch for work starting now.
+ *
+ * Only called when nothing is resumable, so every existing branch here has
+ * merged and the name has to be a new one. The first is unsuffixed, keeping the
+ * common case readable; later ones count up from the highest already taken
+ * rather than from how many exist, so a deleted branch cannot cause a collision.
+ */
+export function nextBranchName(branches: IssueBranch[], issueNumber: number): string {
+  const prefix = `atoma/issue-${issueNumber}`;
+  const owned = ownedBranches(branches, issueNumber);
+  if (owned.length === 0) return prefix;
+  return `${prefix}-${(owned[0]?.ordinal ?? 1) + 1}`;
+}
