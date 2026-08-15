@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * resolve_entry_agent.ts — Parse the "/agent-name" slash command from the
- * first non-blank line of a newly-opened issue's body, and emit
+ * first visible line of a newly-opened issue's body, and emit
  * agent/number/type/notify as step outputs for atoma-entry.wac.ts.
  *
  * Env: NUMBER, SENDER (issue number + the user who opened it), GITHUB_EVENT_PATH
@@ -19,6 +19,30 @@ interface GithubIssueOpenedEvent {
   issue?: { body?: string };
 }
 
+/**
+ * The line the command must be on: the first one that shows up when the issue is
+ * read.
+ *
+ * Blank lines and HTML comments are skipped because neither is visible on the
+ * rendered issue, so requiring the command literally first would fail on a body
+ * that looks exactly right. Atoma writes such comments itself — the
+ * `atoma:parent` tag `create_issue` prepends to a sub-issue is one — and an
+ * issue that carried one silently started nothing.
+ *
+ * Nothing else is skipped. A command below a paragraph of prose is not a command
+ * at the top, and reading further would turn any mention of `/engineer` in a
+ * discussion into a dispatch.
+ */
+function commandLine(body: string): string {
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("<!--") && line.endsWith("-->")) continue;
+    return line;
+  }
+  return "";
+}
+
 function main(): void {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const number = process.env.NUMBER ?? "";
@@ -32,10 +56,9 @@ function main(): void {
 
   const event = JSON.parse(readFileSync(eventPath, "utf8")) as GithubIssueOpenedEvent;
   const body = event.issue?.body ?? "";
-  const firstLine = (body.trim().split("\n")[0] ?? "").trim();
 
-  if (!firstLine.startsWith("/")) return;
-  const agent = firstLine.slice(1).trim();
+  if (!commandLine(body).startsWith("/")) return;
+  const agent = commandLine(body).slice(1).trim();
   if (!agent) return;
 
   // The name is spliced into shell text downstream (`AGENT="${{ inputs.agent }}"`
