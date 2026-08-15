@@ -48,6 +48,9 @@ Required before first run:
   cannot start leaves the check unfilled and the pull request unmergeable
   forever. See
   [Requiring a check that agents can satisfy](docs/customization.md#requiring-a-check-that-agents-can-satisfy).
+- An agent will not merge a pull request that changes how agents run — workflows,
+  agent definitions, and similar. It reviews and reports; the merge is yours. See
+  [Changes an agent may not merge](docs/customization.md#changes-an-agent-may-not-merge).
 - Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and
   `atoma/launched` are created on first use. Rename them in `config.json` if your
   taxonomy differs.
