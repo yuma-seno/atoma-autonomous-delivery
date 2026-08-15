@@ -18835,6 +18835,16 @@ ${formatBlockers(readiness.blockers)}` + (dispatched ? `
 CI has been dispatched for the head commit; re-check shortly.` : "")
   });
 }
+function deleteMergedBranch(branch) {
+  if (!branch)
+    return;
+  const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
+  if (code) {
+    log3(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    return;
+  }
+  log3(`mergePr: deleted merged branch ${branch}`);
+}
 async function mergePr(a) {
   const num = a.number;
   const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
@@ -18856,6 +18866,7 @@ ${formatBlockers(readiness.blockers)}`
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
+  deleteMergedBranch(headRefName);
   dispatchCd(baseRefName);
   const d = ghJsonOrThrow("pr", "view", String(num), "--repo", REPO, "--json", "body");
   const body = d?.body ?? "";
