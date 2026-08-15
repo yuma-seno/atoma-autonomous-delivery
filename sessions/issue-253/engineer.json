@@ -162,14 +162,121 @@
       "role": "tool",
       "content": "{\"number\":254,\"url\":\"https://github.com/yuma-seno/atoma-autonomous-delivery/pull/254\"}",
       "tool_call_id": "call_f78d859c266948c585cf583d"
+    },
+    {
+      "role": "user",
+      "content": "PR #254: docs: add shell log reading row to symptom-based troubleshooting\n**Labels:** atoma/in-progress\n**Linked Issue:** #253\n\n<!-- atoma:parent-issue=253 -->\n<!-- atoma:origin-agent=engineer -->\n<!-- atoma:notify=hws-yuma-seno -->\nCloses #253\n\nAdds one row to the \"Symptom-based troubleshooting\" table in `docs/operations.md` for long-running agents or excessive token consumption.\n\n- **Symptom**: Agent run takes longer than expected or consumes excessive tokens\n- **Likely cause**: High number of shell tool round trips, or large tool output size\n- **Recovery action**: Read the `[atoma-shell]` lines in the workflow log; each records the command, exit code, duration, and output byte size\n\nThe row matches the brevity and tone of the existing rows. No other sections were changed.\n\nVerification: `git diff` shows exactly one added line in `docs/operations.md`; no tests or generated artifacts affected.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T03:04:58Z",
+        "event_type": "pr_opened",
+        "id": "pr-254",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Review state: COMMENTED\n\nLGTM",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T03:06:22Z",
+        "event_type": "pr_review",
+        "id": "pr-review-4942588261",
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T03:06:28Z",
+        "event_type": "issue_comment",
+        "id": 5300235191,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "```diff\ndiff --git a/docs/operations.md b/docs/operations.md\nindex 76951ed..a0a0c7e 100644\n--- a/docs/operations.md\n+++ b/docs/operations.md\n@@ -89,6 +89,7 @@ Recovery archives the previous agent session, does not restore its assistant/too\n | Draft pull request will not merge | PR is in draft and reviewer reports a `draft` blocker by design | Author marks the PR ready for review |\n | Agent's pull request shows a check stuck at `action_required` | GitHub holds `pull_request` runs for pull requests opened with `GITHUB_TOKEN` | Expected; the merge does not depend on it. Approve it to clear the display, but never delete the run — that breaks the commit's check rollup permanently |\n | Required check never fills on an agent's pull request | The workflow behind that context has no `workflow_dispatch` trigger, so Atoma cannot run it | Add `workflow_dispatch` to it, or drop the context from the ruleset's required list |\n+| Agent run takes longer than expected or consumes excessive tokens | High number of shell tool round trips, or large tool output size | Read the `[atoma-shell]` lines in the workflow log; each records the command, exit code, duration, and output byte size |\n \n ## Security boundaries\n```",
+      "atoma_metadata": {
+        "author": "github",
+        "created_at": "2026-08-15T03:06:32Z",
+        "event_type": "pr_diff",
+        "id": "pr-254-diff",
+        "layer": "github-context",
+        "sha": "9a6ef54d",
+        "source": "github"
+      }
+    },
+    {
+      "role": "user",
+      "content": "<!-- atoma:agent=reviewer -->\nPR #254 has been merged. The change to `docs/operations.md` is now live.\n\nNo further action is required.\n\n\n\n---\n_Tokens: 22040 total (21923 prompt + 117 completion)_\n_Estimated cost: $0.0034_\n---\n_run by [reviewer](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31860915167)_",
+      "atoma_metadata": {
+        "author": "github-actions[bot]",
+        "created_at": "2026-08-15T03:06:32Z",
+        "event_type": "pr_comment",
+        "id": 5300235428,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_9f8692b739b04d37b566d664",
+          "type": "function",
+          "function": {
+            "name": "github__get_pr",
+            "arguments": "{\"number\": 254}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"baseRefName\":\"main\",\"body\":\"<!-- atoma:parent-issue=253 -->\\n<!-- atoma:origin-agent=engineer -->\\n<!-- atoma:notify=hws-yuma-seno -->\\nCloses #253\\n\\nAdds one row to the \\\"Symptom-based troubleshooting\\\" table in `docs/operations.md` for long-running agents or excessive token consumption.\\n\\n- **Symptom**: Agent run takes longer than expected or consumes excessive tokens\\n- **Likely cause**: High number of shell tool round trips, or large tool output size\\n- **Recovery action**: Read the `[atoma-shell]` lines in the workflow log; each records the command, exit code, duration, and output byte size\\n\\nThe row matches the brevity and tone of the existing rows. No other sections were changed.\\n\\nVerification: `git diff` shows exactly one added line in `docs/operations.md`; no tests or generated artifacts affected.\",\"createdAt\":\"2026-08-15T03:04:58Z\",\"headRefName\":\"atoma/issue-253\",\"number\":254,\"state\":\"MERGED\",\"title\":\"docs: add shell log reading row to symptom-based troubleshooting\"}",
+      "tool_call_id": "call_9f8692b739b04d37b566d664"
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_546d737fa6454b358fd22204",
+          "type": "function",
+          "function": {
+            "name": "github__close_issue",
+            "arguments": "{\"number\": 253}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Error: Tool 'close_issue' on MCP server 'github' reported an error: Error: Refusing to close issue #253: opened by a human, not a bot",
+      "tool_call_id": "call_546d737fa6454b358fd22204"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #254 is merged and the `docs/operations.md` change is live.\n\nI attempted to close sub-issue #253 via `github__close_issue`, but the tool refused: it was opened by a human, not a bot. Per the re-entry contract, that refusal is the expected answer — closing the issue is the owner's step, not something to work around.\n\nThe merge is done; closing #253 is up to the human owner.",
+      "atoma_metadata": {
+        "github_comment_id": 5300237444,
+        "agent": "engineer"
+      }
     }
   ],
   "metadata": {
     "github_context": {
       "agent": "engineer",
-      "event_count": 1,
-      "snapshot_hash": "7cc6ff87bdbb0908838aa1ad98cfde9b0db51dbcc3289fa036e3be9076c7058f",
-      "version": 1
+      "event_count": 6,
+      "snapshot_hash": "b0c2ce255e4abac3e02bf8dce43903ef7ae1df31542e18319ea16fc81558716d",
+      "version": 1,
+      "type": "issue",
+      "resolved_number": "253"
     }
   }
 }
