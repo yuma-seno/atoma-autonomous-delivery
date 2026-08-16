@@ -1,24 +1,48 @@
-name: Probe secrets access
+name: Probe secrets and environment
 on:
   push:
     branches: [probe/**]
 permissions:
   contents: read
 jobs:
-  named:
-    # References ONE named secret. If this also stalls, the trigger is
-    # "touches the secrets context at all" -- a repository policy. If it runs,
-    # toJSON(secrets) specifically is the problem.
+  step_named:
+    runs-on: ubuntu-latest
+    steps:
+      - name: One named secret, at step level
+        env:
+          ONE: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "${ONE:-}" ]; then echo "RESULT-NAMED reached the step"; else echo "RESULT-NAMED empty"; fi
+
+  job_named:
     runs-on: ubuntu-latest
     env:
       ONE: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - run: |
-          if [ -n "${ONE:-}" ]; then echo "RESULT-NAMED: a named secret reached the step"; else echo "RESULT-NAMED: empty"; fi
-  no_secrets:
-    # Control: identical shape, no secrets context at all.
+          if [ -n "${ONE:-}" ]; then echo "RESULT-JOB-NAMED reached the step"; else echo "RESULT-JOB-NAMED empty"; fi
+
+  step_json:
     runs-on: ubuntu-latest
-    env:
-      ONE: plain
     steps:
-      - run: echo "RESULT-CONTROL: a job with no secrets reference runs"
+      - name: Every secret as JSON, at step level
+        env:
+          ALL: ${{ toJSON(secrets) }}
+        run: |
+          if [ -z "${ALL:-}" ]; then echo "RESULT-JSON empty"; exit 0; fi
+          echo "RESULT-JSON populated"
+          echo "keys $(echo "$ALL" | jq -r 'keys | join(" ")')"
+
+  env_expression:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ vars.PROBE_ENV || 'atoma-ungated' }}
+    steps:
+      - run: |
+          echo "RESULT-ENV the mapping form accepted an expression"
+
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "RESULT-CONTROL a job with no secrets reference runs"
