@@ -62,10 +62,27 @@ export function stringArray(description: string) {
     .describe(description);
 }
 
-/** A handler may return either plain text, or `{text, meta}` when the response needs extra `_meta` fields (e.g. `session_ends: true`). */
-export type McpToolResult = string | { text: string; meta?: Record<string, unknown> };
+/** An image in MCP's own content-block shape, which the Atoma core maps per provider. */
+export interface McpImageBlock {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
 
-function normalizeResult(result: McpToolResult): { text: string; meta?: Record<string, unknown> } {
+/**
+ * A handler may return plain text, or an object when the response needs more
+ * than text: `meta` for extra `_meta` fields (e.g. `session_ends: true`), and
+ * `images` for pictures a vision-capable model should see rather than read.
+ */
+export type McpToolResult =
+  | string
+  | { text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] };
+
+function normalizeResult(result: McpToolResult): {
+  text: string;
+  meta?: Record<string, unknown>;
+  images?: McpImageBlock[];
+} {
   return typeof result === "string" ? { text: result } : result;
 }
 
@@ -79,7 +96,7 @@ export interface McpToolSpec<S extends z.ZodTypeAny> {
 /** A tool ready to be listed (`.tool`) and invoked (`.call`) by an MCP server. */
 export interface BuiltMcpTool {
   readonly tool: Tool;
-  call(args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown> }>;
+  call(args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }>;
 }
 
 export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): BuiltMcpTool {
@@ -89,7 +106,9 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
   }) as Record<string, unknown>;
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema as Tool["inputSchema"] },
-    async call(args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown> }> {
+    async call(
+      args: Record<string, unknown>,
+    ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }> {
       const result = spec.schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues
@@ -105,12 +124,18 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
 /** Builds an MCP server's `tools/list` array and a single `name -> call` dispatch function from a list of tool specs. */
 export function buildMcpTools(specs: BuiltMcpTool[]): {
   tools: Tool[];
-  dispatch(name: string, args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown> }>;
+  dispatch(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }>;
 } {
   const byName = new Map(specs.map((s) => [s.tool.name, s]));
   return {
     tools: specs.map((s) => s.tool),
-    async dispatch(name: string, args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown> }> {
+    async dispatch(
+      name: string,
+      args: Record<string, unknown>,
+    ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }> {
       const spec = byName.get(name);
       if (!spec) throw new Error(`Unknown: ${name}`);
       return spec.call(args);

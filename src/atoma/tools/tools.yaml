@@ -23,6 +23,11 @@ filesystem_readonly:
     tool_allowlist:
       - "filesystem_readonly__read_file"
       - "filesystem_readonly__read_multiple_files"
+      # Returns an image as an image block rather than as bytes read into text.
+      # An agent whose definition sets `vision: true` can look at a screenshot
+      # in the repository; one without it gets a note saying the picture was
+      # withheld. Reading an image through `read_file` produces neither.
+      - "filesystem_readonly__read_media_file"
       - "filesystem_readonly__list_directory"
       - "filesystem_readonly__get_file_info"
 
@@ -36,6 +41,12 @@ shell:
 github:
   command: bun
   args: ["run", ".github/atoma/tools/scripts/mcp/github.ts"]
+  env: {}
+  hooks: {}
+
+web:
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/web.ts"]
   env: {}
   hooks: {}
 

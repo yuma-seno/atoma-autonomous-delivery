@@ -156,6 +156,21 @@ const LIST_PRS_SCHEMA = z.object({
 
 const SEARCH_CODE_SCHEMA = z.object({
   query: z.string().min(1).describe("GitHub code-search query scoped automatically to the current repository."),
+  everywhere: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Search all of GitHub instead of only this repository. Use this to see how a library is used in real code."),
+});
+
+const SEARCH_ISSUES_SCHEMA = z.object({
+  query: z.string().min(1).describe("GitHub issue-search query, e.g. 'onnxruntime bun crash in:title,body'."),
+  everywhere: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Search all of GitHub instead of only this repository. Use this to find whether a problem is already reported elsewhere."),
+  limit: positiveInt("Maximum results to return. Defaults to 20.").optional(),
 });
 const GET_BRANCH_SCHEMA = z.object({
   name: z.string().min(1).describe("Repository branch name, for example 'main' or 'atoma/issue-42'."),
@@ -670,8 +685,35 @@ function listPrs(a: z.infer<typeof LIST_PRS_SCHEMA>): string {
   return JSON.stringify(ghJsonOrThrow("pr", "list", "--repo", REPO, "--state", state, "--limit", String(limit), "--json", "number,title,state,headRefName,baseRefName") ?? []);
 }
 
+/**
+ * Code search, this repository or all of GitHub.
+ *
+ * The wider mode is what an agent reaches for instead of a general web search:
+ * how a library is really used, and by whom, answered from code rather than
+ * from a page about code. It costs nothing extra — the run's own token already
+ * carries the permission.
+ */
 function searchCode(a: z.infer<typeof SEARCH_CODE_SCHEMA>): string {
-  const { code, stdout, stderr } = gh("search", "code", a.query, "--repo", REPO, "--limit", "30");
+  const scope = a.everywhere ? [] : ["--repo", REPO];
+  const { code, stdout, stderr } = gh("search", "code", a.query, ...scope, "--limit", "30");
+  if (code) mcpFail(stderr || stdout);
+  return stdout.slice(0, 50000);
+}
+
+/**
+ * Issue and pull request search, this repository or all of GitHub.
+ *
+ * Scoped here, it answers "why is it like this" from the discussion that
+ * decided it. Widened, it answers "has anyone else hit this" — often the
+ * fastest route to a known bug and its workaround.
+ */
+function searchIssues(a: z.infer<typeof SEARCH_ISSUES_SCHEMA>): string {
+  const scope = a.everywhere ? [] : ["--repo", REPO];
+  const { code, stdout, stderr } = gh(
+    "search", "issues", a.query, ...scope,
+    "--limit", String(a.limit ?? 20),
+    "--json", "number,title,state,url,repository",
+  );
   if (code) mcpFail(stderr || stdout);
   return stdout.slice(0, 50000);
 }
@@ -921,7 +963,8 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
   defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request, truncated to 50,000 characters. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
   defineMcpTool({ name: "list_prs", description: "List pull request summaries in the current repository, optionally filtered by state. Use this to discover PRs; use get_pr for full metadata. Returns a JSON array and does not mutate GitHub.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
-  defineMcpTool({ name: "search_code", description: "Search code through GitHub within the current repository. Use this for remote repository text or symbol discovery when local filesystem search is unavailable; do not use it for uncommitted changes. Returns GitHub CLI search text, truncated to 50,000 characters.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
+  defineMcpTool({ name: "search_code", description: "Search code through GitHub. Scoped to the current repository by default; pass everywhere: true to search all of GitHub, which is the way to see how a library is used in real code. Do not use it for uncommitted changes. Returns GitHub CLI search text, truncated to 50,000 characters.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
+  defineMcpTool({ name: "search_issues", description: "Search issues and pull requests. Scoped to the current repository by default, where it answers why something is the way it is from the discussion that decided it; pass everywhere: true to search all of GitHub and find whether a problem is already reported elsewhere. Returns JSON.", schema: SEARCH_ISSUES_SCHEMA, handler: searchIssues }),
   defineMcpTool({ name: "get_branch", description: "Retrieve GitHub's branch metadata for an exact branch name. Use this to inspect remote branch identity and protection information, not local worktree state. Returns a JSON branch object and does not mutate GitHub.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
   defineMcpTool({
     name: "sync_branch",
