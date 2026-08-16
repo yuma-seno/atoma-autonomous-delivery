@@ -17,6 +17,7 @@
     "@github-actions-workflow-ts/actions": "^2.5.0",
     "@github-actions-workflow-ts/cli": "^2.5.0",
     "@github-actions-workflow-ts/lib": "^2.5.0",
+    "@huggingface/transformers": "^3.8.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@octokit/webhooks-types": "^7.6.1",
     "@types/bun": "^1.2.14",

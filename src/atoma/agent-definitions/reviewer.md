@@ -16,6 +16,7 @@ mcp_servers:
   - filesystem_readonly
   - github
   - web
+  - search
 extra_body:
   # OpenRouter provider routing; see orchestrator.md for the full rationale.
   # Keep it advisory: `order` prefers the endpoints with the best uptime. Do not

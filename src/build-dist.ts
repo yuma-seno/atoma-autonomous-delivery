@@ -33,6 +33,21 @@ import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * Packages left out of the bundle and installed on the runner instead.
+ *
+ * Everything else is inlined, which is what lets the deployed `.github/` run
+ * with no `node_modules` beside it. These cannot be: `@huggingface/transformers`
+ * reaches `onnxruntime-node`, whose `.node` binaries are not JavaScript and so
+ * are not something a JavaScript bundler can carry. Inlining the wrapper and
+ * losing the binary produces a script that builds and then fails at its first
+ * call, which is the worst of both.
+ *
+ * Anything added here has to be installed by the runner before an agent starts
+ * — see `mcp-packages.json`'s `bun` list and the workflow step that reads it.
+ */
+const RUNTIME_INSTALLED = ["@huggingface/transformers"];
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_DIR = join(REPO_ROOT, "src");
 const DIST_GITHUB_DIR = join(REPO_ROOT, "dist", ".github");
@@ -66,6 +81,7 @@ async function bundleTree(srcDir: string, distDir: string, excludeDirs: Readonly
       target: "bun",
       format: "esm",
       naming: "[dir]/[name].ts",
+      external: RUNTIME_INSTALLED,
     });
     if (!result.success) {
       console.error(`build-dist: bundling failed for ${entrypoint}:`);
