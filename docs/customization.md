@@ -337,6 +337,12 @@ instead of landing on the base branch one piece at a time:
 
 ### Point Atoma at your own workflows
 
+Most projects should not need this. The default is
+[a pipeline written as commands](#set-up-ci-and-deployment), which an agent can
+author and maintain; naming a workflow of your own opts back out of that. Reach
+for it when the pipeline needs something commands cannot express — the four
+cases are listed in that section.
+
 ```json
 {
   "workflows": {
@@ -347,20 +353,19 @@ instead of landing on the base branch one piece at a time:
 ```
 
 `ci` is the workflow Atoma runs against an agent's pull request before anyone
-reviews it. Defaults to `ci.yml`; set it if yours is named differently, or the
-dispatch fails silently and every merge is refused for a missing check.
+reviews it. Defaults to `atoma-check.yml`. Name yours here, exactly as the file
+is called, or the dispatch fails silently and every merge is refused for a
+missing check.
 
 Its result decides what happens next: the reviewer is dispatched when it passes,
 the engineer when it fails. See below for what that workflow has to support.
 
-`cd` is dispatched after a successful merge. Leave it unset unless your deployment
-is chained off CI or off a push to the base branch — in that case it is required,
-not optional. An agent merge is performed with `GITHUB_TOKEN`, and GitHub starts no
-workflow run for events its own token triggers, so nothing downstream of that merge
-fires by itself and your deployment would silently never run.
-
-If you have no pipeline yet, you do not have to write these workflows at all —
-see [Set up CI and deployment](#set-up-ci-and-deployment).
+`cd` is dispatched after a successful merge — required rather than optional if
+your deployment is chained off CI or off a push to the base branch. An agent
+merge is performed with `GITHUB_TOKEN`, and GitHub starts no workflow run for
+events its own token triggers, so nothing downstream of that merge fires by
+itself and your deployment would silently never run. Defaults to
+`atoma-deploy.yml`, which does nothing when no target deploys on merge.
 
 ### Set up CI and deployment
 
@@ -389,9 +394,14 @@ permission grants it. So a repository whose pipeline lives in `config.json` is
 one an agent can set up, extend and repair; one whose pipeline lives in workflow
 YAML always needs a person.
 
-To use the shipped check as your required check, set `workflows.ci` to
-`atoma-check.yml`. It stays `ci.yml` by default, so an existing repository keeps
-running the workflow it already had.
+Nothing needs pointing at these — `atoma-check.yml` and `atoma-deploy.yml` are
+what `workflows.ci` and `workflows.cd` default to. Fill in the commands and they
+run.
+
+Until you do, the check passes and says so as a warning: it is the required
+check, so an empty `checks.commands` means a pull request satisfied something
+that tested nothing. Failing instead would block every pull request from the
+moment you adopt Atoma.
 
 **Triggers.** `on` is `merge` (after a pull request lands), `tag` (a pushed tag
 matching `tags`, which is a literal or a prefix followed by `*`), or `manual`.
