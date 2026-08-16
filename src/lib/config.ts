@@ -7,6 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { DEFAULT_GOVERNED_PATHS } from "../domain/merge-readiness.ts";
+import { resolveToolSecrets, type ToolSecretsResolution } from "../domain/tool-secrets.ts";
 import type { AtomaConfig } from "./types.ts";
 
 const CONFIG_PATH = ".github/atoma/config.json";
@@ -102,6 +103,18 @@ export function getTriggerAgent(event: string, fallback = ""): string {
     }
   }
   return fallback;
+}
+
+/**
+ * Repository secrets this project lets a run hand to the agent.
+ *
+ * Returns the validated names and every problem found with the declaration; the
+ * caller decides what a problem means. `read_tool_secret_names.ts` fails the run
+ * on one, because a credential that was asked for and silently not delivered
+ * surfaces as an unrelated tool failure much later.
+ */
+export function getToolSecrets(): ToolSecretsResolution {
+  return resolveToolSecrets(loadConfig().tools?.secrets);
 }
 
 /**
