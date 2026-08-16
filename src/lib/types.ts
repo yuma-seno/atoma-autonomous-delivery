@@ -39,6 +39,35 @@ export interface AtomaConfig {
    * A pattern is a literal path or a directory followed by `/**`.
    */
   governed_paths?: string[];
+  /**
+   * What this project runs to verify a change, as commands.
+   *
+   * Commands and not a workflow file because an agent can write one and not the
+   * other: GITHUB_TOKEN is refused on `.github/workflows/**` by identity, on
+   * every path and branch. `atoma-check.yml` runs whatever is named here, so a
+   * project's verification can be authored by an agent and reviewed as an
+   * ordinary diff.
+   *
+   * Unset means this project verifies nothing through Atoma; point
+   * `workflows.ci` at a workflow of your own instead.
+   */
+  checks?: {
+    /** Run in order, stopping at the first failure. */
+    commands?: string[];
+    /** Repository secrets `atoma-check.yml` may reach. See `tools.secrets`. */
+    secrets?: string[];
+  };
+  /**
+   * What this project deploys, and which event deploys it.
+   *
+   * Validated by `resolveDeployTargets`. See `domain/deploy-targets.ts` for why
+   * the trigger is configuration rather than the workflow's own `on:`.
+   */
+  deploy?: {
+    targets?: unknown;
+    /** Repository secrets `atoma-deploy.yml` may reach. See `tools.secrets`. */
+    secrets?: string[];
+  };
   /** Settings for the tool servers an agent calls. */
   tools?: {
     /**
@@ -77,16 +106,19 @@ export interface AtomaConfig {
   };
   agents?: Record<string, { max_iterations?: number }>;
   /**
-   * Names of this project's own workflows, which Atoma dispatches by name.
+   * Workflows of this project's own that Atoma should dispatch instead of the
+   * shipped ones.
    *
-   * Both are project-specific, so the template ships neither: an adopter's CI is
-   * not necessarily `ci.yml`, and most projects have no deployment workflow that
-   * needs dispatching at all.
+   * Set these only when a pipeline cannot be expressed as `checks.commands` or
+   * `deploy.targets` — a deployment approval gate, an unusual trigger, a job
+   * needing permissions the shipped workflows do not declare. Otherwise leave
+   * both unset: the default is `atoma-check.yml` / `atoma-deploy.yml`, which run
+   * this project's configured commands and need no workflow authoring.
    */
   workflows?: {
-    /** Put a required check on a pull request's head commit before merging. Defaults to `ci.yml`. */
+    /** Put a required check on a pull request's head commit before merging. Defaults to `atoma-check.yml`. */
     ci?: string;
-    /** Dispatched after a successful merge. Unset means no post-merge dispatch. */
+    /** Dispatched after a successful merge. Defaults to `atoma-deploy.yml`, which no-ops with no merge targets. */
     cd?: string;
   };
   labels?: {

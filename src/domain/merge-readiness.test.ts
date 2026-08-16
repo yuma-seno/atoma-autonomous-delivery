@@ -201,6 +201,21 @@ describe("decideMergeReadiness", () => {
     expect(result.blockers[0]?.detail).toContain(".github/workflows/ci.yml");
   });
 
+  // Refusing the merge is the control; saying where the change belongs is what
+  // stops the same pull request being opened again. The commonest reason to edit
+  // a generated workflow is to change what CI does, and under Atoma that is
+  // configuration.
+  test("touching a generated workflow says where CI actually gets configured", () => {
+    const { blockers } = decideMergeReadiness(signals({ governancePaths: [".github/workflows/atoma-check.yml"] }));
+    expect(blockers[0]?.detail).toContain("checks.commands");
+    expect(blockers[0]?.detail).toContain("config.json");
+  });
+
+  test("a governed change elsewhere gets no advice about CI", () => {
+    const { blockers } = decideMergeReadiness(signals({ governancePaths: [".github/atoma/agent-definitions/x.md"] }));
+    expect(blockers[0]?.detail).not.toContain("checks.commands");
+  });
+
   test("the blocker names a few paths rather than every one", () => {
     const many = Array.from({ length: 8 }, (_, i) => `.github/workflows/w${i}.yml`);
     const { blockers } = decideMergeReadiness(signals({ governancePaths: many }));

@@ -138,6 +138,11 @@ const PASSING = new Set(["success", "neutral", "skipped"]);
  */
 export const DEFAULT_GOVERNED_PATHS = [".github/**"] as const;
 
+/** A file whose changer probably meant to change what CI or a deployment does. */
+function isGeneratedWorkflow(path: string): boolean {
+  return path.startsWith(".github/workflows/");
+}
+
 /**
  * Which of `files` a pattern claims.
  *
@@ -281,7 +286,17 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
       kind: "governance-change",
       detail:
         `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` +
-        "review it and report, but leave the merge to a person",
+        "review it and report, but leave the merge to a person" +
+        // Said here because this is the moment someone is looking. The commonest
+        // reason to touch a generated workflow is to change what CI or a
+        // deployment does, and under Atoma that is not where those live -- so
+        // name the place it does live rather than only refusing the merge.
+        (signals.governancePaths.some(isGeneratedWorkflow)
+          ? ". If the intent was to change what CI or deployment does, that belongs in " +
+            "`.github/atoma/config.json` (`checks.commands`, `deploy.targets`) rather than in a " +
+            "workflow file — an agent can write config and cannot write a workflow. If this is an " +
+            "upgrade of the generated deliverable, it is exactly what a person should be merging"
+          : ""),
     });
   }
 

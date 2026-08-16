@@ -28,9 +28,10 @@ const configStep = new TypedOutputsStep(
     name: "Read the CI workflow name from config",
     id: "cfg",
     shell: "bash",
-    // Falls back to `ci.yml`, matching `getWorkflowName`'s own default on the
-    // tool side, so a repository that never set `workflows.ci` still validates.
-    run: `WORKFLOW=$(${scriptCommand(getConfigValueRef, configValueArgv("workflows.ci", "ci.yml"))})
+    // Falls back to the shipped check, matching `DEFAULT_CI_WORKFLOW` on the
+    // tool side, so a repository that never set `workflows.ci` still validates
+    // against a workflow that certainly exists.
+    run: `WORKFLOW=$(${scriptCommand(getConfigValueRef, configValueArgv("workflows.ci", "atoma-check.yml"))})
 echo "workflow=\${WORKFLOW}" >> "$GITHUB_OUTPUT"
 `,
   },

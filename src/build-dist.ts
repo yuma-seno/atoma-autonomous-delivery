@@ -112,6 +112,11 @@ function copyStaticAtomaContent(): void {
   }
   copyDirectoryFresh(join(srcAtomaDir, "agent-definitions"), join(distAtomaDir, "agent-definitions"));
   copyDirectoryFresh(join(srcAtomaDir, "skills"), join(distAtomaDir, "skills"));
+  // Not read by anything at runtime -- an adopter applies it once with `gh api`.
+  // It ships because the required check it names is produced by a workflow that
+  // also ships, and a ruleset written by hand against a remembered job name is
+  // the failure `generated-workflows.test.ts` exists to prevent.
+  copyDirectoryFresh(join(srcAtomaDir, "rulesets"), join(distAtomaDir, "rulesets"));
   mkdirSync(join(distAtomaDir, "tools"), { recursive: true });
   cpSync(join(srcAtomaDir, "tools", "tools.yaml"), join(distAtomaDir, "tools", "tools.yaml"));
 
