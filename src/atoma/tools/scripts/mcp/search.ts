@@ -22,7 +22,17 @@
  *
  * Ask it a question, not a keyword. Phrasing the query as a sentence rather
  * than a title was worth more than every other change combined — recall at 5
- * went from 48% to 95% on the same index with the same models.
+ * went from 48% to 95% on the same index with the same models. Which is why the
+ * tool description spends its length on how to phrase the question: the caller
+ * writes the query, so the caller holds the largest lever on the result.
+ *
+ * The same reasoning makes the language of the query part of the contract. The
+ * first stage matches character bigrams and nothing else, so a question asked
+ * in a language the issues are not written in shares no bigrams with them and
+ * scores near zero — the answer never reaches the cross encoder, which is
+ * multilingual and would have recognised it. An agent reads English
+ * instructions while this repository's issues are Japanese, so this is a live
+ * hazard rather than a theoretical one, and the description says so outright.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -60,7 +70,22 @@ const SEARCH_SCHEMA = z.object({
     .string()
     .min(1)
     .describe(
-      "A question in plain language, not keywords — 'why are branches created at the first commit' rather than 'branch creation'. Phrasing it as a question is the single biggest factor in whether the right issue comes back.",
+      [
+        "A whole question, in the language the issues are written in.",
+        "",
+        "Phrasing is the single biggest factor in whether the right issue comes back — a question found the answer twice as often as the keywords from the same question. Ask what you actually want to know, in one sentence, including the words you would use when explaining it to a person:",
+        "",
+        "  good: why does a branch get created at the first commit rather than up front",
+        "  poor: branch creation",
+        "",
+        "  good: is it already known that the reviewer cannot approve its own pull request",
+        "  poor: reviewer approve",
+        "",
+        "  good: has anyone tried using an embedding model for this search before",
+        "  poor: embedding",
+        "",
+        "Write it in the language this repository's issues are written in, which is the language of the issue in front of you — not necessarily the language you are being instructed in. The first stage matches characters rather than meaning, so a question in the wrong language finds nothing at all.",
+      ].join("\n"),
     ),
   limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured.").optional(),
 });
@@ -194,7 +219,7 @@ const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
     description:
-      "Search this repository's issues and their discussion by meaning, not by keyword. Ask a question in plain language — 'why does a branch get created at the first commit' — and the issues that answer it come back, most relevant first, with an excerpt. Use this to find why something is the way it is, whether a problem is already known, or whether work has been done before. Reading the discussion is often the point: decisions were argued in the comments.",
+      "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question — 'why does a branch get created at the first commit rather than up front' — and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues,
   }),
