@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Session } from "../../src/lib/session.ts";
+import {
+  TOOL_SECRET_NAMES_VAR,
+  TOOL_SECRET_SLOT_PREFIX,
+  TOOL_SECRET_SLOTS,
+} from "../../src/domain/tool-secrets.ts";
 
 describe("generated workflows", () => {
   test("routes recover mode and reports invalid command syntax", () => {
@@ -78,6 +83,46 @@ describe("generated workflows", () => {
         expect(checkout, `${name}:${jobName} checkout order`).toBeLessThan(firstScript);
       }
     }
+  });
+
+  // Both halves of this guard a measured fact about GitHub, not a preference.
+  //
+  // `toJSON(secrets)` is refused by the malicious-workflow detector: a run whose
+  // workflow contains it never starts, it queues for approval instead, and the
+  // block is per FILE rather than per job. Reintroducing it anywhere would take
+  // every adopter's automation offline, and the symptom (`action_required`, zero
+  // seconds elapsed) looks nothing like a code change.
+  //
+  // A computed key is allowed, and is the whole reason a project can declare a
+  // tool credential in config.json without editing generated YAML. If the slots
+  // ever stopped being keyed off the resolve step, credentials would silently
+  // stop arriving and only the tool needing one would fail.
+  test("reaches tool credentials by a computed key, never by dumping the secrets context", () => {
+    type WorkflowStep = { name?: string; env?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const directory = "dist/.github/workflows";
+    for (const name of readdirSync(directory).filter((entry) => entry.endsWith(".yml"))) {
+      expect(readFileSync(join(directory, name), "utf8"), `${name} must not dump the secrets context`).not.toContain(
+        "toJSON(secrets)",
+      );
+    }
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    const resolve = steps.findIndex((step) => step.name === "Resolve which repository secrets may reach the agent");
+    const agent = steps.findIndex((step) => step.name === "Run agent");
+    expect(resolve, "atoma-runner tool-secrets step").toBeGreaterThanOrEqual(0);
+    expect(resolve, "the names must be resolved before the step whose env they key").toBeLessThan(agent);
+
+    const env = steps[agent]?.env ?? {};
+    for (let slot = 0; slot < TOOL_SECRET_SLOTS; slot++) {
+      expect(env[`${TOOL_SECRET_SLOT_PREFIX}${slot}`], `slot ${slot}`).toBe(
+        `\${{ secrets[fromJSON(steps.tool-secrets.outputs.names || '[]')[${slot}]] }}`,
+      );
+    }
+    expect(env[TOOL_SECRET_NAMES_VAR]).toBe("${{ steps.tool-secrets.outputs.names }}");
   });
 
   test("authenticate the result-comment GitHub CLI call", () => {

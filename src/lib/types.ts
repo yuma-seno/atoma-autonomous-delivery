@@ -36,6 +36,22 @@ export interface AtomaConfig {
    * A pattern is a literal path or a directory followed by `/**`.
    */
   governed_paths?: string[];
+  /**
+   * Repository secrets a run hands to the agent, for tool servers that talk to
+   * something outside GitHub.
+   *
+   * Unset, and `[]`, mean the agent sees only the credentials the run needs to
+   * work at all — which is the default and what most projects want. Naming one
+   * here is a deliberate widening of what the agent can read, which is why it
+   * lives in a versioned, reviewable file rather than in repository settings.
+   *
+   * Each entry is the name of a secret that already exists in the repository;
+   * this declares which of them may travel, it does not create them. Validated
+   * by `resolveToolSecrets` — a name the run already uses for itself, a
+   * duplicate, or more than `TOOL_SECRET_SLOTS` of them fails the run with a
+   * message rather than being quietly dropped.
+   */
+  tool_secrets?: string[];
   search?: {
     /**
      * Cross encoder used to rank issue search results.

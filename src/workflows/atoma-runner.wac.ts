@@ -23,6 +23,12 @@ import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
+import { ref as readToolSecretNamesRef } from "../scripts/read_tool_secret_names.ts";
+import {
+  TOOL_SECRET_NAMES_VAR,
+  TOOL_SECRET_SLOT_PREFIX,
+  TOOL_SECRET_SLOTS,
+} from "../domain/tool-secrets.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
@@ -36,7 +42,8 @@ import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 //   2. install runtime deps (atoma CLI, Bun, MCP server deps)
 //   3. run configured environment setup, set git identity
 //   4. resolve `notify` login + this agent's `max_iterations` from config
-//   5. add atoma/in-progress label, then RUN THE AGENT
+//   5. add atoma/in-progress label, resolve which repository secrets config.json
+//      lets the agent see, then RUN THE AGENT
 //   6. post the agent's result as a comment
 //   7. handle follow-ups: uncommitted-changes notice, max-iterations notice,
 //      loop control, THEN remove the label (only if this run reached a
@@ -234,6 +241,45 @@ echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
   ["max_iterations"] as const,
 );
 
+/**
+ * Which repository secrets config.json lets this run hand to the agent.
+ *
+ * A step and not a job: step-level `env:` is evaluated when the step runs, so
+ * the "Run agent" step below can use this output as the KEY of a secret lookup.
+ * A job would have added a second runner to every agent run to learn the same
+ * thing.
+ */
+const toolSecretsStep = new TypedOutputsStep(
+  {
+    name: "Resolve which repository secrets may reach the agent",
+    id: "tool-secrets",
+    shell: "bash",
+    run: `${scriptCommand(readToolSecretNamesRef)}\n`,
+  },
+  ["names"] as const,
+);
+
+/**
+ * Anonymous slots the declared credentials arrive in.
+ *
+ * The workflow cannot name them — it is generated upstream, and a project adding
+ * a tool must not have to edit it — so each slot reaches a secret through a
+ * COMPUTED key and the "Run agent" script renames it afterwards. `|| '[]'` keeps
+ * an empty output (a skipped or failed resolve step) from making `fromJSON`
+ * throw, which would fail every run in a repository that configures no tools.
+ *
+ * Measured before being relied on: a computed key resolves to the same value the
+ * static form gives, stays masked as `***` in the log, degrades to empty when the
+ * index is past the end, and — unlike `toJSON(secrets)`, which GitHub's
+ * malicious-workflow detector blocks outright — lets the run start.
+ */
+const toolSecretSlots: Record<string, string> = Object.fromEntries(
+  Array.from({ length: TOOL_SECRET_SLOTS }, (_, slot) => [
+    `${TOOL_SECRET_SLOT_PREFIX}${slot}`,
+    `\${{ secrets[fromJSON(${toolSecretsStep.rawOutputs.names} || '[]')[${slot}]] }}`,
+  ]),
+);
+
 const checkoutAtomaSourceStep = new ActionsCheckoutV4({
   name: "Checkout Atoma source (for atoma_version: source)",
   if: "inputs.atoma_version == 'source'",
@@ -290,6 +336,10 @@ const runAgentStep = new TypedOutputsStep(
       OPENAI_BASE_URL_IN: "${{ vars.OPENAI_BASE_URL }}",
       ANTHROPIC_API_KEY_IN: "${{ secrets.ANTHROPIC_API_KEY }}",
       ATOMA_PROVIDER_IN: "${{ vars.ATOMA_PROVIDER }}",
+      // Credentials this project declared in config.json's `tool_secrets`, and
+      // the names to put back on them. See `toolSecretSlots` above.
+      ...toolSecretSlots,
+      [TOOL_SECRET_NAMES_VAR]: toolSecretsStep.outputs.names,
     },
     shell: "bash",
     run: `AGENT="\${{ inputs.agent }}"
@@ -303,8 +353,8 @@ if [ -f "${TOOLS_FILE}" ]; then
   TOOLS_ARG="--tools-file ${TOOLS_FILE}"
 fi
 
-# Credentials and settings arrive through the step's \`env:\` (see ATOMA_SECRET_ENV
-# below) rather than being interpolated into this script.
+# Credentials and settings arrive through the step's \`env:\` rather than being
+# interpolated into this script.
 #
 # \`\${{ secrets.X }}\` written here would be substituted into the script TEXT before
 # bash ever parses it, so a key containing a quote or a backtick would break the
@@ -317,6 +367,30 @@ for name in OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_API_KEY ATOMA_PROVIDER; do
   if [ -n "$value" ]; then
     export "\${name}=\${value}"
   fi
+done
+
+# Tool credentials arrive in numbered slots because the step's \`env:\` is a static
+# map and this file is generated: it cannot know what a project called its Slack
+# token. config.json does, and the resolve step above published that list, so put
+# the declared name back on each slot before any tool server starts.
+#
+# A declared name with an empty slot means config.json asks for a secret the
+# repository does not have. That is a warning and not a failure: the run's own
+# work is unaffected, and only the tool needing it will fail — with the reason
+# already in the log.
+TOOL_SECRET_NAMES="\${${TOOL_SECRET_NAMES_VAR}:-[]}"
+TOOL_SECRET_COUNT=$(echo "$TOOL_SECRET_NAMES" | jq -r 'length')
+slot=0
+while [ "$slot" -lt "$TOOL_SECRET_COUNT" ]; do
+  secret_name=$(echo "$TOOL_SECRET_NAMES" | jq -r ".[\${slot}]")
+  eval "secret_value=\\\${${TOOL_SECRET_SLOT_PREFIX}\${slot}:-}"
+  if [ -n "$secret_value" ]; then
+    export "\${secret_name}=\${secret_value}"
+    echo "Tool secret \${secret_name} is available to the agent."
+  else
+    echo "::warning::config.json declares tool secret \${secret_name}, but this repository has no secret by that name. Tools that need it will fail."
+  fi
+  slot=$((slot + 1))
 done
 
 # No --prompt-file or stdin is needed: the cached session contains both stable
@@ -836,6 +910,9 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   reviewerStartCommentStep,
   checkoutAtomaSourceStep,
   installAtomaCliStep,
+  // Immediately before the agent, because its output is what keys the secret
+  // lookups in that step's own `env:`.
+  toolSecretsStep,
   runAgentStep,
   tokenUsageStep,
   postResultCommentStep,

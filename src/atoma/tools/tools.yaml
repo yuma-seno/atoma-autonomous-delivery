@@ -5,6 +5,13 @@
 # here aborts before any MCP server starts ("Tool 'X' not found in tools file"),
 # so removals must be checked against all three agents, not just the one in
 # front of you. `agent-definitions.test.ts` enforces this.
+#
+# Credentials do NOT go here. A server that needs one reads it from the
+# environment: add the secret to the repository, then name it in config.json's
+# `tool_secrets`, and it is exported under that name before any server starts.
+# Values written in an `env:` block below are literal — there is no `${...}`
+# expansion — so a secret pasted here would be committed in plain text.
+# See docs/customization.md, "Give a tool a credential".
 
 filesystem:
   command: mcp-server-filesystem

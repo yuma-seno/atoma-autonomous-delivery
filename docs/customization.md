@@ -28,6 +28,7 @@ Task-oriented recipes:
 | [Point Atoma at your own workflows](#point-atoma-at-your-own-workflows) | have agents start your CI and deployment |
 | [Requiring a check that agents can satisfy](#requiring-a-check-that-agents-can-satisfy) | make required checks work with agent merges |
 | [Changes an agent may not merge](#changes-an-agent-may-not-merge) | keep some paths for human review |
+| [Give a tool a credential](#give-a-tool-a-credential) | let a tool server reach something outside GitHub |
 | [Search this repository's issues](#search-this-repositorys-issues) | tune or replace the issue search model |
 | [Let agents read the web](#let-agents-read-the-web) | change or remove web fetching and search |
 | [What a shell command may print](#what-a-shell-command-may-print) | control shell output limits |
@@ -442,9 +443,60 @@ Set it to `[]` to turn the gate off.
 
 Note what this does *not* do. The provider API key and `GITHUB_TOKEN` are in the
 agent's own environment because the run needs them to work at all, and no setting
-moves them out. Your other repository secrets are already outside it: they reach
-the workflow, not the agent process, unless you put them there yourself through
-`environment.setup_commands`.
+moves them out.
+
+Every other repository secret stays outside that environment until you name it.
+Nothing reaches an agent by being a secret; it reaches an agent by being
+declared, and the declaration is in a file this gate already covers — see
+[Give a tool a credential](#give-a-tool-a-credential).
+
+### Give a tool a credential
+
+A tool server that talks to something outside GitHub needs one — a Slack token,
+an API key for your issue tracker. Add the secret to the repository the usual
+way, then name it in `config.json`:
+
+```json
+{
+  "tool_secrets": ["SLACK_TOKEN"]
+}
+```
+
+That is the whole change. You are naming a secret that already exists, not
+creating one, and you never edit a workflow: `atoma-runner.yml` is generated
+upstream and reaches your secrets through a key it learns at run time.
+
+Each named secret is exported under its own name before any tool server starts,
+and servers inherit the environment they are spawned in, so a server that reads
+`SLACK_TOKEN` needs nothing further. A server that wants the value under a
+different name is what `tools.yaml`'s `env:` is for — but note those values are
+literal, with no `${...}` expansion, so the simplest arrangement is to name the
+repository secret whatever the server already looks for.
+
+Be deliberate about this list. It is the one setting that widens what an agent
+can read, and an agent reads issue text written by anyone who can open an issue.
+A credential named here is reachable by a prompt injection exactly as it is
+reachable by the tool you added it for. The shell hook and
+[redaction](#what-a-shell-command-may-print) reduce what leaves a run; neither
+makes a credential safe to hand over casually. Name the ones a tool genuinely
+needs, and nothing else.
+
+Four things fail the run rather than being quietly dropped, because a credential
+that was asked for and silently not delivered surfaces much later as a tool
+failure pointing nowhere near the cause:
+
+- a name that is not shaped like an environment variable (`SLACK_TOKEN`, not
+  `slack_token` or `Slack-Token`)
+- a name the run already uses for itself, such as `GH_TOKEN` or
+  `OPENAI_API_KEY` — declaring one would replace the run's own value rather than
+  add a credential
+- the same name twice
+- more than ten names, which is the number of slots the generated workflow
+  carries; raising it needs a new release
+
+Naming a secret the repository does not actually have is a warning rather than a
+failure. The run itself is unaffected, and only the tool needing that value will
+fail — with the reason already in the log.
 
 ### Search this repository's issues
 
