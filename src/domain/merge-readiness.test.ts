@@ -226,6 +226,27 @@ describe("governedPathsIn", () => {
     ]);
   });
 
+  // The gap that retired the enumerated default. These run inside the runner
+  // job, which holds contents/issues/pull-requests/actions write -- an agent
+  // that could merge a change here could rewrite the rule releasing its own
+  // in-progress guard, or its auto-dispatch loop limit, and the next run would
+  // already obey it.
+  test("covers the runner's own control scripts", () => {
+    const files = [
+      ".github/scripts/decide_guard_release.ts",
+      ".github/scripts/manage_dispatch_loop.ts",
+      ".github/scripts/save_agent_session.ts",
+    ];
+    expect(governedPathsIn(files, DEFAULT_GOVERNED_PATHS)).toEqual(files);
+  });
+
+  // A project that wants the old, narrower behaviour can still name parts.
+  test("a project can narrow the default back to particular directories", () => {
+    expect(governedPathsIn([".github/scripts/x.ts", ".github/workflows/ci.yml"], [".github/workflows/**"])).toEqual([
+      ".github/workflows/ci.yml",
+    ]);
+  });
+
   test("ordinary work is not governance", () => {
     expect(governedPathsIn(["src/lib/config.ts", "docs/operations.md"], DEFAULT_GOVERNED_PATHS)).toEqual([]);
   });

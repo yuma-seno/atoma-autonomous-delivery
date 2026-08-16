@@ -417,36 +417,41 @@ and reports, and the merge is yours.
 Covered by default:
 
 ```text
-.github/workflows/**
-.github/actions/**
-.github/atoma/**
-.github/rulesets/**
+.github/**
 ```
 
-These are where an agent's limits live — which credentials reach a run, which
-commands the shell hook refuses, what a ruleset requires before a merge. An agent
-that could merge a change to them could widen its own reach, and nothing later
-catches it, because the next run already obeys the new file.
+That is where an agent's limits live — which credentials reach a run, the scripts
+the runner executes to decide when a run may continue, which commands the shell
+hook refuses, what a ruleset requires before a merge. An agent that could merge a
+change to them could widen its own reach, and nothing later catches it, because
+the next run already obeys the new file.
 
 This is not about an agent intending to. A prompt injection carried in an issue
 body reaches exactly as far, and so does an ordinary mistake. Both stop at a
 person reading the diff.
 
-Add your own with `governed_paths`, which replaces the default list:
+The whole directory rather than the parts of it that obviously matter. An earlier
+default named four subdirectories and left out `.github/scripts/**`, which is
+where the runner's own control logic lives — nothing decided that, the list was
+simply written before the directory existed. A list of the paths that count has
+to be revisited every time the tree grows, and gives no sign when it has not been.
+
+Narrow it, or extend it, with `governed_paths`, which replaces the default:
 
 ```json
 {
   "governed_paths": [
-    ".github/workflows/**",
-    ".github/actions/**",
-    ".github/atoma/**",
-    ".github/rulesets/**",
+    ".github/**",
     "infra/**"
   ]
 }
 ```
 
 Set it to `[]` to turn the gate off.
+
+If you deliberately want a corner of `.github/` back — issue templates, say —
+name the parts you do want governed instead. Prefer that to a narrower default:
+being explicit about the exception leaves a record of the decision.
 
 Note what this does *not* do. The provider API key and `GITHUB_TOKEN` are in the
 agent's own environment because the run needs them to work at all, and no setting

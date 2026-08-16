@@ -118,13 +118,25 @@ const PASSING = new Set(["success", "neutral", "skipped"]);
  * like. A template repository developing the same files under `src/` is doing
  * ordinary work on ordinary files, and adds its own patterns if it wants them
  * covered.
+ *
+ * One pattern rather than a list of the directories that matter, because the
+ * list was wrong. It named `workflows`, `actions`, `atoma` and `rulesets` and
+ * omitted `.github/scripts/**` — where the runner's own control logic lives, run
+ * by a job holding `contents: write`, `issues: write`, `pull-requests: write`
+ * and `actions: write`. An agent could rewrite the rule releasing the
+ * in-progress guard, or the auto-dispatch loop limit, and merge it unreviewed.
+ *
+ * Nothing chose that; enumerating did. `.github/scripts/` arrived after the list
+ * was written and nobody added it. A list of exceptions has to be revisited every
+ * time the tree grows, and it silently fails when it is not — so this covers the
+ * directory and lets a project narrow it, rather than naming parts and hoping the
+ * next addition is noticed.
+ *
+ * It reaches a few files that are not an agent's limits — `dependabot.yml`,
+ * `CODEOWNERS`, issue templates. Those change rarely, and the first two are
+ * things a person should see change anyway.
  */
-export const DEFAULT_GOVERNED_PATHS = [
-  ".github/workflows/**",
-  ".github/actions/**",
-  ".github/atoma/**",
-  ".github/rulesets/**",
-] as const;
+export const DEFAULT_GOVERNED_PATHS = [".github/**"] as const;
 
 /**
  * Which of `files` a pattern claims.

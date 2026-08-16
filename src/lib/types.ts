@@ -26,12 +26,15 @@ export interface AtomaConfig {
   base_branch?: string;
   /**
    * Paths whose change takes the merge away from an agent and gives it to a
-   * person — workflows, agent definitions, tool configuration, rulesets.
+   * person — workflows, runner scripts, agent definitions, tool configuration,
+   * rulesets.
    *
-   * Unset takes `DEFAULT_GOVERNED_PATHS`, which names the deployed `.github/`
-   * control surface. Set it to add a repository's own — a template that
-   * generates its workflows from source has a second place those live. Set it to
-   * `[]` to turn the gate off, which is a decision rather than an accident.
+   * Unset takes `DEFAULT_GOVERNED_PATHS`, the whole deployed `.github/` control
+   * surface. Set it to add a repository's own — a template that generates its
+   * workflows from source has a second place those live — or to hand a corner of
+   * `.github/` back, which is better done by naming the parts you do want
+   * governed than by trusting a shorter default. Set it to `[]` to turn the gate
+   * off, which is a decision rather than an accident.
    *
    * A pattern is a literal path or a directory followed by `/**`.
    */
