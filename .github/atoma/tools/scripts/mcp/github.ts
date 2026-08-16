@@ -18336,6 +18336,65 @@ function headBranchMerged(repo, owner, branch) {
   }
 }
 
+// src/domain/issue-links.ts
+var CLOSING_KEYWORDS = "close[sd]?|fix(?:e[sd])?|resolve[sd]?";
+function claimsToClose(body, issue2) {
+  return new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s*:?\\s+#${issue2}\\b`, "i").test(body);
+}
+function dedupeByNumber(...lists) {
+  const seen = new Map;
+  for (const list of lists)
+    for (const item of list)
+      if (!seen.has(item.number))
+        seen.set(item.number, item);
+  return [...seen.values()].sort((a, b) => a.number - b.number);
+}
+
+// src/lib/issue-links.ts
+var LINK_LIMIT = 50;
+var QUERY = `
+query($owner:String!, $name:String!, $number:Int!, $limit:Int!) {
+  repository(owner:$owner, name:$name) {
+    issue(number:$number) {
+      parent { number title state }
+      subIssues(first:$limit) { nodes { number title state } }
+      closedByPullRequestsReferences(first:$limit, includeClosedPrs:true) {
+        nodes { number title state merged body }
+      }
+      timelineItems(last:$limit, itemTypes:[CROSS_REFERENCED_EVENT]) {
+        nodes { ... on CrossReferencedEvent { source { ... on PullRequest { number title state merged body } } } }
+      }
+    }
+  }
+}`;
+function normalise(node) {
+  return { number: node.number, title: node.title, state: node.state.toLowerCase() };
+}
+function asPr(node) {
+  return { ...normalise(node), merged: Boolean(node.merged) };
+}
+function issueLinks(repo, number4) {
+  const [owner, name] = repo.split("/");
+  if (!owner || !name)
+    return { children: [], pullRequests: [] };
+  let issue2 = null;
+  try {
+    issue2 = ghGraphql(QUERY, { owner, name, number: number4, limit: LINK_LIMIT }).repository?.issue ?? null;
+  } catch (error2) {
+    console.error(`[atoma-github] WARN could not read links for #${number4}: ${error2.message}`);
+    return { children: [], pullRequests: [] };
+  }
+  if (!issue2)
+    return { children: [], pullRequests: [] };
+  const declared = issue2.closedByPullRequestsReferences.nodes.map(asPr);
+  const referenced = issue2.timelineItems.nodes.map((node) => node.source).filter((source) => Boolean(source?.number) && claimsToClose(source?.body ?? "", number4)).map(asPr);
+  return {
+    parent: issue2.parent ? normalise(issue2.parent) : undefined,
+    children: issue2.subIssues.nodes.map(normalise),
+    pullRequests: dedupeByNumber(declared, referenced)
+  };
+}
+
 // src/lib/merge-signals.ts
 function log2(message) {
   console.error(`[atoma-merge-signals] ${message}`);
@@ -18437,6 +18496,12 @@ var NUMBER_ARG_SCHEMA = exports_external.object({
 var ISSUE_CONTEXT_NUMBER_ARG_SCHEMA = exports_external.object({
   number: positiveInt("Positive GitHub issue number, without a leading '#'. " + "Omit to use the issue this run is already operating on.").optional()
 });
+var DEFAULT_COMMENT_WINDOW = 5;
+var ISSUE_COMMENTS_SCHEMA = exports_external.object({
+  number: positiveInt("Positive GitHub issue number, without a leading '#'. Omit to use the issue this run is already operating on.").optional(),
+  from: positiveInt("First comment to return, counting from 1 in the order they were posted. " + "This is the number `search__search_issues` reports as `comment`, so a match can be read directly.").optional(),
+  to: positiveInt("Last comment to return, inclusive. Defaults to `from`, so passing only `from` reads one comment.").optional()
+});
 function issueContextNumber(args) {
   if (args.number !== undefined)
     return args.number;
@@ -18535,7 +18600,17 @@ ${body}`;
   return JSON.stringify({ number: num, url: stdout.trim() });
 }
 function getIssue(a) {
-  return JSON.stringify(ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
+  const number4 = issueContextNumber(a);
+  const issue2 = ghJsonOrThrow("issue", "view", String(number4), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments");
+  const { comments, ...rest } = issue2 ?? {};
+  const links = issueLinks(REPO, number4);
+  return JSON.stringify({
+    ...rest,
+    total_comments: comments?.length ?? 0,
+    parent: links.parent,
+    children: links.children,
+    pull_requests: links.pullRequests
+  });
 }
 function listIssues(a) {
   const state = a.state ?? "open";
@@ -18547,8 +18622,25 @@ function listIssues(a) {
   return JSON.stringify(ghJsonOrThrow(...cmd) ?? []);
 }
 function getIssueComments(a) {
-  const d = ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "comments");
-  return JSON.stringify(d?.comments ?? []);
+  const number4 = issueContextNumber(a);
+  const issue2 = ghJsonOrThrow("issue", "view", String(number4), "--repo", REPO, "--json", "title,state,comments");
+  const all = (issue2?.comments ?? []).map((comment, i) => ({ index: i + 1, ...comment }));
+  const to = Math.min(a.to ?? a.from ?? all.length, all.length);
+  const from = Math.max(1, a.from ?? to - DEFAULT_COMMENT_WINDOW + 1);
+  const selected = from > to ? [] : all.slice(from - 1, to);
+  const links = issueLinks(REPO, number4);
+  return JSON.stringify({
+    issue: {
+      number: number4,
+      title: issue2?.title,
+      state: issue2?.state,
+      total_comments: all.length,
+      parent: links.parent,
+      pull_requests: links.pullRequests
+    },
+    showing: selected.length === all.length ? `all ${all.length} comment(s)` : `comment(s) ${from}-${to} of ${all.length}; pass from/to to read the rest`,
+    comments: selected
+  });
 }
 function closeIssue(a) {
   const num = a.number;
@@ -18994,9 +19086,9 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
     schema: CREATE_ISSUE_SCHEMA,
     handler: createIssue
   }),
-  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
+  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, comment count, and what it is attached to: its parent issue, its sub-issues, and the pull requests that say they close it (each marked merged or not). It does NOT return the comments themselves \u2014 use get_issue_comments for those, which takes a range. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
   defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssueComments }),
+  defineMcpTool({ name: "get_issue_comments", description: "Read a range of one issue's comments, numbered from 1 in the order they were posted. Pass `from` (and optionally `to`) to read exactly the comment a search result pointed at; with no range it returns the last few, and always states which of how many it showed. Each result also carries the issue's title, state, parent, and the pull requests that close it, so a comment read on its own is not mistaken for settled work when its pull request is still open. Returns JSON and does not mutate GitHub.", schema: ISSUE_COMMENTS_SCHEMA, handler: getIssueComments }),
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
   defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
