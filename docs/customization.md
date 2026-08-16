@@ -26,6 +26,7 @@ Task-oriented recipes:
 | [Choose the branch agents work from](#choose-the-branch-agents-work-from) | target something other than the default branch |
 | [Work with decomposed issues](#work-with-decomposed-issues) | understand how sub-issue branches stack |
 | [Point Atoma at your own workflows](#point-atoma-at-your-own-workflows) | have agents start your CI and deployment |
+| [Set up CI and deployment](#set-up-ci-and-deployment) | give a repository a pipeline an agent can write and maintain |
 | [Requiring a check that agents can satisfy](#requiring-a-check-that-agents-can-satisfy) | make required checks work with agent merges |
 | [Changes an agent may not merge](#changes-an-agent-may-not-merge) | keep some paths for human review |
 | [Give a tool a credential](#give-a-tool-a-credential) | let a tool server reach something outside GitHub |
@@ -65,6 +66,8 @@ Supported top-level fields used by scripts/workflows:
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
 - `workflows.ci`, `workflows.cd`
 - `search.reranker_model`
+- `checks.commands`, `checks.secrets`
+- `deploy.targets`, `deploy.secrets`
 - `tools.secrets`
 - `auto_triggers[]` with `event`, `agent`, optional `condition`
 
@@ -334,6 +337,12 @@ instead of landing on the base branch one piece at a time:
 
 ### Point Atoma at your own workflows
 
+Most projects should not need this. The default is
+[a pipeline written as commands](#set-up-ci-and-deployment), which an agent can
+author and maintain; naming a workflow of your own opts back out of that. Reach
+for it when the pipeline needs something commands cannot express — the four
+cases are listed in that section.
+
 ```json
 {
   "workflows": {
@@ -344,17 +353,95 @@ instead of landing on the base branch one piece at a time:
 ```
 
 `ci` is the workflow Atoma runs against an agent's pull request before anyone
-reviews it. Defaults to `ci.yml`; set it if yours is named differently, or the
-dispatch fails silently and every merge is refused for a missing check.
+reviews it. Defaults to `atoma-check.yml`. Name yours here, exactly as the file
+is called, or the dispatch fails silently and every merge is refused for a
+missing check.
 
 Its result decides what happens next: the reviewer is dispatched when it passes,
 the engineer when it fails. See below for what that workflow has to support.
 
-`cd` is dispatched after a successful merge. Leave it unset unless your deployment
-is chained off CI or off a push to the base branch — in that case it is required,
-not optional. An agent merge is performed with `GITHUB_TOKEN`, and GitHub starts no
-workflow run for events its own token triggers, so nothing downstream of that merge
-fires by itself and your deployment would silently never run.
+`cd` is dispatched after a successful merge — required rather than optional if
+your deployment is chained off CI or off a push to the base branch. An agent
+merge is performed with `GITHUB_TOKEN`, and GitHub starts no workflow run for
+events its own token triggers, so nothing downstream of that merge fires by
+itself and your deployment would silently never run. Defaults to
+`atoma-deploy.yml`, which does nothing when no target deploys on merge.
+
+### Set up CI and deployment
+
+You can point Atoma at workflows you wrote, as above. Or you can write no
+workflow at all and describe the pipeline as commands:
+
+```json
+{
+  "checks": {
+    "commands": ["bun install --frozen-lockfile", "bun run typecheck", "bun test"]
+  },
+  "deploy": {
+    "targets": [
+      { "name": "staging", "on": "merge", "commands": ["./scripts/deploy.sh staging"] },
+      { "name": "production", "on": "tag", "tags": ["v*"], "commands": ["./scripts/deploy.sh prod"] }
+    ]
+  }
+}
+```
+
+Two shipped workflows run these — `atoma-check.yml` and `atoma-deploy.yml`.
+Neither changes per project, which is the whole point: **an agent can write
+configuration and cannot write a workflow.** GitHub refuses `GITHUB_TOKEN` on
+`.github/workflows/**` by identity, on every path and every branch, and no
+permission grants it. So a repository whose pipeline lives in `config.json` is
+one an agent can set up, extend and repair; one whose pipeline lives in workflow
+YAML always needs a person.
+
+Nothing needs pointing at these — `atoma-check.yml` and `atoma-deploy.yml` are
+what `workflows.ci` and `workflows.cd` default to. Fill in the commands and they
+run.
+
+Until you do, the check passes and says so as a warning: it is the required
+check, so an empty `checks.commands` means a pull request satisfied something
+that tested nothing. Failing instead would block every pull request from the
+moment you adopt Atoma.
+
+**Triggers.** `on` is `merge` (after a pull request lands), `tag` (a pushed tag
+matching `tags`, which is a literal or a prefix followed by `*`), or `manual`.
+Any target can also be dispatched by name whatever its trigger, which is what
+makes a `manual` rollback target worth declaring. A tag no target claimed exits
+cleanly rather than failing, so tagging for other reasons costs you a few seconds
+and no red run. Schedules are not supported: a cron expression can only be
+written in a workflow's `on:`, so it cannot come from configuration.
+
+**Credentials** go in the list belonging to whatever needs them — `checks.secrets`
+or `deploy.secrets`, alongside `tools.secrets`. Add the secret to the repository
+first; these name it, they do not create it. Inside a deployment,
+`$ATOMA_DEPLOY_TARGET` holds the target's name. `atoma-deploy.yml` declares
+`id-token: write`, so a cloud provider's OIDC login works and is worth preferring
+over storing a long-lived key at all.
+
+**What commands cannot express**, and where you still need a workflow of your own
+through `workflows.cd`:
+
+- a job's `permissions` beyond what the shipped workflows declare
+- a deployment approval gate — `environment:` takes no expression, so nothing in
+  configuration can reach it
+- GitHub's own artifact store and cache
+- any trigger outside merge, tag and manual dispatch
+
+Most of the limits people expect are not real. Service containers work through
+`docker run`, and a matrix works as a loop, losing only parallelism. Both are
+commands.
+
+**The required check is a matched pair.** `.github/atoma/rulesets/main.json`
+ships requiring the context `atoma-check`, which is the job name in
+`atoma-check.yml`. Apply it with:
+
+```bash
+gh api repos/{owner}/{repo}/rulesets --input .github/atoma/rulesets/main.json
+```
+
+Do not rename one side without the other. A ruleset requiring a context no job
+produces does not fail a pull request — it leaves it waiting forever on a check
+that will never report, and re-running nothing fixes it.
 
 ### Requiring a check that agents can satisfy
 

@@ -47,7 +47,7 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 
 ## Execution
 
-1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, and `delivery/implementation-handoff` before delivery.
+1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
 2. Read the issue, current repository state, and the nearest owning code before editing.
 3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.
 4. Run focused validation, then the repository's broader required checks.
