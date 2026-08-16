@@ -17969,10 +17969,11 @@ function rankIssues(chunks, scores, limit) {
     const value = scores[i] ?? 0;
     if (value <= 0)
       continue;
-    if (!best.has(issue2) || (best.get(issue2) ?? 0) < value)
-      best.set(issue2, value);
+    const previous = best.get(issue2);
+    if (!previous || previous.score < value)
+      best.set(issue2, { issue: issue2, chunk: i, score: value });
   }
-  return [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([issue2]) => issue2);
+  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 // src/lib/config.ts
@@ -18017,6 +18018,7 @@ function gitRun(...args) {
 
 // src/lib/issue-index.ts
 var INDEX_PATH = "search/issue-index.json";
+var INDEX_VERSION = 2;
 function log(message) {
   console.error(`[atoma-search] ${message}`);
 }
@@ -18047,7 +18049,18 @@ function fetchIssues(repo, since) {
   const issues = raw.filter((issue2) => issue2.pull_request === undefined);
   if (issues.length === 0)
     return [];
-  const comments = ghJsonPaged(`repos/${repo}/issues/comments?per_page=100${sinceParam}`);
+  const byIssue = since ? new Map(issues.map((issue2) => [issue2.number, commentsOf(repo, issue2.number)])) : allComments(repo);
+  return issues.map((issue2) => ({
+    number: issue2.number,
+    title: issue2.title,
+    body: (issue2.body ?? "").slice(0, MAX_BODY),
+    state: issue2.state,
+    updatedAt: issue2.updated_at,
+    comments: byIssue.get(issue2.number) ?? []
+  }));
+}
+function allComments(repo) {
+  const comments = ghJsonPaged(`repos/${repo}/issues/comments?per_page=100`);
   const byIssue = new Map;
   for (const comment of comments) {
     const number4 = Number(comment.issue_url.split("/").pop());
@@ -18058,40 +18071,29 @@ function fetchIssues(repo, since) {
       list.push(comment.body.slice(0, MAX_COMMENT));
     byIssue.set(number4, list);
   }
-  return issues.map((issue2) => ({
-    number: issue2.number,
-    title: issue2.title,
-    body: (issue2.body ?? "").slice(0, MAX_BODY),
-    state: issue2.state,
-    updatedAt: issue2.updated_at,
-    comments: byIssue.get(issue2.number) ?? []
-  }));
+  return byIssue;
+}
+function commentsOf(repo, issue2) {
+  return ghJsonPaged(`repos/${repo}/issues/${issue2}/comments?per_page=100`).filter((comment) => comment.body).slice(0, MAX_COMMENTS_PER_ISSUE).map((comment) => (comment.body ?? "").slice(0, MAX_COMMENT));
 }
 function mergeIssues(stored, fresh) {
   const byNumber = new Map(stored.map((issue2) => [issue2.number, issue2]));
-  for (const issue2 of fresh) {
-    const previous = byNumber.get(issue2.number);
-    byNumber.set(issue2.number, {
-      ...issue2,
-      comments: issue2.comments.length > 0 ? issue2.comments : previous?.comments ?? []
-    });
-  }
+  for (const issue2 of fresh)
+    byNumber.set(issue2.number, issue2);
   return [...byNumber.values()].sort((a, b) => b.number - a.number);
 }
 function chunksFor(issues) {
   const chunks = [];
   for (const issue2 of issues) {
-    chunks.push({ issue: issue2.number, text: issue2.title });
+    chunks.push({ issue: issue2.number, source: "title", text: issue2.title });
     for (const part of splitBody(issue2.body)) {
-      chunks.push({ issue: issue2.number, text: `${issue2.title}
-${part}` });
+      chunks.push({ issue: issue2.number, source: "body", text: part });
     }
-    for (const comment of issue2.comments) {
+    issue2.comments.forEach((comment, i) => {
       for (const part of splitBody(comment)) {
-        chunks.push({ issue: issue2.number, text: `${issue2.title}
-${part}` });
+        chunks.push({ issue: issue2.number, source: i + 1, text: part });
       }
-    }
+    });
   }
   return chunks;
 }
@@ -18104,7 +18106,10 @@ function newestTimestamp(issues, fallback) {
 }
 function withDerived(index) {
   const chunks = chunksFor(index.issues);
-  return { ...index, chunks, bm25: buildIndex(chunks.map((chunk) => chunk.text)) };
+  const titles = new Map(index.issues.map((issue2) => [issue2.number, issue2.title]));
+  const documents = chunks.map((chunk) => chunk.source === "title" ? chunk.text : `${titles.get(chunk.issue) ?? ""}
+${chunk.text}`);
+  return { ...index, chunks, bm25: buildIndex(documents) };
 }
 
 // src/scripts/lib/atoma-data.ts
@@ -18169,6 +18174,7 @@ function saveSession(targetPath, content, commitMessage) {
 var REPO = process.env.GITHUB_REPOSITORY ?? "";
 var CANDIDATES = 20;
 var DOCUMENT_BUDGET = 1800;
+var EXCERPT_BUDGET = 700;
 var SEARCH_SCHEMA = exports_external.object({
   query: exports_external.string().min(1).describe([
     "A whole question, in the language the issues are written in.",
@@ -18197,7 +18203,11 @@ function loadIndex() {
   let previous;
   if (stored) {
     try {
-      previous = JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      if (parsed.version === INDEX_VERSION)
+        previous = parsed;
+      else
+        log2(`index format ${parsed.version} is not ${INDEX_VERSION}; rebuilding it`);
     } catch {
       log2("WARN the stored index was not valid JSON; rebuilding it");
     }
@@ -18211,7 +18221,7 @@ function loadIndex() {
   const issues = mergeIssues(previous?.issues ?? [], fresh);
   log2(`index: ${issues.length} issues (${fresh.length} fetched${since ? ` since ${since}` : " \u2014 full build"})`);
   const index = withDerived({
-    version: 1,
+    version: INDEX_VERSION,
     updatedThrough: newestTimestamp(fresh, since ?? "1970-01-01T00:00:00Z"),
     issues
   });
@@ -18248,11 +18258,12 @@ async function loadReranker() {
   };
   return reranker;
 }
-function documentFor(issue2) {
-  return `${issue2.title}
-${issue2.body}
-${issue2.comments.join(`
-`)}`.slice(0, DOCUMENT_BUDGET);
+function documentFor(issue2, passage) {
+  const head = `${issue2.title}
+${passage}`.slice(0, DOCUMENT_BUDGET);
+  const remaining = DOCUMENT_BUDGET - head.length;
+  return remaining > 200 ? `${head}
+${issue2.body.slice(0, remaining)}` : head;
 }
 async function searchIssues(a) {
   if (!REPO)
@@ -18266,29 +18277,35 @@ async function searchIssues(a) {
   if (candidates.length === 0)
     return `Nothing matched "${a.query}".`;
   const byNumber = new Map(index.issues.map((issue2) => [issue2.number, issue2]));
-  const documents = candidates.map((number4) => documentFor(byNumber.get(number4)));
+  const documents = candidates.map((match) => documentFor(byNumber.get(match.issue), chunks[match.chunk]?.text ?? ""));
   let ordered = candidates;
   try {
     const scores = await (await loadReranker()).score(a.query, documents);
-    ordered = candidates.map((number4, i) => [number4, scores[i] ?? 0]).sort((x, y) => y[1] - x[1]).map(([number4]) => number4);
+    ordered = candidates.map((match, i) => [match, scores[i] ?? 0]).sort((x, y) => y[1] - x[1]).map(([match]) => match);
   } catch (error2) {
     log2(`WARN reranking failed (${error2.message}); returning the first-stage order`);
   }
   const limit = a.limit ?? 3;
-  const results = ordered.slice(0, limit).map((number4) => {
-    const issue2 = byNumber.get(number4);
+  const results = ordered.slice(0, limit).map((match) => {
+    const issue2 = byNumber.get(match.issue);
+    const chunk = chunks[match.chunk];
     return {
-      number: number4,
+      number: match.issue,
       title: issue2.title,
       state: issue2.state,
-      url: `https://github.com/${REPO}/issues/${number4}`,
-      excerpt: `${issue2.body}
-${issue2.comments.join(`
-`)}`.slice(0, 600).trim()
+      url: `https://github.com/${REPO}/issues/${match.issue}`,
+      matched_in: locationOf(chunk?.source),
+      comment: typeof chunk?.source === "number" ? chunk.source : undefined,
+      excerpt: (chunk?.text ?? "").slice(0, EXCERPT_BUDGET).trim()
     };
   });
-  log2(`query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `#${r.number}`).join(", ")}`);
+  log2(`query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `#${r.number}(${r.matched_in})`).join(", ")}`);
   return JSON.stringify(results, null, 2);
+}
+function locationOf(source) {
+  if (typeof source === "number")
+    return `comment ${source}`;
+  return source === "title" ? "title" : "body";
 }
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
