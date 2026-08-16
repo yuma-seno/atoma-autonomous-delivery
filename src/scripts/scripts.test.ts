@@ -186,7 +186,11 @@ describe("skill catalog", () => {
       names.add(metadata.name!);
     }
 
-    expect(files.length).toBe(5);
+    // Not an exact count. What this guards is that the walk found anything at
+    // all — a mistyped directory would make every check above vacuous and the
+    // test would pass on zero files. Pinning the number instead made adding a
+    // skill a test edit, which taught nothing and caught nothing.
+    expect(files.length, "no skills found; check the walk's starting directory").toBeGreaterThan(0);
   });
 });
 
