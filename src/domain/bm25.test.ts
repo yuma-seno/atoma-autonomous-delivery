@@ -77,26 +77,35 @@ describe("score", () => {
 
 describe("rankIssues", () => {
   const chunks: Chunk[] = [
-    { issue: 10, text: "a" },
-    { issue: 10, text: "b" },
-    { issue: 20, text: "c" },
-    { issue: 30, text: "d" },
+    { issue: 10, source: "body", text: "a" },
+    { issue: 10, source: 3, text: "b" },
+    { issue: 20, source: "title", text: "c" },
+    { issue: 30, source: 1, text: "d" },
   ];
 
   // An issue discussed at length would otherwise fill the candidate list with
   // its own passages and crowd out every other issue.
   test("returns each issue once, scored by its best passage", () => {
     const scores = new Float64Array([0.1, 0.9, 0.5, 0.2]);
-    expect(rankIssues(chunks, scores, 10)).toEqual([10, 20, 30]);
+    expect(rankIssues(chunks, scores, 10).map((m) => m.issue)).toEqual([10, 20, 30]);
+  });
+
+  // The winning passage is why the issue is in the list. Dropping it is how a
+  // search that found the right issue still leaves the answer unread.
+  test("names the passage that won, not merely the issue", () => {
+    const scores = new Float64Array([0.1, 0.9, 0.5, 0.2]);
+    const best = rankIssues(chunks, scores, 10)[0]!;
+    expect(best.issue).toBe(10);
+    expect(chunks[best.chunk]!.source).toBe(3);
   });
 
   test("drops issues nothing matched", () => {
     const scores = new Float64Array([0, 0, 0.5, 0]);
-    expect(rankIssues(chunks, scores, 10)).toEqual([20]);
+    expect(rankIssues(chunks, scores, 10).map((m) => m.issue)).toEqual([20]);
   });
 
   test("honours the limit", () => {
     const scores = new Float64Array([0.1, 0.9, 0.5, 0.2]);
-    expect(rankIssues(chunks, scores, 2)).toEqual([10, 20]);
+    expect(rankIssues(chunks, scores, 2).map((m) => m.issue)).toEqual([10, 20]);
   });
 });
