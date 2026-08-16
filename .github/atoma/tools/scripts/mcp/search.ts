@@ -18170,7 +18170,23 @@ var REPO = process.env.GITHUB_REPOSITORY ?? "";
 var CANDIDATES = 20;
 var DOCUMENT_BUDGET = 1800;
 var SEARCH_SCHEMA = exports_external.object({
-  query: exports_external.string().min(1).describe("A question in plain language, not keywords \u2014 'why are branches created at the first commit' rather than 'branch creation'. Phrasing it as a question is the single biggest factor in whether the right issue comes back."),
+  query: exports_external.string().min(1).describe([
+    "A whole question, in the language the issues are written in.",
+    "",
+    "Phrasing is the single biggest factor in whether the right issue comes back \u2014 a question found the answer twice as often as the keywords from the same question. Ask what you actually want to know, in one sentence, including the words you would use when explaining it to a person:",
+    "",
+    "  good: why does a branch get created at the first commit rather than up front",
+    "  poor: branch creation",
+    "",
+    "  good: is it already known that the reviewer cannot approve its own pull request",
+    "  poor: reviewer approve",
+    "",
+    "  good: has anyone tried using an embedding model for this search before",
+    "  poor: embedding",
+    "",
+    "Write it in the language this repository's issues are written in, which is the language of the issue in front of you \u2014 not necessarily the language you are being instructed in. The first stage matches characters rather than meaning, so a question in the wrong language finds nothing at all."
+  ].join(`
+`)),
   limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured.").optional()
 });
 function log2(message) {
@@ -18277,7 +18293,7 @@ ${issue2.comments.join(`
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
-    description: "Search this repository's issues and their discussion by meaning, not by keyword. Ask a question in plain language \u2014 'why does a branch get created at the first commit' \u2014 and the issues that answer it come back, most relevant first, with an excerpt. Use this to find why something is the way it is, whether a problem is already known, or whether work has been done before. Reading the discussion is often the point: decisions were argued in the comments.",
+    description: "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question \u2014 'why does a branch get created at the first commit rather than up front' \u2014 and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues
   })
