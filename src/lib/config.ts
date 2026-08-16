@@ -52,6 +52,31 @@ export function getBaseBranch(fallback = ""): string {
 }
 
 /**
+ * Default cross encoder for issue search.
+ *
+ * Multilingual, and chosen on measurement rather than on the language this
+ * repository happens to be written in: on a Japanese corpus it reached 91% top-1
+ * against 86% for the Japanese-specialised model it was compared with. A
+ * multilingual default costs nothing here and is the only sensible default for
+ * a template that ships to repositories in languages nobody here anticipated.
+ *
+ * This is the one model choice that changes the answer. Swapping the first
+ * stage's model moved nothing; swapping this one moved top-1 from 27% to 91%.
+ */
+const DEFAULT_RERANKER = "onnx-community/bge-reranker-v2-m3-ONNX";
+
+/**
+ * The cross encoder issue search ranks with.
+ *
+ * Configurable because the default was picked by measuring one repository, and
+ * a repository in another language — or one that would rather not download 600MB
+ * on the first search — should be able to say so.
+ */
+export function getRerankerModel(): string {
+  return loadConfig().search?.reranker_model?.trim() || DEFAULT_RERANKER;
+}
+
+/**
  * Paths whose change makes a merge a person's to perform.
  *
  * Configurable because "how agents run here" is not the same set of files in

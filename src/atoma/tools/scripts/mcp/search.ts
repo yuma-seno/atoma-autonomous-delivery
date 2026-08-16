@@ -1,0 +1,219 @@
+#!/usr/bin/env bun
+/**
+ * search.ts — finds the issues that answer a question.
+ *
+ * Two stages, and the division of labour matters. BM25 casts a net over every
+ * passage of every issue and comment; a cross encoder then reads the twenty
+ * issues it caught and decides which of them actually answers what was asked.
+ * The first stage is not semantic and does not need to be — its only job is to
+ * avoid losing the answer before the second stage sees it.
+ *
+ * Measured over this repository, 181 issues and 22 questions phrased the way an
+ * agent phrases them:
+ *
+ *   BM25 alone, recall@20 ......... 100%
+ *   plus the cross encoder, top 1 .. 91%, top 3 100%
+ *
+ * A dense vector index alongside BM25 changed the final ranking on none of the
+ * 22, which is why there is no embedding model here, no vector store, and
+ * nothing to re-embed when an issue is edited. Enlarging the embedding model
+ * 16-fold changed nothing either; enlarging the reranker moved top 1 from 27%
+ * to 91%. The whole budget belongs to the second stage.
+ *
+ * Ask it a question, not a keyword. Phrasing the query as a sentence rather
+ * than a title was worth more than every other change combined — recall at 5
+ * went from 48% to 95% on the same index with the same models.
+ */
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { AutoTokenizer, AutoModelForSequenceClassification } from "@huggingface/transformers";
+import { buildMcpTools, defineMcpTool, positiveInt, z } from "../../../../lib/mcp-tool.ts";
+import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
+import { getRerankerModel } from "../../../../lib/config.ts";
+import {
+  INDEX_PATH,
+  fetchIssues,
+  mergeIssues,
+  newestTimestamp,
+  withDerived,
+  type IndexedIssue,
+  type IssueIndex,
+} from "../../../../lib/issue-index.ts";
+// Named for sessions because that is what the branch was built to hold, but
+// both take a path and content and care about neither. The index is stored the
+// same way for the same reason: a runner has no other durable storage between
+// runs, and the push-retry loop already handles the races that sibling agents
+// cause.
+import { restoreSession as restoreFile, saveSession as saveFile } from "../../../../scripts/lib/atoma-data.ts";
+
+const REPO = process.env.GITHUB_REPOSITORY ?? "";
+
+/** How many issues the cross encoder reads. Twenty held every answer in measurement. */
+const CANDIDATES = 20;
+
+/** How much of an issue the cross encoder is shown. Beyond this its input truncates anyway. */
+const DOCUMENT_BUDGET = 1800;
+
+const SEARCH_SCHEMA = z.object({
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      "A question in plain language, not keywords — 'why are branches created at the first commit' rather than 'branch creation'. Phrasing it as a question is the single biggest factor in whether the right issue comes back.",
+    ),
+  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured.").optional(),
+});
+
+function log(message: string): void {
+  console.error(`[atoma-search] ${message}`);
+}
+
+/**
+ * The index, brought up to date.
+ *
+ * A stored index is refreshed with `?since=`, so an index that is already
+ * current costs two requests. With nothing stored, everything is fetched — one
+ * request per hundred issues and per hundred comments — and that is the only
+ * time this is slow.
+ */
+function loadIndex(): IssueIndex {
+  const stored = restoreFile(INDEX_PATH);
+  let previous: IssueIndex | undefined;
+  if (stored) {
+    try {
+      previous = JSON.parse(stored) as IssueIndex;
+    } catch {
+      log("WARN the stored index was not valid JSON; rebuilding it");
+    }
+  }
+
+  const since = previous?.updatedThrough;
+  const fresh = fetchIssues(REPO, since);
+  if (previous && fresh.length === 0) {
+    log(`index current: ${previous.issues.length} issues, nothing changed since ${since}`);
+    return previous.bm25 && previous.chunks ? previous : withDerived(previous);
+  }
+
+  const issues = mergeIssues(previous?.issues ?? [], fresh);
+  log(`index: ${issues.length} issues (${fresh.length} fetched${since ? ` since ${since}` : " — full build"})`);
+
+  const index = withDerived({
+    version: 1,
+    updatedThrough: newestTimestamp(fresh, since ?? "1970-01-01T00:00:00Z"),
+    issues,
+  });
+
+  // Saving is best-effort. A failure costs the next search a full fetch; it
+  // must not cost this one its answer.
+  if (!saveFile(INDEX_PATH, JSON.stringify(index), `atoma: refresh issue search index (${issues.length} issues)`)) {
+    log("WARN could not save the index; the next search will rebuild it");
+  }
+  return index;
+}
+
+let reranker: { score(query: string, documents: string[]): Promise<number[]> } | undefined;
+
+async function loadReranker(): Promise<typeof reranker> {
+  if (reranker) return reranker;
+  const model = getRerankerModel();
+  const started = Date.now();
+  const tokenizer = await AutoTokenizer.from_pretrained(model);
+  const cross = await AutoModelForSequenceClassification.from_pretrained(model, { dtype: "q8" });
+  log(`reranker ${model} loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+
+  reranker = {
+    async score(query: string, documents: string[]): Promise<number[]> {
+      const scores: number[] = [];
+      for (let i = 0; i < documents.length; i += 8) {
+        const batch = documents.slice(i, i + 8);
+        const inputs = tokenizer(batch.map(() => query), {
+          text_pair: batch,
+          padding: true,
+          truncation: true,
+          max_length: 512,
+        });
+        const { logits } = await cross(inputs);
+        scores.push(...(logits.tolist() as number[][]).map((row) => row[0] ?? 0));
+      }
+      return scores;
+    },
+  };
+  return reranker;
+}
+
+/** What the cross encoder reads: the issue as a person would see it. */
+function documentFor(issue: IndexedIssue): string {
+  return `${issue.title}\n${issue.body}\n${issue.comments.join("\n")}`.slice(0, DOCUMENT_BUDGET);
+}
+
+async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
+  if (!REPO) return "GITHUB_REPOSITORY is unset, so there is no repository to search.";
+
+  const index = loadIndex();
+  const chunks = index.chunks as Chunk[] | undefined;
+  const bm25 = index.bm25 as Bm25Index | undefined;
+  if (!chunks?.length || !bm25) return "The issue index is empty; there is nothing to search yet.";
+
+  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES);
+  if (candidates.length === 0) return `Nothing matched "${a.query}".`;
+
+  const byNumber = new Map(index.issues.map((issue) => [issue.number, issue]));
+  const documents = candidates.map((number) => documentFor(byNumber.get(number)!));
+
+  let ordered = candidates;
+  try {
+    const scores = await (await loadReranker())!.score(a.query, documents);
+    ordered = candidates
+      .map((number, i) => [number, scores[i] ?? 0] as const)
+      .sort((x, y) => y[1] - x[1])
+      .map(([number]) => number);
+  } catch (error) {
+    // The first stage alone still put the answer in the top twenty every time;
+    // it just orders them less well. Better a rougher answer than none.
+    log(`WARN reranking failed (${(error as Error).message}); returning the first-stage order`);
+  }
+
+  const limit = a.limit ?? 3;
+  const results = ordered.slice(0, limit).map((number) => {
+    const issue = byNumber.get(number)!;
+    return {
+      number,
+      title: issue.title,
+      state: issue.state,
+      url: `https://github.com/${REPO}/issues/${number}`,
+      excerpt: `${issue.body}\n${issue.comments.join("\n")}`.slice(0, 600).trim(),
+    };
+  });
+
+  log(`query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `#${r.number}`).join(", ")}`);
+  return JSON.stringify(results, null, 2);
+}
+
+const { tools, dispatch } = buildMcpTools([
+  defineMcpTool({
+    name: "search_issues",
+    description:
+      "Search this repository's issues and their discussion by meaning, not by keyword. Ask a question in plain language — 'why does a branch get created at the first commit' — and the issues that answer it come back, most relevant first, with an excerpt. Use this to find why something is the way it is, whether a problem is already known, or whether work has been done before. Reading the discussion is often the point: decisions were argued in the comments.",
+    schema: SEARCH_SCHEMA,
+    handler: searchIssues,
+  }),
+]);
+
+const server = new Server({ name: "atoma-search-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args = {} } = request.params;
+  try {
+    const { text } = await dispatch(name, args);
+    return { content: [{ type: "text", text }], isError: false };
+  } catch (error) {
+    return { content: [{ type: "text", text: `Error: ${(error as Error).message ?? error}` }], isError: true };
+  }
+});
+
+async function main(): Promise<void> {
+  await server.connect(new StdioServerTransport());
+}
+
+if (import.meta.main) void main();

@@ -15,6 +15,7 @@ mcp_servers:
   - filesystem_readonly
   - github
   - web
+  - search
   - atoma
 extra_body:
   # OpenRouter provider routing. Unrelated to the top-level `provider:` above,

@@ -36,6 +36,16 @@ export interface AtomaConfig {
    * A pattern is a literal path or a directory followed by `/**`.
    */
   governed_paths?: string[];
+  search?: {
+    /**
+     * Cross encoder used to rank issue search results.
+     *
+     * The one model choice that changes the answer: the first stage is BM25,
+     * which has no model, and this decides the order of what it finds. Any
+     * transformers.js-compatible sequence-classification model works.
+     */
+     reranker_model?: string;
+  };
   environment?: {
     setup_commands?: string[];
   };

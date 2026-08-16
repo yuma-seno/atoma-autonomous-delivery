@@ -50,6 +50,16 @@ web:
   env: {}
   hooks: {}
 
+# Searches this repository's issues by meaning. Imports
+# `@huggingface/transformers`, which the runner installs from
+# `mcp-packages.json`'s `bun` list rather than receiving in the bundle — see
+# build-dist.ts for why that one cannot be inlined.
+search:
+  command: bun
+  args: ["run", ".github/atoma/tools/scripts/mcp/search.ts"]
+  env: {}
+  hooks: {}
+
 atoma:
   command: bun
   args: ["run", ".github/atoma/tools/scripts/mcp/atoma.ts"]
