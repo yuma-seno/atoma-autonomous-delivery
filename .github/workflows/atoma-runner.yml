@@ -177,6 +177,18 @@ jobs:
             echo "Added npm global bin to PATH: $NPM_BIN"
           fi
 
+          # Packages a bundled script imports rather than spawns.
+          #
+          # The npm list above installs executables globally, which is right for a server
+          # started by name. This list is for libraries a tool server imports, and those
+          # have to be resolvable from the workspace — they are excluded from the bundle
+          # because they reach native code a JavaScript bundler cannot carry.
+          BUN_PKGS=$(jq -r '.bun[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
+          if [ -n "$BUN_PKGS" ]; then
+            echo "Installing bun MCP libraries: $BUN_PKGS"
+            bun add --no-save $BUN_PKGS
+          fi
+
           # pip パッケージをインストール
           PIP_PKGS=$(jq -r '.pip[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
           if [ -n "$PIP_PKGS" ]; then
