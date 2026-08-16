@@ -3,6 +3,17 @@
   "environment": {
     "setup_commands": []
   },
+  "checks": {
+    "commands": [],
+    "secrets": []
+  },
+  "deploy": {
+    "targets": [],
+    "secrets": []
+  },
+  "tools": {
+    "secrets": []
+  },
   "agents": {
     "orchestrator": {
       "max_iterations": 100
@@ -44,6 +55,7 @@
     }
   ],
   "workflows": {
+    "ci": "ci.yml",
     "cd": "cd.yml"
   }
 }
