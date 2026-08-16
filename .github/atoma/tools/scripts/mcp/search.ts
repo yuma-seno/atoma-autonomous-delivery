@@ -18198,6 +18198,10 @@ var SEARCH_SCHEMA = exports_external.object({
 function log2(message) {
   console.error(`[atoma-search] ${message}`);
 }
+function currentIssue() {
+  const parsed = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
 function loadIndex() {
   const stored = restoreSession(INDEX_PATH);
   let previous;
@@ -18273,7 +18277,7 @@ async function searchIssues(a) {
   const bm25 = index.bm25;
   if (!chunks?.length || !bm25)
     return "The issue index is empty; there is nothing to search yet.";
-  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES);
+  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES).filter((match) => match.issue !== currentIssue());
   if (candidates.length === 0)
     return `Nothing matched "${a.query}".`;
   const byNumber = new Map(index.issues.map((issue2) => [issue2.number, issue2]));
