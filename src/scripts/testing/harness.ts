@@ -1,9 +1,13 @@
 /**
- * harness.ts — shared test helper for spawning src/scripts/*.ts with a fake
- * `gh` CLI (testing/bin/gh) and/or an isolated config.json, so scripts.test.ts
- * can test the many scripts that shell out to `gh` and/or read
- * `.github/atoma/config.json` without touching the real GitHub API or the
- * repo's own shared config.
+ * harness.ts — shared test helpers for spawning src/scripts/*.ts with a fake
+ * `gh` CLI (testing/bin/gh) and/or an isolated config.json, so a script that
+ * shells out to `gh` or reads `.github/atoma/config.json` can be tested without
+ * touching the real GitHub API or this repository's own shared config.
+ *
+ * Everything here is used from more than one test file. When the scripts' tests
+ * lived in a single file these helpers sat at the top of it; splitting that file
+ * per script is what moved them here, and what they need to stay is: no test
+ * file should define its own way of running a script.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -76,4 +80,45 @@ export function makeConfigDir(config: Record<string, unknown>): string {
   mkdirSync(join(dir, ".github/atoma"), { recursive: true });
   writeFileSync(join(dir, ".github/atoma/config.json"), JSON.stringify(config));
   return dir;
+}
+
+/** Where the scripts under test live, relative to the repository root. */
+export const SCRIPTS_DIR = "src/scripts";
+
+/**
+ * The absolute path of a script under test.
+ *
+ * `runWithFakeGh` wants an absolute path, and every caller was building the
+ * same one by hand. Naming it once means a test says which script it is about
+ * and nothing else.
+ */
+export function scriptPath(name: string): string {
+  return join(process.cwd(), SCRIPTS_DIR, name);
+}
+
+/**
+ * Run a script the way the workflows run it: from the deployed tree.
+ *
+ * Scripts that read config through a cwd-relative path expect cwd to be the
+ * repository root of a deployed adoption, which for this repository before
+ * anything is copied anywhere is `dist/`. The script path stays absolute so the
+ * relative `bun run <script>` argument still resolves from there.
+ */
+export function runScript(name: string, env: Record<string, string> = {}) {
+  return spawnSync("bun", ["run", join(process.cwd(), SCRIPTS_DIR, name)], {
+    encoding: "utf8",
+    cwd: join(process.cwd(), "dist"),
+    env: { ...process.env, ...env },
+  });
+}
+
+/** Parse a `$GITHUB_OUTPUT` file's `key=value` lines into an object. */
+export function parseGithubOutput(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    out[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+  return out;
 }

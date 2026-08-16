@@ -12,8 +12,9 @@
  *
  * This is one of the only places in the test suite that exercises the real
  * agent-loop <-> MCP-protocol <-> script boundary end-to-end (see also
- * launch-sub-agent.e2e.test.ts); everything else (scripts.test.ts,
- * mcp.test.ts, shell_guard.test.ts) tests one layer at a time. It
+ * launch-sub-agent.e2e.test.ts); everything else (the per-script tests beside
+ * src/scripts/*.ts, mcp.test.ts, shell_guard.test.ts) tests one layer at a
+ * time. It
  * intentionally lives outside `bun run test`'s default paths (see
  * package.json's "test" vs "test:e2e" scripts) since it requires a
  * pre-built `atoma` binary and is slower -- run manually with
