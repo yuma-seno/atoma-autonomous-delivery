@@ -43,6 +43,9 @@ function loadConfig() {
   }
   return cached;
 }
+function getCheckCommands() {
+  return loadConfig().checks?.commands?.filter((command) => command.trim() !== "") ?? [];
+}
 
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
@@ -52,30 +55,25 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-// src/scripts/match_trigger.ts
+// src/scripts/run_checks.ts
 var ref = defineScript(import.meta.url);
 function main() {
-  const env = process.env;
-  let event = env.EVENT_TYPE ?? "";
-  if (event.startsWith("pull_request_target.")) {
-    event = "pull_request." + event.slice("pull_request_target.".length);
-  }
-  const reviewState = env.REVIEW_STATE ?? "";
-  const isDraft = env.IS_DRAFT ?? "";
-  const config = loadConfig();
-  for (const trigger of config.auto_triggers ?? []) {
-    if (trigger.event !== event)
-      continue;
-    if (trigger.condition === "changes_requested" && reviewState !== "changes_requested")
-      continue;
-    if (trigger.condition === "non_draft" && isDraft === "true")
-      continue;
-    const agent = trigger.agent;
-    if (agent.startsWith("$"))
-      continue;
-    console.log(agent);
+  const commands = getCheckCommands();
+  if (commands.length === 0) {
+    console.log("::warning::This check verified nothing: `checks.commands` in .github/atoma/config.json is empty, so a pull request satisfying it has not been tested. Add the commands that check this project, or point `workflows.ci` at a workflow of your own.");
     return;
   }
+  console.log(`Running ${commands.length} check command(s).`);
+  for (const command of commands) {
+    console.log(`::group::${command}`);
+    const result = Bun.spawnSync({ cmd: ["bash", "-c", command], stdout: "inherit", stderr: "inherit" });
+    console.log("::endgroup::");
+    if (result.exitCode !== 0) {
+      console.error(`::error::Check failed (exit ${result.exitCode}): ${command}`);
+      process.exit(result.exitCode ?? 1);
+    }
+  }
+  console.log("All checks passed.");
 }
 if (import.meta.main)
   main();

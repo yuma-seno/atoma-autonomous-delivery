@@ -17910,12 +17910,10 @@ import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
 var PASSING = new Set(["success", "neutral", "skipped"]);
-var DEFAULT_GOVERNED_PATHS = [
-  ".github/workflows/**",
-  ".github/actions/**",
-  ".github/atoma/**",
-  ".github/rulesets/**"
-];
+var DEFAULT_GOVERNED_PATHS = [".github/**"];
+function isGeneratedWorkflow(path) {
+  return path.startsWith(".github/workflows/");
+}
 function governedPathsIn(files, patterns) {
   return files.filter((file) => patterns.some((pattern) => pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern));
 }
@@ -18007,7 +18005,7 @@ function decideMergeReadiness(signals) {
     const rest = signals.governancePaths.length - 5;
     blockers.push({
       kind: "governance-change",
-      detail: `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` + "review it and report, but leave the merge to a person"
+      detail: `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` + "review it and report, but leave the merge to a person" + (signals.governancePaths.some(isGeneratedWorkflow) ? ". If the intent was to change what CI or deployment does, that belongs in " + "`.github/atoma/config.json` (`checks.commands`, `deploy.targets`) rather than in a " + "workflow file \u2014 an agent can write config and cannot write a workflow. If this is an " + "upgrade of the generated deliverable, it is exactly what a person should be merging" : "")
     });
   }
   const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
@@ -18016,6 +18014,114 @@ function decideMergeReadiness(signals) {
 function formatBlockers(blockers) {
   return blockers.map((b, i) => `${i + 1}. [${b.kind}] ${b.detail}`).join(`
 `);
+}
+
+// src/domain/declared-secrets.ts
+var TOOL_SECRETS = {
+  field: "tools.secrets",
+  reserved: new Set([
+    "AGENT",
+    "ANTHROPIC_API_KEY",
+    "ATOMA_OPS_LOG",
+    "ATOMA_PROVIDER",
+    "ATOMA_RUN_TYPE",
+    "GH_TOKEN",
+    "GITHUB_PERSONAL_ACCESS_TOKEN",
+    "GITHUB_RUN_ID",
+    "ISSUE_NOTIFY",
+    "ISSUE_NUMBER",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL"
+  ])
+};
+var CHECK_SECRETS = {
+  field: "checks.secrets",
+  reserved: new Set(["GH_TOKEN"])
+};
+var DEPLOY_SECRETS = {
+  field: "deploy.secrets",
+  reserved: new Set(["ATOMA_DEPLOY_TARGET", "GH_TOKEN"])
+};
+
+// src/domain/deploy-targets.ts
+var TRIGGERS = ["merge", "tag", "manual"];
+var NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function readCommands(raw, where, problems) {
+  if (!Array.isArray(raw)) {
+    problems.push(`${where}: \`commands\` must be an array of shell commands.`);
+    return [];
+  }
+  const commands = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || entry.trim() === "") {
+      problems.push(`${where}: every command must be a non-empty string; found ${JSON.stringify(entry)}.`);
+      continue;
+    }
+    commands.push(entry);
+  }
+  if (commands.length === 0 && problems.length === 0) {
+    problems.push(`${where}: declares no commands, so it would deploy nothing.`);
+  }
+  return commands;
+}
+function resolveDeployTargets(raw) {
+  if (raw === undefined || raw === null)
+    return { targets: [], problems: [] };
+  if (!Array.isArray(raw)) {
+    return { targets: [], problems: ["`deploy.targets` must be an array."] };
+  }
+  const problems = [];
+  const targets = [];
+  const seen = new Set;
+  raw.forEach((entry, index) => {
+    const where = `\`deploy.targets[${index}]\``;
+    if (!isRecord(entry)) {
+      problems.push(`${where} must be an object.`);
+      return;
+    }
+    const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    if (!NAME_PATTERN.test(name)) {
+      problems.push(`${where}: \`name\` must be lowercase letters, digits and hyphens \u2014 e.g. 'production'.`);
+      return;
+    }
+    if (seen.has(name)) {
+      problems.push(`${where}: '${name}' is declared more than once.`);
+      return;
+    }
+    const on = entry.on;
+    if (typeof on !== "string" || !TRIGGERS.includes(on)) {
+      problems.push(`${where}: \`on\` must be one of ${TRIGGERS.map((t) => `'${t}'`).join(", ")}.`);
+      return;
+    }
+    const trigger = on;
+    const tagsRaw = entry.tags ?? [];
+    if (!Array.isArray(tagsRaw) || tagsRaw.some((tag) => typeof tag !== "string" || tag.trim() === "")) {
+      problems.push(`${where}: \`tags\` must be an array of non-empty patterns.`);
+      return;
+    }
+    const tags = tagsRaw.map((tag) => tag.trim());
+    if (trigger === "tag" && tags.length === 0) {
+      problems.push(`${where}: \`on: tag\` needs at least one pattern in \`tags\` \u2014 e.g. ["v*"].`);
+      return;
+    }
+    if (trigger !== "tag" && tags.length > 0) {
+      problems.push(`${where}: \`tags\` only applies to \`on: tag\`; this target is \`on: ${trigger}\`.`);
+      return;
+    }
+    const before = problems.length;
+    const commands = readCommands(entry.commands, where, problems);
+    if (problems.length > before)
+      return;
+    seen.add(name);
+    targets.push({ name, on: trigger, tags, commands });
+  });
+  return problems.length > 0 ? { targets: [], problems } : { targets, problems };
+}
+function targetsForMerge(targets) {
+  return targets.filter((target) => target.on === "merge");
 }
 
 // src/lib/config.ts
@@ -18050,6 +18156,9 @@ function getTriggerAgent(event, fallback = "") {
     }
   }
   return fallback;
+}
+function getDeployTargets() {
+  return resolveDeployTargets(loadConfig().deploy?.targets);
 }
 function getWorkflowName(kind, fallback = "") {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
@@ -18435,6 +18544,8 @@ function runIssueNumber() {
 }
 
 // src/lib/dispatch-targets.ts
+var DEFAULT_CI_WORKFLOW = "atoma-check.yml";
+var DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
 function log3(message) {
   console.error(`[atoma-github] ${message}`);
 }
@@ -18471,17 +18582,26 @@ function dispatchPostMergeAgent(repo, subIssueNum, agent) {
   });
 }
 function dispatchCi(branch) {
-  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", "ci.yml"), ["--ref", branch], log3);
+  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", DEFAULT_CI_WORKFLOW), ["--ref", branch], log3);
 }
 function dispatchCd(baseRef) {
-  const workflow = getWorkflowName("cd");
-  if (!workflow)
-    return false;
   if (isIssueBranch(baseRef)) {
     log3(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
     return false;
   }
-  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log3);
+  const configured = getWorkflowName("cd");
+  if (!configured) {
+    const { targets, problems } = getDeployTargets();
+    if (problems.length === 0 && targetsForMerge(targets).length === 0) {
+      log3("dispatchCd: no deploy.targets deploy on merge, and workflows.cd is unset; nothing to dispatch");
+      return false;
+    }
+  }
+  const workflow = configured || DEFAULT_CD_WORKFLOW;
+  const args = ["--ref", baseRef || "main"];
+  if (!configured)
+    args.push("-f", "trigger=merge");
+  return dispatchWorkflow("dispatchCd", workflow, args, log3);
 }
 
 // src/domain/issue-links.ts
