@@ -19,7 +19,7 @@ know the address. Reach for this first — it is exact, and it costs one call.
 
 When you cannot name the page, fetch a search engine's results:
 
-```
+```text
 web__fetch(
   url: "https://lite.duckduckgo.com/lite/",
   method: "POST",
@@ -36,9 +36,11 @@ Keep the query short. Two or three specific terms beat a sentence.
 
 ## Judgement
 
-Search the repository's own history before searching the web. `github__get_issue`
-and the issue tools answer "why is it like this" better than any external page,
-because the reason was written down here at the time it was decided.
+Search the repository's own history before searching the web.
+`search__search_issues` answers "why is it like this" better than any external
+page, because the reason was written down here at the time it was decided — and
+usually in a comment, which is why that tool reports which comment it matched.
+Read that comment with `github__get_issue_comments` before reaching outward.
 
 Say where a claim came from. Something read off a web page is worth less than
 something read out of the code, and whoever reads your report needs to know

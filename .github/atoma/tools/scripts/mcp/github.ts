@@ -18055,6 +18055,57 @@ function getWorkflowName(kind, fallback = "") {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
 }
 
+// src/lib/sibling-check.ts
+function countOpenSiblings(opts) {
+  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
+  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
+  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
+  if (code !== 0) {
+    throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
+  }
+  const siblings = stdout ? JSON.parse(stdout) : [];
+  const remaining = opts.exclude !== undefined ? siblings.filter((s) => s.number !== opts.exclude) : siblings;
+  return remaining.length;
+}
+
+// src/lib/ops-log.ts
+import { appendFileSync } from "fs";
+var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
+function logOp(op, payload = {}) {
+  const entry = { ts: new Date().toISOString(), op, ...payload };
+  try {
+    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
+`);
+  } catch (e) {
+    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
+  }
+}
+function logDispatch(target, agent, extra = {}) {
+  logOp("dispatch", { target, agent, ...extra });
+}
+
+// src/lib/dispatch.ts
+function runnerWorkflow() {
+  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+}
+function dispatchRunner(d) {
+  const args = [
+    ...d.repo ? ["--repo", d.repo] : [],
+    "--field",
+    `agent=${d.agent}`,
+    "--field",
+    `number=${d.number}`,
+    "--field",
+    `type=${d.type}`,
+    "--field",
+    `notify=${d.notify ?? ""}`
+  ];
+  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
+    return false;
+  logDispatch(d.type, d.agent, { number: Number(d.number) });
+  return true;
+}
+
 // src/lib/agent-name.ts
 var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
 var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
@@ -18124,57 +18175,6 @@ function resolveNotify(repo, number4) {
     current = parent;
   }
   return "";
-}
-
-// src/lib/sibling-check.ts
-function countOpenSiblings(opts) {
-  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
-  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
-  if (code !== 0) {
-    throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
-  }
-  const siblings = stdout ? JSON.parse(stdout) : [];
-  const remaining = opts.exclude !== undefined ? siblings.filter((s) => s.number !== opts.exclude) : siblings;
-  return remaining.length;
-}
-
-// src/lib/ops-log.ts
-import { appendFileSync } from "fs";
-var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
-function logOp(op, payload = {}) {
-  const entry = { ts: new Date().toISOString(), op, ...payload };
-  try {
-    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
-`);
-  } catch (e) {
-    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
-  }
-}
-function logDispatch(target, agent, extra = {}) {
-  logOp("dispatch", { target, agent, ...extra });
-}
-
-// src/lib/dispatch.ts
-function runnerWorkflow() {
-  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
-}
-function dispatchRunner(d) {
-  const args = [
-    ...d.repo ? ["--repo", d.repo] : [],
-    "--field",
-    `agent=${d.agent}`,
-    "--field",
-    `number=${d.number}`,
-    "--field",
-    `type=${d.type}`,
-    "--field",
-    `notify=${d.notify ?? ""}`
-  ];
-  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
-    return false;
-  logDispatch(d.type, d.agent, { number: Number(d.number) });
-  return true;
 }
 
 // src/lib/aggregation.ts
@@ -18336,6 +18336,154 @@ function headBranchMerged(repo, owner, branch) {
   }
 }
 
+// src/lib/branch-placement.ts
+function log2(message) {
+  console.error(`[atoma-github] ${message}`);
+}
+var BRANCH_PREFIX = "atoma/issue-";
+function branchOfIssue(issue2) {
+  return `${BRANCH_PREFIX}${issue2}`;
+}
+function isIssueBranch(name) {
+  return name.startsWith(BRANCH_PREFIX);
+}
+function resolveBranch() {
+  const fromEnv = (process.env.BRANCH ?? "").trim();
+  if (fromEnv && fromEnv !== "HEAD")
+    return fromEnv;
+  {
+    const { code, stdout } = gitRun("rev-parse", "--abbrev-ref", "HEAD");
+    if (code === 0 && stdout && stdout !== "HEAD")
+      return stdout;
+  }
+  {
+    const { code, stdout } = gitRun("branch", "--format=%(refname:short)", "--points-at=HEAD");
+    if (code === 0 && stdout)
+      return stdout.split(`
+`)[0];
+  }
+  throw new Error("Cannot determine branch name; set BRANCH env");
+}
+function parentIssueOf(repo, issue2) {
+  const { code, stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "body", "--jq", ".body");
+  if (code) {
+    log2(`WARN could not read issue #${issue2}; treating it as a root issue`);
+    return 0;
+  }
+  return PARENT_TAG.read(stdout) ?? 0;
+}
+function stackedBaseFor(repo, issue2) {
+  const parent = parentIssueOf(repo, issue2);
+  if (!parent)
+    return "";
+  const parentBranch = branchOfIssue(parent);
+  const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  if (existing.code === 0 && existing.stdout.trim()) {
+    const fetched2 = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+    if (fetched2.code) {
+      log2(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
+      return "";
+    }
+    return parentBranch;
+  }
+  const head = gitRun("rev-parse", "HEAD");
+  if (head.code)
+    return "";
+  const { code, stderr, stdout } = gh("api", `repos/${repo}/git/refs`, "-X", "POST", "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`);
+  if (code) {
+    log2(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
+    return "";
+  }
+  const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
+  if (fetched.code)
+    return "";
+  log2(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
+  return parentBranch;
+}
+function branchForCommit(repo) {
+  const current = gitRun("rev-parse", "--abbrev-ref", "HEAD");
+  const onBranch = current.code === 0 ? current.stdout.trim() : "";
+  if (isIssueBranch(onBranch))
+    return onBranch;
+  const issue2 = runIssueNumber();
+  if (issue2 === undefined)
+    return resolveBranch();
+  const from = stackedBaseFor(repo, issue2);
+  const name = nextBranchName(collectIssueBranches(repo, issue2), issue2);
+  const created = from ? gitRun("checkout", "-b", name, `origin/${from}`) : gitRun("checkout", "-b", name);
+  if (created.code)
+    throw new Error(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
+  log2(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
+  return name;
+}
+function stackedPrBase(repo) {
+  const issue2 = runIssueNumber();
+  if (issue2 === undefined)
+    return;
+  const parent = parentIssueOf(repo, issue2);
+  if (!parent)
+    return;
+  const parentBranch = branchOfIssue(parent);
+  const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
+  return code === 0 && stdout.trim() ? parentBranch : undefined;
+}
+function runIssueNumber() {
+  if (process.env.ATOMA_RUN_TYPE !== "issue")
+    return;
+  const issue2 = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  return Number.isInteger(issue2) && issue2 > 0 ? issue2 : undefined;
+}
+
+// src/lib/dispatch-targets.ts
+function log3(message) {
+  console.error(`[atoma-github] ${message}`);
+}
+function dispatchPrValidation(repo, prNumber, branch) {
+  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
+  dispatchWorkflow(`dispatchPrValidation: validating PR #${prNumber}`, "atoma-validate-pr.yml", [
+    "--repo",
+    repo,
+    "-f",
+    `number=${prNumber}`,
+    "-f",
+    `branch=${branch}`,
+    "-f",
+    `reviewer=${reviewer}`,
+    "-f",
+    "engineer=engineer"
+  ], log3);
+}
+function dispatchPostMergeAgent(repo, subIssueNum, agent) {
+  const notify = resolveNotify(repo, subIssueNum);
+  const { code, stdout, stderr } = gh("issue", "comment", String(subIssueNum), "--repo", repo, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
+  if (code) {
+    log3(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
+    return false;
+  }
+  return dispatchRunner({
+    context: `dispatchPostMergeAgent: re-invoking ${agent} on #${subIssueNum} to confirm and close`,
+    agent,
+    type: "issue",
+    number: subIssueNum,
+    notify,
+    repo,
+    log: log3
+  });
+}
+function dispatchCi(branch) {
+  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", "ci.yml"), ["--ref", branch], log3);
+}
+function dispatchCd(baseRef) {
+  const workflow = getWorkflowName("cd");
+  if (!workflow)
+    return false;
+  if (isIssueBranch(baseRef)) {
+    log3(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
+    return false;
+  }
+  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log3);
+}
+
 // src/domain/issue-links.ts
 var CLOSING_KEYWORDS = "close[sd]?|fix(?:e[sd])?|resolve[sd]?";
 function claimsToClose(body, issue2) {
@@ -18396,7 +18544,7 @@ function issueLinks(repo, number4) {
 }
 
 // src/lib/merge-signals.ts
-function log2(message) {
+function log4(message) {
   console.error(`[atoma-merge-signals] ${message}`);
 }
 function readRequiredChecks(repo, baseRef) {
@@ -18404,21 +18552,21 @@ function readRequiredChecks(repo, baseRef) {
     return [];
   const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
   if (code) {
-    log2(`WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
+    log4(`WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
     return [];
   }
   try {
     const rules = JSON.parse(stdout || "[]");
     return rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check2) => check2.context);
   } catch {
-    log2(`WARN branch rules for ${baseRef} were not valid JSON`);
+    log4(`WARN branch rules for ${baseRef} were not valid JSON`);
     return [];
   }
 }
 function readGovernancePaths(repo, num) {
   const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", ".[].filename");
   if (code) {
-    log2(`WARN could not read changed files for #${num}; treating the merge as a person's`);
+    log4(`WARN could not read changed files for #${num}; treating the merge as a person's`);
     return ["(could not read the changed files)"];
   }
   const files = stdout.split(`
@@ -18457,7 +18605,7 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
 }
 
 // src/atoma/tools/scripts/mcp/github.ts
-function log3(msg) {
+function log5(msg) {
   console.error(`[atoma-github] ${msg}`);
 }
 var REPO = process.env.GITHUB_REPOSITORY ?? "";
@@ -18591,9 +18739,9 @@ ${body}`;
       const pid = await resolveIssueId(Number(parentNum));
       const sid = await resolveIssueId(num);
       ghGraphql("mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}", { parent: pid, sub: sid });
-      log3(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
+      log5(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
     } catch (e) {
-      log3(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
+      log5(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
     }
   }
   logOp("create_issue", { number: num, title, sub_issue: sub });
@@ -18644,10 +18792,10 @@ function getIssueComments(a) {
 }
 function closeIssue(a) {
   const num = a.number;
-  log3(`closeIssue: #${num}`);
+  log5(`closeIssue: #${num}`);
   const d = ghJsonOrThrow("issue", "view", String(num), "--repo", REPO, "--json", "author");
   const isBot = Boolean(d?.author?.is_bot);
-  log3(`closeIssue: author.is_bot=${isBot}`);
+  log5(`closeIssue: author.is_bot=${isBot}`);
   if (!isBot)
     mcpFail(`Refusing to close issue #${num}: opened by a human, not a bot`);
   const { code, stdout, stderr } = gh("issue", "close", String(num), "--repo", REPO);
@@ -18662,26 +18810,9 @@ async function closeIssueAndDispatch(a) {
   try {
     await dispatchOrchestratorIfSubIssueReady(REPO, num);
   } catch (e) {
-    log3(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
+    log5(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
   }
   return result;
-}
-function resolveBranch() {
-  const br = (process.env.BRANCH ?? "").trim();
-  if (br && br !== "HEAD")
-    return br;
-  {
-    const { code, stdout } = gitRun("rev-parse", "--abbrev-ref", "HEAD");
-    if (code === 0 && stdout && stdout !== "HEAD")
-      return stdout;
-  }
-  {
-    const { code, stdout } = gitRun("branch", "--format=%(refname:short)", "--points-at=HEAD");
-    if (code === 0 && stdout)
-      return stdout.split(`
-`)[0];
-  }
-  mcpFail("Cannot determine branch name; set BRANCH env");
 }
 function injectParentIssue(body) {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
@@ -18704,42 +18835,14 @@ function injectParentIssue(body) {
   return `${PARENT_ISSUE_TAG.write(Number(parent))}
 ${originLine}${closesLine}${body}`;
 }
-function dispatchPrValidation(prNumber, branch) {
-  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
-  dispatchWorkflow(`dispatchPrValidation: validating PR #${prNumber}`, "atoma-validate-pr.yml", [
-    "--repo",
-    REPO,
-    "-f",
-    `number=${prNumber}`,
-    "-f",
-    `branch=${branch}`,
-    "-f",
-    `reviewer=${reviewer}`,
-    "-f",
-    "engineer=engineer"
-  ], log3);
-}
-function stackedPrBase() {
-  if (process.env.ATOMA_RUN_TYPE !== "issue")
-    return;
-  const issue2 = Number((process.env.ISSUE_NUMBER ?? "").trim());
-  if (!Number.isInteger(issue2) || issue2 <= 0)
-    return;
-  const parent = parentIssueOf(issue2);
-  if (!parent)
-    return;
-  const parentBranch = `atoma/issue-${parent}`;
-  const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
-  return code === 0 && stdout.trim() ? parentBranch : undefined;
-}
 function createPr(a) {
   const title = a.title;
   let body = a.body ?? "";
-  const base = a.base ?? stackedPrBase() ?? getBaseBranch();
+  const base = a.base ?? stackedPrBase(REPO) ?? getBaseBranch();
   body = injectParentIssue(body);
-  log3(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
+  log5(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
   const branch = resolveBranch();
-  log3(`createPr: resolved branch=${JSON.stringify(branch)}`);
+  log5(`createPr: resolved branch=${JSON.stringify(branch)}`);
   const worktree = gitRun("status", "--porcelain");
   if (worktree.code)
     mcpFail(worktree.stderr || worktree.stdout);
@@ -18764,16 +18867,16 @@ function createPr(a) {
     cmd.push("--body", body);
   if (base)
     cmd.push("--base", base);
-  log3(`createPr: running gh ${cmd.join(" ")}`);
+  log5(`createPr: running gh ${cmd.join(" ")}`);
   const { code, stdout, stderr } = gh(...cmd);
-  log3(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log5(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr create failed (rc=${code}): ${stderr || stdout}`);
   const num = Number(stdout.trim().split("/").pop());
   if (!Number.isFinite(num))
     mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
   logOp("create_pr", { number: num, title });
-  dispatchPrValidation(num, branch);
+  dispatchPrValidation(REPO, num, branch);
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
     gh("issue", "comment", currentIssue, "--repo", REPO, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
@@ -18781,62 +18884,9 @@ Atoma: PR #${num} created (${stdout.trim()}). Running CI; the reviewer follows i
   }
   return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
 }
-function branchForCommit() {
-  const current = gitRun("rev-parse", "--abbrev-ref", "HEAD");
-  const onBranch = current.code === 0 ? current.stdout.trim() : "";
-  if (onBranch.startsWith("atoma/issue-"))
-    return onBranch;
-  const issue2 = Number((process.env.ISSUE_NUMBER ?? "").trim());
-  if (process.env.ATOMA_RUN_TYPE !== "issue" || !Number.isInteger(issue2) || issue2 <= 0) {
-    return resolveBranch();
-  }
-  const from = stackedBaseFor(issue2);
-  const name = nextBranchName(collectIssueBranches(REPO, issue2), issue2);
-  const created = from ? gitRun("checkout", "-b", name, `origin/${from}`) : gitRun("checkout", "-b", name);
-  if (created.code)
-    mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
-  log3(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
-  return name;
-}
-function parentIssueOf(issue2) {
-  const { code, stdout } = gh("issue", "view", String(issue2), "--repo", REPO, "--json", "body", "--jq", ".body");
-  if (code) {
-    log3(`WARN could not read issue #${issue2}; treating it as a root issue`);
-    return 0;
-  }
-  return PARENT_TAG.read(stdout) ?? 0;
-}
-function stackedBaseFor(issue2) {
-  const parent = parentIssueOf(issue2);
-  if (!parent)
-    return "";
-  const parentBranch = `atoma/issue-${parent}`;
-  const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
-  if (existing.code === 0 && existing.stdout.trim()) {
-    const fetched2 = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
-    if (fetched2.code) {
-      log3(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
-      return "";
-    }
-    return parentBranch;
-  }
-  const head = gitRun("rev-parse", "HEAD");
-  if (head.code)
-    return "";
-  const { code, stderr, stdout } = gh("api", `repos/${REPO}/git/refs`, "-X", "POST", "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`);
-  if (code) {
-    log3(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
-    return "";
-  }
-  const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
-  if (fetched.code)
-    return "";
-  log3(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
-  return parentBranch;
-}
 function commitAndPush(a) {
   const message = a.message;
-  const branch = branchForCommit();
+  const branch = branchForCommit(REPO);
   {
     const { code, stdout, stderr } = gitRun("add", "-A");
     if (code)
@@ -18858,9 +18908,9 @@ function commitAndPush(a) {
     try {
       const [pr] = JSON.parse(open.stdout || "[]");
       if (pr)
-        dispatchPrValidation(pr.number, branch);
+        dispatchPrValidation(REPO, pr.number, branch);
     } catch {
-      log3("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+      log5("commitAndPush: could not read the open pull request list; skipping validation dispatch");
     }
   }
   return JSON.stringify({ ok: true });
@@ -18945,7 +18995,7 @@ function listPrReviewComments(a) {
 function submitPrReview(a) {
   let event = a.event;
   if (event === "APPROVE") {
-    log3(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
+    log5(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
     event = "COMMENT";
   }
   const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
@@ -18960,39 +19010,6 @@ function submitPrReview(a) {
 function isIssueClosed(number4) {
   const d = ghJsonOrThrow("issue", "view", String(number4), "--repo", REPO, "--json", "state");
   return (d?.state ?? "").toUpperCase() === "CLOSED";
-}
-function dispatchPostMergeAgent(subIssueNum, agent) {
-  const notify = resolveNotify(REPO, subIssueNum);
-  {
-    const { code, stdout, stderr } = gh("issue", "comment", String(subIssueNum), "--repo", REPO, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
-    if (code) {
-      log3(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
-      return false;
-    }
-  }
-  return dispatchRunner({
-    context: `dispatchPostMergeAgent: re-invoking ${agent} on #${subIssueNum} to confirm and close`,
-    agent,
-    type: "issue",
-    number: subIssueNum,
-    notify,
-    repo: REPO,
-    log: log3
-  });
-}
-function dispatchCi(branch) {
-  const workflow = getWorkflowName("ci", "ci.yml");
-  return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log3);
-}
-function dispatchCd(baseRef) {
-  const workflow = getWorkflowName("cd");
-  if (!workflow)
-    return false;
-  if (baseRef.startsWith("atoma/issue-")) {
-    log3(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
-    return false;
-  }
-  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log3);
 }
 function checkMergeReadiness(a) {
   const num = issueContextNumber(a);
@@ -19019,10 +19036,10 @@ function deleteMergedBranch(branch) {
     return;
   const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
   if (code) {
-    log3(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    log5(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
     return;
   }
-  log3(`mergePr: deleted merged branch ${branch}`);
+  log5(`mergePr: deleted merged branch ${branch}`);
 }
 async function mergePr(a) {
   const num = a.number;
@@ -19030,7 +19047,7 @@ async function mergePr(a) {
   const { headRefName, baseRefName } = refs;
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
-    log3(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
+    log5(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
     const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
     return JSON.stringify({
       merged: false,
@@ -19041,7 +19058,7 @@ ${formatBlockers(readiness.blockers)}`
     });
   }
   const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
-  log3(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log5(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
@@ -19059,10 +19076,10 @@ ${formatBlockers(readiness.blockers)}`
     case "no-parent":
       return JSON.stringify({ merged: true, closed_issue: null });
     case "already-closed":
-      log3(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
+      log5(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
       return JSON.stringify({ merged: true, closed_issue: null });
     case "reinvoke-origin-agent":
-      if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
+      if (dispatchPostMergeAgent(REPO, handoff.parentIssue, handoff.agent)) {
         return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
       }
       return await closeParentAndReport(handoff.parentIssue);
@@ -19075,7 +19092,7 @@ async function closeParentAndReport(parentIssue) {
     await closeIssueAndDispatch({ number: parentIssue });
     return JSON.stringify({ merged: true, closed_issue: parentIssue });
   } catch (e) {
-    log3(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
+    log5(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
     return JSON.stringify({ merged: true, closed_issue: null });
   }
 }
@@ -19142,12 +19159,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ...meta ? { _meta: meta } : {}
     };
   } catch (e) {
-    log3(`Tool error: ${e}`);
+    log5(`Tool error: ${e}`);
     return { content: [{ type: "text", text: `Error: ${e.message ?? e}` }], isError: true };
   }
 });
 async function main() {
-  log3(`Starting for ${REPO}`);
+  log5(`Starting for ${REPO}`);
   const transport = new StdioServerTransport;
   await server.connect(transport);
 }
