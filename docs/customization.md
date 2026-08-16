@@ -5,6 +5,37 @@ This guide separates two workflows clearly:
 - You are adopting the generated deliverable in your own repository.
 - You are changing this template repository itself.
 
+## Contents
+
+- [Source vs deliverable](#source-vs-deliverable) — which files you edit, and which are generated
+- [`config.json` contract](#configjson-contract) — every supported field, and [which file a setting belongs in](#which-file-a-setting-belongs-in)
+- [Upgrading an adopted repository](#upgrading-an-adopted-repository)
+- [Regenerate and deploy changes](#regenerate-and-deploy-changes)
+
+Task-oriented recipes:
+
+| Recipe | You want to |
+| --- | --- |
+| [Change model per agent](#change-model-per-agent) | run an agent on a different model |
+| [Let an agent read images](#let-an-agent-read-images) | have a screenshot reach the agent as a picture |
+| [Choose which API an agent's provider speaks](#choose-which-api-an-agents-provider-speaks) | switch between the Chat Completions and Responses APIs |
+| [Pin which OpenRouter endpoint serves a model](#pin-which-openrouter-endpoint-serves-a-model) | prefer particular upstream providers |
+| [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
+| [Change event triggers](#change-event-triggers) | decide which GitHub events start which agent |
+| [Add environment setup commands](#add-environment-setup-commands) | install your project's toolchain before an agent runs |
+| [Choose the branch agents work from](#choose-the-branch-agents-work-from) | target something other than the default branch |
+| [Work with decomposed issues](#work-with-decomposed-issues) | understand how sub-issue branches stack |
+| [Point Atoma at your own workflows](#point-atoma-at-your-own-workflows) | have agents start your CI and deployment |
+| [Requiring a check that agents can satisfy](#requiring-a-check-that-agents-can-satisfy) | make required checks work with agent merges |
+| [Changes an agent may not merge](#changes-an-agent-may-not-merge) | keep some paths for human review |
+| [Search this repository's issues](#search-this-repositorys-issues) | tune or replace the issue search model |
+| [Let agents read the web](#let-agents-read-the-web) | change or remove web fetching and search |
+| [What a shell command may print](#what-a-shell-command-may-print) | control shell output limits |
+| [Rename labels](#rename-labels) | use your own label names |
+| [Change merge behavior](#change-merge-behavior) | require a human to merge |
+| [Customize prompt template](#customize-prompt-template) | change what every agent is told |
+| [Customize skills and tools](#customize-skills-and-tools) | add a skill or an MCP server |
+
 ## Source vs deliverable
 
 In this repository:
@@ -32,6 +63,7 @@ Supported top-level fields used by scripts/workflows:
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
 - `workflows.ci`, `workflows.cd`
+- `search.reranker_model`
 - `auto_triggers[]` with `event`, `agent`, optional `condition`
 
 `config.json` is **yours**. Everything else under `.github/atoma/` is generated and
@@ -413,6 +445,62 @@ agent's own environment because the run needs them to work at all, and no settin
 moves them out. Your other repository secrets are already outside it: they reach
 the workflow, not the agent process, unless you put them there yourself through
 `environment.setup_commands`.
+
+### Search this repository's issues
+
+`search__search_issues` answers a question from the issues and their discussion,
+and returns which passage answered it — `matched_in: "comment 3"` — so the caller
+can read that comment with `github__get_issue_comments(number=..., from=3)`
+rather than pulling a whole conversation in.
+
+Nothing needs configuring for this to work. The index is built on the first
+search, stored on the `atoma-data` branch, and brought up to date on each
+call by asking GitHub only for what changed.
+
+Two stages produce the ranking. A lexical first stage casts a wide net over
+every passage; a cross encoder then reads the twenty issues it caught and
+decides which of them actually answers the question. Only the second stage is
+configurable, because measurement put the whole difference there — enlarging
+the reranker moved top-1 accuracy from 27% to 91%, while adding a dense vector
+index alongside the first stage changed no ranking at all.
+
+```json
+{
+  "search": {
+    "reranker_model": "onnx-community/bge-reranker-v2-m3-ONNX"
+  }
+}
+```
+
+The default is multilingual and about 600MB, downloaded once per runner and
+cached after that. Name a smaller cross encoder here if that cost matters more
+than ranking quality, or a language-specific one if your issues are all in one
+language. Any model the runner can load as a sequence-classification cross
+encoder works; the search still functions if it fails to load, falling back to
+the first stage's own order.
+
+**The question's language matters.** The first stage matches characters rather
+than meaning, so a question asked in a language the issues are not written in
+scores near zero and never reaches the cross encoder. Agents are told this in
+the tool's own description.
+
+### Let agents read the web
+
+`web__fetch` retrieves a URL and returns the page as Markdown, so an agent gets
+prose rather than markup; `raw: true` returns the markup, and a URL that
+resolves to an image comes back as an image for agents with `vision: true`.
+
+Searching is a skill rather than a tool. `.github/atoma/skills/research/web-search.md`
+tells agents to fetch a search engine's results page and read the links out of
+it. The endpoint lives in that file on purpose:
+
+- To use a different service — one with an API key, or your own instance —
+  edit the skill. The tool fetches whatever URL it is handed, so nothing else
+  changes.
+- To stop agents querying a public search engine at all, delete that section of
+  the skill. Fetching a page whose address is already known keeps working.
+- To remove web access entirely, drop `web` from `mcp_servers` in the agent
+  definitions that name it, and from `tools.yaml`.
 
 ### What a shell command may print
 
