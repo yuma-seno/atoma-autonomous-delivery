@@ -17,18 +17,17 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { dispatchWorkflow, gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
-import { getBaseBranch, getLabel, getMergePolicy, getTriggerAgent, getWorkflowName } from "../../../../lib/config.ts";
+import { gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
+import { getBaseBranch, getLabel, getMergePolicy } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
-import { dispatchRunner } from "../../../../lib/dispatch.ts";
 import { logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
-import { nextBranchName } from "../../../../domain/issue-branch.ts";
-import { collectIssueBranches } from "../../../../lib/issue-branches.ts";
+import { branchForCommit, resolveBranch, stackedPrBase } from "../../../../lib/branch-placement.ts";
+import { dispatchCd, dispatchCi, dispatchPostMergeAgent, dispatchPrValidation } from "../../../../lib/dispatch-targets.ts";
 import { issueLinks } from "../../../../lib/issue-links.ts";
 import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
 import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
@@ -387,20 +386,6 @@ async function closeIssueAndDispatch(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Prom
   return result;
 }
 
-function resolveBranch(): string {
-  const br = (process.env.BRANCH ?? "").trim();
-  if (br && br !== "HEAD") return br;
-  {
-    const { code, stdout } = gitRun("rev-parse", "--abbrev-ref", "HEAD");
-    if (code === 0 && stdout && stdout !== "HEAD") return stdout;
-  }
-  {
-    const { code, stdout } = gitRun("branch", "--format=%(refname:short)", "--points-at=HEAD");
-    if (code === 0 && stdout) return stdout.split("\n")[0]!;
-  }
-  mcpFail("Cannot determine branch name; set BRANCH env");
-}
-
 function injectParentIssue(body: string): string {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
   if (NOTIFY_TAG.has(body)) mcpFail("PR body already contains a notify tag; refusing to add another");
@@ -422,62 +407,6 @@ function injectParentIssue(body: string): string {
   return `${PARENT_ISSUE_TAG.write(Number(parent))}\n${originLine}${closesLine}${body}`;
 }
 
-/**
- * Hand the new pull request to validation rather than straight to a reviewer.
- *
- * The reviewer used to be dispatched from here, and arrived before CI had a
- * verdict -- so it either reported that it would wait, with nothing able to wake
- * it, or merged without one. Validation runs CI first and dispatches the agent
- * the result calls for: the reviewer when it passes, the engineer when it does
- * not. See `scripts/validate_pull_request.ts`.
- *
- * Dispatch rather than an event, because GitHub starts no workflow run for
- * events GITHUB_TOKEN triggers and this pull request was created with it.
- * `workflow_dispatch` is the documented exception, which is also why
- * atoma-auto-trigger.yml cannot be relied on here.
- *
- * Best-effort: a dispatch failure does not fail PR creation itself.
- */
-function dispatchPrValidation(prNumber: number, branch: string): void {
-  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
-  dispatchWorkflow(
-    `dispatchPrValidation: validating PR #${prNumber}`,
-    "atoma-validate-pr.yml",
-    [
-      "--repo", REPO,
-      "-f", `number=${prNumber}`,
-      "-f", `branch=${branch}`,
-      "-f", `reviewer=${reviewer}`,
-      "-f", "engineer=engineer",
-    ],
-    log,
-  );
-}
-
-/**
- * The parent's branch, when this run is a sub-issue's and that branch exists.
- *
- * Returns undefined for a root issue, and for a sub-issue whose parent branch
- * was never created — a run that reports rather than commits reaches no
- * `commit_and_push`, so nothing made one, and there is nothing to stack on.
- *
- * The parent's own run is a root run by this test: its issue carries no parent
- * tag, so its pull request — the integration one, carrying every child's work —
- * targets the base branch like any other.
- */
-function stackedPrBase(): string | undefined {
-  if (process.env.ATOMA_RUN_TYPE !== "issue") return undefined;
-  const issue = Number((process.env.ISSUE_NUMBER ?? "").trim());
-  if (!Number.isInteger(issue) || issue <= 0) return undefined;
-
-  const parent = parentIssueOf(issue);
-  if (!parent) return undefined;
-
-  const parentBranch = `atoma/issue-${parent}`;
-  const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
-  return code === 0 && stdout.trim() ? parentBranch : undefined;
-}
-
 function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   const title = a.title;
   let body = a.body ?? "";
@@ -489,7 +418,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // day-to-day work lands, since a repo that develops on `develop` cannot have
   // every agent PR aimed at the default branch. With none set, `gh` targets the
   // default branch.
-  const base = a.base ?? stackedPrBase() ?? getBaseBranch();
+  const base = a.base ?? stackedPrBase(REPO) ?? getBaseBranch();
   body = injectParentIssue(body);
   log(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
 
@@ -528,7 +457,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (!Number.isFinite(num)) mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
 
   logOp("create_pr", { number: num, title });
-  dispatchPrValidation(num, branch);
+  dispatchPrValidation(REPO, num, branch);
 
   // Traceability: the reviewer dispatch above is fire-and-forget, and (since
   // this call now ends the session immediately, see the returned
@@ -555,113 +484,12 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
 }
 
-/**
- * The branch this commit belongs on, creating one if the run has none yet.
- *
- * A run starts on the base branch unless it had work to resume, because most
- * runs never commit and creating a branch for those left one behind every time.
- * The first commit is what turns a run into work, so that is where the branch
- * appears.
- *
- * When every earlier branch for this issue has merged, the name counts up:
- * reusing a merged branch would build on history the base already contains.
- */
-function branchForCommit(): string {
-  const current = gitRun("rev-parse", "--abbrev-ref", "HEAD");
-  const onBranch = current.code === 0 ? current.stdout.trim() : "";
-  if (onBranch.startsWith("atoma/issue-")) return onBranch;
-
-  // Only an issue run may name a branch. On a pull request run `ISSUE_NUMBER`
-  // holds the PR's number and the checkout is already the branch under review,
-  // so naming one from it would move the work off the pull request.
-  const issue = Number((process.env.ISSUE_NUMBER ?? "").trim());
-  if (process.env.ATOMA_RUN_TYPE !== "issue" || !Number.isInteger(issue) || issue <= 0) {
-    return resolveBranch();
-  }
-
-  const from = stackedBaseFor(issue);
-  const name = nextBranchName(collectIssueBranches(REPO, issue), issue);
-  const created = from
-    ? gitRun("checkout", "-b", name, `origin/${from}`)
-    : gitRun("checkout", "-b", name);
-  if (created.code) mcpFail(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
-  log(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
-  return name;
-}
-
-/**
- * The parent issue this one was split out of, or 0 for a root issue.
- *
- * Read from the issue body's `atoma:parent` tag, which `create_issue` writes
- * when an orchestrator creates a child. Nothing here asks which agent is
- * running: a sub-issue is a sub-issue whoever picks it up.
- */
-function parentIssueOf(issue: number): number {
-  const { code, stdout } = gh("issue", "view", String(issue), "--repo", REPO, "--json", "body", "--jq", ".body");
-  if (code) {
-    log(`WARN could not read issue #${issue}; treating it as a root issue`);
-    return 0;
-  }
-  return PARENT_TAG.read(stdout) ?? 0;
-}
-
-/**
- * The branch a sub-issue's work should be cut from, or "" for the base branch.
- *
- * Sub-issues of one parent are split from a single piece of work and usually
- * depend on each other — an interface one defines is what the next one consumes.
- * Cutting each from the base hides those from one another until every part has
- * landed separately, which is where integration surprises come from.
- *
- * So they stack: each is cut from the parent's branch and merges back into it,
- * and the parent's branch reaches the base as one reviewed change. The parent's
- * branch is created here, empty, if the first child gets there first — an
- * orchestrator plans and dispatches without committing, so its branch would
- * otherwise not exist yet.
- *
- * Best-effort throughout. Every failure returns "" and the work is cut from the
- * base, which is the behaviour before stacking existed: a slower integration is
- * not worth failing a commit over.
- */
-function stackedBaseFor(issue: number): string {
-  const parent = parentIssueOf(issue);
-  if (!parent) return "";
-
-  const parentBranch = `atoma/issue-${parent}`;
-  const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
-  if (existing.code === 0 && existing.stdout.trim()) {
-    const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
-    if (fetched.code) {
-      log(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
-      return "";
-    }
-    return parentBranch;
-  }
-
-  // The parent has no branch yet. Create it where this run started, which is the
-  // base branch — the run resumed nothing, or `branchForCommit` would not be
-  // naming a branch at all.
-  const head = gitRun("rev-parse", "HEAD");
-  if (head.code) return "";
-  const { code, stderr, stdout } = gh(
-    "api", `repos/${REPO}/git/refs`, "-X", "POST",
-    "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`,
-  );
-  if (code) {
-    log(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
-    return "";
-  }
-  const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
-  if (fetched.code) return "";
-  log(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
-  return parentBranch;
-}
 
 function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
   const message = a.message;
   // Before the commit, so a failure to name a branch does not leave a commit
   // stranded on the base branch.
-  const branch = branchForCommit();
+  const branch = branchForCommit(REPO);
   {
     const { code, stdout, stderr } = gitRun("add", "-A");
     if (code) mcpFail(stderr || stdout);
@@ -693,7 +521,7 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
   if (!open.code) {
     try {
       const [pr] = JSON.parse(open.stdout || "[]") as { number: number }[];
-      if (pr) dispatchPrValidation(pr.number, branch);
+      if (pr) dispatchPrValidation(REPO, pr.number, branch);
     } catch {
       log("commitAndPush: could not read the open pull request list; skipping validation dispatch");
     }
@@ -814,66 +642,6 @@ function isIssueClosed(number: number): boolean {
   return (d?.state ?? "").toUpperCase() === "CLOSED";
 }
 
-/**
- * After a PR merges, re-invoke the agent that originally created it (tagged
- * via <!-- atoma:origin-agent=... --> in the PR body, see injectParentIssue)
- * on the linked sub-issue, instead of silently closing the sub-issue
- * ourselves. Returns true if the dispatch was sent (best-effort; a failure
- * here should not fail merge_pr itself -- caller falls back to closing
- * directly).
- */
-function dispatchPostMergeAgent(subIssueNum: number, agent: string): boolean {
-  const notify = resolveNotify(REPO, subIssueNum);
-  {
-    const { code, stdout, stderr } = gh(
-      "issue", "comment", String(subIssueNum), "--repo", REPO,
-      "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.",
-    );
-    if (code) {
-      log(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
-      return false;
-    }
-  }
-  return dispatchRunner({
-    context: `dispatchPostMergeAgent: re-invoking ${agent} on #${subIssueNum} to confirm and close`,
-    agent,
-    type: "issue",
-    number: subIssueNum,
-    notify,
-    repo: REPO,
-    log,
-  });
-}
-
-
-/** Kick off the CI workflow against a branch, so a fresh agent PR gets a check run. */
-function dispatchCi(branch: string): boolean {
-  const workflow = getWorkflowName("ci", "ci.yml");
-  return dispatchWorkflow("dispatchCi", workflow, ["--ref", branch], log);
-}
-
-/**
- * Kick off the deployment workflow after a merge.
- *
- * Required, not a nicety. This merge is performed with GITHUB_TOKEN, and GitHub
- * starts no workflow run for events its own token triggers — so merging fires no
- * `push` on the base branch, nothing chains off it, and a deployment workflow
- * waiting on that chain never runs. `workflow_dispatch` is the documented
- * exception. Set `workflows.cd` in config.json to the project's deployment
- * workflow, or leave it unset to skip this entirely.
- */
-function dispatchCd(baseRef: string): boolean {
-  const workflow = getWorkflowName("cd");
-  if (!workflow) return false;
-  // Only a merge that actually lands work deploys. A sub-issue's pull request
-  // merges into its parent's branch, which is still in progress — deploying
-  // there would ship half a feature, once per child.
-  if (baseRef.startsWith("atoma/issue-")) {
-    log(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
-    return false;
-  }
-  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log);
-}
 
 function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
   const num = issueContextNumber(a);
@@ -975,7 +743,7 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
       log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
       return JSON.stringify({ merged: true, closed_issue: null });
     case "reinvoke-origin-agent":
-      if (dispatchPostMergeAgent(handoff.parentIssue, handoff.agent)) {
+      if (dispatchPostMergeAgent(REPO, handoff.parentIssue, handoff.agent)) {
         return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
       }
       // The preferred handoff (re-invoking the origin agent) failed to
