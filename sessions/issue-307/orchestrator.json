@@ -515,7 +515,71 @@
       "role": "assistant",
       "content": "# `search__search_issues` 精度検証レポート（第3回）\n\n---\n\n## 問1: 親 Issue のブランチがまだ存在しないとき、子 Issue のブランチはいつ、どこから作られるのか\n\n**渡したクエリ:**\n> `サブIssueのブランチの派生元は、親Issueがまだ一度もコミットしていない場合はどこになるか`\n\n**返ってきた Issue（順位順）:**\n1. #307（この検証 Issue 自体 — 前回の報告コメントにマッチ）\n2. #264 — サブIssue のブランチを親ブランチから派生させ、親へ PR を出す（積み上げブランチ）\n3. #281 — customization.md に分解された作業のブランチの積み上がり方を書く\n\n**答え:** **3位の #281** に答えが書かれている。\n\n> 「親のブランチは、最初の子がコミットした時点でベースブランチから作られる」（#281 本文）\n\n---\n\n## 問2: 一度の実行が異常に長引いた事例では、反復は何回でどれくらいの時間がかかったのか\n\n**渡したクエリ:**\n> `エージェントの実行が異常に長くかかった事例で、反復回数と所要時間の記録`\n\n**返ってきた Issue（順位順）:**\n1. #307（前回の報告コメントにマッチ）\n2. #215 — エージェントのプロンプトをワークフローに沿って作り直す\n3. #253 — operations.md に shell ログの読み方を追記する\n\n**答え:** **2位の #215** のコメントに書かれている。\n\n> PR #241（直せない PR に「直せ」と指示）: **134反復**、**26分20秒**、prompt **9,193k tokens**\n>\n> 通常のドキュメント編集は 3反復・11〜22秒。問題は裾野にあった。\n\n---\n\n## 問3: 「結論はツール呼び出しで表明する」という原則を、3つのエージェントのうち元から持っていなかったのはどれか\n\n**渡したクエリ:**\n> `3つのエージェントのうち結論をツール呼び出しで表明する原則が欠けていたのはどれか`\n\n**返ってきた Issue（順位順）:**\n1. #307（前回の報告コメントにマッチ）\n2. #215 — エージェントのプロンプトをワークフローに沿って作り直す\n3. #214 — レビュアーが LGTM だけ出力してツールを呼ばず、PR が放置される\n\n**答え:** **2位の #215** のコメントに明示的に書かれている。\n\n> 「orchestrator は元から明文で持っていた。engineer も番号付き手順の終端をツール呼び出しにしている。その原則を持っていなかったのは **reviewer** だけで、実際に失敗したのも reviewer だけでした。」\n\n**3位の #214** が実際の失敗事例（`LGTM` の3トークンのみ出力、ツール呼び出しゼロ）。\n\n---\n\n## まとめ\n\n| 問 | 答えが入っていた Issue | 検索結果の順位 | 判定 |\n|----|----------------------|--------------|------|\n| 1 | #281 | 3位 | ✅ ヒット |\n| 2 | #215 | 2位 | ✅ ヒット（前回見つからなかったが、説明文追加後はヒット） |\n| 3 | #215（+#214） | 2位・3位 | ✅ ヒット |\n\n3問すべてに答えが到達。問2は前回は見つからなかったが、#215 のコメントに反復回数・所要時間の記録が追加されたことで、今回は2位でヒットした。",
       "atoma_metadata": {
-        "github_comment_id": 5306484935,
+        "agent": "orchestrator",
+        "github_comment_id": 5306484935
+      }
+    },
+    {
+      "role": "user",
+      "content": "/orchestrator\n\n説明文を書き直したので、精度を測り直します。**実装も分解も不要**です。\n\n`search__search_issues` を次の3問でそれぞれ1回ずつ呼び、結果を1つのコメントで報告してください。**問いはそのまま渡さず、あなた自身の言葉で組み立ててください。**そこが測りたい点です。\n\n1. 親 Issue のブランチがまだ存在しないとき、子 Issue のブランチはいつ、どこから作られるのか\n2. 一度の実行が異常に長引いた事例では、反復は何回でどれくらいの時間がかかったのか\n3. 「結論はツール呼び出しで表明する」という原則を、3つのエージェントのうち元から持っていなかったのはどれか\n\n## 報告のしかた\n\n各問について次を書いてください。\n\n- 実際に渡したクエリ文字列（そのまま）\n- 返ってきた Issue 番号を順位どおりに\n- 答えが何位の Issue に入っていたか、そして答えそのもの\n\n答えが見つからなければ、見つからないと書いてください。推測で埋めないこと。\n",
+      "atoma_metadata": {
+        "author": "hws-yuma-seno",
+        "created_at": "2026-08-16T08:45:01Z",
+        "event_type": "issue_comment",
+        "id": 5306593066,
+        "layer": "github-context",
+        "source": "github"
+      }
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_0af4632b358d41edaed82bea",
+          "type": "function",
+          "function": {
+            "name": "search__search_issues",
+            "arguments": "{\"query\": \"親ブランチが未作成の状態でサブIssueがコミットするとき、派生元はどこか\"}"
+          }
+        },
+        {
+          "id": "call_1160b593286f4aa486ed8bfa",
+          "type": "function",
+          "function": {
+            "name": "search__search_issues",
+            "arguments": "{\"query\": \"実行時間が極端に長かったケースの計測結果。反復は何回、時間はどれくらい\"}"
+          }
+        },
+        {
+          "id": "call_ffea51af6d844d19b5897ab4",
+          "type": "function",
+          "function": {
+            "name": "search__search_issues",
+            "arguments": "{\"query\": \"orchestrator, engineer, reviewerのうち、結論表明をツール呼び出しで行う原則を最初から持っていなかったのはどれ\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "[\n  {\n    \"number\": 264,\n    \"title\": \"サブIssue のブランチを親ブランチから派生させ、親へ PR を出す（積み上げブランチ）\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/264\",\n    \"matched_in\": \"body\",\n    \"excerpt\": \"## 検討が要るところ\\n\\n- 親のブランチがまだ存在しない場合（親が一度もコミットしていない場合）の派生元\\n- サブIssue の PR が親ブランチにマージされたあと、次のサブIssue が最新の親ブランチを見られるか\\n- 親ブランチが base から遅れた場合の追従\\n- 途中でサブIssue が失敗した場合、積み上げの途中が残る扱い\"\n  },\n  {\n    \"number\": 281,\n    \"title\": \"customization.md に分解された作業のブランチの積み上がり方を書く\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/281\",\n    \"matched_in\": \"body\",\n    \"excerpt\": \"## 書いてほしい内容\\n\\n- サブIssue のブランチは親 Issue のブランチから切られ、親のブランチにマージされる\\n- 親のブランチは、最初の子がコミットした時点でベースブランチから作られる\\n- すべての子が終わったあと、親のブランチがベースブランチへの1本の pull request になる\\n- 親ブランチへのマージではデプロイは走らない（作業途中のため）\"\n  },\n  {\n    \"number\": 195,\n    \"title\": \"ブランチ運用の再検討\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/195\",\n    \"matched_in\": \"comment 2\",\n    \"comment\": 2,\n    \"excerpt\": \"### 残り\\n\\nサブIssue の積み上げブランチ（親ブランチから派生し親へ PR）は別途切り出します。\"\n  }\n]",
+      "tool_call_id": "call_0af4632b358d41edaed82bea"
+    },
+    {
+      "role": "tool",
+      "content": "[\n  {\n    \"number\": 184,\n    \"title\": \"軽量化\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/184\",\n    \"matched_in\": \"comment 22\",\n    \"comment\": 22,\n    \"excerpt\": \"### 引き継ぎ先\\n\\n- **裾（実行が長くなるケース）** → #215。134反復・26分の実行を観測しており、プロンプト設計の領域と判断しました\\n- **議論のテンポ** → 別 Issue に起票しました。実装タスクの速度ではなく、対話の待ち時間が本当の課題です\"\n  },\n  {\n    \"number\": 215,\n    \"title\": \"エージェントのプロンプトをワークフローに沿って作り直す\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/215\",\n    \"matched_in\": \"comment 3\",\n    \"comment\": 3,\n    \"excerpt\": \"## 実行が長くなるケースを、この Issue に統合します\\n\\n#184 の計測で、実行時間の分布が二極化していることが分かりました。\\n\\n| 実行 | 反復 | 所要 | prompt |\\n| --- | --- | --- | --- |\\n| 通常のドキュメント編集 | 3 | 11〜22秒 | 22〜45k |\\n| PR #241（直せない PR に「直せ」と指示） | **134** | **26分20秒** | **9,193k** |\\n\\n中央値は問題ありません。**問題は裾で、しかもプロンプト設計の領域**なのでここに統合します。\"\n  },\n  {\n    \"number\": 255,\n    \"title\": \"議論のテンポ改善: 実行後も runner を一定時間待機させ、追加コメントに即応する\",\n    \"state\": \"open\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/255\",\n    \"matched_in\": \"body\",\n    \"excerpt\": \"## 課題\\n\\n実装タスクの実行時間は問題になりません。**問題は議論のテンポ**です。\\n\\nIssue 上でエージェントと議論するとき、1往復ごとにコールドスタートが挟まります。実測では推論そのものは 11〜22 秒なのに、コメントを書いてから返答が来るまで **60〜75 秒**かかります。差はジョブ起動・checkout・Bun セットアップ・MCP インストール・セッション復元です。\\n\\n短い応答が続く議論ほど、待ち時間の比率が上がります。思考が途切れます。\"\n  }\n]",
+      "tool_call_id": "call_1160b593286f4aa486ed8bfa"
+    },
+    {
+      "role": "tool",
+      "content": "[\n  {\n    \"number\": 215,\n    \"title\": \"エージェントのプロンプトをワークフローに沿って作り直す\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/215\",\n    \"matched_in\": \"comment 2\",\n    \"comment\": 2,\n    \"excerpt\": \"1つ上のコメントで1行が壊れていました。訂正します。\\n\\n`orchestrator.md` にある記述は正しくは次のものです。\\n\\n> Never replace it with `github__close_issue` or a plain final response.\\n\\n言いたかったのは、**「結論はツール呼び出しで表明する。散文の最終応答で代替しない」という原則を、orchestrator は元から明文で持っていた**ということです。engineer も番号付き手順の終端をツール呼び出しにしています。\\n\\nその原則を持っていなかったのは reviewer だけで、実際に失敗したのも reviewer だけでした。\"\n  },\n  {\n    \"number\": 196,\n    \"title\": \"モデルの見直し\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/196\",\n    \"matched_in\": \"comment 9\",\n    \"comment\": 9,\n    \"excerpt\": \"## 結論\\n\\nOrchestratorは問題なし。EngineerとReviewerに軽微な修正がありますが、どれも **preference（推奨）** でありOpenRouterのフォールバックで実害は低いです。ただし、`order`の値が声称する選択基準（レイテンシ重視・スループット重視）と一致していないのは明確な不整合ですので、修正PRを作成しますか？\\n\\n\\n\\n---\\n_Tokens: 42738 total (40199 prompt + 2539 completion)_\\n_Estimated cost: $0.0076_\\n@yuma-seno — **orchestrator** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.\\n\\n---\\n_run by [orchestrator](https://github.com/yuma-seno/atoma-autonomous-delivery/actions/runs/31228473693)_\"\n  },\n  {\n    \"number\": 214,\n    \"title\": \"レビュアーが LGTM だけ出力してツールを呼ばず、PR が放置される\",\n    \"state\": \"closed\",\n    \"url\": \"https://github.com/yuma-seno/atoma-autonomous-delivery/issues/214\",\n    \"matched_in\": \"body\",\n    \"excerpt\": \"## 根拠\\n\\nPR #213 で観測しました。\\n\\n```\\n<!-- atoma:agent=reviewer -->\\nLGTM\\n\\n_Tokens: 8176 total (8173 prompt + 3 completion)_\\n_Estimated cost: $0.0012_\\n```\\n\\n**completion が 3 トークン**です。`LGTM` の3文字以外に何も生成していません。\\n\\nその結果:\\n\\n```\\n$ gh api repos/.../commits/9081b38/check-runs --jq '.total_count'\\n0\\n\\n$ gh pr view 213 --json reviews --jq '.reviews'\\n[]\\n```\\n\\nhead commit に check-runs が 0 件で、レビューも 0 件です。`reviewer.md` が Sound 経路で指示している2つの呼び出しがどちらも行われていません。\\n\\n> **Sound:** call `github__submit_pr_review(event=\\\"COMMENT\\\", body=\\\"LGTM\\\")`, then `github__merge_pr(number=...)`.\"\n  }\n]",
+      "tool_call_id": "call_ffea51af6d844d19b5897ab4"
+    },
+    {
+      "role": "assistant",
+      "content": "# `search__search_issues` 精度検証レポート（第4回）\n\n---\n\n## 問1: 親 Issue のブランチがまだ存在しないとき、子 Issue のブランチはいつ、どこから作られるのか\n\n**渡したクエリ:**\n> `親ブランチが未作成の状態でサブIssueがコミットするとき、派生元はどこか`\n\n**返ってきた Issue（順位順）:**\n1. #264 — サブIssue のブランチを親ブランチから派生させ、親へ PR を出す（積み上げブランチ）\n2. #281 — customization.md に分解された作業のブランチの積み上がり方を書く\n3. #195 — ブランチ運用の再検討\n\n**答え:** **2位の #281** に答えが書かれている。\n\n> 「親のブランチは、最初の子がコミットした時点でベースブランチから作られる」（#281 本文）\n\n---\n\n## 問2: 一度の実行が異常に長引いた事例では、反復は何回でどれくらいの時間がかかったのか\n\n**渡したクエリ:**\n> `実行時間が極端に長かったケースの計測結果。反復は何回、時間はどれくらい`\n\n**返ってきた Issue（順位順）:**\n1. #184 — 軽量化\n2. #215 — エージェントのプロンプトをワークフローに沿って作り直す\n3. #255 — 議論のテンポ改善: 実行後も runner を一定時間待機させ、追加コメントに即応する\n\n**答え:** **1位の #184** と **2位の #215** の両方に書かれている。\n\n> | 実行 | 反復 | 所要 | prompt |\n> | --- | --- | --- | --- |\n> | 通常のドキュメント編集 | 3 | 11〜22秒 | 22〜45k |\n> | PR #241（直せない PR に「直せ」と指示） | **134** | **26分20秒** | **9,193k** |\n\n---\n\n## 問3: 「結論はツール呼び出しで表明する」という原則を、3つのエージェントのうち元から持っていなかったのはどれか\n\n**渡したクエリ:**\n> `orchestrator, engineer, reviewerのうち、結論表明をツール呼び出しで行う原則を最初から持っていなかったのはどれ`\n\n**返ってきた Issue（順位順）:**\n1. #215 — エージェントのプロンプトをワークフローに沿って作り直す\n2. #196 — モデルの見直し\n3. #214 — レビュアーが LGTM だけ出力してツールを呼ばず、PR が放置される\n\n**答え:** **1位の #215** に明示的に書かれている。\n\n> 「その原則を持っていなかったのは **reviewer** だけで、実際に失敗したのも reviewer だけでした。」\n\n**3位の #214** が実際の失敗事例（`LGTM` の3トークンのみ出力、ツール呼び出しゼロ）。\n\n---\n\n## まとめ\n\n| 問 | 答えが入っていた Issue | 検索結果の順位 | 判定 |\n|----|----------------------|--------------|------|\n| 1 | #281 | 2位 | ✅ ヒット |\n| 2 | #184, #215 | 1位, 2位 | ✅ ヒット |\n| 3 | #215（+#214） | 1位, 3位 | ✅ ヒット |\n\n3問すべてに答えが到達。前回まで1位に出ていた #307（過去の検証コメント）が結果から消え、より純粋なヒットが出ている。",
+      "atoma_metadata": {
+        "github_comment_id": 5306602939,
         "agent": "orchestrator"
       }
     }
@@ -523,9 +587,9 @@
   "metadata": {
     "github_context": {
       "agent": "orchestrator",
-      "event_count": 5,
+      "event_count": 6,
       "resolved_number": "307",
-      "snapshot_hash": "e94e56a13fc1123a556f682eaf2e2fc64726d78493e00b8a85604b389e905c6b",
+      "snapshot_hash": "6a1ba99ecc5e4831620e31b3f3bb2b1757880de818eacfbe01579263a2ffd595",
       "type": "issue",
       "version": 1
     }
