@@ -43,6 +43,7 @@ import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domai
 import { getRerankerModel } from "../../../../lib/config.ts";
 import {
   INDEX_PATH,
+  INDEX_VERSION,
   fetchIssues,
   mergeIssues,
   newestTimestamp,
@@ -64,6 +65,15 @@ const CANDIDATES = 20;
 
 /** How much of an issue the cross encoder is shown. Beyond this its input truncates anyway. */
 const DOCUMENT_BUDGET = 1800;
+
+/**
+ * How much of the matched passage the caller is shown.
+ *
+ * Enough to tell whether it is worth opening, not enough to be a substitute for
+ * opening it. The excerpt's job is to carry the reader to
+ * `github__get_issue_comments`, not to replace it.
+ */
+const EXCERPT_BUDGET = 700;
 
 const SEARCH_SCHEMA = z.object({
   query: z
@@ -107,7 +117,9 @@ function loadIndex(): IssueIndex {
   let previous: IssueIndex | undefined;
   if (stored) {
     try {
-      previous = JSON.parse(stored) as IssueIndex;
+      const parsed = JSON.parse(stored) as IssueIndex;
+      if (parsed.version === INDEX_VERSION) previous = parsed;
+      else log(`index format ${parsed.version} is not ${INDEX_VERSION}; rebuilding it`);
     } catch {
       log("WARN the stored index was not valid JSON; rebuilding it");
     }
@@ -124,7 +136,7 @@ function loadIndex(): IssueIndex {
   log(`index: ${issues.length} issues (${fresh.length} fetched${since ? ` since ${since}` : " — full build"})`);
 
   const index = withDerived({
-    version: 1,
+    version: INDEX_VERSION,
     updatedThrough: newestTimestamp(fresh, since ?? "1970-01-01T00:00:00Z"),
     issues,
   });
@@ -167,9 +179,23 @@ async function loadReranker(): Promise<typeof reranker> {
   return reranker;
 }
 
-/** What the cross encoder reads: the issue as a person would see it. */
-function documentFor(issue: IndexedIssue): string {
-  return `${issue.title}\n${issue.body}\n${issue.comments.join("\n")}`.slice(0, DOCUMENT_BUDGET);
+/**
+ * What the cross encoder reads about a candidate.
+ *
+ * The passage that matched, under the issue's title, and then as much of the
+ * body as the budget still allows. The order is the point: the encoder truncates
+ * at its own token limit, so whatever is first is what it actually judges. Handing
+ * it the head of the issue instead — which is what this did — means a decision
+ * argued in the eighth comment is ranked on the strength of the opening
+ * paragraph, and a long issue is judged on words nobody matched.
+ *
+ * The title always survives, because a passage alone often does not say what it
+ * is about. The body tail is context, and is the first thing to go.
+ */
+function documentFor(issue: IndexedIssue, passage: string): string {
+  const head = `${issue.title}\n${passage}`.slice(0, DOCUMENT_BUDGET);
+  const remaining = DOCUMENT_BUDGET - head.length;
+  return remaining > 200 ? `${head}\n${issue.body.slice(0, remaining)}` : head;
 }
 
 async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
@@ -184,15 +210,15 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   if (candidates.length === 0) return `Nothing matched "${a.query}".`;
 
   const byNumber = new Map(index.issues.map((issue) => [issue.number, issue]));
-  const documents = candidates.map((number) => documentFor(byNumber.get(number)!));
+  const documents = candidates.map((match) => documentFor(byNumber.get(match.issue)!, chunks[match.chunk]?.text ?? ""));
 
   let ordered = candidates;
   try {
     const scores = await (await loadReranker())!.score(a.query, documents);
     ordered = candidates
-      .map((number, i) => [number, scores[i] ?? 0] as const)
+      .map((match, i) => [match, scores[i] ?? 0] as const)
       .sort((x, y) => y[1] - x[1])
-      .map(([number]) => number);
+      .map(([match]) => match);
   } catch (error) {
     // The first stage alone still put the answer in the top twenty every time;
     // it just orders them less well. Better a rougher answer than none.
@@ -200,19 +226,33 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   }
 
   const limit = a.limit ?? 3;
-  const results = ordered.slice(0, limit).map((number) => {
-    const issue = byNumber.get(number)!;
+  const results = ordered.slice(0, limit).map((match) => {
+    const issue = byNumber.get(match.issue)!;
+    const chunk = chunks[match.chunk];
     return {
-      number,
+      number: match.issue,
       title: issue.title,
       state: issue.state,
-      url: `https://github.com/${REPO}/issues/${number}`,
-      excerpt: `${issue.body}\n${issue.comments.join("\n")}`.slice(0, 600).trim(),
+      url: `https://github.com/${REPO}/issues/${match.issue}`,
+      // Where the match is, said in the terms the reader can act on: the number
+      // to hand to `github__get_issue_comments`, or the body to read with
+      // `github__get_issue`.
+      matched_in: locationOf(chunk?.source),
+      comment: typeof chunk?.source === "number" ? chunk.source : undefined,
+      excerpt: (chunk?.text ?? "").slice(0, EXCERPT_BUDGET).trim(),
     };
   });
 
-  log(`query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `#${r.number}`).join(", ")}`);
+  log(
+    `query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `#${r.number}(${r.matched_in})`).join(", ")}`,
+  );
   return JSON.stringify(results, null, 2);
+}
+
+/** How a match's origin is named to the caller. */
+function locationOf(source: Chunk["source"] | undefined): string {
+  if (typeof source === "number") return `comment ${source}`;
+  return source === "title" ? "title" : "body";
 }
 
 const { tools, dispatch } = buildMcpTools([

@@ -13,11 +13,31 @@
  * lives in `lib/issue-index.ts`.
  */
 
-/** One indexed passage, tagged with the issue it came from. */
+/**
+ * Where in an issue a passage came from.
+ *
+ * `"title"` and `"body"` are the issue itself; a number is the 1-based position
+ * of the comment in the issue's conversation, counted the way GitHub orders
+ * them and the way a person says "the third comment". Carrying this is what
+ * lets a search result name the passage it matched instead of handing back the
+ * issue and leaving the reader to find it.
+ */
+export type ChunkSource = "title" | "body" | number;
+
+/** One indexed passage, tagged with the issue and the place it came from. */
 export interface Chunk {
   /** Issue or pull request number this passage belongs to. */
   issue: number;
+  source: ChunkSource;
   text: string;
+}
+
+/** An issue that matched, and the passage of it that scored highest. */
+export interface IssueMatch {
+  issue: number;
+  /** Index into the `chunks` array that was ranked. */
+  chunk: number;
+  score: number;
 }
 
 /**
@@ -126,23 +146,28 @@ export function score(index: Bm25Index, query: string): Float64Array {
 }
 
 /**
- * The best-scoring issues, one entry each.
+ * The best-scoring issues, one entry each, each naming the passage that won it.
  *
  * A chunk ranking becomes an issue ranking by keeping each issue's best chunk
  * and dropping the rest. An issue discussed at length would otherwise fill the
  * candidate list with its own passages and crowd out everything else.
+ *
+ * The winning chunk is returned rather than discarded. It is the only thing
+ * that knows *why* the issue is here, and both stages downstream want it: the
+ * cross encoder should read the passage that matched instead of whatever
+ * happens to sit at the top of the issue, and the caller should be shown it.
+ * Throwing it away is how a search that found the right issue can still leave a
+ * reader concluding the answer is not there.
  */
-export function rankIssues(chunks: Chunk[], scores: Float64Array, limit: number): number[] {
-  const best = new Map<number, number>();
+export function rankIssues(chunks: Chunk[], scores: Float64Array, limit: number): IssueMatch[] {
+  const best = new Map<number, IssueMatch>();
   for (let i = 0; i < chunks.length; i++) {
     const issue = chunks[i]?.issue;
     if (issue === undefined) continue;
     const value = scores[i] ?? 0;
     if (value <= 0) continue;
-    if (!best.has(issue) || (best.get(issue) ?? 0) < value) best.set(issue, value);
+    const previous = best.get(issue);
+    if (!previous || previous.score < value) best.set(issue, { issue, chunk: i, score: value });
   }
-  return [...best.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([issue]) => issue);
+  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }

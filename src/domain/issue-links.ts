@@ -1,0 +1,71 @@
+/**
+ * issue-links.ts — what an issue is attached to, and which attachments count.
+ *
+ * The relationships an issue has are the difference between reading a comment
+ * correctly and reading it wrong. "Implemented it" on a sub-issue means a part
+ * was implemented, not the feature. "We decided X" reads as settled when the
+ * pull request carrying X is merged, and as a proposal when it is still open.
+ * Neither is recoverable from the comment text.
+ *
+ * These are read from GitHub's own relationships rather than from Atoma's
+ * markers, because an issue a person drove by hand has no Atoma markers on it
+ * and is exactly the case that must not silently come back empty.
+ *
+ * Pure. The GraphQL half lives in `lib/issue-links.ts`.
+ */
+
+export interface LinkedIssue {
+  number: number;
+  title: string;
+  /** GitHub's state, lowercased: "open" or "closed". */
+  state: string;
+}
+
+export interface LinkedPr extends LinkedIssue {
+  /**
+   * Whether it landed.
+   *
+   * Separate from `state` because GitHub says only `closed` for both a merged
+   * pull request and an abandoned one, and those mean opposite things to
+   * someone reading "we decided to do X" in the discussion above.
+   */
+  merged: boolean;
+}
+
+export interface IssueLinks {
+  parent?: LinkedIssue;
+  children: LinkedIssue[];
+  pullRequests: LinkedPr[];
+}
+
+/**
+ * GitHub's closing keywords, as GitHub documents them.
+ *
+ * Matching these ourselves is not a preference for reinventing the parser. It
+ * is the only way to see a sub-issue's pull request at all: GitHub forms its
+ * own closing link only for pull requests that target the default branch, and
+ * Atoma aims a sub-issue's pull request at its parent's branch. Measured on
+ * this repository, #281's `Closes #281` in PR #284 produced no native link
+ * because #284 targeted `atoma/issue-280`, while #280's did because its pull
+ * request targeted `main`.
+ */
+const CLOSING_KEYWORDS = "close[sd]?|fix(?:e[sd])?|resolve[sd]?";
+
+/**
+ * Whether a pull request body claims to close this issue.
+ *
+ * Used to tell the pull request doing the work from one that merely mentioned
+ * the issue in passing — a distinction the cross-reference timeline does not
+ * make, and `willCloseTarget` does not answer either: it reports `false` for
+ * #284 despite the `Closes #281` in its body.
+ */
+export function claimsToClose(body: string, issue: number): boolean {
+  return new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s*:?\\s+#${issue}\\b`, "i").test(body);
+}
+
+/** Combine link lists from several sources, first mention of a number winning. */
+export function dedupeByNumber<T extends { number: number }>(...lists: T[][]): T[] {
+  const seen = new Map<number, T>();
+  for (const list of lists) for (const item of list) if (!seen.has(item.number)) seen.set(item.number, item);
+  return [...seen.values()].sort((a, b) => a.number - b.number);
+}

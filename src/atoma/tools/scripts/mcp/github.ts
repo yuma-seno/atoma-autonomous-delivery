@@ -29,6 +29,7 @@ import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpTool
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
 import { nextBranchName } from "../../../../domain/issue-branch.ts";
 import { collectIssueBranches } from "../../../../lib/issue-branches.ts";
+import { issueLinks } from "../../../../lib/issue-links.ts";
 import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
 import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
 
@@ -107,6 +108,27 @@ const ISSUE_CONTEXT_NUMBER_ARG_SCHEMA = z.object({
     "Positive GitHub issue number, without a leading '#'. " +
       "Omit to use the issue this run is already operating on.",
   ).optional(),
+});
+
+/**
+ * How many comments come back when the caller did not ask for a range.
+ *
+ * Small on purpose. An unbounded read is how a single lookup buries a run's
+ * context under a conversation it did not need, and the whole reason
+ * `search__search_issues` reports which comment it matched is so that a caller
+ * with a specific question asks a specific range.
+ */
+const DEFAULT_COMMENT_WINDOW = 5;
+
+const ISSUE_COMMENTS_SCHEMA = z.object({
+  number: positiveInt(
+    "Positive GitHub issue number, without a leading '#'. Omit to use the issue this run is already operating on.",
+  ).optional(),
+  from: positiveInt(
+    "First comment to return, counting from 1 in the order they were posted. " +
+      "This is the number `search__search_issues` reports as `comment`, so a match can be read directly.",
+  ).optional(),
+  to: positiveInt("Last comment to return, inclusive. Defaults to `from`, so passing only `from` reads one comment.").optional(),
 });
 
 /**
@@ -238,8 +260,30 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   return JSON.stringify({ number: num, url: stdout.trim() });
 }
 
+/**
+ * The issue itself, and what it is attached to — without the conversation.
+ *
+ * The comments used to come back here too, which made every lookup of an
+ * issue's state or labels drag its whole discussion in with it. The runner
+ * already puts the current issue's comments in the prompt, so for the common
+ * case that payload was a second copy; for any other issue it was an unbounded
+ * read nobody asked for. `get_issue_comments` returns them, in a range.
+ */
 function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
-  return JSON.stringify(ghJsonOrThrow("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "number,title,body,state,labels,createdAt,closedAt,comments"));
+  const number = issueContextNumber(a);
+  const issue = ghJsonOrThrow<{ comments?: unknown[] }>(
+    "issue", "view", String(number), "--repo", REPO,
+    "--json", "number,title,body,state,labels,createdAt,closedAt,comments",
+  );
+  const { comments, ...rest } = issue ?? {};
+  const links = issueLinks(REPO, number);
+  return JSON.stringify({
+    ...rest,
+    total_comments: comments?.length ?? 0,
+    parent: links.parent,
+    children: links.children,
+    pull_requests: links.pullRequests,
+  });
 }
 
 function listIssues(a: z.infer<typeof LIST_ISSUES_SCHEMA>): string {
@@ -251,9 +295,57 @@ function listIssues(a: z.infer<typeof LIST_ISSUES_SCHEMA>): string {
   return JSON.stringify(ghJsonOrThrow(...cmd) ?? []);
 }
 
-function getIssueComments(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
-  const d = ghJsonOrThrow<{ comments?: unknown[] }>("issue", "view", String(issueContextNumber(a)), "--repo", REPO, "--json", "comments");
-  return JSON.stringify(d?.comments ?? []);
+/**
+ * A range of one issue's comments, carrying enough of the issue to be read
+ * alone.
+ *
+ * The header is not redundancy. This tool is reached from a search result that
+ * named a comment number, so it is entirely normal for it to be the only call
+ * made about that issue — and a comment read without knowing which issue it
+ * belongs to, whether that issue is still open, whether it is part of something
+ * larger, and whether the work has actually landed is a comment that can be
+ * read to mean the opposite of what it says. "Implemented it" on a sub-issue
+ * whose pull request is still open is a proposal, not a fact. Making the result
+ * carry that costs a few dozen tokens and removes a whole class of confident
+ * wrong answers; requiring a prior `get_issue` call instead would only work
+ * when the caller happens to make it.
+ *
+ * Labels are deliberately not here. What a repository's labels mean is up to
+ * whoever adopted this, so no claim can be made that knowing them changes how
+ * the words are read.
+ */
+function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
+  const number = issueContextNumber(a);
+  const issue = ghJsonOrThrow<{ title?: string; state?: string; comments?: unknown[] }>(
+    "issue", "view", String(number), "--repo", REPO, "--json", "title,state,comments",
+  );
+  const all = (issue?.comments ?? []).map((comment, i) => ({ index: i + 1, ...(comment as object) }));
+
+  // Without a range: the end of the conversation, because a caller who does not
+  // name a comment wants to know where things stand, and the beginning is what
+  // the body already covers.
+  const to = Math.min(a.to ?? a.from ?? all.length, all.length);
+  const from = Math.max(1, a.from ?? to - DEFAULT_COMMENT_WINDOW + 1);
+  const selected = from > to ? [] : all.slice(from - 1, to);
+
+  const links = issueLinks(REPO, number);
+  return JSON.stringify({
+    issue: {
+      number,
+      title: issue?.title,
+      state: issue?.state,
+      total_comments: all.length,
+      parent: links.parent,
+      pull_requests: links.pullRequests,
+    },
+    // Always stated, never implied. A truncated read that looks complete is how
+    // a caller concludes something is absent when it was merely not shown.
+    showing:
+      selected.length === all.length
+        ? `all ${all.length} comment(s)`
+        : `comment(s) ${from}-${to} of ${all.length}; pass from/to to read the rest`,
+    comments: selected,
+  });
 }
 
 function closeIssue(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
@@ -913,9 +1005,9 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
     schema: CREATE_ISSUE_SCHEMA,
     handler: createIssue,
   }),
-  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, and comments by issue number. Use this when full issue context is needed; for scanning multiple issues, use list_issues instead. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
+  defineMcpTool({ name: "get_issue", description: "Retrieve one issue's title, body, state, labels, timestamps, comment count, and what it is attached to: its parent issue, its sub-issues, and the pull requests that say they close it (each marked merged or not). It does NOT return the comments themselves — use get_issue_comments for those, which takes a range. Returns a JSON issue object and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssue }),
   defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
-  defineMcpTool({ name: "get_issue_comments", description: "Retrieve only the comments for one issue. Use this when conversation history is needed without the rest of the issue payload. Returns a JSON array in chronological GitHub order and does not mutate GitHub.", schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA, handler: getIssueComments }),
+  defineMcpTool({ name: "get_issue_comments", description: "Read a range of one issue's comments, numbered from 1 in the order they were posted. Pass `from` (and optionally `to`) to read exactly the comment a search result pointed at; with no range it returns the last few, and always states which of how many it showed. Each result also carries the issue's title, state, parent, and the pull requests that close it, so a comment read on its own is not mistaken for settled work when its pull request is still open. Returns JSON and does not mutate GitHub.", schema: ISSUE_COMMENTS_SCHEMA, handler: getIssueComments }),
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
   defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
