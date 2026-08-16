@@ -1,0 +1,14 @@
+name: Probe environment mapping
+on:
+  push:
+    branches: [probe/**]
+permissions:
+  contents: read
+jobs:
+  b:
+    runs-on: ubuntu-latest
+    # Mapping form rather than the string shorthand, which is what failed before.
+    environment:
+      name: ${{ vars.PROBE_ENV || 'atoma-ungated' }}
+    steps:
+      - run: echo "RESULT-B: the mapping form accepted an expression"

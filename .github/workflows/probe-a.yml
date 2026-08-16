@@ -1,0 +1,19 @@
+name: Probe secrets json
+on:
+  push:
+    branches: [probe/**]
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    env:
+      ATOMA_SECRETS: ${{ toJSON(secrets) }}
+    steps:
+      - shell: bash
+        run: |
+          set -uo pipefail
+          if [ -z "${ATOMA_SECRETS:-}" ]; then echo "RESULT-A: empty"; exit 0; fi
+          echo "RESULT-A: populated"
+          echo "keys: $(echo "$ATOMA_SECRETS" | jq -r 'keys | join(", ")')"
+          echo "count: $(echo "$ATOMA_SECRETS" | jq -r 'length')"
