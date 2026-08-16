@@ -3,10 +3,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Session } from "../../src/lib/session.ts";
 import {
-  TOOL_SECRET_NAMES_VAR,
-  TOOL_SECRET_SLOT_PREFIX,
-  TOOL_SECRET_SLOTS,
-} from "../../src/domain/tool-secrets.ts";
+  SECRET_NAMES_VAR,
+  SECRET_SLOT_PREFIX,
+  SECRET_SLOTS,
+} from "../../src/domain/declared-secrets.ts";
+import { CHECK_JOB_NAME } from "../../src/workflows/atoma-check.wac.ts";
 
 describe("generated workflows", () => {
   test("routes recover mode and reports invalid command syntax", () => {
@@ -97,7 +98,7 @@ describe("generated workflows", () => {
   // tool credential in config.json without editing generated YAML. If the slots
   // ever stopped being keyed off the resolve step, credentials would silently
   // stop arriving and only the tool needing one would fail.
-  test("reaches tool credentials by a computed key, never by dumping the secrets context", () => {
+  test("reaches declared credentials by a computed key, never by dumping the secrets context", () => {
     type WorkflowStep = { name?: string; env?: Record<string, string> };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
 
@@ -108,21 +109,61 @@ describe("generated workflows", () => {
       );
     }
 
-    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
-    const steps = workflow.jobs?.run?.steps ?? [];
+    // Every workflow that carries a credential, and the step whose `env:` gets
+    // the slots. Each pair is generated from the same helper, so the point of
+    // checking all three is that none of them quietly stops using it.
+    const carriers = [
+      { file: "atoma-runner.yml", job: "run", step: "Run agent" },
+      { file: "atoma-check.yml", job: CHECK_JOB_NAME, step: "Run the configured checks" },
+      { file: "atoma-deploy.yml", job: "deploy", step: "Deploy the targets this run is for" },
+    ];
 
-    const resolve = steps.findIndex((step) => step.name === "Resolve which repository secrets may reach the agent");
-    const agent = steps.findIndex((step) => step.name === "Run agent");
-    expect(resolve, "atoma-runner tool-secrets step").toBeGreaterThanOrEqual(0);
-    expect(resolve, "the names must be resolved before the step whose env they key").toBeLessThan(agent);
+    for (const carrier of carriers) {
+      const workflow = Bun.YAML.parse(readFileSync(join(directory, carrier.file), "utf8")) as WorkflowDocument;
+      const steps = workflow.jobs?.[carrier.job]?.steps ?? [];
 
-    const env = steps[agent]?.env ?? {};
-    for (let slot = 0; slot < TOOL_SECRET_SLOTS; slot++) {
-      expect(env[`${TOOL_SECRET_SLOT_PREFIX}${slot}`], `slot ${slot}`).toBe(
-        `\${{ secrets[fromJSON(steps.tool-secrets.outputs.names || '[]')[${slot}]] }}`,
-      );
+      const resolve = steps.findIndex((step) => step.name === "Resolve which repository secrets may reach this run");
+      const consumer = steps.findIndex((step) => step.name === carrier.step);
+      expect(resolve, `${carrier.file} secret-names step`).toBeGreaterThanOrEqual(0);
+      expect(consumer, `${carrier.file} ${carrier.step}`).toBeGreaterThanOrEqual(0);
+      expect(resolve, `${carrier.file}: names must resolve before the step whose env they key`).toBeLessThan(consumer);
+
+      const env = steps[consumer]?.env ?? {};
+      for (let slot = 0; slot < SECRET_SLOTS; slot++) {
+        expect(env[`${SECRET_SLOT_PREFIX}${slot}`], `${carrier.file} slot ${slot}`).toBe(
+          `\${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[${slot}]] }}`,
+        );
+      }
+      expect(env[SECRET_NAMES_VAR], carrier.file).toBe("${{ steps.secret-names.outputs.names }}");
     }
-    expect(env[TOOL_SECRET_NAMES_VAR]).toBe("${{ steps.tool-secrets.outputs.names }}");
+  });
+
+  // The two files are joined by a string and nothing else. A ruleset requires a
+  // status check by `context`, which for an Actions job is the job's name -- so
+  // renaming the job leaves the ruleset waiting for a check that will never
+  // report again, and every pull request sits at "expected" forever. It does not
+  // fail, it hangs, and an agent reads that as CI still running.
+  test("the shipped ruleset requires exactly the check the shipped workflow produces", () => {
+    type Ruleset = {
+      rules?: { type?: string; parameters?: { required_status_checks?: { context?: string }[] } }[];
+    };
+    type WorkflowDocument = { jobs?: Record<string, unknown> };
+
+    const ruleset = JSON.parse(readFileSync("dist/.github/atoma/rulesets/main.json", "utf8")) as Ruleset;
+    const contexts = (ruleset.rules ?? [])
+      .filter((rule) => rule.type === "required_status_checks")
+      .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
+      .map((entry) => entry.context)
+      .filter((context): context is string => typeof context === "string");
+    expect(contexts, "the shipped ruleset must require a check").not.toEqual([]);
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-check.yml", "utf8")) as WorkflowDocument;
+    const jobNames = Object.keys(workflow.jobs ?? {});
+
+    expect(jobNames).toContain(CHECK_JOB_NAME);
+    for (const context of contexts) {
+      expect(jobNames, `ruleset requires "${context}", which no job in atoma-check.yml produces`).toContain(context);
+    }
   });
 
   test("authenticate the result-comment GitHub CLI call", () => {

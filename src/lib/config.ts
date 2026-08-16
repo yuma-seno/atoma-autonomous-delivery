@@ -7,7 +7,13 @@
  */
 import { readFileSync } from "node:fs";
 import { DEFAULT_GOVERNED_PATHS } from "../domain/merge-readiness.ts";
-import { resolveToolSecrets, type ToolSecretsResolution } from "../domain/tool-secrets.ts";
+import {
+  resolveDeclaredSecrets,
+  SECRET_DESTINATIONS,
+  type SecretDestinationName,
+  type SecretsResolution,
+} from "../domain/declared-secrets.ts";
+import { resolveDeployTargets, type DeployTargetsResolution } from "../domain/deploy-targets.ts";
 import type { AtomaConfig } from "./types.ts";
 
 const CONFIG_PATH = ".github/atoma/config.json";
@@ -106,15 +112,42 @@ export function getTriggerAgent(event: string, fallback = ""): string {
 }
 
 /**
- * Repository secrets this project lets a run hand to the agent.
+ * Repository secrets this project lets one destination reach.
  *
  * Returns the validated names and every problem found with the declaration; the
- * caller decides what a problem means. `read_tool_secret_names.ts` fails the run
- * on one, because a credential that was asked for and silently not delivered
- * surfaces as an unrelated tool failure much later.
+ * caller decides what a problem means. `read_secret_names.ts` fails the run on
+ * one, because a credential that was asked for and silently not delivered
+ * surfaces as an unrelated failure much later, somewhere else.
  */
-export function getToolSecrets(): ToolSecretsResolution {
-  return resolveToolSecrets(loadConfig().tools?.secrets);
+export function getDeclaredSecrets(destination: SecretDestinationName): SecretsResolution {
+  const config = loadConfig();
+  const declared = {
+    tools: config.tools?.secrets,
+    checks: config.checks?.secrets,
+    deploy: config.deploy?.secrets,
+  }[destination];
+  return resolveDeclaredSecrets(declared, SECRET_DESTINATIONS[destination]);
+}
+
+/**
+ * Commands that verify a change, in order.
+ *
+ * Empty means this project runs nothing through `atoma-check.yml`, which is the
+ * normal state for a repository pointing `workflows.ci` at its own workflow.
+ */
+export function getCheckCommands(): readonly string[] {
+  return loadConfig().checks?.commands?.filter((command) => command.trim() !== "") ?? [];
+}
+
+/**
+ * This project's deployments, validated.
+ *
+ * Problems come back rather than throwing so the deploy workflow can report all
+ * of them at once and fail, instead of deploying the targets that happened to
+ * parse.
+ */
+export function getDeployTargets(): DeployTargetsResolution {
+  return resolveDeployTargets(loadConfig().deploy?.targets);
 }
 
 /**

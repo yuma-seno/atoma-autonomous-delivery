@@ -12,10 +12,22 @@
  * one that was never created is not.
  */
 import { dispatchWorkflow, gh } from "./gh.ts";
-import { getTriggerAgent, getWorkflowName } from "./config.ts";
+import { getDeployTargets, getTriggerAgent, getWorkflowName } from "./config.ts";
 import { dispatchRunner } from "./dispatch.ts";
 import { resolveNotify } from "./notify.ts";
 import { isIssueBranch } from "./branch-placement.ts";
+import { targetsForMerge } from "../domain/deploy-targets.ts";
+
+/**
+ * The workflows this template ships, used when a project names none of its own.
+ *
+ * `ci.yml` stays the CI default for the repositories that already relied on it.
+ * A project with no CI at all points `workflows.ci` at `atoma-check.yml` and
+ * fills in `checks.commands`; making that the default would silently retarget
+ * every existing adopter's verification at an empty command list.
+ */
+const DEFAULT_CI_WORKFLOW = "ci.yml";
+const DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
 
 function log(message: string): void {
   console.error(`[atoma-github] ${message}`);
@@ -77,7 +89,7 @@ export function dispatchPostMergeAgent(repo: string, subIssueNum: number, agent:
 
 /** Kick off the CI workflow against a branch, so a fresh agent pull request gets a check run. */
 export function dispatchCi(branch: string): boolean {
-  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", "ci.yml"), ["--ref", branch], log);
+  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", DEFAULT_CI_WORKFLOW), ["--ref", branch], log);
 }
 
 /**
@@ -85,12 +97,21 @@ export function dispatchCi(branch: string): boolean {
  *
  * Required, not a nicety: this merge is performed with GITHUB_TOKEN, so it fires
  * no `push` on the base branch and a deployment waiting on that chain never
- * runs. Set `workflows.cd` in config.json to the project's deployment workflow,
- * or leave it unset to skip this entirely.
+ * runs.
+ *
+ * A project either names its own workflow in `workflows.cd`, or declares
+ * `deploy.targets` and lets `atoma-deploy.yml` run them. In the second case the
+ * decision is made HERE rather than in the workflow: a dispatch that starts a
+ * runner only to discover that nothing deploys on merge is a wasted run on every
+ * single merge, and this is the one trigger where the question can be answered
+ * before starting anything. The tag trigger has no such luxury -- `on:` takes no
+ * expression -- so that one filters after the fact.
+ *
+ * A declaration that does not parse is not this function's to report. It fails
+ * loudly inside the deploy run, where the log belongs to the deployment; here it
+ * would fail a merge that is otherwise complete.
  */
 export function dispatchCd(baseRef: string): boolean {
-  const workflow = getWorkflowName("cd");
-  if (!workflow) return false;
   // Only a merge that actually lands work deploys. A sub-issue's pull request
   // merges into its parent's branch, which is still in progress — deploying
   // there would ship half a feature, once per child.
@@ -98,5 +119,20 @@ export function dispatchCd(baseRef: string): boolean {
     log(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
     return false;
   }
-  return dispatchWorkflow("dispatchCd", workflow, ["--ref", baseRef || "main"], log);
+
+  const configured = getWorkflowName("cd");
+  if (!configured) {
+    const { targets, problems } = getDeployTargets();
+    if (problems.length === 0 && targetsForMerge(targets).length === 0) {
+      log("dispatchCd: no deploy.targets deploy on merge, and workflows.cd is unset; nothing to dispatch");
+      return false;
+    }
+  }
+
+  const workflow = configured || DEFAULT_CD_WORKFLOW;
+  const args = ["--ref", baseRef || "main"];
+  // Only the shipped workflow understands why it was started. A project's own
+  // deployment workflow gets the bare dispatch it has always got.
+  if (!configured) args.push("-f", "trigger=merge");
+  return dispatchWorkflow("dispatchCd", workflow, args, log);
 }

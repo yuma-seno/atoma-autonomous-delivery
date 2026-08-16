@@ -1,0 +1,202 @@
+/**
+ * declared-secrets.ts — which repository secrets each workflow may reach, and
+ * why the list has to be declared rather than discovered.
+ *
+ * Something a project runs — a tool server, a check, a deployment — often needs a
+ * credential, and the credential belongs in repository secrets. Getting it from
+ * there into the process is the awkward part: a step's `env:` is a static YAML
+ * map, so every secret a workflow can reach is named at the moment that file is
+ * generated — which is upstream, and which no adopter should have to edit.
+ *
+ * The way out is to reach the secret through a COMPUTED key,
+ * `secrets[fromJSON(...)[i]]`, filling a fixed number of anonymous slots whose
+ * meaning is decided at run time by whatever this module returns. The workflow
+ * stops naming credentials; config.json names them instead.
+ *
+ * Two things were measured before building on this, because either would have
+ * sunk it. GitHub's malicious-workflow detector blocks `toJSON(secrets)` — a run
+ * containing it never starts, it only queues for approval — but it allows a
+ * computed key. And a computed key still gets the ordinary masking: the value
+ * comes out of the log as `***`, exactly as `${{ secrets.NAME }}` would, which is
+ * what makes this preferable to packing several credentials into one JSON secret
+ * (which would also mean keeping the whole set outside GitHub, since a secret
+ * cannot be read back to add one key to it).
+ *
+ * ## One mechanism, three destinations
+ *
+ * `tools.secrets`, `checks.secrets` and `deploy.secrets` are separate lists
+ * because they arrive in separate workflows, in separate jobs, in separate
+ * processes. The nesting is the boundary and not a filing convention: only
+ * `tools.secrets` enters the agent's own environment, so a prompt injection
+ * carried in an issue body reaches those and no deployment credential. It could
+ * still propose a command that reads one — but that is a change to config.json,
+ * which is governed, so a person sees it first.
+ *
+ * Collapsing these into one list would put every credential in every
+ * destination while still looking like a boundary, which is worse than having
+ * no boundary at all.
+ *
+ * The declaration lives in config.json rather than in a repository variable
+ * because it is the most security-relevant setting this project has. In
+ * config.json it is versioned, it shows up in a diff, and it passes the
+ * governance gate that already covers `.github/**`. In repository settings it
+ * would be invisible to everyone reviewing the repository — which is precisely
+ * the audience for "what credentials can this reach".
+ */
+
+/**
+ * How many credentials one workflow can carry.
+ *
+ * Fixed because each slot is a literal line of generated YAML; the cap can only
+ * move in a release. Ten is well past what any one destination plausibly needs,
+ * and an eleventh is a loud configuration error rather than a silently dropped
+ * secret — see `resolveDeclaredSecrets`.
+ */
+export const SECRET_SLOTS = 10;
+
+/** Environment variable each slot arrives under, before it is renamed. */
+export const SECRET_SLOT_PREFIX = "ATOMA_SECRET_";
+
+/** Carries the resolved names into the job so the slots can be renamed. */
+export const SECRET_NAMES_VAR = "ATOMA_SECRET_NAMES";
+
+/**
+ * Shape GitHub accepts for a secret name, minus lowercase.
+ *
+ * GitHub itself allows lowercase and normalises it, but a name that arrives as an
+ * environment variable should look like one, and accepting both spellings would
+ * mean `slack_token` and `SLACK_TOKEN` are the same secret and two different
+ * declarations.
+ */
+const NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/** A place credentials can be sent, and what it already calls its own variables. */
+export interface SecretDestination {
+  /** Dotted path in config.json, used in every message this produces. */
+  readonly field: string;
+  /**
+   * Names the destination's own environment already uses.
+   *
+   * Declaring one of these would not add a credential, it would replace one the
+   * job depends on — a `GH_TOKEN` from configuration silently standing in for the
+   * workflow's own token is the kind of thing that works in testing and is a
+   * security incident in production. Rejected at configuration time, where the
+   * message can say so, rather than at run time where the symptom is a confusing
+   * failure.
+   */
+  readonly reserved: ReadonlySet<string>;
+}
+
+/** Mirrors the `env:` of the "Run agent" step in `atoma-runner.wac.ts`. */
+export const TOOL_SECRETS: SecretDestination = {
+  field: "tools.secrets",
+  reserved: new Set([
+    "AGENT",
+    "ANTHROPIC_API_KEY",
+    "ATOMA_OPS_LOG",
+    "ATOMA_PROVIDER",
+    "ATOMA_RUN_TYPE",
+    "GH_TOKEN",
+    "GITHUB_PERSONAL_ACCESS_TOKEN",
+    "GITHUB_RUN_ID",
+    "ISSUE_NOTIFY",
+    "ISSUE_NUMBER",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+  ]),
+};
+
+/** Mirrors the `env:` of the command step in `atoma-check.wac.ts`. */
+export const CHECK_SECRETS: SecretDestination = {
+  field: "checks.secrets",
+  reserved: new Set(["GH_TOKEN"]),
+};
+
+/** Mirrors the `env:` of the command step in `atoma-deploy.wac.ts`. */
+export const DEPLOY_SECRETS: SecretDestination = {
+  field: "deploy.secrets",
+  reserved: new Set(["ATOMA_DEPLOY_TARGET", "GH_TOKEN"]),
+};
+
+/** Every destination, for the callers that need to name one from a string. */
+export const SECRET_DESTINATIONS = {
+  tools: TOOL_SECRETS,
+  checks: CHECK_SECRETS,
+  deploy: DEPLOY_SECRETS,
+} as const;
+
+export type SecretDestinationName = keyof typeof SECRET_DESTINATIONS;
+
+/** True when `value` names one of the destinations above. */
+export function isSecretDestinationName(value: string): value is SecretDestinationName {
+  return Object.hasOwn(SECRET_DESTINATIONS, value);
+}
+
+export interface SecretsResolution {
+  /** Declared names, in slot order. Empty when nothing is configured. */
+  readonly names: readonly string[];
+  /** Every problem found, so one run reports all of them instead of the first. */
+  readonly problems: readonly string[];
+}
+
+/**
+ * Validate one destination's declaration and put it in slot order.
+ *
+ * Absent and `[]` both mean "no credentials here", which is the normal case and
+ * not a problem. Anything else that cannot be honoured exactly is a problem:
+ * this returns names only when every one of them is usable, because a partially
+ * applied credential list gives the process a confusing runtime failure instead
+ * of a configuration error anyone can act on.
+ */
+export function resolveDeclaredSecrets(raw: unknown, destination: SecretDestination): SecretsResolution {
+  const { field, reserved } = destination;
+  if (raw === undefined || raw === null) return { names: [], problems: [] };
+
+  if (!Array.isArray(raw)) {
+    return { names: [], problems: [`\`${field}\` must be an array of secret names.`] };
+  }
+
+  const problems: string[] = [];
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of raw) {
+    if (typeof entry !== "string") {
+      problems.push(`\`${field}\` entries must be strings; found ${JSON.stringify(entry)}.`);
+      continue;
+    }
+    const name = entry.trim();
+    if (!NAME_PATTERN.test(name)) {
+      problems.push(
+        `\`${field}\`: '${name}' is not a usable secret name. Expected uppercase letters, digits and underscores, starting with a letter — e.g. 'SLACK_TOKEN'.`,
+      );
+      continue;
+    }
+    if (reserved.has(name)) {
+      problems.push(
+        `\`${field}\`: '${name}' is already part of the environment this workflow provides, so declaring it would replace that value rather than add a credential. Give the secret another name.`,
+      );
+      continue;
+    }
+    if (name.startsWith(SECRET_SLOT_PREFIX)) {
+      problems.push(
+        `\`${field}\`: '${name}' collides with the slots this mechanism uses internally. Give the secret another name.`,
+      );
+      continue;
+    }
+    if (seen.has(name)) {
+      problems.push(`\`${field}\`: '${name}' is declared more than once.`);
+      continue;
+    }
+    seen.add(name);
+    names.push(name);
+  }
+
+  if (names.length > SECRET_SLOTS) {
+    problems.push(
+      `\`${field}\` declares ${names.length} secrets but a run carries at most ${SECRET_SLOTS}. Raising the cap needs a new release, since each slot is a line of generated workflow YAML.`,
+    );
+  }
+
+  return problems.length > 0 ? { names: [], problems } : { names, problems };
+}

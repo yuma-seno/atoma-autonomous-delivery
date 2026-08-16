@@ -39,6 +39,35 @@ export interface AtomaConfig {
    * A pattern is a literal path or a directory followed by `/**`.
    */
   governed_paths?: string[];
+  /**
+   * What this project runs to verify a change, as commands.
+   *
+   * Commands and not a workflow file because an agent can write one and not the
+   * other: GITHUB_TOKEN is refused on `.github/workflows/**` by identity, on
+   * every path and branch. `atoma-check.yml` runs whatever is named here, so a
+   * project's verification can be authored by an agent and reviewed as an
+   * ordinary diff.
+   *
+   * Unset means this project verifies nothing through Atoma; point
+   * `workflows.ci` at a workflow of your own instead.
+   */
+  checks?: {
+    /** Run in order, stopping at the first failure. */
+    commands?: string[];
+    /** Repository secrets `atoma-check.yml` may reach. See `tools.secrets`. */
+    secrets?: string[];
+  };
+  /**
+   * What this project deploys, and which event deploys it.
+   *
+   * Validated by `resolveDeployTargets`. See `domain/deploy-targets.ts` for why
+   * the trigger is configuration rather than the workflow's own `on:`.
+   */
+  deploy?: {
+    targets?: unknown;
+    /** Repository secrets `atoma-deploy.yml` may reach. See `tools.secrets`. */
+    secrets?: string[];
+  };
   /** Settings for the tool servers an agent calls. */
   tools?: {
     /**
