@@ -1,37 +1,23 @@
 ---
 name: research/web-search
-description: How to search the web when the answer is not in this repository — what to reach for first, and how to run a general search when nothing else fits.
+description: How to find something that is not in this repository — fetching a page you can name, and running a general search when you cannot.
 ---
 
-# Searching outside this repository
+# Looking outside this repository
 
-Reach for these in order. The first two answer most questions and are exact;
-the last is a general search and is the least reliable of the three.
+## A page whose address you already have
 
-## 1. Another repository's code, or a known problem
+`web__fetch` retrieves it. HTML comes back as Markdown, so the result is prose
+rather than markup; pass `raw: true` when the markup itself is what you need. A
+URL that resolves to an image comes back as an image, so a screenshot or a
+diagram can be looked at rather than described.
 
-`github__search_code` and `github__search_issues` reach all of GitHub, not just
-this repository. This is the right tool for:
+Documentation, changelogs, release notes and RFCs are one fetch away once you
+know the address. Reach for this first — it is exact, and it costs one call.
 
-- how a library is actually used, in real code
-- whether a bug you are hitting is already reported
-- what a maintainer said about an API you are unsure of
+## A general search
 
-These are exact, fast, and cost nothing.
-
-## 2. A page whose address you already have
-
-`web__fetch` retrieves it. HTML comes back as Markdown; pass `raw: true` when
-you need the markup itself. A URL that resolves to an image comes back as an
-image, so a screenshot or diagram can be looked at rather than described.
-
-Documentation, changelogs, RFCs and blog posts are all one fetch away once you
-know the address — and you often do, because a GitHub search gave it to you.
-
-## 3. A general web search
-
-When neither of the above will do — you need to know what a service is, or how
-people solve something in general — fetch a search engine's results page:
+When you cannot name the page, fetch a search engine's results:
 
 ```
 web__fetch(
@@ -41,29 +27,28 @@ web__fetch(
 )
 ```
 
-The result is a Markdown list of titles and links. Read it to decide what to
-fetch, then fetch that page for the actual content. The results page is an
-index, not an answer — quoting a search result's one-line summary as fact is
-how wrong answers get written.
+The result is a list of titles and links in Markdown. **It is an index, not an
+answer.** Read it to decide which page to fetch, then fetch that page for the
+content. Quoting a search result's one-line summary as fact is how wrong answers
+get written — the summary is written to attract a click, not to be correct.
 
-Keep the query short and specific. Two or three terms beat a sentence.
-
-### Replacing this
-
-The endpoint above is in this file rather than in the tool on purpose. To use a
-different search service — one with an API key, or your organisation's own —
-edit this skill. Nothing else needs to change: the tool fetches whatever URL it
-is given.
-
-If your organisation would rather agents did not query a public search engine at
-all, delete this section. The two options above keep working.
+Keep the query short. Two or three specific terms beat a sentence.
 
 ## Judgement
 
-Prefer the repository's own history first — `github__search_issues` scoped here
-often answers "why is it like this" better than any external page, because the
-reasons were written down at the time.
+Search the repository's own history before searching the web. `github__get_issue`
+and the issue tools answer "why is it like this" better than any external page,
+because the reason was written down here at the time it was decided.
 
-Say where something came from. A claim from a search result is worth less than a
-claim from the code, and a reader deciding whether to trust it needs to know
+Say where a claim came from. Something read off a web page is worth less than
+something read out of the code, and whoever reads your report needs to know
 which one they are looking at.
+
+## Replacing this
+
+The search endpoint above is in this skill rather than inside the tool, on
+purpose. To use a different service — one with an API key, or your own — edit
+this file; the tool fetches whatever URL it is handed, so nothing else changes.
+
+If you would rather agents did not query a public search engine at all, delete
+that section. Fetching a named page keeps working.
