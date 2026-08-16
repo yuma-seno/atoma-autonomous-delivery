@@ -105,6 +105,23 @@ function log(message: string): void {
 }
 
 /**
+ * The issue this run is working on, which is never a useful search result.
+ *
+ * Its whole text is already in the prompt, so returning it spends a slot on
+ * something the reader has in front of them. That would be a small waste if it
+ * were occasional; measured, it took first place on all six searches of a run,
+ * because the issue holding the question is by construction the best match for
+ * that question. This is not something ranking can fix — the passage genuinely
+ * is the most relevant one, and the cross encoder agreed with BM25 about it
+ * every time. What disqualifies it is identity, not relevance, so it is removed
+ * by identity.
+ */
+function currentIssue(): number | undefined {
+  const parsed = Number((process.env.ISSUE_NUMBER ?? "").trim());
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
  * The index, brought up to date.
  *
  * A stored index is refreshed with `?since=`, so an index that is already
@@ -206,7 +223,7 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   const bm25 = index.bm25 as Bm25Index | undefined;
   if (!chunks?.length || !bm25) return "The issue index is empty; there is nothing to search yet.";
 
-  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES);
+  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES).filter((match) => match.issue !== currentIssue());
   if (candidates.length === 0) return `Nothing matched "${a.query}".`;
 
   const byNumber = new Map(index.issues.map((issue) => [issue.number, issue]));
