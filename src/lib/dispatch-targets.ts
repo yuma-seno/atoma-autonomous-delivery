@@ -21,12 +21,17 @@ import { targetsForMerge } from "../domain/deploy-targets.ts";
 /**
  * The workflows this template ships, used when a project names none of its own.
  *
- * `ci.yml` stays the CI default for the repositories that already relied on it.
- * A project with no CI at all points `workflows.ci` at `atoma-check.yml` and
- * fills in `checks.commands`; making that the default would silently retarget
- * every existing adopter's verification at an empty command list.
+ * The shipped ones are the default because they are the arrangement this
+ * template is for: a pipeline expressed as commands in config.json, which an
+ * agent can write and a workflow file is not. A project that has its own
+ * workflows says so in `workflows.ci` / `workflows.cd` and neither of these is
+ * consulted.
+ *
+ * Guessing `ci.yml` instead — a name a repository may or may not use — would
+ * dispatch a workflow that does not exist and leave every pull request waiting
+ * for a check that never reports.
  */
-const DEFAULT_CI_WORKFLOW = "ci.yml";
+const DEFAULT_CI_WORKFLOW = "atoma-check.yml";
 const DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
 
 function log(message: string): void {

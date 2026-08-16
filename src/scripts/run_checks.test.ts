@@ -27,18 +27,19 @@ describe("run_checks.ts", () => {
     expect(r.stderr).toContain("::error::");
   });
 
-  // A repository pointing workflows.ci at its own workflow has no reason to fill
-  // this in, and failing its runs over an empty list would make adopting Atoma
-  // harder than not adopting it.
-  test("declaring nothing is not a failure", () => {
+  // This workflow is the default `workflows.ci`, so an empty list means a pull
+  // request satisfied a required check that tested nothing. Failing instead
+  // would block every pull request from the moment a repository adopts Atoma
+  // until someone configures it, which is a worse first hour.
+  test("declaring nothing passes, but says so as a warning", () => {
     const r = run({});
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("nothing to verify");
+    expect(r.stdout).toContain("verified nothing");
   });
 
   test("an all-whitespace command is not treated as a command", () => {
     const r = run({ checks: { commands: ["  ", ""] } });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("nothing to verify");
+    expect(r.stdout).toContain("verified nothing");
   });
 });

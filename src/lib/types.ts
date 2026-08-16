@@ -106,16 +106,19 @@ export interface AtomaConfig {
   };
   agents?: Record<string, { max_iterations?: number }>;
   /**
-   * Names of this project's own workflows, which Atoma dispatches by name.
+   * Workflows of this project's own that Atoma should dispatch instead of the
+   * shipped ones.
    *
-   * Both are project-specific, so the template ships neither: an adopter's CI is
-   * not necessarily `ci.yml`, and most projects have no deployment workflow that
-   * needs dispatching at all.
+   * Set these only when a pipeline cannot be expressed as `checks.commands` or
+   * `deploy.targets` — a deployment approval gate, an unusual trigger, a job
+   * needing permissions the shipped workflows do not declare. Otherwise leave
+   * both unset: the default is `atoma-check.yml` / `atoma-deploy.yml`, which run
+   * this project's configured commands and need no workflow authoring.
    */
   workflows?: {
-    /** Put a required check on a pull request's head commit before merging. Defaults to `ci.yml`. */
+    /** Put a required check on a pull request's head commit before merging. Defaults to `atoma-check.yml`. */
     ci?: string;
-    /** Dispatched after a successful merge. Unset means no post-merge dispatch. */
+    /** Dispatched after a successful merge. Defaults to `atoma-deploy.yml`, which no-ops with no merge targets. */
     cd?: string;
   };
   labels?: {
