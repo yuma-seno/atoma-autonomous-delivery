@@ -23,7 +23,7 @@ function run(config: Record<string, unknown>) {
 
 describe("read_tool_secret_names.ts", () => {
   test("publishes the declared names as a JSON array", () => {
-    const r = run({ tool_secrets: ["SLACK_TOKEN", "JIRA_API_TOKEN"] });
+    const r = run({ tools: { secrets: ["SLACK_TOKEN", "JIRA_API_TOKEN"] } });
     expect(r.status).toBe(0);
     expect(JSON.parse(r.outputs.names!)).toEqual(["SLACK_TOKEN", "JIRA_API_TOKEN"]);
   });
@@ -37,12 +37,12 @@ describe("read_tool_secret_names.ts", () => {
   });
 
   test("names the declared secrets in the log so a missing one is diagnosable", () => {
-    const r = run({ tool_secrets: ["SLACK_TOKEN"] });
+    const r = run({ tools: { secrets: ["SLACK_TOKEN"] } });
     expect(r.stderr).toContain("SLACK_TOKEN");
   });
 
   test("fails the run on an unusable declaration, as a workflow error", () => {
-    const r = run({ tool_secrets: ["GH_TOKEN"] });
+    const r = run({ tools: { secrets: ["GH_TOKEN"] } });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("::error::");
     expect(r.stderr).toContain("GH_TOKEN");
@@ -50,7 +50,7 @@ describe("read_tool_secret_names.ts", () => {
   });
 
   test("reports every problem rather than only the first", () => {
-    const r = run({ tool_secrets: ["bad name", "GH_TOKEN"] });
+    const r = run({ tools: { secrets: ["bad name", "GH_TOKEN"] } });
     expect(r.status).toBe(1);
     expect(r.stderr.match(/::error::/g)).toHaveLength(2);
   });

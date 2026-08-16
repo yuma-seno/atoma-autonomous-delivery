@@ -336,7 +336,7 @@ const runAgentStep = new TypedOutputsStep(
       OPENAI_BASE_URL_IN: "${{ vars.OPENAI_BASE_URL }}",
       ANTHROPIC_API_KEY_IN: "${{ secrets.ANTHROPIC_API_KEY }}",
       ATOMA_PROVIDER_IN: "${{ vars.ATOMA_PROVIDER }}",
-      // Credentials this project declared in config.json's `tool_secrets`, and
+      // Credentials this project declared in config.json's `tools.secrets`, and
       // the names to put back on them. See `toolSecretSlots` above.
       ...toolSecretSlots,
       [TOOL_SECRET_NAMES_VAR]: toolSecretsStep.outputs.names,

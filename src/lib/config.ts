@@ -114,7 +114,7 @@ export function getTriggerAgent(event: string, fallback = ""): string {
  * surfaces as an unrelated tool failure much later.
  */
 export function getToolSecrets(): ToolSecretsResolution {
-  return resolveToolSecrets(loadConfig().tool_secrets);
+  return resolveToolSecrets(loadConfig().tools?.secrets);
 }
 
 /**

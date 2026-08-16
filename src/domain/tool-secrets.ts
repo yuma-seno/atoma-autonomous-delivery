@@ -88,7 +88,7 @@ export interface ToolSecretsResolution {
 }
 
 /**
- * Validate the `tool_secrets` declaration and put it in slot order.
+ * Validate the `tools.secrets` declaration and put it in slot order.
  *
  * Absent and `[]` both mean "no tool credentials", which is the normal case and
  * not a problem. Anything else that cannot be honoured exactly is a problem:
@@ -100,7 +100,7 @@ export function resolveToolSecrets(raw: unknown): ToolSecretsResolution {
   if (raw === undefined || raw === null) return { names: [], problems: [] };
 
   if (!Array.isArray(raw)) {
-    return { names: [], problems: ["`tool_secrets` must be an array of secret names."] };
+    return { names: [], problems: ["`tools.secrets` must be an array of secret names."] };
   }
 
   const problems: string[] = [];
@@ -109,7 +109,7 @@ export function resolveToolSecrets(raw: unknown): ToolSecretsResolution {
 
   for (const entry of raw) {
     if (typeof entry !== "string") {
-      problems.push(`\`tool_secrets\` entries must be strings; found ${JSON.stringify(entry)}.`);
+      problems.push(`\`tools.secrets\` entries must be strings; found ${JSON.stringify(entry)}.`);
       continue;
     }
     const name = entry.trim();
@@ -139,7 +139,7 @@ export function resolveToolSecrets(raw: unknown): ToolSecretsResolution {
 
   if (names.length > TOOL_SECRET_SLOTS) {
     problems.push(
-      `\`tool_secrets\` declares ${names.length} secrets but a run carries at most ${TOOL_SECRET_SLOTS}. Raising the cap needs a new release, since each slot is a line of generated workflow YAML.`,
+      `\`tools.secrets\` declares ${names.length} secrets but a run carries at most ${TOOL_SECRET_SLOTS}. Raising the cap needs a new release, since each slot is a line of generated workflow YAML.`,
     );
   }
 

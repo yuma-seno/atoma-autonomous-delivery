@@ -65,7 +65,14 @@ Supported top-level fields used by scripts/workflows:
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
 - `workflows.ci`, `workflows.cd`
 - `search.reranker_model`
+- `tools.secrets`
 - `auto_triggers[]` with `event`, `agent`, optional `condition`
+
+Credentials are declared under the feature that consumes them, not in one list
+for the repository. `tools.secrets` reaches the agent's own process and nothing
+else does; a credential for somewhere else belongs beside whatever runs there.
+The nesting is the boundary, so keep it — collapsing these into a single list
+would put every credential in every destination.
 
 `config.json` is **yours**. Everything else under `.github/atoma/` is generated and
 is replaced when you upgrade the template; this file is not, so edits to it
@@ -458,7 +465,7 @@ way, then name it in `config.json`:
 
 ```json
 {
-  "tool_secrets": ["SLACK_TOKEN"]
+  "tools": { "secrets": ["SLACK_TOKEN"] }
 }
 ```
 
