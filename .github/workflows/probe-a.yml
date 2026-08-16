@@ -1,19 +1,24 @@
-name: Probe secrets json
+name: Probe secrets access
 on:
   push:
     branches: [probe/**]
 permissions:
   contents: read
 jobs:
-  a:
+  named:
+    # References ONE named secret. If this also stalls, the trigger is
+    # "touches the secrets context at all" -- a repository policy. If it runs,
+    # toJSON(secrets) specifically is the problem.
     runs-on: ubuntu-latest
     env:
-      ATOMA_SECRETS: ${{ toJSON(secrets) }}
+      ONE: ${{ secrets.OPENAI_API_KEY }}
     steps:
-      - shell: bash
-        run: |
-          set -uo pipefail
-          if [ -z "${ATOMA_SECRETS:-}" ]; then echo "RESULT-A: empty"; exit 0; fi
-          echo "RESULT-A: populated"
-          echo "keys: $(echo "$ATOMA_SECRETS" | jq -r 'keys | join(", ")')"
-          echo "count: $(echo "$ATOMA_SECRETS" | jq -r 'length')"
+      - run: |
+          if [ -n "${ONE:-}" ]; then echo "RESULT-NAMED: a named secret reached the step"; else echo "RESULT-NAMED: empty"; fi
+  no_secrets:
+    # Control: identical shape, no secrets context at all.
+    runs-on: ubuntu-latest
+    env:
+      ONE: plain
+    steps:
+      - run: echo "RESULT-CONTROL: a job with no secrets reference runs"
