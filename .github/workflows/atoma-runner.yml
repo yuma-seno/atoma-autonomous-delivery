@@ -307,8 +307,25 @@ jobs:
       - name: Resolve which repository secrets may reach this run
         id: secret-names
         shell: bash
+        env:
+          ATOMA_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          bun run .github/scripts/read_secret_names.ts --destination "tools"
+          DEFAULT_BRANCH="${ATOMA_DEFAULT_BRANCH:-main}"
+          TRUSTED_CONFIG="$RUNNER_TEMP/atoma-declared-secrets.json"
+
+          # Shallow: one commit of one branch is all this needs, and the checkout that
+          # preceded it is shallow too.
+          git fetch --quiet --depth=1 origin "$DEFAULT_BRANCH" 2>/dev/null || true
+          if git show "FETCH_HEAD:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
+            echo "Read the credential declaration from ${DEFAULT_BRANCH}."
+          else
+            # A repository with no config.json on its default branch declares nothing,
+            # which is the safe answer as well as the accurate one.
+            echo '{}' > "$TRUSTED_CONFIG"
+            echo "::warning::No .github/atoma/config.json on ${DEFAULT_BRANCH}; this run reaches no declared credentials."
+          fi
+
+          bun run .github/scripts/read_secret_names.ts --destination "tools" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
       - name: Run agent
         id: atoma
         if: steps.context.outputs.new_event_count != '0'

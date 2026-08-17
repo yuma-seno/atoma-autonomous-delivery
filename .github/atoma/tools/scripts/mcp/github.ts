@@ -18016,33 +18016,6 @@ function formatBlockers(blockers) {
 `);
 }
 
-// src/domain/declared-secrets.ts
-var TOOL_SECRETS = {
-  field: "tools.secrets",
-  reserved: new Set([
-    "AGENT",
-    "ANTHROPIC_API_KEY",
-    "ATOMA_OPS_LOG",
-    "ATOMA_PROVIDER",
-    "ATOMA_RUN_TYPE",
-    "GH_TOKEN",
-    "GITHUB_PERSONAL_ACCESS_TOKEN",
-    "GITHUB_RUN_ID",
-    "ISSUE_NOTIFY",
-    "ISSUE_NUMBER",
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL"
-  ])
-};
-var CHECK_SECRETS = {
-  field: "checks.secrets",
-  reserved: new Set(["GH_TOKEN"])
-};
-var DEPLOY_SECRETS = {
-  field: "deploy.secrets",
-  reserved: new Set(["ATOMA_DEPLOY_TARGET", "GH_TOKEN"])
-};
-
 // src/domain/deploy-targets.ts
 var TRIGGERS = ["merge", "tag", "manual"];
 var NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
