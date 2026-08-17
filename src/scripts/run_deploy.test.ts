@@ -48,8 +48,20 @@ describe("selectTargets", () => {
     ]);
   });
 
-  test("a branch push with no trigger selects nothing", () => {
-    expect(selectTargets(targets, { ref: "refs/heads/main", trigger: "", target: "" })).toEqual([]);
+  // A person's merge fires `push`, and the workflow admits a branch push only on
+  // the default branch -- so a branch ref with no trigger means a change landed
+  // there. Before this, `on: merge` fired for an agent's merge and silently not
+  // for a person's.
+  test("a push to the default branch selects the merge targets", () => {
+    expect(selectTargets(targets, { ref: "refs/heads/main", trigger: "", target: "" })?.map((t) => t.name)).toEqual([
+      "staging",
+    ]);
+  });
+
+  // Someone dispatched by hand and named nothing. Guessing which target they
+  // meant is worse than telling them nothing happened.
+  test("an explicit manual dispatch with no target selects nothing", () => {
+    expect(selectTargets(targets, { ref: "refs/heads/main", trigger: "manual", target: "" })).toEqual([]);
   });
 });
 

@@ -159,7 +159,7 @@ export function tagMatches(pattern: string, tag: string): boolean {
   return pattern.endsWith("*") ? tag.startsWith(pattern.slice(0, -1)) : tag === pattern;
 }
 
-/** Targets that deploy when a pull request lands on the base branch. */
+/** Targets that deploy when a change lands on the default branch. */
 export function targetsForMerge(targets: readonly DeployTarget[]): readonly DeployTarget[] {
   return targets.filter((target) => target.on === "merge");
 }
