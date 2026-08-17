@@ -104,6 +104,49 @@ function repoParts(): [string, string] {
   return [owner, name];
 }
 
+/**
+ * Fetch a list that adds context, tolerating a GitHub that cannot supply it.
+ *
+ * On 2026-08-17 `pulls/{n}/reviews` returned 404 for every pull request in this
+ * repository while every other endpoint answered normally — a GitHub-side
+ * failure, not ours. `ghPaginated` throws on any non-zero exit, so one degraded
+ * endpoint took down every agent run at this step, and the surfaced error
+ * ("Fetch GitHub events" failed) gave nobody a reason to suspect GitHub.
+ *
+ * A missing review list is not a reason to abandon a run. The engineer can still
+ * implement, the reviewer can still read the diff and the comments. So the ones
+ * that only enrich degrade to empty and say so, and only what the run cannot
+ * have a subject without — the issue or the pull request itself — still fails.
+ *
+ * The diff already worked this way (`diffResult.code === 0 ? ... : ""`); this
+ * applies the same judgement to the rest.
+ */
+function contextList<T>(what: string, ...args: string[]): T[] {
+  try {
+    return ghPaginated<T>(...args);
+  } catch (error) {
+    console.error(
+      `::warning::Could not fetch ${what}: ${(error as Error).message}. Continuing without it — the run has less context than usual.`,
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch something the run cannot proceed without.
+ *
+ * Fails, but says why. `JSON.parse` on the empty stdout of a failed call throws
+ * about unexpected input, which reads as a bug here rather than as the API call
+ * that actually failed.
+ */
+function requiredJson<T>(what: string, ...args: string[]): T {
+  const { code, stdout, stderr } = gh(...args);
+  if (code !== 0) {
+    throw new Error(`Could not fetch ${what}, which a run cannot proceed without: ${stderr || stdout}`);
+  }
+  return JSON.parse(stdout) as T;
+}
+
 function fetchIssueEvents(
   owner: string,
   repo: string,
@@ -112,7 +155,7 @@ function fetchIssueEvents(
   commentType: string,
   idPrefix: string,
 ): GithubEvent[] {
-  const issue = JSON.parse(gh("api", `repos/${owner}/${repo}/issues/${issueNum}`).stdout) as GhIssueApi;
+  const issue = requiredJson<GhIssueApi>(`issue #${issueNum}`, "api", `repos/${owner}/${repo}/issues/${issueNum}`);
 
   const labelsLine = issue.labels.length > 0 ? `**Labels:** ${issue.labels.map((l) => l.name).join(", ")}\n` : "";
   const openedEvent: GithubEvent = {
@@ -123,7 +166,11 @@ function fetchIssueEvents(
     created_at: issue.created_at,
   };
 
-  const comments = ghPaginated<GhCommentApi>("api", `repos/${owner}/${repo}/issues/${issueNum}/comments`);
+  const comments = contextList<GhCommentApi>(
+    `comments on #${issueNum}`,
+    "api",
+    `repos/${owner}/${repo}/issues/${issueNum}/comments`,
+  );
   const commentEvents: GithubEvent[] = comments.map((c) => ({
     id: c.id,
     event_type: commentType,
@@ -136,7 +183,7 @@ function fetchIssueEvents(
 }
 
 function fetchPrEvents(owner: string, repo: string, number: number, maxDiffChars: number): { events: GithubEvent[]; parentIssue?: number } {
-  const pr = JSON.parse(gh("api", `repos/${owner}/${repo}/pulls/${number}`).stdout) as GhPrApi;
+  const pr = requiredJson<GhPrApi>(`pull request #${number}`, "api", `repos/${owner}/${repo}/pulls/${number}`);
   const prBody = pr.body ?? "";
   const parentIssue = PARENT_ISSUE_TAG.read(prBody);
   const headSha = pr.head.sha.slice(0, 8);
@@ -170,7 +217,11 @@ function fetchPrEvents(owner: string, repo: string, number: number, maxDiffChars
     });
   }
 
-  const prComments = ghPaginated<GhCommentApi>("api", `repos/${owner}/${repo}/issues/${number}/comments`);
+  const prComments = contextList<GhCommentApi>(
+    `comments on #${number}`,
+    "api",
+    `repos/${owner}/${repo}/issues/${number}/comments`,
+  );
   events.push(...prComments.map((comment) => ({
     id: comment.id,
     event_type: "pr_comment",
@@ -179,7 +230,12 @@ function fetchPrEvents(owner: string, repo: string, number: number, maxDiffChars
     created_at: comment.created_at,
   })));
 
-  const reviews = ghPaginated<GhReviewApi>("api", `repos/${owner}/${repo}/pulls/${number}/reviews`);
+  // The endpoint that failed on 2026-08-17. See `contextList`.
+  const reviews = contextList<GhReviewApi>(
+    `reviews on #${number}`,
+    "api",
+    `repos/${owner}/${repo}/pulls/${number}/reviews`,
+  );
   events.push(...reviews.filter((review) => review.submitted_at != null).map((review) => ({
     id: `pr-review-${review.id}`,
     event_type: "pr_review",
@@ -188,7 +244,11 @@ function fetchPrEvents(owner: string, repo: string, number: number, maxDiffChars
     created_at: review.submitted_at!,
   })));
 
-  const inlineComments = ghPaginated<GhReviewCommentApi>("api", `repos/${owner}/${repo}/pulls/${number}/comments`);
+  const inlineComments = contextList<GhReviewCommentApi>(
+    `inline review comments on #${number}`,
+    "api",
+    `repos/${owner}/${repo}/pulls/${number}/comments`,
+  );
   events.push(...inlineComments.map((comment) => ({
     id: comment.id,
     event_type: "pr_review_comment",
