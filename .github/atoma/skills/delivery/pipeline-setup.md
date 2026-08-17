@@ -99,7 +99,10 @@ better than any long-lived key.
 
 Reach for a person, not a workaround, when you need:
 
-- a job's `permissions` beyond what the shipped workflows declare
+- a job's `permissions` beyond what the shipped workflows declare. Checks get
+  `contents: read` and a `GITHUB_TOKEN` in `GH_TOKEN`, so `gh` works. Deployments
+  get `contents: write` and `id-token: write`, so cutting a release and an OIDC
+  login both work
 - a deployment approval gate (`environment:`) — `environment:` takes no
   expression, so configuration cannot reach it
 - a trigger outside merge, tag and manual dispatch — schedules in particular

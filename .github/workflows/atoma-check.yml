@@ -13,6 +13,11 @@
 name: Atoma Check
 'on':
   workflow_dispatch: {}
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
 permissions:
   contents: read
 jobs:
@@ -56,6 +61,7 @@ jobs:
       - name: Run the configured checks
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           ATOMA_SECRET_0: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[0]] }}
           ATOMA_SECRET_1: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[1]] }}
           ATOMA_SECRET_2: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[2]] }}
