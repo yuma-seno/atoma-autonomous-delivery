@@ -4,11 +4,25 @@
     "setup_commands": []
   },
   "checks": {
-    "commands": [],
+    "commands": [
+      "./scripts/scan-secrets.sh",
+      "bun install --frozen-lockfile",
+      "bun run typecheck",
+      "bun run synth",
+      "bun run test"
+    ],
     "secrets": []
   },
   "deploy": {
-    "targets": [],
+    "targets": [
+      {
+        "name": "release",
+        "on": "merge",
+        "commands": [
+          "./scripts/release.sh"
+        ]
+      }
+    ],
     "secrets": []
   },
   "tools": {
@@ -57,5 +71,9 @@
   "workflows": {
     "ci": "ci.yml",
     "cd": "cd.yml"
-  }
+  },
+  "governed_paths": [
+    ".github/**",
+    "scripts/**"
+  ]
 }
