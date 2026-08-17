@@ -110,13 +110,33 @@ describe("read_secret_names.ts", () => {
     expect(r.stderr).toContain("unknown destination");
   });
 
-  // Without a named file the script would have to guess, and the only guess
-  // available is the working tree -- the thing a pull request controls.
-  test("refuses to run without being told which config to trust", () => {
-    const r = spawnSync("bun", ["run", scriptPath("read_secret_names.ts"), "--destination", "tools"], {
-      encoding: "utf8",
-    });
-    expect(r.status).toBe(2);
-    expect(r.stderr).toContain("--config is required");
+  // Requiring the argument made a deployment break itself: a deploy pull request
+  // is reviewed by a run whose workflow YAML comes from the base branch and whose
+  // scripts come from the pull request, so the first release to pass `--config`
+  // met the previous release's workflow, which did not.
+  //
+  // Failing closed instead is safe in the direction that matters -- no argument,
+  // no credentials -- and never reaches for the working tree, which is the thing
+  // a pull request controls.
+  test("declares nothing, loudly, when not told which config to trust", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-declared-"));
+    const outputPath = join(dir, "github_output");
+    writeFileSync(outputPath, "");
+    // A config.json in the working directory, to catch a fallback that reaches
+    // for it: this must be ignored, not used.
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ tools: { secrets: ["SHOULD_NOT_APPEAR"] } }));
+    try {
+      const r = spawnSync("bun", ["run", scriptPath("read_secret_names.ts"), "--destination", "tools"], {
+        encoding: "utf8",
+        cwd: dir,
+        env: { ...process.env, GITHUB_OUTPUT: outputPath },
+      });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("::warning::");
+      expect(r.stderr).not.toContain("SHOULD_NOT_APPEAR");
+      expect(JSON.parse(parseGithubOutput(readFileSync(outputPath, "utf8")).names!)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

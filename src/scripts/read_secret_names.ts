@@ -26,16 +26,26 @@
  *
  * ## Failure behaviour
  *
- * A missing or unreadable file declares nothing, and says so. It is the state of
- * a repository that has not configured any, and failing every run over it would
- * be worse than the empty answer, which is also the safe one.
+ * No `--config`, or a file that cannot be read, declares nothing and says so.
+ * Both fail closed: the run continues with no credentials rather than stopping,
+ * and never falls back to the working tree, which is the thing a pull request
+ * controls.
  *
- * An unusable declaration fails the run. Delivering the names that happen to be
- * valid turns a typo into a failure much later, somewhere that points nowhere
+ * `--config` is deliberately NOT required, though the workflow always passes it.
+ * Requiring it made a deployment break itself: a deploy pull request is reviewed
+ * by a run whose workflow YAML comes from the base branch and whose scripts come
+ * from the pull request, so the release that first passed `--config` met the
+ * previous release's workflow, which did not, and exited 2. A missing argument
+ * is a degradation worth logging, not one worth failing a run over — and
+ * `generated-workflows.test.ts` pins the workflow side, so it cannot be dropped
+ * there without CI saying so.
+ *
+ * An unusable declaration does fail the run. Delivering the names that happen to
+ * be valid turns a typo into a failure much later, somewhere that points nowhere
  * near the cause.
  *
  * Usage:
- *   read_secret_names.ts --destination tools|checks|deploy --config <path>
+ *   read_secret_names.ts --destination tools|checks|deploy [--config <path>]
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -76,17 +86,17 @@ function main(): void {
     console.error(`::error::read_secret_names: unknown destination '${destination}'.`);
     process.exit(2);
   }
-  if (!values.config) {
-    console.error("::error::read_secret_names: --config is required; it names the trusted config.json to read.");
-    process.exit(2);
-  }
-
   let declared: unknown;
-  try {
-    declared = declarationIn(readFileSync(values.config, "utf8"), destination);
-  } catch (error) {
-    console.error(`No credential declaration could be read (${(error as Error).message}); declaring none.`);
-    declared = undefined;
+  if (!values.config) {
+    console.error(
+      "::warning::read_secret_names: no --config given, so no credentials are declared for this run. The workflow should pass the default branch's config.json.",
+    );
+  } else {
+    try {
+      declared = declarationIn(readFileSync(values.config, "utf8"), destination);
+    } catch (error) {
+      console.error(`No credential declaration could be read (${(error as Error).message}); declaring none.`);
+    }
   }
 
   const { names, problems } = resolveDeclaredSecrets(declared, SECRET_DESTINATIONS[destination]);
