@@ -56,6 +56,90 @@ describe("fetch_events.ts", () => {
     }
   });
 
+  // Reproduces the 2026-08-17 outage: `pulls/{n}/reviews` returned 404 for every
+  // pull request in the repository while every other endpoint answered normally.
+  // `ghPaginated` throws on any non-zero exit, so that one endpoint took down
+  // every agent run at this step -- and a pull request an agent opened was
+  // therefore never reviewed.
+  test("a degraded context endpoint costs context, not the run", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const outFile = join(dir, "events.json");
+      const outputFile = join(dir, "out");
+      writeFileSync(outputFile, "");
+      const r = runWithFakeGh(
+        scriptPath("fetch_events.ts"),
+        ["--type", "pr", "--number", "9", "--out", outFile],
+        {
+          env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: outputFile },
+          rules: [
+            // The endpoint that failed. 404 with a body, exactly as gh reported it.
+            { match: ["pulls/9/reviews"], stdout: "gh: Not Found (HTTP 404)", code: 1 },
+            // And the inline comments, to show the tolerance is not one-off.
+            { match: ["pulls/9/comments"], stdout: "gh: Not Found (HTTP 404)", code: 1 },
+            {
+              match: ["issues/9/comments"],
+              stdout: JSON.stringify([
+                { id: 7, body: "please take a look", user: { login: "bob" }, created_at: "2026-01-02T00:00:00Z" },
+              ]),
+            },
+            {
+              match: ["pulls/9"],
+              stdout: JSON.stringify({
+                number: 9,
+                title: "Add the thing",
+                body: "Adds it.",
+                labels: [],
+                user: { login: "alice" },
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                head: { sha: "abcdef1234567890" },
+              }),
+            },
+          ],
+        },
+      );
+
+      expect(r.status).toBe(0);
+      const events = JSON.parse(readFileSync(outFile, "utf8")) as { event_type: string }[];
+      // The pull request and the comment that did arrive are still there; the
+      // reviews simply are not.
+      expect(events.map((e) => e.event_type)).toContain("pr_opened");
+      expect(events.map((e) => e.event_type)).toContain("pr_comment");
+      expect(events.map((e) => e.event_type)).not.toContain("pr_review");
+      // And it says so, so a human is not left guessing whose fault it was.
+      expect(r.stderr).toContain("::warning::");
+      expect(r.stderr).toContain("reviews on #9");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The other half of the judgement: what the run has no subject without still
+  // fails, and says which call failed rather than reporting a JSON parse error
+  // about the empty output of that call.
+  test("a missing pull request still fails, and names the call", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-test-"));
+    try {
+      const outputFile = join(dir, "out");
+      writeFileSync(outputFile, "");
+      const r = runWithFakeGh(
+        scriptPath("fetch_events.ts"),
+        ["--type", "pr", "--number", "9", "--out", join(dir, "events.json")],
+        {
+          env: { GITHUB_REPOSITORY: "owner/repo", GITHUB_OUTPUT: outputFile },
+          rules: [{ match: ["pulls/9"], stdout: "gh: Not Found (HTTP 404)", code: 1 }],
+        },
+      );
+
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain("pull request #9");
+      expect(r.stderr).not.toContain("JSON");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("keeps Issue-local context when linked PR search fails", () => {
     const dir = mkdtempSync(join(tmpdir(), "atoma-fetch-search-failure-"));
     const eventsFile = join(dir, "events.json");
