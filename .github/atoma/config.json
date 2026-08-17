@@ -68,10 +68,6 @@
       "condition": "atoma:dispatch"
     }
   ],
-  "workflows": {
-    "ci": "ci.yml",
-    "cd": "cd.yml"
-  },
   "governed_paths": [
     ".github/**",
     "scripts/**"

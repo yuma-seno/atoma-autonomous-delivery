@@ -11,13 +11,16 @@ The deliverable:
   servers, workflow definitions. Adopter-agnostic by rule: no reference to this
   repository's build pipeline, no incident history, no PR numbers.
 - `dist/.github/`: generated from `src/` by `bun run synth`. This is what adopters
-  receive. **Not tracked in git** — it is a pure function of `src/`, and cd.yml
-  publishes it as a release asset rather than committing it.
+  receive. **Not tracked in git** — it is a pure function of `src/`, and the
+  release deployment publishes it as a release asset rather than committing it.
+- `scripts/`: this project's own pipeline. `scan-secrets.sh` and `release.sh` are
+  what `checks.commands` and `deploy.targets` name, and they are the reason there
+  are no hand-written workflows left. Governed, like `.github/`.
 
 This repository's own:
 
-- top-level `.github/`: this repository's adoption of the deliverable, plus
-  `workflows/ci.yml`. Upgraded deliberately, not on merge:
+- top-level `.github/`: this repository's adoption of the deliverable, and nothing
+  else — every workflow here is generated. Upgraded deliberately, not on merge:
   `bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json`,
   then read `git diff .github/` and open a pull request. Restoring `config.json`
   encodes the rule that generated files are overwritten and configuration is not.
@@ -39,10 +42,23 @@ When changing template behavior, treat `src/` as canonical.
 
 What may reach `main` is declared in `.github/rulesets/main.json`: no direct
 pushes, no force-pushes, no branch deletion, and a pull request that cannot merge
-until the `check` job passes.
+until the `atoma-check` job passes.
 
-**Nothing needs a bypass.** No workflow writes to `main` — cd.yml attaches the
-deliverable to a release instead, which is why `dist/` is no longer tracked. An
+That context is the job name in `atoma-check.yml`, and the two are joined by
+nothing but the string. `generated-workflows.test.ts` holds the shipped pair
+together; this repository's copy of the ruleset is applied by hand, so renaming
+either side means applying it again:
+
+```bash
+gh api -X PUT repos/{owner}/{repo}/rulesets/{id} --input .github/rulesets/main.json
+```
+
+A required context no job produces does not fail a pull request — it leaves it
+waiting forever on a check that will never report.
+
+**Nothing needs a bypass.** No workflow writes to `main` — the release deployment
+attaches the deliverable to a release instead, which is why `dist/` is no longer
+tracked. An
 agent merging a pull request needs no bypass either: it satisfies the rules like
 anyone else.
 
@@ -102,28 +118,29 @@ deliberately **not** bypassed either; see above on why the bypass list is empty.
 
 Bump `version` in `package.json` and merge it. That is the whole procedure.
 
-The version is the single declaration, and cd.yml derives the tag from it, so
-there is no tag to push and nothing that can disagree. Releasing is an ordinary
-reviewed change rather than a separate act of remembering.
+The version is the single declaration, and `scripts/release.sh` derives the tag
+from it, so there is no tag to push and nothing that can disagree. Releasing is an
+ordinary reviewed change rather than a separate act of remembering.
 
-cd.yml runs on every merge and is idempotent: it reads the declared version,
-finds a release already exists for it, and stops before installing anything. Only
-a merge that changes the version reaches the build, where it packages `dist/` as
-`atoma-delivery.zip` with `.github/` at the archive root and creates the release —
-the tag included, via `--target`, so a tag never exists without a release behind
-it.
+That script is this project's one `deploy.targets` entry, declared `on: merge` in
+`.github/atoma/config.json`. It runs after every merge and is idempotent: it reads
+the declared version, finds a release already exists for it, and stops before
+installing anything. Only a merge that changes the version reaches the build,
+where it packages `dist/` as `atoma-delivery.zip` with `.github/` at the archive
+root and creates the release — the tag included, via `--target`, so a tag never
+exists without a release behind it.
 
 Nothing writes to main, so none of this needs a ruleset bypass.
 
-An agent merge fires no `push` on main, because GitHub starts no workflow run for
-events its own token triggers. `mergePr` dispatches this workflow instead, which
-is what `workflows.cd` in `.github/atoma/config.json` is for — remove that entry
-and a version bump merged by an agent silently never publishes.
+Both kinds of merge reach it, by different routes. Yours fires `push` on the
+default branch, which `atoma-deploy.yml` listens for. An agent's fires nothing —
+GitHub starts no workflow run for events its own token triggers — so `mergePr`
+dispatches the workflow explicitly.
 
 To publish by hand, or to retry a failed run:
 
 ```bash
-gh workflow run cd.yml --ref main
+gh workflow run atoma-deploy.yml --ref main -f target=release
 ```
 
 ## Setup (Bun)
