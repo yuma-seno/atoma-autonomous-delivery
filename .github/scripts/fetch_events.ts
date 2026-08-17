@@ -128,8 +128,23 @@ function repoParts() {
     throw new Error(`GITHUB_REPOSITORY is not set or malformed: "${repo}"`);
   return [owner, name];
 }
+function contextList(what, ...args) {
+  try {
+    return ghPaginated(...args);
+  } catch (error) {
+    console.error(`::warning::Could not fetch ${what}: ${error.message}. Continuing without it \u2014 the run has less context than usual.`);
+    return [];
+  }
+}
+function requiredJson(what, ...args) {
+  const { code, stdout, stderr } = gh(...args);
+  if (code !== 0) {
+    throw new Error(`Could not fetch ${what}, which a run cannot proceed without: ${stderr || stdout}`);
+  }
+  return JSON.parse(stdout);
+}
 function fetchIssueEvents(owner, repo, issueNum, openedType, commentType, idPrefix) {
-  const issue = JSON.parse(gh("api", `repos/${owner}/${repo}/issues/${issueNum}`).stdout);
+  const issue = requiredJson(`issue #${issueNum}`, "api", `repos/${owner}/${repo}/issues/${issueNum}`);
   const labelsLine = issue.labels.length > 0 ? `**Labels:** ${issue.labels.map((l) => l.name).join(", ")}
 ` : "";
   const openedEvent = {
@@ -141,7 +156,7 @@ ${issue.body ?? ""}`,
     author: issue.user.login,
     created_at: issue.created_at
   };
-  const comments = ghPaginated("api", `repos/${owner}/${repo}/issues/${issueNum}/comments`);
+  const comments = contextList(`comments on #${issueNum}`, "api", `repos/${owner}/${repo}/issues/${issueNum}/comments`);
   const commentEvents = comments.map((c) => ({
     id: c.id,
     event_type: commentType,
@@ -152,7 +167,7 @@ ${issue.body ?? ""}`,
   return [openedEvent, ...commentEvents];
 }
 function fetchPrEvents(owner, repo, number, maxDiffChars) {
-  const pr = JSON.parse(gh("api", `repos/${owner}/${repo}/pulls/${number}`).stdout);
+  const pr = requiredJson(`pull request #${number}`, "api", `repos/${owner}/${repo}/pulls/${number}`);
   const prBody = pr.body ?? "";
   const parentIssue = PARENT_ISSUE_TAG.read(prBody);
   const headSha = pr.head.sha.slice(0, 8);
@@ -187,7 +202,7 @@ function fetchPrEvents(owner, repo, number, maxDiffChars) {
       created_at: pr.updated_at
     });
   }
-  const prComments = ghPaginated("api", `repos/${owner}/${repo}/issues/${number}/comments`);
+  const prComments = contextList(`comments on #${number}`, "api", `repos/${owner}/${repo}/issues/${number}/comments`);
   events.push(...prComments.map((comment) => ({
     id: comment.id,
     event_type: "pr_comment",
@@ -195,7 +210,7 @@ function fetchPrEvents(owner, repo, number, maxDiffChars) {
     author: comment.user.login,
     created_at: comment.created_at
   })));
-  const reviews = ghPaginated("api", `repos/${owner}/${repo}/pulls/${number}/reviews`);
+  const reviews = contextList(`reviews on #${number}`, "api", `repos/${owner}/${repo}/pulls/${number}/reviews`);
   events.push(...reviews.filter((review) => review.submitted_at != null).map((review) => ({
     id: `pr-review-${review.id}`,
     event_type: "pr_review",
@@ -205,7 +220,7 @@ ${review.body ?? ""}`,
     author: review.user.login,
     created_at: review.submitted_at
   })));
-  const inlineComments = ghPaginated("api", `repos/${owner}/${repo}/pulls/${number}/comments`);
+  const inlineComments = contextList(`inline review comments on #${number}`, "api", `repos/${owner}/${repo}/pulls/${number}/comments`);
   events.push(...inlineComments.map((comment) => ({
     id: comment.id,
     event_type: "pr_review_comment",
