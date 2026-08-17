@@ -24,6 +24,7 @@ import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
 import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
+import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
@@ -506,7 +507,17 @@ fi
 AGENT_LABEL="\${AGENT:+\${AGENT} }Atoma"
 ERR_MSG=""
 if [ -f atoma_logs.txt ]; then
-  ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' atoma_logs.txt | head -n 5 || true)
+  # Redacted before it becomes a comment. \`atoma_logs.txt\` holds every MCP
+  # server's stderr, and \`unauthorized\` -- one of the words grepped for here --
+  # is exactly the line a provider or a \`gh\` call emits WITH the credential in
+  # it. GitHub masks registered secrets in the workflow log and does nothing for
+  # an issue comment, so this excerpt would arrive in the clear.
+  #
+  # Shape patterns only: this step holds no credential values, and handing it
+  # some so it could match them literally would put them in one more process's
+  # environment to protect one comment. A failure to redact yields no excerpt
+  # rather than a raw one.
+  ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' atoma_logs.txt | head -n 5 | ${scriptCommand(redactStreamRef)} || true)
 fi
 MENTION=""
 if [ -n "$NOTIFY" ]; then

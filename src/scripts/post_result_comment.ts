@@ -18,6 +18,7 @@ import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
 import { AGENT_TAG, PARENT_TAG } from "../lib/tags.ts";
 import { shouldMentionOnCompletion } from "../domain/completion-mention.ts";
+import { redact } from "../domain/redaction.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
@@ -136,7 +137,19 @@ function main(): void {
     process.exit(2);
   }
 
-  const output = existsSync("atoma_output.txt") ? readFileSync("atoma_output.txt", "utf8") : "";
+  // Redacted on the way out, by shape only.
+  //
+  // GitHub Actions masks registered secrets in the workflow LOG and does nothing
+  // for an issue comment, and this comment is the agent's own text -- whatever it
+  // saw and chose to repeat. `redact()` with no literals applies the credential
+  // shape patterns, which needs no knowledge of any particular value and so works
+  // in this step, which deliberately holds none.
+  //
+  // A net, not a control: see domain/redaction.ts on what a shape check cannot
+  // catch. The reason it is here at all is that this is one of the two sinks that
+  // publish unmasked text (the other is the failure excerpt in
+  // atoma-runner.wac.ts).
+  const output = redact(existsSync("atoma_output.txt") ? readFileSync("atoma_output.txt", "utf8") : "");
 
   // `atoma_output.txt` is empty whenever the run ended via a session-ending
   // tool call (launch_sub_agent, request_close_issue, create_pr -- see
