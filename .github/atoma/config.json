@@ -12,7 +12,9 @@
     "secrets": []
   },
   "tools": {
-    "secrets": []
+    "secrets": [
+      "PROBE_TOOL_SECRET"
+    ]
   },
   "agents": {
     "orchestrator": {
