@@ -580,6 +580,13 @@ reachable by the tool you added it for. The shell hook and
 makes a credential safe to hand over casually. Name the ones a tool genuinely
 needs, and nothing else.
 
+**Every credential list is read from your default branch**, whichever branch a
+run is otherwise working on. A pull request can change what a run *does* — that
+is the change under test — but not which of your secrets it is handed. Adding a
+name therefore takes effect once it is merged, not while the pull request that
+adds it is being reviewed. That is deliberate: without it, opening a pull request
+would be enough to choose what the run reviewing it can read.
+
 Four things fail the run rather than being quietly dropped, because a credential
 that was asked for and silently not delivered surfaces much later as a tool
 failure pointing nowhere near the cause:

@@ -31,18 +31,50 @@ export const SECRET_NAMES_STEP_ID = "secret-names";
 /**
  * The step that publishes which secrets this destination may reach.
  *
- * Place it after checkout — it reads config.json — and before the step whose
+ * Place it after checkout — it needs a git remote — and before the step whose
  * `env:` uses the slots. Step-level `env:` is evaluated when that step runs, not
  * when the job starts, which is what lets a step output key a secret and is why
  * no separate job is needed.
+ *
+ * It reads the declaration from the DEFAULT BRANCH, not from the checkout. On a
+ * pull request run the checkout is `refs/pull/N/head`, so reading it there would
+ * let a pull request decide which of the repository's secrets are handed to the
+ * run that reviews it — and `governed_paths` does not cover that, because it
+ * blocks the merge and this happens before the merge.
+ *
+ * Only the declaration is treated this way. The commands a run executes still
+ * come from the branch under test, which is the point of testing it. What
+ * changes hands is a privilege, and a privilege comes from the branch a person
+ * already approved.
+ *
+ * `$RUNNER_TEMP` rather than the workspace, so the file cannot be one the
+ * checkout brought with it.
  */
 export function secretNamesStep(destination: SecretDestinationName): TypedOutputsStep<"names"> {
+  const trustedConfig = "$RUNNER_TEMP/atoma-declared-secrets.json";
   return new TypedOutputsStep(
     {
       name: "Resolve which repository secrets may reach this run",
       id: SECRET_NAMES_STEP_ID,
       shell: "bash",
-      run: `${scriptCommandWithArgs(readSecretNamesRef, { destination })}\n`,
+      env: { ATOMA_DEFAULT_BRANCH: "${{ github.event.repository.default_branch }}" },
+      run: `DEFAULT_BRANCH="\${ATOMA_DEFAULT_BRANCH:-main}"
+TRUSTED_CONFIG="${trustedConfig}"
+
+# Shallow: one commit of one branch is all this needs, and the checkout that
+# preceded it is shallow too.
+git fetch --quiet --depth=1 origin "$DEFAULT_BRANCH" 2>/dev/null || true
+if git show "FETCH_HEAD:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
+  echo "Read the credential declaration from \${DEFAULT_BRANCH}."
+else
+  # A repository with no config.json on its default branch declares nothing,
+  # which is the safe answer as well as the accurate one.
+  echo '{}' > "$TRUSTED_CONFIG"
+  echo "::warning::No .github/atoma/config.json on \${DEFAULT_BRANCH}; this run reaches no declared credentials."
+fi
+
+${scriptCommandWithArgs(readSecretNamesRef, { destination, config: trustedConfig })}
+`,
     },
     ["names"] as const,
   );

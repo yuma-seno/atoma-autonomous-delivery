@@ -1,25 +1,52 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeConfigDir, parseGithubOutput, scriptPath } from "./testing/harness.ts";
+import { parseGithubOutput, scriptPath } from "./testing/harness.ts";
+import { declarationIn } from "./read_secret_names.ts";
 
-/** Run the script against a throwaway config.json, capturing its step output. */
-function run(config: Record<string, unknown>, destination = "tools") {
-  const dir = makeConfigDir(config);
+/**
+ * Run the script against a config file it is handed.
+ *
+ * Deliberately not `makeConfigDir`: this script must not read
+ * `.github/atoma/config.json` from the working directory, and a harness that
+ * puts one there would hide a regression that reintroduced it.
+ */
+function run(config: Record<string, unknown> | null, destination = "tools") {
+  const dir = mkdtempSync(join(tmpdir(), "atoma-declared-"));
+  const configPath = join(dir, "trusted-config.json");
   const outputPath = join(dir, "github_output");
+  if (config !== null) writeFileSync(configPath, JSON.stringify(config));
   writeFileSync(outputPath, "");
   try {
-    const r = spawnSync("bun", ["run", scriptPath("read_secret_names.ts"), "--destination", destination], {
-      encoding: "utf8",
-      cwd: dir,
-      env: { ...process.env, GITHUB_OUTPUT: outputPath },
-    });
+    const r = spawnSync(
+      "bun",
+      ["run", scriptPath("read_secret_names.ts"), "--destination", destination, "--config", configPath],
+      { encoding: "utf8", cwd: dir, env: { ...process.env, GITHUB_OUTPUT: outputPath } },
+    );
     return { ...r, outputs: parseGithubOutput(readFileSync(outputPath, "utf8")) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+describe("declarationIn", () => {
+  test("picks the destination's own list", () => {
+    const config = JSON.stringify({
+      tools: { secrets: ["A"] },
+      checks: { secrets: ["B"] },
+      deploy: { secrets: ["C"] },
+    });
+    expect(declarationIn(config, "tools")).toEqual(["A"]);
+    expect(declarationIn(config, "checks")).toEqual(["B"]);
+    expect(declarationIn(config, "deploy")).toEqual(["C"]);
+  });
+
+  test("an absent section declares nothing", () => {
+    expect(declarationIn("{}", "tools")).toBeUndefined();
+  });
+});
 
 describe("read_secret_names.ts", () => {
   test("publishes the declared names as a JSON array", () => {
@@ -28,8 +55,8 @@ describe("read_secret_names.ts", () => {
     expect(JSON.parse(r.outputs.names!)).toEqual(["SLACK_TOKEN", "JIRA_API_TOKEN"]);
   });
 
-  // Each destination reads its own list. Crossing them would put a deployment
-  // credential in the agent's environment, which is the boundary this exists for.
+  // Crossing these would put a deployment credential in the agent's own
+  // environment, which is the boundary the three lists exist to draw.
   test("reads only the destination it was asked for", () => {
     const config = {
       tools: { secrets: ["SLACK_TOKEN"] },
@@ -49,6 +76,14 @@ describe("read_secret_names.ts", () => {
       expect(r.status, destination).toBe(0);
       expect(JSON.parse(r.outputs.names!), destination).toEqual([]);
     }
+  });
+
+  // The state of a repository that has configured none. Failing every run over
+  // it would be worse than the empty answer, which is also the safe one.
+  test("a config file that is not there declares nothing, and does not fail", () => {
+    const r = run(null);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.outputs.names!)).toEqual([]);
   });
 
   test("names the declared secrets in the log so a missing one is diagnosable", () => {
@@ -73,5 +108,15 @@ describe("read_secret_names.ts", () => {
     const r = run({}, "agent");
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("unknown destination");
+  });
+
+  // Without a named file the script would have to guess, and the only guess
+  // available is the working tree -- the thing a pull request controls.
+  test("refuses to run without being told which config to trust", () => {
+    const r = spawnSync("bun", ["run", scriptPath("read_secret_names.ts"), "--destination", "tools"], {
+      encoding: "utf8",
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("--config is required");
   });
 });
