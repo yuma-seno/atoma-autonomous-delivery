@@ -84,6 +84,13 @@ cannot see, say so in your report and name exactly which one — a person adds i
 and tells you what they called it. A guessed name produces a run that warns, then
 fails somewhere unrelated.
 
+**A name you add does not take effect until it is merged.** These lists are read
+from the default branch, not from the branch a run is working on, so a credential
+you declare will not be present in the run reviewing your own pull request. That
+is intended. Do not conclude the mechanism is broken and work around it, and do
+not try to test it by reading the value — say in your report which secret the
+work now needs.
+
 Prefer no credential at all where the platform allows it. `atoma-deploy.yml`
 declares `id-token: write`, so a cloud provider's OIDC login is available and is
 better than any long-lived key.

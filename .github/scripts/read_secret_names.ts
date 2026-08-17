@@ -2,7 +2,7 @@
 // @bun
 
 // src/scripts/read_secret_names.ts
-import { appendFileSync } from "fs";
+import { appendFileSync, readFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/domain/declared-secrets.ts
@@ -83,31 +83,6 @@ function resolveDeclaredSecrets(raw, destination) {
   return problems.length > 0 ? { names: [], problems } : { names, problems };
 }
 
-// src/lib/config.ts
-import { readFileSync } from "fs";
-
-// src/domain/merge-readiness.ts
-var PASSING = new Set(["success", "neutral", "skipped"]);
-
-// src/lib/config.ts
-var CONFIG_PATH = ".github/atoma/config.json";
-var cached;
-function loadConfig() {
-  if (!cached) {
-    cached = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-  }
-  return cached;
-}
-function getDeclaredSecrets(destination) {
-  const config = loadConfig();
-  const declared = {
-    tools: config.tools?.secrets,
-    checks: config.checks?.secrets,
-    deploy: config.deploy?.secrets
-  }[destination];
-  return resolveDeclaredSecrets(declared, SECRET_DESTINATIONS[destination]);
-}
-
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -118,14 +93,31 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/read_secret_names.ts
 var ref = defineScript(import.meta.url);
+function declarationIn(configText, destination) {
+  const config = JSON.parse(configText);
+  return { tools: config.tools, checks: config.checks, deploy: config.deploy }[destination]?.secrets;
+}
 function main() {
-  const { values } = parseArgs({ args: Bun.argv.slice(2), options: { destination: { type: "string" } } });
+  const { values } = parseArgs({
+    args: Bun.argv.slice(2),
+    options: { destination: { type: "string" }, config: { type: "string" } }
+  });
   const destination = values.destination ?? "";
   if (!isSecretDestinationName(destination)) {
     console.error(`::error::read_secret_names: unknown destination '${destination}'.`);
     process.exit(2);
   }
-  const { names, problems } = getDeclaredSecrets(destination);
+  let declared;
+  if (!values.config) {
+    console.error("::warning::read_secret_names: no --config given, so no credentials are declared for this run. The workflow should pass the default branch's config.json.");
+  } else {
+    try {
+      declared = declarationIn(readFileSync(values.config, "utf8"), destination);
+    } catch (error) {
+      console.error(`No credential declaration could be read (${error.message}); declaring none.`);
+    }
+  }
+  const { names, problems } = resolveDeclaredSecrets(declared, SECRET_DESTINATIONS[destination]);
   if (problems.length > 0) {
     for (const problem of problems) {
       console.error(`::error::.github/atoma/config.json: ${problem}`);
@@ -142,5 +134,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref
+  ref,
+  declarationIn
 };
