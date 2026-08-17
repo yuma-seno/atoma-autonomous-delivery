@@ -46,6 +46,11 @@ const runStep = new TypedOutputsStep({
   name: "Deploy the targets this run is for",
   shell: "bash",
   env: {
+    // The other half of `contents: write`. That permission is what lets a
+    // deployment create a release or a tag, and this is what it uses to do it --
+    // granting the one without the other is a permission nothing can reach.
+    // Reserved against `deploy.secrets`, so a project cannot shadow it.
+    GH_TOKEN: "${{ github.token }}",
     ...secretSlotEnv(),
     ATOMA_DEPLOY_REF: "${{ github.ref }}",
     ATOMA_DEPLOY_TRIGGER: "${{ inputs.trigger }}",

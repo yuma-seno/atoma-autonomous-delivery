@@ -198,6 +198,12 @@ describe("generated workflows", () => {
     // ships that way into keeping a personal access token instead.
     expect(deploy.jobs?.deploy?.permissions?.contents).toBe("write");
 
+    // And the token to spend it with. `contents: write` alone is a permission
+    // nothing can reach, which fails as "gh: not authenticated" -- nowhere near
+    // the missing piece.
+    const runDeploy = deploy.jobs?.deploy?.steps?.find((s) => s.name === "Deploy the targets this run is for");
+    expect(runDeploy?.env?.GH_TOKEN).toBe("${{ github.token }}");
+
     // `on: merge` has to mean a person's merge too. `on:` cannot say "the default
     // branch", so the literal branches get narrowed by the job's `if:` -- and
     // losing either half is silent: too wide deploys from a branch nobody meant,
