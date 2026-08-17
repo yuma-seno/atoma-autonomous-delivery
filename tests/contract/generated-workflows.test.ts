@@ -169,6 +169,51 @@ describe("generated workflows", () => {
     }
   });
 
+  // Both of these were gaps found by trying to move this repository's own
+  // pipeline onto the shipped workflows, and both fail silently rather than
+  // loudly, which is why they are pinned rather than left to review.
+  test("the shipped workflows cover the paths a project's pipeline needs", () => {
+    type WorkflowDocument = {
+      on?: { pull_request?: unknown; push?: { branches?: string[]; tags?: string[] } };
+      permissions?: Record<string, string>;
+      jobs?: Record<string, { if?: string; permissions?: Record<string, string>; steps?: { name?: string; env?: Record<string, string> }[] }>;
+    };
+
+    const check = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-check.yml", "utf8")) as WorkflowDocument;
+
+    // Without this a person's pull request gets no check at all: an agent's is
+    // dispatched, and `pull_request` never fires for a GITHUB_TOKEN-opened one.
+    // Since this is what `workflows.ci` defaults to, the merge is then refused
+    // for a required check that nothing ever ran.
+    expect(check.on?.pull_request, "atoma-check must fire for a person's pull request").toBeDefined();
+
+    // A check that cannot talk to GitHub is the only thing in the system that
+    // cannot, and the failure reads as a broken command rather than no token.
+    const runChecks = check.jobs?.[CHECK_JOB_NAME]?.steps?.find((s) => s.name === "Run the configured checks");
+    expect(runChecks?.env?.GH_TOKEN).toBe("${{ github.token }}");
+
+    const deploy = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-deploy.yml", "utf8")) as WorkflowDocument;
+
+    // Cutting a release is a deployment. Read-only would push every project that
+    // ships that way into keeping a personal access token instead.
+    expect(deploy.jobs?.deploy?.permissions?.contents).toBe("write");
+
+    // And the token to spend it with. `contents: write` alone is a permission
+    // nothing can reach, which fails as "gh: not authenticated" -- nowhere near
+    // the missing piece.
+    const runDeploy = deploy.jobs?.deploy?.steps?.find((s) => s.name === "Deploy the targets this run is for");
+    expect(runDeploy?.env?.GH_TOKEN).toBe("${{ github.token }}");
+
+    // `on: merge` has to mean a person's merge too. `on:` cannot say "the default
+    // branch", so the literal branches get narrowed by the job's `if:` -- and
+    // losing either half is silent: too wide deploys from a branch nobody meant,
+    // too narrow deploys from none.
+    expect(deploy.on?.push?.branches, "atoma-deploy must listen for a merge landing").toContain("main");
+    expect(deploy.jobs?.deploy?.if, "and must require it be the real default branch").toContain(
+      "github.event.repository.default_branch",
+    );
+  });
+
   // The two files are joined by a string and nothing else. A ruleset requires a
   // status check by `context`, which for an Actions job is the job's name -- so
   // renaming the job leaves the ruleset waiting for a check that will never

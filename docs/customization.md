@@ -403,13 +403,21 @@ check, so an empty `checks.commands` means a pull request satisfied something
 that tested nothing. Failing instead would block every pull request from the
 moment you adopt Atoma.
 
-**Triggers.** `on` is `merge` (after a pull request lands), `tag` (a pushed tag
-matching `tags`, which is a literal or a prefix followed by `*`), or `manual`.
-Any target can also be dispatched by name whatever its trigger, which is what
-makes a `manual` rollback target worth declaring. A tag no target claimed exits
-cleanly rather than failing, so tagging for other reasons costs you a few seconds
-and no red run. Schedules are not supported: a cron expression can only be
-written in a workflow's `on:`, so it cannot come from configuration.
+**Triggers.** `on` is `merge` (a change landing on your default branch, whether an
+agent merged it or you did), `tag` (a pushed tag matching `tags`, which is a
+literal or a prefix followed by `*`), or `manual`. Any target can also be
+dispatched by name whatever its trigger, which is what makes a `manual` rollback
+target worth declaring. A tag no target claimed exits cleanly rather than failing,
+so tagging for other reasons costs you a few seconds and no red run. Schedules are
+not supported: a cron expression can only be written in a workflow's `on:`, so it
+cannot come from configuration.
+
+`on: merge` reaches your default branch if it is called `main` or `master`. A
+workflow's `on:` cannot say "the default branch", so those two are listed
+literally and then narrowed to the branch your repository actually defaults to. If
+yours is named something else, an agent's merge still deploys — that path is an
+explicit dispatch, not an event — but your own merges will not, and
+`workflows.cd` is the way to cover them.
 
 **Credentials** go in the list belonging to whatever needs them — `checks.secrets`
 or `deploy.secrets`, alongside `tools.secrets`. Add the secret to the repository
@@ -421,11 +429,15 @@ over storing a long-lived key at all.
 **What commands cannot express**, and where you still need a workflow of your own
 through `workflows.cd`:
 
-- a job's `permissions` beyond what the shipped workflows declare
+- a job's `permissions` beyond what the shipped workflows declare. `atoma-check.yml`
+  runs with `contents: read` plus a `GITHUB_TOKEN` in `GH_TOKEN`;
+  `atoma-deploy.yml` with `contents: write` and `id-token: write`, so it can cut a
+  release and can exchange its identity for cloud credentials
 - a deployment approval gate — `environment:` takes no expression, so nothing in
   configuration can reach it
 - GitHub's own artifact store and cache
-- any trigger outside merge, tag and manual dispatch
+- any trigger outside merge, tag and manual dispatch — including a default branch
+  named neither `main` nor `master`, for your own merges
 
 Most of the limits people expect are not real. Service containers work through
 `docker run`, and a matrix works as a loop, losing only parallelism. Both are

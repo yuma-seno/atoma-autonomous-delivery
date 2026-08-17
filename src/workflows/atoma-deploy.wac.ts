@@ -21,10 +21,22 @@ import { ref as runDeployRef } from "../scripts/run_deploy.ts";
 // nobody asked for exits clean; a red run per unrelated tag would teach people
 // to ignore the red.
 //
-// A merge does not arrive at all. An agent merges with GITHUB_TOKEN, which fires
-// no `push` on the base branch, so `dispatchCd` starts this run explicitly with
-// `trigger=merge`. It reads the targets before dispatching and does not start a
-// run when no target deploys on merge, so that path costs nothing when unused.
+// A merge arrives two ways, and `on: merge` used to mean only one of them.
+//
+// An agent merges with GITHUB_TOKEN, which fires no `push`, so `dispatchCd`
+// starts this run explicitly with `trigger=merge`. It reads the targets before
+// dispatching and does not start a run when no target deploys on merge, so that
+// path costs nothing when unused.
+//
+// A person's merge does fire `push`, and nothing was listening -- so a target
+// declared `on: merge` deployed after an agent's merge and silently not after a
+// person's. `push` on the default branch closes that.
+//
+// The branch list has to be literal, because `on:` takes no expression and there
+// is no way to say "the default branch" there. `main` and `master` cover what
+// repositories are actually called, and the job's `if:` then requires the ref to
+// be the real default branch -- so a repository whose `main` is not the default
+// starts no deployment, and one whose default is neither name uses `workflows.cd`.
 //
 // Schedules are absent on purpose: a cron expression can only be written in
 // `on:`, so it cannot come from configuration, and a fixed daily cron that
@@ -34,6 +46,11 @@ const runStep = new TypedOutputsStep({
   name: "Deploy the targets this run is for",
   shell: "bash",
   env: {
+    // The other half of `contents: write`. That permission is what lets a
+    // deployment create a release or a tag, and this is what it uses to do it --
+    // granting the one without the other is a permission nothing can reach.
+    // Reserved against `deploy.secrets`, so a project cannot shadow it.
+    GH_TOKEN: "${{ github.token }}",
     ...secretSlotEnv(),
     ATOMA_DEPLOY_REF: "${{ github.ref }}",
     ATOMA_DEPLOY_TRIGGER: "${{ inputs.trigger }}",
@@ -67,11 +84,25 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
         },
       },
     },
-    // Every tag, filtered by `deploy.targets` at run time -- see above.
-    push: { tags: ["*"] },
+    // Every tag, filtered by `deploy.targets` at run time -- see above. The
+    // branches are the default-branch merge path, narrowed again by the job's
+    // `if:`.
+    push: { tags: ["*"], branches: ["main", "master"] },
   } as unknown as GWT.Workflow["on"],
   permissions: {
-    contents: "read",
+    // Write because cutting a release is a deployment, and the commonest thing a
+    // deployment does on GitHub itself is create a release or a tag. Read would
+    // mean every project that ships that way needs a personal access token in
+    // `deploy.secrets` instead -- a long-lived credential, manually rotated,
+    // usually scoped wider than this. The weaker-looking permission produces the
+    // worse arrangement.
+    //
+    // This is the most privileged job in the system: it runs commands a project
+    // wrote, with the credentials it declared, and can now write to the
+    // repository. That is what makes `deploy.targets` a governed path worth
+    // reading carefully, and why the declaration comes from the default branch
+    // rather than from the branch under test.
+    contents: "write",
     // So a deployment can exchange the run's identity for short-lived cloud
     // credentials instead of a long-lived key in a repository secret. Declared
     // here because a job's `permissions:` is one of the few things a command
@@ -83,6 +114,11 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
     "deploy",
     {
       "runs-on": "ubuntu-latest",
+      // `on:` could not say "the default branch", so this does. A dispatch and a
+      // tag push pass through; a branch push has to be the branch the repository
+      // actually defaults to, which is what stops a `main` that is not the
+      // default from deploying.
+      if: "github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || github.ref_name == github.event.repository.default_branch",
       "timeout-minutes": 60,
       // Deployments queue rather than cancel. Cancelling one half way through
       // leaves the target in a state nobody chose, which is worse than waiting.
@@ -90,7 +126,7 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
         group: "atoma-deploy-${{ github.ref }}",
         "cancel-in-progress": false,
       },
-      permissions: { contents: "read", "id-token": "write" },
+      permissions: { contents: "write", "id-token": "write" },
     },
     [
       new ActionsCheckoutV4({ name: "Checkout repository" }),
