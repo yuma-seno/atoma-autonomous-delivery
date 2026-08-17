@@ -330,6 +330,9 @@ var require_parse = __commonJS((exports, module) => {
   };
 });
 
+// src/atoma/tools/scripts/hooks/shell_guard.ts
+import { resolve, sep } from "path";
+
 // node_modules/shell-quote/index.js
 var $quote = require_quote();
 var $parse = require_parse();
@@ -430,6 +433,62 @@ function normalizeCommand(command) {
   }
   return out;
 }
+var EXECUTION_CONTROLLING_VARS = new Set([
+  "BASH_ENV",
+  "ENV",
+  "IFS",
+  "LD_AUDIT",
+  "LD_LIBRARY_PATH",
+  "LD_PRELOAD",
+  "PATH",
+  "SHELL",
+  "SHELLOPTS"
+]);
+var STDIN_INTERPRETERS = /^(?:[\w./-]*\/)?(?:sh|bash|zsh|dash|python3?|ruby|perl|node|bun)$/;
+function substituteDeclaredVars(command, vars) {
+  let out = command;
+  for (const name of Object.keys(vars).sort((a, b) => b.length - a.length)) {
+    if (!/^\w+$/.test(name))
+      continue;
+    out = out.split(`\${${name}}`).join(vars[name] ?? "");
+    out = out.split(`$${name}`).join(vars[name] ?? "");
+  }
+  return out;
+}
+function checkInvocation(invocation) {
+  const vars = invocation.environmentVariables ?? {};
+  for (const name of Object.keys(vars)) {
+    if (EXECUTION_CONTROLLING_VARS.has(name.toUpperCase())) {
+      return {
+        allow: false,
+        reason: `Setting ${name} through environment_variables is disabled: it changes what the command executes, which no inspection of the command text can account for.`
+      };
+    }
+  }
+  const cwd = invocation.workingDirectory?.trim();
+  if (cwd) {
+    const resolved = resolve(cwd);
+    const root = resolve(process.cwd());
+    if (resolved !== root && !resolved.startsWith(root + sep)) {
+      return {
+        allow: false,
+        reason: `working_directory must stay inside the repository (${root}); '${cwd}' is outside it.`
+      };
+    }
+  }
+  if (invocation.inputData !== undefined) {
+    const first = normalizeCommand(invocation.command).trim().split(/\s+/)[0] ?? "";
+    if (STDIN_INTERPRETERS.test(first)) {
+      return {
+        allow: false,
+        reason: `Piping a script into '${first}' through input_data is disabled, for the same reason '${first} -c' is.`
+      };
+    }
+  }
+  const text = [substituteDeclaredVars(invocation.command, vars), invocation.inputData ?? ""].filter(Boolean).join(`
+`);
+  return checkCommand(text);
+}
 function checkCommand(command) {
   const normalized = normalizeCommand(command);
   const gitCommand = findMutatingGitCommand(normalized);
@@ -456,7 +515,12 @@ async function main() {
   }
   const args = data.arguments ?? {};
   const command = String(args.command ?? args.cmd ?? args.shell ?? "");
-  const { allow, reason } = checkCommand(command);
+  const { allow, reason } = checkInvocation({
+    command,
+    workingDirectory: typeof args.working_directory === "string" ? args.working_directory : undefined,
+    environmentVariables: args.environment_variables && typeof args.environment_variables === "object" ? args.environment_variables : undefined,
+    inputData: typeof args.input_data === "string" ? args.input_data : undefined
+  });
   if (allow) {
     console.log(JSON.stringify({ allow: true }));
   } else {
@@ -468,3 +532,6 @@ async function main() {
 }
 if (import.meta.main)
   main();
+export {
+  checkInvocation
+};
