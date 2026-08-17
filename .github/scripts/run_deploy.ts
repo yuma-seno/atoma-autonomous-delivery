@@ -133,8 +133,12 @@ function selectTargets(targets, request) {
   }
   if (request.trigger === "merge")
     return targetsForMerge(targets);
+  if (request.trigger === "manual")
+    return [];
   if (request.ref.startsWith("refs/tags/"))
     return targetsForTag(targets, request.ref);
+  if (request.ref.startsWith("refs/heads/"))
+    return targetsForMerge(targets);
   return [];
 }
 function main() {
