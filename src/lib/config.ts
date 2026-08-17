@@ -111,23 +111,19 @@ export function getTriggerAgent(event: string, fallback = ""): string {
   return fallback;
 }
 
-/**
- * Repository secrets this project lets one destination reach.
- *
- * Returns the validated names and every problem found with the declaration; the
- * caller decides what a problem means. `read_secret_names.ts` fails the run on
- * one, because a credential that was asked for and silently not delivered
- * surfaces as an unrelated failure much later, somewhere else.
- */
-export function getDeclaredSecrets(destination: SecretDestinationName): SecretsResolution {
-  const config = loadConfig();
-  const declared = {
-    tools: config.tools?.secrets,
-    checks: config.checks?.secrets,
-    deploy: config.deploy?.secrets,
-  }[destination];
-  return resolveDeclaredSecrets(declared, SECRET_DESTINATIONS[destination]);
-}
+// No `getDeclaredSecrets()` here on purpose, though every other setting has a
+// reader in this file.
+//
+// Everything `loadConfig()` returns comes from the working tree, and on a pull
+// request run the working tree is the pull request's own head. That is right for
+// the settings below -- the commands under test are the change under test -- and
+// wrong for the one setting that decides which credentials the run may reach: it
+// would let a pull request choose what it is handed.
+//
+// So the credential declaration is read from the default branch instead, by
+// `read_secret_names.ts`, which loads that file itself. A convenience wrapper
+// here would be a second path to the same answer with none of that protection,
+// and the next caller would find it first.
 
 /**
  * Commands that verify a change, in order.

@@ -138,6 +138,37 @@ describe("generated workflows", () => {
     }
   });
 
+  // On a pull request run the checkout is `refs/pull/N/head`, so a declaration
+  // read from the working tree would let a pull request choose which of the
+  // repository's secrets it is handed. `governed_paths` does not cover it: that
+  // blocks the merge, and the run happens first. The declaration therefore comes
+  // from the default branch, and this pins that in the generated YAML -- the
+  // failure mode of losing it is silent.
+  test("resolves the credential declaration from the default branch, not the checkout", () => {
+    type WorkflowStep = { id?: string; run?: string; env?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const directory = "dist/.github/workflows";
+    const carriers = ["atoma-runner.yml", "atoma-check.yml", "atoma-deploy.yml"];
+
+    for (const file of carriers) {
+      const workflow = Bun.YAML.parse(readFileSync(join(directory, file), "utf8")) as WorkflowDocument;
+      const step = Object.values(workflow.jobs ?? {})
+        .flatMap((job) => job.steps ?? [])
+        .find((candidate) => candidate.id === "secret-names");
+      expect(step, `${file} secret-names step`).toBeDefined();
+
+      expect(step?.env?.ATOMA_DEFAULT_BRANCH, file).toBe("${{ github.event.repository.default_branch }}");
+      expect(step?.run, `${file} must read the declaration from the fetched default branch`).toContain(
+        'git show "FETCH_HEAD:.github/atoma/config.json"',
+      );
+      // Outside the workspace, so the checkout cannot have brought the file.
+      expect(step?.run, `${file} must not trust a path the checkout controls`).toContain(
+        "$RUNNER_TEMP/atoma-declared-secrets.json",
+      );
+    }
+  });
+
   // The two files are joined by a string and nothing else. A ruleset requires a
   // status check by `context`, which for an Actions job is the job's name -- so
   // renaming the job leaves the ruleset waiting for a check that will never
