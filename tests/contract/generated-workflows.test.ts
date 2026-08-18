@@ -310,8 +310,12 @@ describe("generated workflows", () => {
     // And the package list and the hook chmod, which decide what gets installed
     // and whether the fail-closed guard can run at all.
     const workflow = readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8");
-    for (const path of ["mcp-packages.json", "tools/scripts/hooks"]) {
-      for (const line of workflow.split(/\r?\n/).filter((l) => l.includes(path))) {
+    // The deployed path, not the bare filename: the install step also names the
+    // file in prose when it is absent, and a message is not a read.
+    for (const path of [".github/atoma/mcp-packages.json", ".github/atoma/tools/scripts/hooks"]) {
+      const reads = workflow.split(/\r?\n/).filter((l) => l.includes(path));
+      expect(reads.length, `${path} must still be referenced at all`).toBeGreaterThan(0);
+      for (const line of reads) {
         expect(line, `${path} must be read from the machinery root`).toMatch(
           /ATOMA_MACHINERY_ROOT|atoma-machinery/,
         );
