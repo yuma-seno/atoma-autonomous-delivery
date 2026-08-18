@@ -62,6 +62,17 @@ const BLOCKED: [RegExp, string][] = [
   [/\bnode\s+<</, "node heredoc is disabled."],
   [/\bbase64\b.*\|\s*(?:sh|bash|zsh|dash)/, "base64 pipe-to-shell is disabled."],
   [/\bxxd\b.*\|\s*(?:sh|bash|zsh|dash)/, "binary pipe-to-shell is disabled."],
+  // Matched on the PATH rather than on the readers, because the readers are
+  // endless -- cat, head, xxd, tr, dd, od, strings, a bare `< /proc/N/environ`.
+  // Enumerating them is the shape of check this repository has been burned by
+  // three times.
+  //
+  // What it protects: tool servers run as the same user, so one can read
+  // another's environment through /proc, and each holds the credentials its
+  // `tools.yaml` entry declares. That is the one place per-server confinement is
+  // not enforced by anything else. `/proc` as a whole stays open -- cpuinfo and
+  // meminfo have honest uses.
+  [/\/proc\/[^\s/]+\/environ/, "Reading a process's environment through /proc is disabled."],
   [/(?:^|\s|\||;)\beval\b/, "eval is disabled."],
   [/(?:^|\s|\||;)\bexec\b/, "exec is disabled."],
   [/(?:^|\s|;)\bsource\b/, "source is disabled."],
