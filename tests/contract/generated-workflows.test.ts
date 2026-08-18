@@ -112,8 +112,11 @@ describe("generated workflows", () => {
     // Every workflow that carries a credential, and the step whose `env:` gets
     // the slots. Each pair is generated from the same helper, so the point of
     // checking all three is that none of them quietly stops using it.
+    // The runner's carrier is the step that writes the credentials file, NOT the
+    // one that runs the agent -- see the test below for why that distinction is
+    // the whole point.
     const carriers = [
-      { file: "atoma-runner.yml", job: "run", step: "Run agent" },
+      { file: "atoma-runner.yml", job: "run", step: "Collect this run's credentials into a file" },
       { file: "atoma-check.yml", job: CHECK_JOB_NAME, step: "Run the configured checks" },
       { file: "atoma-deploy.yml", job: "deploy", step: "Deploy the targets this run is for" },
     ];
@@ -212,6 +215,37 @@ describe("generated workflows", () => {
     expect(deploy.jobs?.deploy?.if, "and must require it be the real default branch").toContain(
       "github.event.repository.default_branch",
     );
+  });
+
+  // The step that runs the agent lives for the whole of `atoma run`, so anything
+  // in its `env:` sits in `/proc/<pid>/environ` for minutes, readable by every
+  // tool server the agent starts -- and `unsetenv` cannot take it back, because
+  // that file reflects what was on the stack at exec. Measured on a runner.
+  //
+  // So no credential may appear there. Losing this is silent: the run works, the
+  // confinement is simply gone, and nothing says so.
+  test("the agent step carries no credentials", () => {
+    type WorkflowStep = { name?: string; env?: Record<string, string>; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    const writer = steps.findIndex((step) => step.name === "Collect this run's credentials into a file");
+    const agent = steps.findIndex((step) => step.name === "Run agent");
+    expect(writer, "the credentials writer step").toBeGreaterThanOrEqual(0);
+    expect(writer, "credentials must be written before the agent runs").toBeLessThan(agent);
+
+    const agentEnv = steps[agent]?.env ?? {};
+    for (const [name, value] of Object.entries(agentEnv)) {
+      expect(value, `${name} in the agent step must not reference a secret`).not.toContain("secrets.");
+      expect(name, `${name} must not be a credential slot`).not.toStartWith(SECRET_SLOT_PREFIX);
+    }
+    // `github.token` counts too: it is the credential three tool servers use.
+    expect(JSON.stringify(agentEnv)).not.toContain("github.token");
+
+    // And the agent is told where to read them from instead.
+    expect(steps[agent]?.run).toContain("--credentials-file");
   });
 
   // The two files are joined by a string and nothing else. A ruleset requires a
