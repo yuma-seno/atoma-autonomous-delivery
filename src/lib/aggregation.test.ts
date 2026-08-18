@@ -43,9 +43,20 @@ const wroteMarker = (calls: string[][]) =>
 const NO_SIBLINGS: FakeGhRule = { match: ["issue", "list"], stdout: "[]" };
 const NO_MARKER: FakeGhRule = { match: ["issue", "view"], stdout: "some unrelated comment" };
 
+// The fake `gh` exits 1 for any call no rule matches, which is the right
+// default -- a test should not accidentally succeed through a call it never
+// described. These two are the calls the happy path makes after the checks:
+// claiming the completion, and starting the orchestrator.
+const MARKER_WRITES: FakeGhRule = { match: ["issue", "comment"], code: 0 };
+const DISPATCH_WORKS: FakeGhRule = { match: ["workflow", "run"], code: 0 };
+// `resolveNotify` looks the parent up to find someone to mention. Best-effort
+// by design, so an unmatched call would only log a WARN -- described anyway, so
+// the happy path has no failures in it at all.
+const NOTIFY_LOOKUP: FakeGhRule = { match: ["api", "issues"], stdout: "{}" };
+
 describe("aggregation.ts dispatch gate", () => {
   test("dispatches once when the siblings are done and nobody claimed it", () => {
-    const { kind, ghCalls } = runGate([NO_SIBLINGS, NO_MARKER]);
+    const { kind, ghCalls } = runGate([NO_SIBLINGS, NO_MARKER, MARKER_WRITES, DISPATCH_WORKS, NOTIFY_LOOKUP]);
     expect(kind).toBe("dispatched");
     expect(wroteMarker(ghCalls)).toBe(true);
     expect(dispatched(ghCalls)).toBe(true);

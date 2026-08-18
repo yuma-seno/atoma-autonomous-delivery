@@ -7,12 +7,22 @@ import { join } from "node:path";
 const SCRIPTS_DIR = join(process.cwd(), "src/atoma/tools/scripts/mcp");
 const FAKE_GH_BIN_DIR = join(process.cwd(), "src/scripts/testing/bin");
 
+/** See `sendRequest`: `search.ts` pays for a heavy import before it can answer. */
+const SEARCH_TIMEOUT_MS = 60_000;
+
+/**
+ * `timeoutMs` is a parameter because the servers do not all start at the same
+ * speed. `search.ts` imports `@huggingface/transformers` at module scope, which
+ * is seconds of work before it can answer `initialize` at all -- so a timeout
+ * tuned to the fast servers reports that as a hang.
+ */
 function sendRequest(
   script: string,
   request: Record<string, unknown>,
   env: Record<string, string> = {},
   cwd = process.cwd(),
   extraArgs: string[] = [],
+  timeoutMs = 5000,
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`, ...extraArgs], {
@@ -24,7 +34,7 @@ function sendRequest(
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`timed out waiting for response from ${script}`));
-    }, 5000);
+    }, timeoutMs);
     child.stdout.on("data", () => {
       const line = out.split("\n").find((l) => l.trim());
       if (line) {
@@ -436,32 +446,46 @@ describe("mcp/web.ts", () => {
 
 describe("mcp/search.ts", () => {
   test("initializes and advertises search_issues", async () => {
-    const init = await sendRequest("search.ts", INIT_REQUEST);
+    const init = await sendRequest("search.ts", INIT_REQUEST, {}, process.cwd(), [], SEARCH_TIMEOUT_MS);
     expect(init.result.serverInfo.name).toBe("atoma-search-mcp");
 
-    const list = await sendRequest("search.ts", { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const list = await sendRequest("search.ts", { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }, {}, process.cwd(), [], SEARCH_TIMEOUT_MS);
     const names = list.result.tools.map((t: { name: string }) => t.name);
     expect(names).toContain("search_issues");
-  });
+  }, SEARCH_TIMEOUT_MS);
 
   test("a misspelled argument is refused rather than dropped", async () => {
-    const r = await sendRequest("search.ts", {
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: { name: "search_issues", arguments: { query: "anything", limitt: 3 } },
-    });
+    const r = await sendRequest(
+      "search.ts",
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "search_issues", arguments: { query: "anything", limitt: 3 } },
+      },
+      {},
+      process.cwd(),
+      [],
+      SEARCH_TIMEOUT_MS,
+    );
     expect(r.result.isError).toBe(true);
     expect(r.result.content[0].text).toContain("limitt");
-  });
+  }, SEARCH_TIMEOUT_MS);
 
   test("an unknown tool name is an error", async () => {
-    const r = await sendRequest("search.ts", {
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "search_everything", arguments: {} },
-    });
+    const r = await sendRequest(
+      "search.ts",
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "search_everything", arguments: {} },
+      },
+      {},
+      process.cwd(),
+      [],
+      SEARCH_TIMEOUT_MS,
+    );
     expect(r.result.isError).toBe(true);
-  });
+  }, SEARCH_TIMEOUT_MS);
 });
