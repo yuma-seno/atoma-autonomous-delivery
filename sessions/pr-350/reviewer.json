@@ -21,7 +21,7 @@
       "content": "```diff\ndiff --git a/.github/atoma/tools/tools.yaml b/.github/atoma/tools/tools.yaml\nindex 00f56a1..a0fdc20 100644\n--- a/.github/atoma/tools/tools.yaml\n+++ b/.github/atoma/tools/tools.yaml\n@@ -6,12 +6,21 @@\n # so removals must be checked against all three agents, not just the one in\n # front of you. `agent-definitions.test.ts` enforces this.\n #\n-# Credentials do NOT go here. A server that needs one reads it from the\n-# environment: add the secret to the repository, then name it in config.json's\n-# `tool_secrets`, and it is exported under that name before any server starts.\n-# Values written in an `env:` block below are literal — there is no `${...}`\n-# expansion — so a secret pasted here would be committed in plain text.\n-# See docs/customization.md, \"Give a tool a credential\".\n+# This is where a credential is ROUTED to the server that needs it, with a\n+# `${NAME}` reference in that server's `env`. A server receives exactly what it\n+# names here and nothing else -- atoma removes every credential it knows about\n+# from a server's environment before applying this block, so leaving `env: {}`\n+# means \"this server gets no credentials\", and that is the point rather than an\n+# oversight.\n+#\n+# Never write a value here, only a reference. `${SLACK_TOKEN}` is resolved at run\n+# time; a pasted secret would be committed in plain text.\n+#\n+# Where the value comes from is a different layer. Add the secret to the\n+# repository, then name it in config.json's `tools.secrets` -- that authorises the\n+# run to obtain it. This file decides which server it reaches. Both steps are\n+# needed and neither substitutes for the other; see docs/customization.md, \"Give a\n+# tool a credential\".\n \n filesystem:\n   command: mcp-server-filesystem\n@@ -48,7 +57,11 @@ shell:\n github:\n   command: bun\n   args: [\"run\", \".github/atoma/tools/scripts/mcp/github.ts\"]\n-  env: {}\n+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather\n+  # than inherited: atoma strips credentials from a server that does not name\n+  # them, which is what keeps this one out of `shell`.\n+  env:\n+    GH_TOKEN: \"${GH_TOKEN}\"\n   hooks: {}\n \n web:\n@@ -64,11 +77,19 @@ web:\n search:\n   command: bun\n   args: [\"run\", \".github/atoma/tools/scripts/mcp/search.ts\"]\n-  env: {}\n+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather\n+  # than inherited: atoma strips credentials from a server that does not name\n+  # them, which is what keeps this one out of `shell`.\n+  env:\n+    GH_TOKEN: \"${GH_TOKEN}\"\n   hooks: {}\n \n atoma:\n   command: bun\n   args: [\"run\", \".github/atoma/tools/scripts/mcp/atoma.ts\"]\n-  env: {}\n+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather\n+  # than inherited: atoma strips credentials from a server that does not name\n+  # them, which is what keeps this one out of `shell`.\n+  env:\n+    GH_TOKEN: \"${GH_TOKEN}\"\n   hooks: {}\ndiff --git a/.github/workflows/atoma-runner.yml b/.github/workflows/atoma-runner.yml\nindex 35112f5..e0288f8 100644\n--- a/.github/workflows/atoma-runner.yml\n+++ b/.github/workflows/atoma-runner.yml\n@@ -40,7 +40,7 @@ name: Atoma Runner\n         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.\n         required: false\n         type: string\n-        default: v0.1.10\n+        default: v0.1.11\n   workflow_dispatch:\n     inputs:\n       agent:\n@@ -75,7 +75,7 @@ name: Atoma Runner\n         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.\n         required: false\n         type: string\n-        default: v0.1.10\n+        default: v0.1.11\n jobs:\n   run:\n     runs-on: ubuntu-latest\n```",
       "atoma_metadata": {
         "author": "github",
-        "created_at": "2026-08-18T00:36:37Z",
+        "created_at": "2026-08-18T00:39:28Z",
         "event_type": "pr_diff",
         "id": "pr-350-diff",
         "layer": "github-context",
@@ -105,7 +105,15 @@
       "role": "assistant",
       "content": "This PR changes how agents themselves run — it is a governance-change. It correctly implements credential routing for github, search, and atoma servers while explicitly denying shell access to GH_TOKEN. This is ready for manual merge by a human.",
       "atoma_metadata": {
-        "github_comment_id": 5321967041,
+        "agent": "reviewer",
+        "github_comment_id": 5321967041
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "This PR changes how agents themselves run — it is a governance-change. It correctly implements credential routing for github, search, and atoma servers while explicitly denying shell access to GH_TOKEN. This is ready for manual merge by a human.",
+      "atoma_metadata": {
+        "github_comment_id": 5321985308,
         "agent": "reviewer"
       }
     }
@@ -114,10 +122,10 @@
     "github_context": {
       "agent": "reviewer",
       "event_count": 2,
-      "snapshot_hash": "87cb763267db4b129df3ce17d657f7c1e5d6898906c3b505a2a5ae17d407dac1",
-      "version": 1,
+      "resolved_number": "350",
+      "snapshot_hash": "62a8fc93aeec5e92029586e3a88b270f534bbd6f67805c680350b8bb5a5cee94",
       "type": "pr",
-      "resolved_number": "350"
+      "version": 1
     }
   }
 }
