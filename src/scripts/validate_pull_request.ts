@@ -267,13 +267,13 @@ function main(): void {
   // needs no state of its own.
   const priorRetries = countPriorRetries(repo, values.number ?? "");
 
-  const outcome = decideValidationOutcome(
+  const outcome = decideValidationOutcome({
     conclusion,
     requiredContexts,
-    values.reviewer ?? "",
-    values.engineer ?? "",
+    reviewerAgent: values.reviewer ?? "",
+    engineerAgent: values.engineer ?? "",
     priorRetries,
-  );
+  });
 
   for (const check of outcome.checks) {
     // The Checks API, not a workflow's own check. See the header: only this form
@@ -299,8 +299,15 @@ function main(): void {
   // Posted whenever CI did not pass, including the turn that gives up: the
   // comment is both the engineer's brief and the tally the next turn counts, and
   // the last one is what tells a human why nothing is moving.
-  const passed = outcome.checks.every((check) => check.conclusion === "success");
-  if (!passed) reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
+  //
+  // Read from the verdict, not re-derived from `checks`. It used to be
+  // `checks.every((c) => c.conclusion === "success")`, which is `true` for the
+  // empty list a base branch with no required checks produces -- so a failing
+  // run posted no comment, the engineer was dispatched with no brief, and the
+  // tally that bounds that loop never advanced. See `ValidationOutcome.verdict`.
+  if (outcome.verdict !== "passed") {
+    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
+  }
 
   write(`next_agent=${outcome.nextAgent}`);
   write(`conclusion=${conclusion}`);

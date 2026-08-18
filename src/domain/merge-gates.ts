@@ -134,12 +134,21 @@ function readPatterns(raw: unknown, where: string, problems: string[]): string[]
   }
   const patterns: string[] = [];
   for (const entry of raw) {
-    const problem = pathPatternProblem(entry as string);
+    // Checked here rather than left to `pathPatternProblem`'s own `typeof`
+    // guard. That guard is unreachable by its own signature, so casting a
+    // `number` to `string` to reach it made this reader depend on another
+    // module's defensive code through an assertion that says the opposite.
+    // `readLabels` below already does it this way.
+    if (typeof entry !== "string") {
+      problems.push(`${where}: every pattern must be a string; found ${JSON.stringify(entry)}.`);
+      continue;
+    }
+    const problem = pathPatternProblem(entry);
     if (problem) {
       problems.push(`${where}: ${problem}`);
       continue;
     }
-    patterns.push((entry as string).trim());
+    patterns.push(entry.trim());
   }
   return patterns;
 }

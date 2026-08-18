@@ -43,7 +43,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { SECRET_NAMES_VAR, SECRET_SLOT_PREFIX, SECRET_SLOTS } from "../domain/declared-secrets.ts";
+import { RUN_CREDENTIALS, SECRET_NAMES_VAR, SECRET_SLOT_PREFIX, SECRET_SLOTS } from "../domain/declared-secrets.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface WriteCredentialsFileArgs {
@@ -53,25 +53,16 @@ export interface WriteCredentialsFileArgs {
 
 export const ref = defineScript<WriteCredentialsFileArgs>(import.meta.url);
 
-/**
- * Credentials the run needs regardless of what the project declared.
- *
- * The provider keys because atoma calls the model with one, and the GitHub token
- * because the tool servers that reach GitHub authenticate with it. Both were
- * previously in the agent step's own environment; the point of this script is
- * that they no longer are.
- *
- * `ATOMA_COPILOT_TOKEN` is included so a project using GitHub Copilot as its
- * provider works through this path too — atoma reads that name, and leaving it
- * out would silently confine a run to the providers listed beside it.
- */
-const ALWAYS: readonly string[] = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ATOMA_COPILOT_TOKEN", "GH_TOKEN"];
-
 /** The credentials to write, from the environment this step was given. */
 export function collect(env: Record<string, string | undefined>): Record<string, string> {
   const out: Record<string, string> = {};
 
-  for (const name of ALWAYS) {
+  // `RUN_CREDENTIALS` rather than a list of this script's own. The names the run
+  // supplies and the names a project may not declare are the same names, and
+  // keeping two copies had already let one drift: `ATOMA_COPILOT_TOKEN` was here
+  // and not in `TOOL_SECRETS.reserved`, so `tools.secrets` could name it and the
+  // loop below would overwrite the run's own provider credential with it.
+  for (const name of RUN_CREDENTIALS) {
     const value = env[name];
     if (value) out[name] = value;
   }
