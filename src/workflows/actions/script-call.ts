@@ -1,10 +1,17 @@
 /**
  * script-call.ts — Type-safe(r) invocation of the one-shot TS scripts in
- * `src/scripts/` (deployed flat into `.github/atoma/tools/scripts/*.ts` by
+ * `src/scripts/` (deployed flat into `.github/scripts/*.ts` by
  * `build-dist.ts`) from inside a workflow step's `run:` bash.
  *
+ * NOT `.github/atoma/tools/scripts/`, which this file used to name. That is a
+ * real, different tree -- the MCP servers and the `before_tool` hook, which
+ * `build-dist.ts` deploys separately and chmods executable for the agent's own
+ * process to spawn. These workflow scripts are invoked by workflow steps and
+ * never by the agent. Two trees with two trust stories, and this is the comment
+ * a reader consults to find the file.
+ *
  * Every call site used to hardcode the *deployed* path as a bare string --
- * `bun run .github/atoma/tools/scripts/foo.ts` -- with zero connection to
+ * `bun run .github/scripts/foo.ts` -- with zero connection to
  * the actual script file, PLUS a separately hand-typed import specifier
  * paired next to it purely so a rename/delete would fail `tsc --noEmit`.
  * Two independent strings, nothing stopping them from silently mismatching.
@@ -21,13 +28,6 @@ import { toArgv } from "../../scripts/lib/cli.ts";
 import type { ScriptRef } from "../../scripts/lib/script-ref.ts";
 
 /**
- * Build a `bun run <deployed-path> [argv...]` command for a script that
- * takes no CLI flags at all (env-driven, or none) -- or whose CLI shape
- * doesn't fit a flat named-args object (e.g. `get_config_value.ts`'s
- * positional `<path> [default]`, built with its own `buildArgv()`). Pass a
- * pre-built argv array for that second case.
- */
-/**
  * Where a workflow's own scripts are read from, as shell that resolves at run
  * time.
  *
@@ -41,6 +41,13 @@ import type { ScriptRef } from "../../scripts/lib/script-ref.ts";
  */
 export const MACHINERY_ROOT = "${ATOMA_MACHINERY_ROOT:-.}";
 
+/**
+ * Build a `bun run <deployed-path> [argv...]` command for a script that
+ * takes no CLI flags at all (env-driven, or none) -- or whose CLI shape
+ * doesn't fit a flat named-args object (e.g. `get_config_value.ts`'s
+ * positional `<path> [default]`, built with its own `buildArgv()`). Pass a
+ * pre-built argv array for that second case.
+ */
 export function scriptCommand(ref: ScriptRef<void>, argv: readonly string[] = []): string {
   const path = `"${MACHINERY_ROOT}/${ref.runtimePath}"`;
   return argv.length > 0 ? `bun run ${path} ${argv.join(" ")}` : `bun run ${path}`;

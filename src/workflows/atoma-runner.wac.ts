@@ -502,7 +502,7 @@ const postResultCommentStep = new TypedOutputsStep(
     // reuse of the ambiguous `directive` emptiness.
     name: "Post result comment",
     id: "post-result",
-    if: `steps.atoma.outcome == 'success' && ${buildContextStep.rawOutputs.new_event_count} != '0'`,
+    if: `${runAgentStep.rawOutcome} == 'success' && ${buildContextStep.rawOutputs.new_event_count} != '0'`,
     shell: "bash",
     env: { GH_TOKEN: "${{ github.token }}" },
     run: `${scriptCommandWithArgs(postResultCommentRef, {
@@ -530,7 +530,7 @@ const recordRunMetadataStep = new TypedOutputsStep({
   // here covers both original composite-action steps' separate conditions
   // in one go.
   name: "Record run metadata",
-  if: `steps.atoma.outcome == 'success' && ${postResultCommentStep.rawOutputs.comment_id} != ''`,
+  if: `${runAgentStep.rawOutcome} == 'success' && ${postResultCommentStep.rawOutputs.comment_id} != ''`,
   shell: "bash",
   run: `${scriptCommandWithArgs(recordRunMetadataRef, {
     session: "session.json",
@@ -545,7 +545,7 @@ const recordRunMetadataStep = new TypedOutputsStep({
 
 const saveSessionStep = new TypedOutputsStep({
   name: "Save session to atoma-data branch",
-  if: "steps.atoma.outcome == 'success'",
+  if: `${runAgentStep.rawOutcome} == 'success'`,
   shell: "bash",
   run: `${scriptCommandWithArgs(saveAgentSessionRef, {
     session: "session.json",
@@ -616,7 +616,7 @@ const dirtyStep = new TypedOutputsStep(
   {
     name: "Check for uncommitted changes",
     id: "dirty",
-    if: "steps.atoma.outcome == 'success'",
+    if: `${runAgentStep.rawOutcome} == 'success'`,
     shell: "bash",
     run: `if [ -n "$(git status --porcelain)" ]; then
   echo "has_changes=true" >> "$GITHUB_OUTPUT"
@@ -630,7 +630,7 @@ const loopControlStep = new TypedOutputsStep(
   {
     name: "Manage auto-dispatch loop control",
     id: "loop-control",
-    if: "steps.atoma.outcome == 'success'",
+    if: `${runAgentStep.rawOutcome} == 'success'`,
     shell: "bash",
     run: `${scriptCommandWithArgs(manageDispatchLoopRef, {
       session: "session.json",
@@ -657,7 +657,7 @@ const decideGuardReleaseStep = new TypedOutputsStep(
     if: "always()",
     shell: "bash",
     run: `${scriptCommandWithArgs(decideGuardReleaseRef, {
-      outcome: "\${{ steps.atoma.outcome }}",
+      outcome: runAgentStep.outcome,
       "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
       "loop-limit-reached": loopControlStep.outputs.loop_limit_reached,
       "chain-continues": runAgentStep.outputs.chain_continues,
@@ -680,7 +680,7 @@ const removeLabelStep = new TypedOutputsStep({
 });
 
 const DISPATCH_NEXT_GUARD =
-  `steps.atoma.outcome == 'success' && ${runAgentStep.rawOutputs.directive} != '' && ` +
+  `${runAgentStep.rawOutcome} == 'success' && ${runAgentStep.rawOutputs.directive} != '' && ` +
   `${runAgentStep.rawOutputs.max_iterations_reached} != 'true'`;
 
 const dispatchNextAgentStep = new TypedOutputsStep({
@@ -844,14 +844,14 @@ if [ ! -f "$MCP_PKGS_FILE" ]; then
   exit 0
 fi
 
-# npm パッケージをグローバルインストール
+# Executables a tool server is started by name, installed globally.
 NPM_PKGS=$(jq -r '.npm[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
 if [ -n "$NPM_PKGS" ]; then
   echo "Installing npm MCP packages: $NPM_PKGS"
   for pkg in $NPM_PKGS; do
     npm install -g "$pkg"
   done
-  # グローバル bin ディレクトリを PATH に追加
+  # Put the global bin directory on PATH so those names resolve.
   NPM_BIN=$(npm prefix -g)/bin
   echo "$NPM_BIN" >> "$GITHUB_PATH"
   echo "Added npm global bin to PATH: $NPM_BIN"
@@ -869,7 +869,7 @@ if [ -n "$BUN_PKGS" ]; then
   bun add --no-save $BUN_PKGS
 fi
 
-# pip パッケージをインストール
+# Python packages, for a tool server that ships as one.
 PIP_PKGS=$(jq -r '.pip[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
 if [ -n "$PIP_PKGS" ]; then
   echo "Installing pip MCP packages: $PIP_PKGS"

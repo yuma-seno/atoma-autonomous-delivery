@@ -60,6 +60,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Reads a `commands`-shaped array, collecting its own problems. */
 function readCommands(raw: unknown, where: string, problems: string[]): string[] {
+  // `problems` is shared across every target, so "did this one have a problem"
+  // has to be measured, not read off the length. It used to be
+  // `problems.length === 0`, which meant a target declaring no commands went
+  // unreported whenever an *earlier* target had any problem at all -- and the
+  // operator found it only after fixing the first and running again. The whole
+  // point of collecting problems instead of throwing at the first is to spare
+  // them that round trip.
+  const before = problems.length;
   if (!Array.isArray(raw)) {
     problems.push(`${where}: \`commands\` must be an array of shell commands.`);
     return [];
@@ -72,7 +80,7 @@ function readCommands(raw: unknown, where: string, problems: string[]): string[]
     }
     commands.push(entry);
   }
-  if (commands.length === 0 && problems.length === 0) {
+  if (commands.length === 0 && problems.length === before) {
     problems.push(`${where}: declares no commands, so it would deploy nothing.`);
   }
   return commands;

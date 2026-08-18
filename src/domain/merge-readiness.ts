@@ -123,6 +123,35 @@ export interface Blocker {
   detail: string;
 }
 
+/**
+ * The one blocker a CI dispatch removes, named so the rule that uses it does not
+ * quietly redefine itself.
+ *
+ * `needsCiDispatch` is true when every blocker is this kind — i.e. a required
+ * check has simply never run, and nothing else is in the way. Written as a
+ * constant because the predicate is an `every()` over a growing union: each new
+ * `BlockerKind` narrows what dispatches, and `merge-gate` did exactly that when
+ * it was added, with nothing recording the decision.
+ *
+ * The kinds it excludes exclude themselves for two different reasons, and only
+ * one of them is about correctness:
+ *
+ *   **The commit is going to change.** `draft`, `conflicting`, `behind`,
+ *   `not-open`, `mergeability-unknown`. A run against this commit is thrown
+ *   away, so not starting one is simply right.
+ *
+ *   **The commit is fine; the merge is not.** `merge-policy`, `human-authored`,
+ *   `governance-change`, `merge-gate`, `gate-config-invalid`, `blocked`, and the
+ *   two check kinds where a run already exists. CI would not be wasted here —
+ *   and the person who has to merge past one of these still needs the required
+ *   check written. Withholding the dispatch is a cost decision: an agent calls
+ *   this on every readiness check, and these blockers do not clear on their own.
+ *
+ * The second group is a live question rather than a settled one. If it should
+ * dispatch, this is the line to change.
+ */
+const CI_DISPATCH_CLEARS: BlockerKind = "checks-missing";
+
 export interface MergeReadiness {
   ready: boolean;
   blockers: Blocker[];
@@ -351,11 +380,7 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
     });
   }
 
-  // Worth dispatching CI only when a required check simply has not run, and
-  // nothing else stands in the way — dispatching against a conflicting or draft
-  // branch burns a run on a commit that has to change anyway.
-  const needsCiDispatch =
-    blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
+  const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === CI_DISPATCH_CLEARS);
 
   return { ready: blockers.length === 0, blockers, needsCiDispatch };
 }

@@ -22,7 +22,39 @@ const PASSING = new Set(["success", "skipped", "neutral"]);
  */
 export const CI_RETRY_LIMIT = 3;
 
+/**
+ * What this validation run concluded, as one of four distinguishable answers.
+ *
+ * `passed`             CI is green; the reviewer works next.
+ * `failed`             CI is red and the engineer gets another attempt.
+ * `no-conclusion`      the run timed out, was cancelled, or could not be found.
+ * `retries-exhausted`  red again after `CI_RETRY_LIMIT` attempts; stop.
+ */
+export type ValidationVerdict = "passed" | "failed" | "no-conclusion" | "retries-exhausted";
+
 export interface ValidationOutcome {
+  /**
+   * What the run concluded.
+   *
+   * Returned rather than left for the caller to work out, because the caller
+   * worked it out wrongly. It ran `checks.every((c) => c.conclusion === "success")`,
+   * and `checks` holds one entry per required context — so on a base branch that
+   * requires no status checks, `checks` is `[]`, `every()` is `true`, and a
+   * failing CI run was read as a passing one.
+   *
+   * That case is not hypothetical: `validate_pull_request.ts` treats an empty
+   * required list as legitimate and only warns. The consequences chained. The
+   * failure comment was skipped while `nextAgent` still said `engineer`, so the
+   * engineer was dispatched with no brief, no summary and no failing-run URL —
+   * and that same comment is the retry tally, so `priorRetries` stayed at zero
+   * and `CI_RETRY_LIMIT` could never fire. The engineer/CI loop this constant
+   * exists to bound ran unbounded, one model run per turn.
+   *
+   * `lib/branch-rules.ts` records the same `[].every()` defect being fixed once
+   * already. It was fixed at the input — "we could not read the required checks"
+   * — and this is the other half: we read them, and there are none.
+   */
+  verdict: ValidationVerdict;
   /** Check runs to create, one per context the ruleset requires. */
   checks: { name: string; conclusion: "success" | "failure" }[];
   /** Agent to dispatch next, or "" to hand back to a human. */
@@ -32,22 +64,37 @@ export interface ValidationOutcome {
 }
 
 /**
- * Translate a completed CI run into check runs and a next agent.
+ * The run being judged, and who is available to work on it.
  *
- * `conclusion` is GitHub's own value for the dispatched run. An empty string
- * means the run never reached a conclusion — it timed out, was cancelled, or
- * could not be found. That is deliberately NOT treated as a failure to hand to
- * the engineer: there is no defect to fix, and dispatching one would spend a
- * model run discovering that. It writes a failing check, which blocks the merge,
- * and stops. A human reads the pull request and decides.
+ * An object rather than positional parameters because `reviewerAgent` and
+ * `engineerAgent` are adjacent, same-typed, and mean opposite things: swapping
+ * them type-checks, passes nothing, and inverts every routing decision this
+ * function makes.
  */
-export function decideValidationOutcome(
-  conclusion: string,
-  requiredContexts: string[],
-  reviewerAgent: string,
-  engineerAgent: string,
-  priorRetries = 0,
-): ValidationOutcome {
+export interface ValidationInput {
+  /** GitHub's own conclusion for the dispatched run. Empty means it never reached one. */
+  conclusion: string;
+  /** The contexts the base branch's ruleset requires, one check run written per name. */
+  requiredContexts: string[];
+  /** Agent to dispatch when CI passes. */
+  reviewerAgent: string;
+  /** Agent to dispatch when CI fails and retries remain. */
+  engineerAgent: string;
+  /** How many times this pull request has already been handed back. */
+  priorRetries?: number;
+}
+
+/**
+ * Translate a completed CI run into a verdict, check runs, and a next agent.
+ *
+ * An empty `conclusion` — the run timed out, was cancelled, or could not be
+ * found — is deliberately NOT treated as a failure to hand to the engineer:
+ * there is no defect to fix, and dispatching one would spend a model run
+ * discovering that. It writes a failing check, which blocks the merge, and
+ * stops. A human reads the pull request and decides.
+ */
+export function decideValidationOutcome(input: ValidationInput): ValidationOutcome {
+  const { conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0 } = input;
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
 
@@ -57,11 +104,12 @@ export function decideValidationOutcome(
   }));
 
   if (passed) {
-    return { checks, nextAgent: reviewerAgent, summary: `CI concluded ${normalised}.` };
+    return { verdict: "passed", checks, nextAgent: reviewerAgent, summary: `CI concluded ${normalised}.` };
   }
 
   if (!normalised) {
     return {
+      verdict: "no-conclusion",
       checks,
       nextAgent: "",
       summary: "CI never reported a conclusion. Nothing was dispatched; a human should look.",
@@ -70,6 +118,7 @@ export function decideValidationOutcome(
 
   if (priorRetries >= CI_RETRY_LIMIT) {
     return {
+      verdict: "retries-exhausted",
       checks,
       nextAgent: "",
       summary:
@@ -79,6 +128,7 @@ export function decideValidationOutcome(
   }
 
   return {
+    verdict: "failed",
     checks,
     nextAgent: engineerAgent,
     summary: `CI concluded ${normalised}. Returning to the engineer with the failing job.`,

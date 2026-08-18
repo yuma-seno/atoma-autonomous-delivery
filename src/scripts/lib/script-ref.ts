@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 const SCRIPTS_RUNTIME_ROOT = ".github/scripts";
 
 export interface ScriptRef<TArgs = void> {
-  /** Deployed runtime path, e.g. `.github/atoma/tools/scripts/foo.ts`. */
+  /** Deployed runtime path, built from `SCRIPTS_RUNTIME_ROOT` above: `.github/scripts/foo.ts`. */
   readonly runtimePath: string;
   /**
    * Never populated -- a phantom marker so TypeScript treats `ScriptRef<A>`

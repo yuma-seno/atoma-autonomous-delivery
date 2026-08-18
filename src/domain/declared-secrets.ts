@@ -87,24 +87,73 @@ export interface SecretDestination {
   readonly reserved: ReadonlySet<string>;
 }
 
-/** Mirrors the `env:` of the "Run agent" step in `atoma-runner.wac.ts`. */
+/**
+ * Credentials every run is handed, whatever the project declared.
+ *
+ * The provider keys because atoma calls the model with one, and the GitHub token
+ * because the tool servers that reach GitHub authenticate with it.
+ *
+ * This list lives here, in the module that decides what a project may declare,
+ * because the two facts are the same fact: a name the run supplies is a name a
+ * project must not be able to supply instead. `write_credentials_file.ts` writes
+ * these first and the declared names after, into one object, so a later key wins
+ * — declaring one of these does not add a credential, it silently replaces the
+ * run's own.
+ *
+ * It used to be a second hand-written copy in that script, and the copy had
+ * already drifted: `ATOMA_COPILOT_TOKEN` was in it and missing from `reserved`
+ * below, so a project could name it in `tools.secrets` and overwrite the very
+ * credential its Copilot-backed run authenticates with. The other three were
+ * reserved. Only the newest name was missed, which is what a hand-kept mirror
+ * does — it is right until the day something is added to one side.
+ */
+export const RUN_CREDENTIALS: readonly string[] = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "ATOMA_COPILOT_TOKEN",
+  "GH_TOKEN",
+];
+
+/**
+ * The agent's own process: `RUN_CREDENTIALS`, plus the run context in the "Run
+ * agent" step's `env:` (`atoma-runner.wac.ts`) and the names atoma derives for
+ * itself from the credentials file.
+ *
+ * The credentials are no longer in that step's environment — they are written to
+ * a file by an earlier step that exits before the agent starts — so this is a
+ * union of two places rather than a mirror of one. Reserving them is not about
+ * where they sit; it is about the agent's process ending up with one meaning per
+ * name.
+ */
 export const TOOL_SECRETS: SecretDestination = {
   field: "tools.secrets",
   reserved: new Set([
+    ...RUN_CREDENTIALS,
     "AGENT",
-    "ANTHROPIC_API_KEY",
     "ATOMA_OPS_LOG",
     "ATOMA_PROVIDER",
     "ATOMA_RUN_TYPE",
-    "GH_TOKEN",
-    "GITHUB_PERSONAL_ACCESS_TOKEN",
     "GITHUB_RUN_ID",
     "ISSUE_NOTIFY",
     "ISSUE_NUMBER",
-    "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
+    // The repository-variable forms the step is actually given. The run script
+    // promotes each to the unsuffixed name above once it has checked it is not
+    // empty, so shadowing either would decide the provider or its host before
+    // that check ever runs.
+    "ATOMA_PROVIDER_IN",
+    "OPENAI_BASE_URL_IN",
   ]),
 };
+
+/**
+ * `GITHUB_PERSONAL_ACCESS_TOKEN` is deliberately NOT reserved, having been until
+ * now. The runner stopped setting it — "gone rather than moved: nothing in either
+ * repository reads it" — so reserving it refused a name for a variable that no
+ * longer exists. It is also the name the official GitHub MCP server reads, which
+ * makes it one of the likelier things a project would legitimately want to
+ * declare, and refusing it bought nothing.
+ */
 
 /** Mirrors the `env:` of the command step in `atoma-check.wac.ts`. */
 export const CHECK_SECRETS: SecretDestination = {
@@ -112,10 +161,27 @@ export const CHECK_SECRETS: SecretDestination = {
   reserved: new Set(["GH_TOKEN"]),
 };
 
-/** Mirrors the `env:` of the command step in `atoma-deploy.wac.ts`. */
+/**
+ * The deploy job's own variables, from two places.
+ *
+ * `atoma-deploy.wac.ts` puts `GH_TOKEN` and the three `ATOMA_DEPLOY_*` inputs in
+ * the command step's `env:`, and `run_deploy.ts` sets `ATOMA_DEPLOY_TARGET` per
+ * command as it runs them. Both belong here: the declared slots are `export`ed
+ * into that same shell before the command runs, so either could be replaced.
+ *
+ * The three inputs matter more than they look. `ATOMA_DEPLOY_REF` and
+ * `ATOMA_DEPLOY_TRIGGER` are what select which targets a run deploys — declaring
+ * one would not leak anything, it would quietly redirect the deployment.
+ */
 export const DEPLOY_SECRETS: SecretDestination = {
   field: "deploy.secrets",
-  reserved: new Set(["ATOMA_DEPLOY_TARGET", "GH_TOKEN"]),
+  reserved: new Set([
+    "ATOMA_DEPLOY_REF",
+    "ATOMA_DEPLOY_TARGET",
+    "ATOMA_DEPLOY_TARGET_INPUT",
+    "ATOMA_DEPLOY_TRIGGER",
+    "GH_TOKEN",
+  ]),
 };
 
 /** Every destination, for the callers that need to name one from a string. */

@@ -59,7 +59,7 @@ const parseCommandStep = new TypedOutputsStep(
   {
     name: "Parse slash command",
     id: "command",
-    if: `(${PARSE_ALLOWED}) && steps.guard.outputs.blocked != 'true'`,
+    if: `(${PARSE_ALLOWED}) && ${guardStep.rawOutputs.blocked} != 'true'`,
     shell: "bash",
     env: {
       ATOMA_COMMENT_BODY: githubEvent<IssueCommentCreatedEvent>((e) => e.comment.body),
