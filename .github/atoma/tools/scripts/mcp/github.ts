@@ -18867,7 +18867,7 @@ var STATUS_MAP = {
 };
 var NOT_A_CHANGE = new Set(["unchanged"]);
 function readChangedFiles(repo, num) {
-  const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", '.[] | [.status, .filename, (.previous_filename // "")] | @tsv');
+  const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", '.[] | [.status, .filename, (.previous_filename // "")] | @json');
   if (code) {
     log4(`WARN could not read changed files for #${num}; treating the merge as a person's`);
     return { files: [], problem: `the changed files of #${num} could not be read` };
@@ -18877,7 +18877,14 @@ function readChangedFiles(repo, num) {
 `)) {
     if (line.trim() === "")
       continue;
-    const [status, path, previous] = line.split("\t");
+    let status = "";
+    let path = "";
+    let previous = "";
+    try {
+      [status, path, previous] = JSON.parse(line);
+    } catch {
+      return { files: [], problem: `the changed-file list of #${num} could not be parsed` };
+    }
     if (NOT_A_CHANGE.has((status ?? "").trim()))
       continue;
     const mapped = STATUS_MAP[(status ?? "").trim()];
