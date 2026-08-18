@@ -24,20 +24,28 @@ function gatherSubResults(repo: string, subIssues: number[]): string {
 
   for (const num of subIssues) {
     let title = "Unknown";
-    let state = "closed";
+    // Not "closed". This block feeds the orchestrator's final report, whose whole
+    // job is to state what happened, and a sub-issue whose state could not be
+    // read is exactly the one thing that report must not assert. One rate-limited
+    // lookup used to turn into "Status: closed" for work still in progress.
+    let state = "could not be read";
 
     try {
       const { code, stdout } = gh("issue", "view", String(num), "--repo", repo, "--json", "title,state,closedAt");
       if (code === 0 && stdout) {
         const info = JSON.parse(stdout) as { title?: string; state?: string };
         title = info.title ?? "Unknown";
-        state = info.state ?? "closed";
+        state = info.state ?? "could not be read";
       }
     } catch {
       // keep defaults
     }
 
     const linkedPrs: string[] = [];
+    // Tracked separately from an empty result, because "none found" and "could
+    // not look" read identically once they reach the report and only one of them
+    // is a fact.
+    let prLookupFailed = false;
     for (const state_ of ["merged", "open"] as const) {
       try {
         const { code, stdout } = gh("pr", "list", "--repo", repo, "--state", state_, "--search", `#${num} in:body`, "--json", "number,title,url");
@@ -46,9 +54,11 @@ function gatherSubResults(repo: string, subIssues: number[]): string {
           for (const pr of prs) {
             linkedPrs.push(`- PR #${pr.number}: ${pr.title} (${pr.url})`);
           }
+        } else {
+          prLookupFailed = true;
         }
       } catch {
-        // best-effort
+        prLookupFailed = true;
       }
     }
 
@@ -57,6 +67,8 @@ function gatherSubResults(repo: string, subIssues: number[]): string {
     if (linkedPrs.length) {
       lines.push("Linked PRs:");
       lines.push(...linkedPrs);
+    } else if (prLookupFailed) {
+      lines.push("Linked PRs could not be read.");
     } else {
       lines.push("No linked PRs found.");
     }

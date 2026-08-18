@@ -13,8 +13,20 @@ export interface ConcludeIssueResult {
  */
 export async function concludeIssue(issue: number, reason: string, summary: string): Promise<ConcludeIssueResult> {
   const repo = process.env.GITHUB_REPOSITORY ?? "";
-  const { stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "author");
+  // The exit code decides, not just the presence of output. An unread author is
+  // not a human author: closing the issue outright and telling a person "this was
+  // opened directly by a human" are different acts, and picking either one on a
+  // failed lookup asserts something this did not determine. The same question is
+  // asked fail-loud in `mcp/github.ts` via `ghJsonOrThrow`.
+  const { code, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "author");
+  if (code !== 0) {
+    throw new Error(
+      `Could not read the author of issue #${issue}, so this cannot tell whether closing it is yours to do.`,
+    );
+  }
   const authorInfo = stdout ? (JSON.parse(stdout) as GhIssueAuthor) : {};
+  // Absent field still means "treat as a person", which is the cautious half of
+  // the pair: it hands the decision to someone rather than taking it.
   const isBot = authorInfo.author?.is_bot ?? false;
 
   let body = `Atoma: orchestrator considers work on this issue complete.\n\n**Reason:** ${reason}`;

@@ -13,6 +13,7 @@
  * server's tool registry.
  */
 import { gh } from "./gh.ts";
+import { readRequiredChecks } from "./branch-rules.ts";
 import { getGovernedPaths, getMergeGates, getMergePolicy } from "./config.ts";
 import { governedPathsIn, type MergeSignals } from "../domain/merge-readiness.ts";
 import { pathPatternProblem } from "../domain/path-patterns.ts";
@@ -46,45 +47,8 @@ interface CheckRunsResponse {
   check_runs?: { name: string; status: string; conclusion: string | null; details_url?: string }[];
 }
 
-interface BranchRule {
-  type: string;
-  parameters?: { required_status_checks?: { context: string }[] };
-}
-
 function log(message: string): void {
   console.error(`[atoma-merge-signals] ${message}`);
-}
-
-/**
- * Status-check contexts the branch's protection requires.
- *
- * Best-effort by design. This only makes a refusal more specific — naming the
- * check to fix rather than relaying GitHub's verdict verbatim — so a transient 403
- * or rate limit must not become a tool error that loses the verdict altogether.
- * `decideMergeReadiness` degrades to its generic `blocked` blocker on an empty
- * list.
- *
- * Read from the repository rather than hardcoded, so editing
- * `.github/rulesets/*.json` changes what the gate enforces with no code change.
- */
-function readRequiredChecks(repo: string, baseRef: string): string[] {
-  if (!baseRef) return [];
-
-  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
-  if (code) {
-    log(`WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
-    return [];
-  }
-  try {
-    const rules = JSON.parse(stdout || "[]") as BranchRule[];
-    return rules
-      .filter((rule) => rule.type === "required_status_checks")
-      .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
-      .map((check) => check.context);
-  } catch {
-    log(`WARN branch rules for ${baseRef} were not valid JSON`);
-    return [];
-  }
 }
 
 /**
@@ -93,8 +57,7 @@ function readRequiredChecks(repo: string, baseRef: string): string[] {
  * The same check `merge_gates` patterns get, on the gate that matters more.
  * `governed_paths` decides which changes to the agent's own limits fall to a
  * person, so a pattern that matches nothing hands the agent exactly what the
- * setting was written to withhold -- and does it in silence, which is the one
- * outcome this repository has been wrong about often enough to check for.
+ * setting was written to withhold — and does it in silence.
  *
  * Reported through the same `gate-config-invalid` blocker as a bad `merge_gates`
  * entry, because it is the same sentence to the person reading it: a gate this
@@ -140,7 +103,7 @@ interface ChangedFilesRead {
 /**
  * What this pull request changes, and what happened to each file.
  *
- * Fails CLOSED, unlike `readRequiredChecks` above, and the two differ because of
+ * Fails CLOSED, unlike `readRequiredChecks` in `branch-rules.ts`, and the two differ because of
  * what each failure costs. An unreadable rule list only makes a refusal less
  * specific; an unreadable file list, treated as empty, would let an agent merge
  * exactly the change the governance gate and every declared merge gate exist to
@@ -256,6 +219,9 @@ export function gatherMergeSignals(
 
   // One read, two gates. A failure to read it is a problem rather than an empty
   // list, so both gates block instead of quietly finding nothing.
+  const required = readRequiredChecks(repo, baseRefName);
+  if (!required.known) log(`WARN ${required.why}; blockers will be less specific`);
+
   const changed = readChangedFiles(repo, num);
   const gates = getMergeGates();
   const gateProblems = [...gates.problems, ...governedPathProblems()];
@@ -285,7 +251,12 @@ export function gatherMergeSignals(
         conclusion: run.conclusion,
         ...(run.details_url ? { detailsUrl: run.details_url } : {}),
       })),
-      requiredChecks: readRequiredChecks(repo, baseRefName),
+      // An unreadable rule list only costs specificity here: `mergeStateStatus`
+      // is still GitHub's verdict, and `decideMergeReadiness` falls back to its
+      // generic `blocked` blocker. So this is the one caller for which "unknown"
+      // and "none required" lead to the same place, and it says so rather than
+      // relying on a shared empty list to mean both.
+      requiredChecks: required.known ? required.contexts : [],
       mergePolicy: getMergePolicy(),
       // The sentinel keeps the governance gate's own fail-closed behaviour: an
       // unreadable file list reports the pull request as touching governance, so
