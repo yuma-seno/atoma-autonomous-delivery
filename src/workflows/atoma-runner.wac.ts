@@ -51,7 +51,17 @@ const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
-const ATOMA_DEFAULT_VERSION = "v0.1.10";
+// Moves with `tools/tools.yaml`, not independently. From v0.1.11 atoma removes
+// the credentials it knows about from a tool server's environment unless that
+// server names them, and expands `${NAME}` in an `env:` value against the run's
+// credentials. Before v0.1.11 those values were literal, so a tools file carrying
+// `${GH_TOKEN}` would hand `github` those seven characters as its token --
+// overriding the value it had been inheriting and failing every call with a 401.
+//
+// So the two are one change: raising this pin without the declarations strips a
+// token nothing asks for, and shipping the declarations without raising it passes
+// a literal.
+const ATOMA_DEFAULT_VERSION = "v0.1.11";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
