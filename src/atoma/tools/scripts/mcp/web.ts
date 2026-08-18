@@ -16,10 +16,7 @@
  * Bounds the response. A page with no limit can spend an entire context window
  * in one call.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { htmlToMarkdown } from "../../../../lib/html-to-markdown.ts";
 import { sniffMimeType } from "../../../../lib/issue-images.ts";
 
@@ -131,22 +128,7 @@ const { tools, dispatch } = buildMcpTools([
   }),
 ]);
 
-const server = new Server({ name: "atoma-web-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-  try {
-    const result = await dispatch(name, args);
-    const content: unknown[] = [{ type: "text", text: result.text }];
-    for (const image of result.images ?? []) content.push(image);
-    return { content, isError: false };
-  } catch (error) {
-    return { content: [{ type: "text", text: `Error: ${(error as Error).message ?? error}` }], isError: true };
-  }
-});
-
 async function main(): Promise<void> {
-  await server.connect(new StdioServerTransport());
+  await serveMcpServer({ name: "atoma-web-mcp", version: "1.0.0", tools, dispatch, log });
 }
-
 if (import.meta.main) void main();

@@ -1,5 +1,13 @@
 /**
- * mcp-tool.ts — single-definition MCP tool helper.
+ * mcp-tool.ts — the one place a tool is defined, and the one place a server is
+ * run.
+ *
+ * Two halves of the same idea. `defineMcpTool` makes a tool's arguments have a
+ * single definition; `serveMcpServer` makes a tool's *result* have one. Both
+ * exist because the alternative was five files each writing out its own version
+ * and drifting.
+ *
+ * ## The argument half
  *
  * Before this, every MCP tool in mcp/github.ts and mcp/atoma.ts had TWO
  * independent, hand-written descriptions of its own arguments: a JSON
@@ -23,10 +31,18 @@
  * when passed to `zodToJsonSchema()`. Confirmed by direct probing during
  * implementation — always import `z` from "zod/v3" in files that build
  * MCP tool schemas.
+ *
+ * ## The result half
+ *
+ * See `serveMcpServer` at the bottom. In short: every server hand-wrote the
+ * ~10-line `CallToolRequestSchema` handler that maps a result into MCP content,
+ * and each dropped a different field of it.
  */
 import { z } from "zod/v3";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export { z };
 
@@ -78,11 +94,7 @@ export type McpToolResult =
   | string
   | { text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] };
 
-function normalizeResult(result: McpToolResult): {
-  text: string;
-  meta?: Record<string, unknown>;
-  images?: McpImageBlock[];
-} {
+function normalizeResult(result: McpToolResult): McpToolPayload {
   return typeof result === "string" ? { text: result } : result;
 }
 
@@ -93,10 +105,24 @@ export interface McpToolSpec<S extends z.ZodTypeAny> {
   handler: (args: z.infer<S>) => McpToolResult | Promise<McpToolResult>;
 }
 
+/**
+ * A handler's result, normalised: always a text part, optionally the other two.
+ *
+ * Named because it is the contract between a tool and whatever serves it, and it
+ * was written out inline four times in this file and destructured differently in
+ * each of the five servers — three of which dropped a field the type says can be
+ * there. `serveMcpServer` below is now the one place that maps it.
+ */
+export interface McpToolPayload {
+  text: string;
+  meta?: Record<string, unknown>;
+  images?: McpImageBlock[];
+}
+
 /** A tool ready to be listed (`.tool`) and invoked (`.call`) by an MCP server. */
 export interface BuiltMcpTool {
   readonly tool: Tool;
-  call(args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }>;
+  call(args: Record<string, unknown>): Promise<McpToolPayload>;
 }
 
 /**
@@ -132,9 +158,7 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
   }) as Record<string, unknown>;
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema as Tool["inputSchema"] },
-    async call(
-      args: Record<string, unknown>,
-    ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }> {
+    async call(args: Record<string, unknown>): Promise<McpToolPayload> {
       const result = schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues
@@ -147,24 +171,71 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
   };
 }
 
+/** Routes one `tools/call` to the tool that owns the name. */
+export type McpDispatch = (name: string, args: Record<string, unknown>) => Promise<McpToolPayload>;
+
 /** Builds an MCP server's `tools/list` array and a single `name -> call` dispatch function from a list of tool specs. */
-export function buildMcpTools(specs: BuiltMcpTool[]): {
-  tools: Tool[];
-  dispatch(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }>;
-} {
+export function buildMcpTools(specs: BuiltMcpTool[]): { tools: Tool[]; dispatch: McpDispatch } {
   const byName = new Map(specs.map((s) => [s.tool.name, s]));
   return {
     tools: specs.map((s) => s.tool),
-    async dispatch(
-      name: string,
-      args: Record<string, unknown>,
-    ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }> {
+    async dispatch(name, args) {
       const spec = byName.get(name);
       if (!spec) throw new Error(`Unknown: ${name}`);
       return spec.call(args);
     },
   };
+}
+
+/**
+ * Run an MCP server over stdio: list these tools, dispatch calls to them, and map
+ * every result the way `McpToolPayload` says it can be shaped.
+ *
+ * Each of the five servers used to write this out itself — about ten lines,
+ * near-identical — and each dropped a different part of the result:
+ *
+ *   `github`, `atoma`   kept `meta`,   dropped `images`
+ *   `web`               kept `images`, dropped `meta`
+ *   `shell`, `search`   dropped both
+ *
+ * Nothing said so, and nothing would have caught it. The type declares all
+ * three, so a `github` tool that started returning an image — `lib/issue-images.ts`
+ * already exists, and `web` already uses it — or a `web` tool that set
+ * `session_ends` would have been silently truncated, with no type error, because
+ * each handler destructured only the subset it happened to need. That is
+ * duplication of the exact thing this file exists to remove.
+ *
+ * `log` stays per-server rather than becoming shared: the prefixes are what
+ * identify which server a line came from, in a run log that interleaves all five.
+ */
+export async function serveMcpServer(options: {
+  /** Server name reported in the MCP handshake, e.g. `atoma-web-mcp`. */
+  name: string;
+  version: string;
+  tools: Tool[];
+  dispatch: McpDispatch;
+  /** Where this server's diagnostics go. Never stdout: that is the transport. */
+  log: (message: string) => void;
+}): Promise<void> {
+  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args = {} } = request.params;
+    try {
+      const { text, meta, images } = await options.dispatch(name, args);
+      return {
+        content: [{ type: "text", text }, ...(images ?? [])],
+        isError: false,
+        ...(meta ? { _meta: meta } : {}),
+      };
+    } catch (error) {
+      const message = (error as Error).message ?? String(error);
+      options.log(`Tool error for ${name}: ${message}`);
+      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+    }
+  });
+
+  await server.connect(new StdioServerTransport());
 }

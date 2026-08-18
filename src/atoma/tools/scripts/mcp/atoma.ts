@@ -17,14 +17,11 @@
  * in-process (dispatchSubAgent/concludeIssue and whatever they import);
  * always `console.error()` (stderr) for logging.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { gh } from "../../../../lib/gh.ts";
 import { dispatchSubAgent } from "../lib/dispatch_sub_agent.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
 import { concludeIssue } from "../lib/conclude_issue.ts";
-import { buildMcpTools, defineMcpTool, positiveInt, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-mcp] ${msg}`);
@@ -178,32 +175,9 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   }),
 ]);
 
-const server = new Server(
-  { name: "atoma-mcp-server", version: "1.0.0" },
-  { capabilities: { tools: {} } },
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-  try {
-    const { text, meta } = await dispatch(name, args);
-    return {
-      content: [{ type: "text", text }],
-      isError: false,
-      ...(meta ? { _meta: meta } : {}),
-    };
-  } catch (e) {
-    log(`Handler error for ${name}: ${(e as Error).message}`);
-    return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], isError: true };
-  }
-});
-
 async function main(): Promise<void> {
   log("Starting atoma-mcp-server (stdio transport)");
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await serveMcpServer({ name: "atoma-mcp-server", version: "1.0.0", tools: TOOLS, dispatch, log });
 }
 
 if (import.meta.main) void main();

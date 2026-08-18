@@ -1,10 +1,19 @@
 #!/usr/bin/env bun
 /** Foreground-only shell MCP server for deterministic agent validation commands. */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { buildMcpTools, defineMcpTool, z } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { literalsFrom, redact } from "../../../../domain/redaction.ts";
+
+/**
+ * This server's diagnostics, prefixed like every other server's.
+ *
+ * `console.error`, never the other one: this process's stdout is the JSON-RPC
+ * transport. The prefix is what identifies which server a line came from in a
+ * run log that interleaves all five, which is why `serveMcpServer` takes it as
+ * a parameter rather than owning one.
+ */
+function log(message: string): void {
+  console.error(`[atoma-shell] ${message}`);
+}
 
 const MAX_OUTPUT_BYTES = 1_000_000;
 
@@ -71,7 +80,7 @@ const LOGGED_COMMAND_CHARS = 200;
 function logCommand(command: string): void {
   const flat = redact(command, SECRET_LITERALS).replace(/\s+/g, " ").trim();
   const shown = flat.length > LOGGED_COMMAND_CHARS ? `${flat.slice(0, LOGGED_COMMAND_CHARS)}…` : flat;
-  console.error(`[atoma-shell] exec: ${shown}`);
+  log(`exec: ${shown}`);
 }
 
 async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise<string> {
@@ -121,8 +130,8 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
   // Size matters as much as count. Every byte returned here enters the session
   // and is resent on each later inference, so a few large outputs explain a
   // growing prompt better than a call count does.
-  console.error(
-    `[atoma-shell] exit=${exitCode} ${elapsedMs}ms ` +
+  log(
+    `exit=${exitCode} ${elapsedMs}ms ` +
       `stdout=${Buffer.from(out.text).length}B stderr=${Buffer.from(err.text).length}B` +
       (out.truncated || err.truncated ? " (truncated)" : ""),
   );
@@ -146,20 +155,7 @@ const { tools, dispatch } = buildMcpTools([
   }),
 ]);
 
-const server = new Server({ name: "atoma-shell-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-  try {
-    const { text } = await dispatch(name, args);
-    return { content: [{ type: "text", text }], isError: false };
-  } catch (error) {
-    return { content: [{ type: "text", text: `Error: ${(error as Error).message ?? error}` }], isError: true };
-  }
-});
-
 async function main(): Promise<void> {
-  await server.connect(new StdioServerTransport());
+  await serveMcpServer({ name: "atoma-shell-mcp", version: "1.0.0", tools, dispatch, log });
 }
-
 if (import.meta.main) void main();
