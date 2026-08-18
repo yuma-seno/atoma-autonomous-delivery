@@ -99,8 +99,34 @@ export interface BuiltMcpTool {
   call(args: Record<string, unknown>): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }>;
 }
 
+/**
+ * The tool's schema, with unknown keys refused instead of dropped.
+ *
+ * Zod's default is to strip what it does not recognise, which turns a misspelled
+ * argument into a different call that succeeds. `get_issue_comments({number: 42,
+ * form: 3})` -- `from` mistyped -- silently returned the default last five
+ * comments, and the agent read that as the three it asked for. `create_issue`
+ * with `label` instead of `labels` created an issue with no labels and reported
+ * success.
+ *
+ * Strict makes the same call an error naming the key, which the agent can act on.
+ * It also puts `additionalProperties: false` in the advertised JSON Schema, so
+ * the constraint reaches the model before the call rather than after.
+ *
+ * `merge_gates` already made this decision for configuration: an unrecognised key
+ * is an error there, because a silently-dropped one is indistinguishable from a
+ * setting nobody needed. The same argument holds for a tool call.
+ *
+ * The cast is safe in the direction that matters: `.strict()` narrows what is
+ * accepted and leaves the parsed output type untouched.
+ */
+function refuseUnknownKeys<S extends z.ZodTypeAny>(schema: S): S {
+  return (schema instanceof z.ZodObject ? schema.strict() : schema) as S;
+}
+
 export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): BuiltMcpTool {
-  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(spec.schema, {
+  const schema = refuseUnknownKeys(spec.schema);
+  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(schema, {
     target: "jsonSchema7",
     $refStrategy: "none",
   }) as Record<string, unknown>;
@@ -109,7 +135,7 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
     async call(
       args: Record<string, unknown>,
     ): Promise<{ text: string; meta?: Record<string, unknown>; images?: McpImageBlock[] }> {
-      const result = spec.schema.safeParse(args);
+      const result = schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues
           .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)

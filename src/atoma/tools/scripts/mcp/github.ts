@@ -616,6 +616,7 @@ function listPrReviewComments(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
 
 function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
   let event: string = a.event;
+  let substituted = false;
   if (event === "APPROVE") {
     // GitHub always rejects self-approval since all Atoma agents share the
     // same bot identity ("Can not approve your own pull request"). Rewrite
@@ -627,13 +628,31 @@ function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
     // teaching them a rule that changes nothing about the outcome.
     log(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
     event = "COMMENT";
+    substituted = true;
   }
   const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
   if (a.body) cmd.push("--body", a.body);
   const { code, stdout, stderr } = gh(...cmd);
   if (code) mcpFail(stderr || stdout);
   logOp("submit_pr_review", { number: a.number, event });
-  return JSON.stringify({ ok: true });
+  // Says what was actually submitted, not just that something was. The rewrite
+  // used to be logged to this server's stderr only, so the caller's sole evidence
+  // was `ok: true` for the action it asked for -- and a reviewer that believes it
+  // approved reports an approval, while a ruleset requiring one still blocks and
+  // the resulting `blocked` blocker names no cause.
+  return JSON.stringify(
+    substituted
+      ? {
+          ok: true,
+          event,
+          requested_event: a.event,
+          note:
+            "APPROVE was submitted as COMMENT: every Atoma agent shares one bot identity, and GitHub never lets an " +
+            "identity approve its own pull request. The review body was posted unchanged. If the ruleset requires an " +
+            "approving review, a person has to give it.",
+        }
+      : { ok: true, event },
+  );
 }
 
 /** True if `number` is currently closed (used to skip a pointless post-merge re-invocation when native "Closes #N" auto-close already did the job). */

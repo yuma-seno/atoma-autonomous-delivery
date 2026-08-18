@@ -126,6 +126,12 @@ export function resolveDeployTargets(raw: unknown): DeployTargetsResolution {
     }
     const tags = (tagsRaw as string[]).map((tag) => tag.trim());
 
+    const badPattern = tags.map((tag) => tagPatternProblem(tag)).find((problem) => problem !== "");
+    if (badPattern) {
+      problems.push(`${where}: ${badPattern}`);
+      return;
+    }
+
     // A tag target with no pattern would deploy on every tag in the repository,
     // which is never what someone meant to write and is expensive to discover.
     if (trigger === "tag" && tags.length === 0) {
@@ -157,6 +163,31 @@ export function resolveDeployTargets(raw: unknown): DeployTargetsResolution {
  */
 export function tagMatches(pattern: string, tag: string): boolean {
   return pattern.endsWith("*") ? tag.startsWith(pattern.slice(0, -1)) : tag === pattern;
+}
+
+/**
+ * Why `pattern` is not a form `tagMatches` can honour, or "" when it is fine.
+ *
+ * The same check `pathPatternProblem` performs next door, and it was the one
+ * field in an otherwise strict validator that had none. `"v*.*.*"` — the natural
+ * way to write a semver tag — was accepted and matched nothing, so the target
+ * validated cleanly and deployed on no tag at all.
+ */
+export function tagPatternProblem(pattern: string): string {
+  const body = pattern.endsWith("*") ? pattern.slice(0, -1) : pattern;
+  if (body.includes("*")) {
+    return (
+      `"${pattern}" uses a '*' somewhere other than the end, which this matcher cannot honour, ` +
+      'so it would match no tag. Write a literal tag, or a prefix followed by "*" — e.g. "v*".'
+    );
+  }
+  if (/[?[\]{}]/.test(body)) {
+    return (
+      `"${pattern}" uses a glob character this matcher cannot honour, so it would match no tag. ` +
+      'Write a literal tag, or a prefix followed by "*".'
+    );
+  }
+  return "";
 }
 
 /** Targets that deploy when a change lands on the default branch. */
