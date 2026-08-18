@@ -12,7 +12,7 @@
  */
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
-import { dispatchOrchestratorIfReady } from "../lib/aggregation.ts";
+import { describeGateResult, dispatchOrchestratorIfReady, needsAttention } from "../lib/aggregation.ts";
 
 export interface DispatchIfSiblingsDoneArgs {
   repo: string;
@@ -46,16 +46,8 @@ async function main(): Promise<void> {
     closedNum: Number(closedNum),
   });
 
-  if (!result.ready) {
-    console.log(`Still ${result.remaining} sibling(s) open. No action needed.`);
-  } else if (!result.dispatched) {
-    console.log(
-      `Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` +
-        `completion, or the dispatch failed -- check for a WARN above.`,
-    );
-  } else {
-    console.log(`All siblings done. Dispatched orchestrator on parent #${parent}.`);
-  }
+  console.log(describeGateResult(result, Number(closedNum), Number(parent)));
+  if (needsAttention(result)) process.exit(1);
 }
 
 if (import.meta.main) void main();

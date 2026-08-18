@@ -389,3 +389,79 @@ describe("mcp/atoma.ts", () => {
     expect(r.result.content[0].text).toContain("tasks must be a non-empty list");
   });
 });
+
+// The two servers that had no round-trip test at all.
+//
+// Worth having on its own, and worth having now in particular: `serveMcpServer`
+// replaced five hand-written request handlers with one, and each of those had
+// been dropping a different part of a tool's result. `web` is the only server
+// whose tools return images, so it is the one place the newly-preserved `images`
+// field is exercised -- and it was outside the covered set.
+describe("mcp/web.ts", () => {
+  test("initializes and advertises fetch", async () => {
+    const init = await sendRequest("web.ts", INIT_REQUEST);
+    expect(init.result.serverInfo.name).toBe("atoma-web-mcp");
+
+    const list = await sendRequest("web.ts", { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const names = list.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain("fetch");
+  });
+
+  // Not "returns something": returns an ERROR. Every failure here used to come
+  // back as an ordinary result whose body happened to be one English sentence,
+  // so a model summarising several fetched pages had no structural signal that
+  // one of them was never read.
+  test("an unreachable host is an error, not a result", async () => {
+    const r = await sendRequest("web.ts", {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "fetch", arguments: { url: "http://127.0.0.1:1/nothing" } },
+    });
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("127.0.0.1");
+  });
+
+  test("a misspelled argument is refused rather than dropped", async () => {
+    const r = await sendRequest("web.ts", {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "fetch", arguments: { url: "https://example.com", rawe: true } },
+    });
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("rawe");
+  });
+});
+
+describe("mcp/search.ts", () => {
+  test("initializes and advertises search_issues", async () => {
+    const init = await sendRequest("search.ts", INIT_REQUEST);
+    expect(init.result.serverInfo.name).toBe("atoma-search-mcp");
+
+    const list = await sendRequest("search.ts", { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const names = list.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain("search_issues");
+  });
+
+  test("a misspelled argument is refused rather than dropped", async () => {
+    const r = await sendRequest("search.ts", {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "search_issues", arguments: { query: "anything", limitt: 3 } },
+    });
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("limitt");
+  });
+
+  test("an unknown tool name is an error", async () => {
+    const r = await sendRequest("search.ts", {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "search_everything", arguments: {} },
+    });
+    expect(r.result.isError).toBe(true);
+  });
+});

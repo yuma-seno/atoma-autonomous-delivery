@@ -2,8 +2,19 @@
 /**
  * match_trigger.ts — Match a GitHub event to an agent from config.json
  * auto_triggers.
+ *
+ * Two steps, deliberately separated. `resolveAutoTriggers` decides whether the
+ * configuration is usable at all, and `selectTriggerAgent` decides which entry
+ * this event selects. Both live in `domain/auto-triggers.ts`; this script is the
+ * part that reads the environment and prints.
+ *
+ * The matching used to be four lines here, and they were inverted: they asked
+ * "do I know a reason to skip this entry?" rather than "does this entry apply?".
+ * A condition the script did not recognise was therefore not a trigger that never
+ * fires, it was a trigger that fires every time.
  */
 import { loadConfig } from "../lib/config.ts";
+import { resolveAutoTriggers, selectTriggerAgent } from "../domain/auto-triggers.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);
@@ -22,20 +33,23 @@ function main(): void {
   if (event.startsWith("pull_request_target.")) {
     event = "pull_request." + event.slice("pull_request_target.".length);
   }
-  const reviewState = env.REVIEW_STATE ?? "";
-  const isDraft = env.IS_DRAFT ?? "";
 
-  const config = loadConfig();
-
-  for (const trigger of config.auto_triggers ?? []) {
-    if (trigger.event !== event) continue;
-    if (trigger.condition === "changes_requested" && reviewState !== "changes_requested") continue;
-    if (trigger.condition === "non_draft" && isDraft === "true") continue;
-    const agent = trigger.agent;
-    if (agent.startsWith("$")) continue;
-    console.log(agent);
-    return;
+  const { triggers, problems } = resolveAutoTriggers(loadConfig().auto_triggers);
+  if (problems.length > 0) {
+    // Fails the step rather than dispatching nobody quietly. An unusable trigger
+    // list and an event nothing matches produce the same silence otherwise, and
+    // only one of them is a repository that has stopped responding to its own
+    // pull requests.
+    for (const problem of problems) console.error(`::error::${problem}`);
+    process.exit(1);
   }
+
+  const agent = selectTriggerAgent(triggers, {
+    event,
+    reviewState: env.REVIEW_STATE ?? "",
+    isDraft: (env.IS_DRAFT ?? "") === "true",
+  });
+  if (agent) console.log(agent);
 }
 
 if (import.meta.main) main();

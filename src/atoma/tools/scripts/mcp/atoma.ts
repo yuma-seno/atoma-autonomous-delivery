@@ -20,7 +20,8 @@
 import { gh } from "../../../../lib/gh.ts";
 import { dispatchSubAgent } from "../lib/dispatch_sub_agent.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
-import { concludeIssue } from "../lib/conclude_issue.ts";
+import { concludeIssue, type ConcludeIssueResult } from "../lib/conclude_issue.ts";
+import { describeGateResult, needsAttention } from "../../../../lib/aggregation.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 
 function log(msg: string): void {
@@ -129,7 +130,10 @@ async function handleRequestCloseIssue(args: z.infer<typeof REQUEST_CLOSE_ISSUE_
 
   log(`Concluding issue #${issueNumber}: reason=${JSON.stringify(reason)}`);
 
-  let result: { outcome: "closed" | "escalated" };
+  // The module's own type, not a copy of its shape. The copy had already fallen
+  // behind: `concludeIssue` gained the aggregation outcome and this annotation
+  // hid it.
+  let result: ConcludeIssueResult;
   try {
     result = await concludeIssue(issueNumber, reason, summary);
   } catch (e) {
@@ -138,12 +142,34 @@ async function handleRequestCloseIssue(args: z.infer<typeof REQUEST_CLOSE_ISSUE_
     mcpFail(`Failed to conclude issue #${issueNumber}: ${message}`);
   }
 
-  const text =
-    result.outcome === "closed"
-      ? `Issue #${issueNumber} was created by an Atoma agent (a sub-issue) and has been closed automatically. Phase-gating/aggregation for its parent has been checked.`
-      : `Issue #${issueNumber} was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.`;
+  if (result.outcome !== "closed") {
+    return {
+      text: `Issue #${issueNumber} was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.`,
+      meta: { session_ends: true },
+    };
+  }
 
-  return { text, meta: { session_ends: true } };
+  // What the aggregation gate actually did, not merely that it ran. The old
+  // wording -- "Phase-gating/aggregation for its parent has been checked" -- was
+  // true of all six outcomes, including the two where nothing was dispatched and
+  // nothing will retry.
+  const aggregation = result.aggregation;
+  const stalled = aggregation !== undefined && needsAttention(aggregation);
+
+  return {
+    text: [
+      `Issue #${issueNumber} was created by an Atoma agent (a sub-issue) and has been closed automatically.`,
+      aggregation ? describeGateResult(aggregation, issueNumber) : "",
+      stalled
+        ? "This session is staying open because you are the last thing able to act on that: report it on the parent issue so a person sees it."
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    // Ends only when something is going to happen next, matching create_pr and
+    // launch_sub_agent.
+    meta: stalled ? {} : { session_ends: true },
+  };
 }
 
 const { tools: TOOLS, dispatch } = buildMcpTools([

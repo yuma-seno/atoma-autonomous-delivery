@@ -1,10 +1,24 @@
 import { gh } from "../../../../lib/gh.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
-import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
+import {
+  describeGateResult,
+  dispatchOrchestratorIfSubIssueReady,
+  type DispatchGateResult,
+} from "../../../../lib/aggregation.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 
 export interface ConcludeIssueResult {
   outcome: "closed" | "escalated";
+  /**
+   * What the parent's aggregation gate did afterwards, when this closed a
+   * sub-issue.
+   *
+   * Carried out rather than discarded. `request_close_issue` ends the
+   * orchestrator's session, so if the gate could not read what it needed and
+   * refused to dispatch, nothing else is left to notice -- the parent simply
+   * waits for a re-invocation that will never come.
+   */
+  aggregation?: DispatchGateResult;
 }
 
 /**
@@ -69,6 +83,7 @@ export async function concludeIssue(issue: number, reason: string, summary: stri
   mustSucceed(gh("issue", "comment", String(issue), "--repo", repo, "--body", body), `comment on issue #${issue}`);
   mustSucceed(gh("issue", "close", String(issue), "--repo", repo), `close issue #${issue}`);
   console.error(`closed: issue=#${issue} (bot-authored)`);
-  await dispatchOrchestratorIfSubIssueReady(repo, issue);
-  return { outcome: "closed" };
+  const aggregation = await dispatchOrchestratorIfSubIssueReady(repo, issue);
+  console.error(describeGateResult(aggregation, issue));
+  return { outcome: "closed", aggregation };
 }
