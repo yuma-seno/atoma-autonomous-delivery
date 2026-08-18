@@ -42,7 +42,7 @@ jobs:
           NUMBER: ${{ github.event.issue.number }}
           SENDER: ${{ github.event.sender.login }}
         run: |
-          bun run .github/scripts/resolve_entry_agent.ts
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/resolve_entry_agent.ts"
   run:
     if: needs.route.outputs.agent != ''
     uses: ./.github/workflows/atoma-runner.yml

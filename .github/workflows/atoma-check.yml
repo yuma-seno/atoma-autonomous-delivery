@@ -57,7 +57,7 @@ jobs:
             echo "::warning::No .github/atoma/config.json on ${DEFAULT_BRANCH}; this run reaches no declared credentials."
           fi
 
-          bun run .github/scripts/read_secret_names.ts --destination "checks" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/read_secret_names.ts" --destination "checks" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
       - name: Run the configured checks
         shell: bash
         env:
@@ -93,4 +93,4 @@ jobs:
             slot=$((slot + 1))
           done
 
-          bun run .github/scripts/run_checks.ts
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_checks.ts"

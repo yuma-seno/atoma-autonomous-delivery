@@ -62,7 +62,7 @@ jobs:
         id: cfg
         shell: bash
         run: |
-          WORKFLOW=$(bun run .github/scripts/get_config_value.ts "workflows.ci" "atoma-check.yml")
+          WORKFLOW=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/get_config_value.ts" "workflows.ci" "atoma-check.yml")
           echo "workflow=${WORKFLOW}" >> "$GITHUB_OUTPUT"
       - name: Run CI and write its result where the ruleset looks
         id: validate
@@ -70,7 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run .github/scripts/validate_pull_request.ts --repo "${{ github.repository }}" --number "${{ inputs.number }}" --branch "${{ inputs.branch }}" --workflow "${{ steps.cfg.outputs.workflow }}" --reviewer "${{ inputs.reviewer }}" --engineer "${{ inputs.engineer }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/validate_pull_request.ts" --repo "${{ github.repository }}" --number "${{ inputs.number }}" --branch "${{ inputs.branch }}" --workflow "${{ steps.cfg.outputs.workflow }}" --reviewer "${{ inputs.reviewer }}" --engineer "${{ inputs.engineer }}"
       - name: Dispatch the agent the result calls for
         if: steps.validate.outputs.next_agent != ''
         shell: bash

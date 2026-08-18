@@ -18098,11 +18098,14 @@ function targetsForMerge(targets) {
 }
 
 // src/lib/config.ts
-var CONFIG_PATH = ".github/atoma/config.json";
+function configPath() {
+  const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
+  return root ? `${root}/.github/atoma/config.json` : ".github/atoma/config.json";
+}
 var cached2;
 function loadConfig() {
   if (!cached2) {
-    cached2 = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    cached2 = JSON.parse(readFileSync(configPath(), "utf8"));
   }
   return cached2;
 }
