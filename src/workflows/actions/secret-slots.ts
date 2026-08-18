@@ -49,6 +49,23 @@ export const SECRET_NAMES_STEP_ID = "secret-names";
  *
  * `$RUNNER_TEMP` rather than the workspace, so the file cannot be one the
  * checkout brought with it.
+ *
+ * ## Why the fetch writes its own ref instead of using FETCH_HEAD
+ *
+ * This used to be `git fetch ... || true` followed by
+ * `git show "FETCH_HEAD:.github/atoma/config.json"`. `actions/checkout` has
+ * already written a FETCH_HEAD for the pull request's own ref by the time this
+ * step runs, so a failed fetch did not reach the fall-back: the `git show`
+ * succeeded against the pull request's own file, the run took its declaration
+ * from the branch under review, and nothing warned because nothing had failed.
+ *
+ * The `|| true` was there so a fetch failure would not fail the run. It degraded
+ * open instead of safely, on the one guarantee this step provides. Fetching into
+ * a ref this step owns removes the thing there was to fall back to.
+ *
+ * The rationale lives here rather than in the emitted shell: an adopter reading
+ * the generated workflow needs to know what the line does, not which bug it
+ * replaced.
  */
 export function secretNamesStep(destination: SecretDestinationName): TypedOutputsStep<"names"> {
   const trustedConfig = "$RUNNER_TEMP/atoma-declared-secrets.json";
@@ -61,16 +78,19 @@ export function secretNamesStep(destination: SecretDestinationName): TypedOutput
       run: `DEFAULT_BRANCH="\${ATOMA_DEFAULT_BRANCH:-main}"
 TRUSTED_CONFIG="${trustedConfig}"
 
-# Shallow: one commit of one branch is all this needs, and the checkout that
-# preceded it is shallow too.
-git fetch --quiet --depth=1 origin "$DEFAULT_BRANCH" 2>/dev/null || true
-if git show "FETCH_HEAD:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
+# Fetched into a ref this line owns, and read back from that same ref, so a
+# failed fetch has nothing to fall back to. Shallow: one commit of one branch is
+# all this needs. \`+\` so a re-run overwrites rather than refusing.
+if git fetch --quiet --depth=1 origin "+\$DEFAULT_BRANCH:refs/atoma/trusted-config" 2>/dev/null \\
+  && git show "refs/atoma/trusted-config:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
   echo "Read the credential declaration from \${DEFAULT_BRANCH}."
 else
-  # A repository with no config.json on its default branch declares nothing,
-  # which is the safe answer as well as the accurate one.
+  # Either the branch has no config.json or the fetch failed, and this cannot
+  # tell which. It does not need to: both answers are "declare nothing", which is
+  # the safe one. Naming both is the honest message -- asserting the first would
+  # be asserting something this could not determine.
   echo '{}' > "$TRUSTED_CONFIG"
-  echo "::warning::No .github/atoma/config.json on \${DEFAULT_BRANCH}; this run reaches no declared credentials."
+  echo "::warning::Could not read .github/atoma/config.json from \${DEFAULT_BRANCH} (absent, or the fetch failed); this run reaches no declared credentials."
 fi
 
 ${scriptCommandWithArgs(readSecretNamesRef, { destination, config: trustedConfig })}
