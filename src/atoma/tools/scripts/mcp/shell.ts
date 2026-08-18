@@ -9,12 +9,18 @@ import { literalsFrom, redact } from "../../../../domain/redaction.ts";
 const MAX_OUTPUT_BYTES = 1_000_000;
 
 /**
- * Variables holding a credential this process was handed.
+ * Variables holding a credential, if this process was handed any.
  *
- * These are in the environment because the run cannot work without them: the
- * provider key is what inference is billed to, and the token is what every
- * GitHub tool authenticates with. They cannot be moved elsewhere, so what is
- * left is to keep their values from leaving through a command's output.
+ * On a runner it is handed none, and this list is empty. `tools.yaml` gives the
+ * `shell` server `env: {}`, and Atoma strips every credential from a server that
+ * does not name one, so the literal-value pass below finds nothing to remove and
+ * only the shape patterns do any work. `redact_stream.ts` says the same thing
+ * about its own situation; this comment used to claim the opposite, describing an
+ * environment the server had before per-tool confinement existed.
+ *
+ * It is kept for the case where the values ARE present: a hand-run `atoma` with
+ * the keys exported in the shell. There the literal pass is the stronger of the
+ * two, since an exact value needs no pattern to guess at.
  *
  * `ATOMA_PROVIDER` and the rest of the run's configuration are absent on
  * purpose. They are not secret, and redacting a value like `openai` would blank

@@ -114,6 +114,6 @@ flowchart TD
 
 - Auto-dispatch loop is capped at 5 consecutive no-new-event handoffs.
 - Session serialization per issue/PR is guarded by the `atoma/in-progress` label and workflow concurrency group.
-- The shell guard is a denylist-based command filter, not a full sandbox.
+- The shell guard is not a security control. It routes the agent to the MCP tool that does the job properly (`gh` to the GitHub tools, `curl` to `web__fetch`, raw `git` mutations to `github__*`); it is a text match over a command line and does not resist being worked around. What carries that weight is per-tool credential confinement -- a server reaches only the secrets its `tools.yaml` entry declares -- and the governed-paths merge gate.
 - Some workflows use `pull_request_target`, which runs with base-repository privileges. Review your repository policy for third-party PRs.
 - An agent only starts when a repository member triggered it. Outside contributors can open issues, comment and raise pull requests freely; none of it dispatches an agent, so no untrusted instruction reaches one and no model budget is spent. Every routing workflow fires on a human action, and agents reach the runner through `workflow_dispatch` instead, so this covers the whole untrusted surface.
