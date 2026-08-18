@@ -14,7 +14,7 @@
  * invalidation logic — the search catches itself up when it is called, or it
  * does nothing.
  */
-import { gh } from "./gh.ts";
+import { ghPaginated } from "./gh.ts";
 import { buildIndex, splitBody, type Bm25Index, type Chunk } from "../domain/bm25.ts";
 
 /** Where the index lives on the `atoma-data` branch. */
@@ -75,24 +75,26 @@ const MAX_BODY = 6000;
 const MAX_COMMENT = 3000;
 const MAX_COMMENTS_PER_ISSUE = 40;
 
+/**
+ * `gh api --paginate`, with this module's own policy for a failure: log it and
+ * index nothing, rather than stopping the run.
+ *
+ * The paging itself is `ghPaginated`, not a second implementation. This used to
+ * split the concatenated per-page documents with
+ * `stdout.replace(/\]\s*\[/g, "],[")`, which is not string-aware — a body or a
+ * comment containing the literal characters `] [`, which a Markdown line like
+ * `[draft] [blocked]` is enough to produce, was rewritten *inside* the JSON
+ * string and silently went into the search index corrupted. `gh.ts` already owns
+ * this problem and solves it with a scanner that tracks quoting and escapes.
+ *
+ * Only the error policy is local, and only the error policy should be.
+ */
 function ghJsonPaged<T>(path: string): T[] {
-  const { code, stdout, stderr } = gh("api", "--paginate", path);
-  if (code !== 0) {
-    log(`WARN could not read ${path}: ${stderr || stdout}`);
-    return [];
-  }
-  // `--paginate` concatenates one JSON document per page, so the pages are
-  // parsed individually rather than as one array.
-  const documents = stdout.replace(/\]\s*\[/g, "],[");
   try {
-    return JSON.parse(`[${documents}]`).flat() as T[];
-  } catch {
-    try {
-      return JSON.parse(stdout) as T[];
-    } catch {
-      log(`WARN ${path} was not valid JSON`);
-      return [];
-    }
+    return ghPaginated<T>("api", path);
+  } catch (error) {
+    log(`WARN could not read ${path}: ${(error as Error).message}`);
+    return [];
   }
 }
 

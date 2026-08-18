@@ -83,6 +83,19 @@ export interface MergeSignals {
    */
   governancePaths: string[];
   /**
+   * Why the changed-file list could not be read, when it could not.
+   *
+   * Absent means it was read; `governancePaths` above is then the answer, empty
+   * or not. Present means there is no answer, and the two must not share a
+   * representation — `merge-signals.ts` used to put the literal string
+   * `"(could not read the changed files)"` into `governancePaths`, which
+   * produced the refusal "this pull request changes how agents themselves run
+   * ((could not read the changed files))". The blocking was right. The sentence
+   * was false: the pull request may change nothing of the sort, and what is
+   * actually true is that nobody knows.
+   */
+  governanceUnknown?: string;
+  /**
    * Gates from `merge_gates` that apply to this pull request.
    *
    * The project's own conditions, not Atoma's. `governancePaths` above is the one
@@ -115,7 +128,8 @@ export type BlockerKind =
   | "human-authored"
   | "governance-change"
   | "merge-gate"
-  | "gate-config-invalid";
+  | "gate-config-invalid"
+  | "governance-unknown";
 
 export interface Blocker {
   kind: BlockerKind;
@@ -326,6 +340,19 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
   // Not a suspicion that an agent means to. A prompt injection carried in an
   // issue body, or a plain mistake, reaches just as far, and both stop at a
   // person reading the diff.
+  // Same fail-closed outcome as the gate below, with a true sentence. The
+  // changed files are what decides whether this touches governance, so not
+  // having them means the question is open, and an open question about the
+  // machinery agents run on is a person's to close.
+  if (signals.governanceUnknown) {
+    blockers.push({
+      kind: "governance-unknown",
+      detail:
+        "whether this pull request changes how agents themselves run could not be determined " +
+        `(${signals.governanceUnknown}), so the merge falls to a person`,
+    });
+  }
+
   if (signals.governancePaths.length > 0) {
     const shown = signals.governancePaths.slice(0, 5).join(", ");
     const rest = signals.governancePaths.length - 5;

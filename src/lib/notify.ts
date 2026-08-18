@@ -22,6 +22,10 @@
 import { gh } from "./gh.ts";
 import { NOTIFY_TAG, readAnyParentTag } from "./tags.ts";
 
+function log(message: string): void {
+  console.error(`[atoma-notify] ${message}`);
+}
+
 const MAX_HOPS = 10;
 
 interface IssueLookup {
@@ -30,15 +34,32 @@ interface IssueLookup {
   type?: string;
 }
 
+/**
+ * Read the fields a mention is resolved from, or `{}` if they cannot be read.
+ *
+ * Not throwing is deliberate — this module's stance is that a dispatch is never
+ * failed over a mention. But a failure here is indistinguishable to
+ * `resolveNotify` from an issue that genuinely has no tag, no login and no
+ * parent, and the visible result is a completion or escalation comment that
+ * mentions nobody: the person who asked for the work is simply never pinged.
+ *
+ * So it says so. Every other I/O module here logs a WARN on this class of
+ * failure; this was the one that produced no trace at all, which made a silent
+ * degradation impossible to find afterwards.
+ */
 function fetchIssueLookup(repo: string, number: number): IssueLookup {
-  const { code, stdout } = gh(
+  const { code, stderr, stdout } = gh(
     "api", `repos/${repo}/issues/${number}`,
     "--jq", "{body: .body, login: .user.login, type: .user.type}",
   );
-  if (code !== 0 || !stdout.trim()) return {};
+  if (code !== 0 || !stdout.trim()) {
+    log(`WARN could not read issue #${number} to resolve a mention: ${stderr.trim() || `gh exited ${code}`}`);
+    return {};
+  }
   try {
     return JSON.parse(stdout) as IssueLookup;
   } catch {
+    log(`WARN issue #${number} lookup was not valid JSON; no mention will be resolved from it`);
     return {};
   }
 }

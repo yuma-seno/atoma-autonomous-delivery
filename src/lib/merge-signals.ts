@@ -258,16 +258,19 @@ export function gatherMergeSignals(
       // relying on a shared empty list to mean both.
       requiredChecks: required.known ? required.contexts : [],
       mergePolicy: getMergePolicy(),
-      // The sentinel keeps the governance gate's own fail-closed behaviour: an
-      // unreadable file list reports the pull request as touching governance, so
-      // that blocker fires with a legible reason of its own rather than relying
-      // on the gate problem below to do the blocking.
+      // Still fail-closed, and now truthfully. This used to put the literal
+      // string "(could not read the changed files)" into `governancePaths`,
+      // which blocked the merge -- correctly -- with the sentence "this pull
+      // request changes how agents themselves run ((could not read the changed
+      // files))". It may change nothing of the sort. `governanceUnknown` gets
+      // its own blocker saying what is actually true.
       governancePaths: changed.problem
-        ? ["(could not read the changed files)"]
+        ? []
         : governedPathsIn(
             changed.files.map((file) => file.path),
             getGovernedPaths(),
           ),
+      governanceUnknown: changed.problem || undefined,
       gateMatches,
       gateProblems,
     },
