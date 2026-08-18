@@ -162,8 +162,19 @@ describe("generated workflows", () => {
       expect(step, `${file} secret-names step`).toBeDefined();
 
       expect(step?.env?.ATOMA_DEFAULT_BRANCH, file).toBe("${{ github.event.repository.default_branch }}");
-      expect(step?.run, `${file} must read the declaration from the fetched default branch`).toContain(
-        'git show "FETCH_HEAD:.github/atoma/config.json"',
+
+      // Read back from a ref this step fetched itself, and never from FETCH_HEAD.
+      //
+      // This assertion used to require FETCH_HEAD, which is how the hole stayed
+      // open: `actions/checkout` writes a FETCH_HEAD for the pull request's own
+      // ref before this step runs, so a failed fetch left that in place and the
+      // step read the declaration out of the branch under review -- succeeding,
+      // so the fall-back-to-nothing branch never ran and no warning printed. The
+      // test pinned the broken shape rather than the property, so it is the
+      // property that is pinned now.
+      expect(step?.run, `${file} must not read the declaration from FETCH_HEAD`).not.toContain("FETCH_HEAD:");
+      expect(step?.run, `${file} must read the declaration from a ref it fetched`).toContain(
+        'git show "refs/atoma/trusted-config:.github/atoma/config.json"',
       );
       // Outside the workspace, so the checkout cannot have brought the file.
       expect(step?.run, `${file} must not trust a path the checkout controls`).toContain(

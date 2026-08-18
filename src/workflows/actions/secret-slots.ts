@@ -61,16 +61,26 @@ export function secretNamesStep(destination: SecretDestinationName): TypedOutput
       run: `DEFAULT_BRANCH="\${ATOMA_DEFAULT_BRANCH:-main}"
 TRUSTED_CONFIG="${trustedConfig}"
 
+# Fetched into a ref this line owns, and read back from that same ref.
+#
+# NOT via FETCH_HEAD, which is what this used to do: \`actions/checkout\` has
+# already written a FETCH_HEAD for the pull request's own ref, so a failed fetch
+# left it in place and \`git show FETCH_HEAD:...\` then read the declaration out
+# of the branch under review -- the one thing this step exists to prevent, and
+# silently, because the read succeeded and the warning below never printed.
+#
 # Shallow: one commit of one branch is all this needs, and the checkout that
-# preceded it is shallow too.
-git fetch --quiet --depth=1 origin "$DEFAULT_BRANCH" 2>/dev/null || true
-if git show "FETCH_HEAD:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
+# preceded it is shallow too. \`+\` so a re-run overwrites rather than refusing.
+if git fetch --quiet --depth=1 origin "+\$DEFAULT_BRANCH:refs/atoma/trusted-config" 2>/dev/null \\
+  && git show "refs/atoma/trusted-config:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
   echo "Read the credential declaration from \${DEFAULT_BRANCH}."
 else
-  # A repository with no config.json on its default branch declares nothing,
-  # which is the safe answer as well as the accurate one.
+  # Either the branch has no config.json or the fetch failed, and this cannot
+  # tell which. It does not need to: both answers are "declare nothing", which is
+  # the safe one. Naming both is the honest message -- asserting the first would
+  # be asserting something this could not determine.
   echo '{}' > "$TRUSTED_CONFIG"
-  echo "::warning::No .github/atoma/config.json on \${DEFAULT_BRANCH}; this run reaches no declared credentials."
+  echo "::warning::Could not read .github/atoma/config.json from \${DEFAULT_BRANCH} (absent, or the fetch failed); this run reaches no declared credentials."
 fi
 
 ${scriptCommandWithArgs(readSecretNamesRef, { destination, config: trustedConfig })}
