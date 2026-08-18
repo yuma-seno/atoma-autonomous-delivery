@@ -133,12 +133,12 @@ function findMutatingGitCommand(command: string): string | undefined {
   return undefined;
 }
 
-export interface ShellInvocation {
+interface ShellInvocation {
   command: string;
   workingDirectory?: string;
 }
 
-export interface GuardVerdict {
+interface GuardVerdict {
   allow: boolean;
   reason: string;
 }
@@ -163,10 +163,11 @@ function outsideRepository(workingDirectory: string): string | undefined {
 /**
  * Judge one invocation.
  *
- * Exported for the tests, which exercise the arguments directly rather than
- * only through the process boundary.
+ * Not exported: the tests drive this file the way the hook does, by spawning it
+ * with JSON on stdin, which exercises the argument parsing in `main` as well. It
+ * was exported for tests that called it directly, and those are gone.
  */
-export function checkInvocation(invocation: ShellInvocation): GuardVerdict {
+function checkInvocation(invocation: ShellInvocation): GuardVerdict {
   const cwd = invocation.workingDirectory?.trim();
   if (cwd) {
     const reason = outsideRepository(cwd);

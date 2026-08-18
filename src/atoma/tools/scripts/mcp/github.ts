@@ -812,7 +812,7 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "check_merge_readiness",
     description:
-      "Report whether a pull request can be merged right now, and every reason it cannot: failing checks (by name, with a link), still-running checks, an absent CI run, merge conflicts, draft state, or a non-auto merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so — re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
+      "Report whether a pull request can be merged right now, and every reason it cannot. Read the `blockers` array rather than assuming a fixed set: kinds include failing, pending and absent required checks, merge conflicts, a branch behind its base, branch protection, draft state, a human author, a change under a governed path, a condition this project declared in `merge_gates`, and merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so — re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
     schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA,
     handler: checkMergeReadiness,
   }),
@@ -832,7 +832,7 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   }),
   defineMcpTool({
     name: "merge_pr",
-    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable: CI not green on the head commit, no CI run at all, conflicts, draft state, or merge_policy not 'auto'. It never merges past a failing check, so a refusal is a real defect to fix, not a condition to retry around — read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
+    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable. The list is open-ended, so read it rather than assuming a fixed set: it covers failing, pending and absent required checks, conflicts, a branch behind its base, branch protection, draft state, a human author, a change under a governed path, a condition this project declared in `merge_gates`, and merge policy. A refusal is a decision or a real defect, never a condition to retry around — read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
     schema: NUMBER_ARG_SCHEMA,
     handler: mergePr,
   }),

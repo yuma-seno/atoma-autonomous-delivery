@@ -83,7 +83,7 @@ administration API, and `administration` is not a permission a workflow can gran
 configuration being in place is taken as a given afterwards.
 
 There is deliberately no workflow checking that. A check could only report, never
-enforce: if the ruleset were missing then `check` would no longer be a required
+enforce: if the ruleset were missing then `atoma-check` would no longer be a required
 context either, so a failing check would block nothing — a permanently red mark
 that stops nobody, which is worse than no mark at all.
 
@@ -94,7 +94,7 @@ that stops nobody, which is worse than no mark at all.
 
 If the import option is unavailable, create it through the form instead and set:
 target the default branch; restrict deletions; block force pushes; require a pull
-request with **0** required approvals; and require the `check` status check. Leave
+request with **0** required approvals; and require the `atoma-check` status check. Leave
 the bypass list empty.
 
 **From a shell** — if you already have an admin-scoped `gh` login:

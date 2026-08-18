@@ -155,12 +155,6 @@ export interface AtomaConfig {
   auto_triggers?: AutoTrigger[];
 }
 
-/** A single {issue, agent} dispatch task for launch_sub_agent. */
-export interface SubAgentTask {
-  issue: number;
-  agent: string;
-}
-
 /** Minimal shape of `gh issue view --json author` (NOT the REST `.user.type` shape). */
 export interface GhIssueAuthor {
   author?: {
