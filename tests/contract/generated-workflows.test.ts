@@ -289,6 +289,36 @@ describe("generated workflows", () => {
     }
   });
 
+  // The tool servers are machinery too, and were the last part still read from
+  // the workspace: a pull request could replace the code of the very tools that
+  // review it. The filesystem servers are the deliberate exception -- their `.`
+  // argument IS the workspace, which is what they exist to read.
+  test("the tool servers are read from the machinery, and the workspace only where intended", () => {
+    const tools = readFileSync("dist/.github/atoma/tools/tools.yaml", "utf8");
+
+    const argLines = tools.split(/\r?\n/).filter((line) => line.trim().startsWith("args:"));
+    expect(argLines.length, "tools.yaml must declare some servers").toBeGreaterThan(0);
+
+    for (const line of argLines) {
+      if (line.includes("tools/scripts/")) {
+        expect(line, "a server shipped here must be read from the machinery root").toContain(
+          "ATOMA_MACHINERY_ROOT",
+        );
+      }
+    }
+
+    // And the package list and the hook chmod, which decide what gets installed
+    // and whether the fail-closed guard can run at all.
+    const workflow = readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8");
+    for (const path of ["mcp-packages.json", "tools/scripts/hooks"]) {
+      for (const line of workflow.split(/\r?\n/).filter((l) => l.includes(path))) {
+        expect(line, `${path} must be read from the machinery root`).toMatch(
+          /ATOMA_MACHINERY_ROOT|atoma-machinery/,
+        );
+      }
+    }
+  });
+
   // The two files are joined by a string and nothing else. A ruleset requires a
   // status check by `context`, which for an Actions job is the job's name -- so
   // renaming the job leaves the ruleset waiting for a check that will never
