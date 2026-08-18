@@ -14,6 +14,7 @@ import {
   type SecretsResolution,
 } from "../domain/declared-secrets.ts";
 import { resolveDeployTargets, type DeployTargetsResolution } from "../domain/deploy-targets.ts";
+import { resolveMergeGates, type MergeGatesResolution } from "../domain/merge-gates.ts";
 import type { AtomaConfig } from "./types.ts";
 
 /**
@@ -108,6 +109,18 @@ export function getRerankerModel(): string {
  */
 export function getGovernedPaths(): readonly string[] {
   return loadConfig().governed_paths ?? DEFAULT_GOVERNED_PATHS;
+}
+
+/**
+ * This project's conditional merge gates, validated.
+ *
+ * Problems come back rather than throwing, like `getDeployTargets()`, because the
+ * caller turns them into a blocker: a gate that cannot be read must stop the
+ * merge, and a thrown error at this depth would surface as a tool failure that
+ * loses the verdict instead of reporting it.
+ */
+export function getMergeGates(): MergeGatesResolution {
+  return resolveMergeGates(loadConfig().merge_gates);
 }
 
 /**

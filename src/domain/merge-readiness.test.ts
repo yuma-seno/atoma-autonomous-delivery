@@ -19,6 +19,8 @@ function signals(overrides: Partial<MergeSignals> = {}): MergeSignals {
     requiredChecks: ["check"],
     mergePolicy: "auto",
     governancePaths: [],
+    gateMatches: [],
+    gateProblems: [],
     ...overrides,
   };
 }
@@ -281,5 +283,85 @@ describe("governedPathsIn", () => {
 
   test("an empty pattern list turns the gate off", () => {
     expect(governedPathsIn([".github/workflows/ci.yml"], [])).toEqual([]);
+  });
+});
+
+// `governed_paths` is Atoma's own gate; these are the project's. Same outcome —
+// the agent reviews and reports, a person merges — reached from a condition
+// nothing here could have guessed.
+describe("declared merge gates", () => {
+  test("a matched gate blocks and relays the project's reason verbatim", () => {
+    const { ready, blockers } = decideMergeReadiness(
+      signals({
+        gateMatches: [
+          {
+            reason: "新しいマイグレーションを含むため、人間が確認してください",
+            evidence: ["db/migrations/003.sql"],
+          },
+        ],
+      }),
+    );
+    expect(ready).toBe(false);
+    expect(blockers.map((b) => b.kind)).toEqual(["merge-gate"]);
+    expect(blockers[0]?.detail).toContain("新しいマイグレーションを含むため、人間が確認してください");
+    expect(blockers[0]?.detail).toContain("db/migrations/003.sql");
+    expect(blockers[0]?.detail).toContain("leave the merge to a person");
+  });
+
+  test("each declared gate is its own blocker", () => {
+    expect(
+      kinds(
+        signals({
+          gateMatches: [
+            { reason: "migration", evidence: ["db/migrations/a.sql"] },
+            { reason: "breaking", evidence: ["title:BREAKING"] },
+          ],
+        }),
+      ),
+    ).toEqual(["merge-gate", "merge-gate"]);
+  });
+
+  test("long evidence is summarised rather than dumped", () => {
+    const evidence = Array.from({ length: 9 }, (_, i) => `db/migrations/${i}.sql`);
+    const { blockers } = decideMergeReadiness(signals({ gateMatches: [{ reason: "many", evidence }] }));
+    expect(blockers[0]?.detail).toContain("+4 more");
+  });
+
+  // Fail closed. If a broken declaration simply disappeared, the way past a gate
+  // would be to break it — and the diff that breaks it is one the agent the gate
+  // exists to stop would be merging.
+  test("a gate that cannot be evaluated blocks", () => {
+    const { ready, blockers } = decideMergeReadiness(
+      signals({ gateProblems: ["`merge_gates[0]`: unknown condition `file_added`."] }),
+    );
+    expect(ready).toBe(false);
+    expect(blockers.map((b) => b.kind)).toEqual(["gate-config-invalid"]);
+    expect(blockers[0]?.detail).toContain("file_added");
+  });
+
+  test("no gates declared changes nothing", () => {
+    expect(decideMergeReadiness(signals()).ready).toBe(true);
+  });
+
+  // A gate is a reason to stop, never a reason to proceed. It must not be able to
+  // talk past branch protection or the policy.
+  test("a gate cannot make an otherwise-blocked merge ready", () => {
+    expect(kinds(signals({ mergeStateStatus: "DIRTY", gateMatches: [{ reason: "x", evidence: [] }] }))).toEqual([
+      "conflicting",
+      "merge-gate",
+    ]);
+  });
+
+  // Only a missing check is worth dispatching CI for. A gate will still be there
+  // when the run finishes, so burning a run on it would report progress falsely.
+  test("a gate does not make the run look worth dispatching", () => {
+    const result = decideMergeReadiness(
+      signals({
+        mergeStateStatus: "BLOCKED",
+        checks: [],
+        gateMatches: [{ reason: "x", evidence: [] }],
+      }),
+    );
+    expect(result.needsCiDispatch).toBe(false);
   });
 });

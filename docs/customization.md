@@ -61,6 +61,7 @@ Supported top-level fields used by scripts/workflows:
 - `merge_policy`
 - `base_branch`
 - `governed_paths`
+- `merge_gates[]` with `reason` and `when`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `labels.in_progress`, `labels.sub_issue`, `labels.launched`
@@ -569,6 +570,69 @@ Every other repository secret stays outside that environment until you name it.
 Nothing reaches an agent by being a secret; it reaches an agent by being
 declared, and the declaration is in a file this gate already covers — see
 [Give a tool a credential](#give-a-tool-a-credential).
+
+### Conditions of your own that an agent may not merge past
+
+`governed_paths` covers Atoma's own machinery. Your project has its own things
+that should not land unread — a database migration, a change to a pricing table, a
+release note — and they are not describable as a path alone. "Anything under
+`db/migrations/`" is sayable; "only when a migration is **added**" is not.
+
+`merge_gates` is that, and it behaves exactly like the gate above: the agent
+reviews the pull request, posts the review, and says it is ready for a person. The
+merge is yours.
+
+```json
+{
+  "merge_gates": [
+    {
+      "reason": "This adds a database migration. Please check it before merging.",
+      "when": { "files_added": ["db/migrations/**"] }
+    }
+  ]
+}
+```
+
+`reason` is written to a person and relayed to them verbatim, in whatever language
+you write it in. It is the whole output of the gate, so say what you want checked
+rather than restating the condition.
+
+**Conditions.** Every one you name must hold, so one gate is one situation.
+Several gates are several situations.
+
+| Condition | Matches when |
+| --- | --- |
+| `files_added` | a file the pattern claims was added (a rename into it counts) |
+| `files_removed` | a file the pattern claims was deleted (a rename out of it counts) |
+| `files_modified` | an existing file the pattern claims changed |
+| `files_changed` | any of the three — what `governed_paths` matches on |
+| `labels` | the pull request carries any one of these labels |
+| `title_matches` | the title matches this regular expression, case-insensitively |
+
+A pattern is a literal path or a directory followed by `/**` — the same two forms
+`governed_paths` accepts, and the only two. Anything else, `**/*.sql` included, is
+rejected when the file is read rather than quietly matching nothing.
+
+**Mistakes are errors, not silence.** A misspelled condition, a pattern this
+matcher cannot honour, a gate with no conditions at all: each stops the merge and
+says why, instead of producing a gate that never fires. A gate that never fires
+looks exactly like a gate you did not need, and you would find out from the merge
+that went through.
+
+For the same reason a gate that cannot be read blocks rather than disappearing.
+Otherwise the way past a gate would be to break it.
+
+**Why not a required status check.** A required check stops everyone, including
+you. These stop only the agent, which is the actual request: not "this must not be
+merged" but "this is not an agent's call".
+
+**Why configuration and not a script.** A script could read a migration and notice
+it drops a production table, which no amount of configuration can. It also needs a
+timeout, a decision about what a crash means, and protection against a pull
+request supplying the very program that judges it. `config.json` is read from the
+default branch already, so a pull request cannot weaken the gate that is judging
+it. If you hit a real case that conditions cannot express, that is worth an issue —
+the shape here leaves room for it.
 
 ### Give a tool a credential
 

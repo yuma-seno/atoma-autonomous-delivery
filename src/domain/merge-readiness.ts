@@ -19,6 +19,9 @@
  * has no GitHub equivalent.
  */
 
+import type { MergeGateMatch } from "./merge-gates.ts";
+import { pathMatches } from "./path-patterns.ts";
+
 /** A single check run, reduced to what reporting needs. */
 export interface CheckRun {
   name: string;
@@ -79,6 +82,23 @@ export interface MergeSignals {
    * the parts that hold credentials and the parts that gate this very merge.
    */
   governancePaths: string[];
+  /**
+   * Gates from `merge_gates` that apply to this pull request.
+   *
+   * The project's own conditions, not Atoma's. `governancePaths` above is the one
+   * Atoma declares for itself; these are whatever an adopter wanted kept out of
+   * an agent's hands — a migration, a release note, a labelled change — said in
+   * configuration rather than in code here.
+   */
+  gateMatches: MergeGateMatch[];
+  /**
+   * Why a declared gate could not be evaluated.
+   *
+   * Non-empty blocks. A gate that could not be read has not said yes, and the
+   * whole point of declaring one is that the merge stops when it applies — so an
+   * unusable declaration must not come to the same thing as no declaration.
+   */
+  gateProblems: string[];
 }
 
 export type BlockerKind =
@@ -93,7 +113,9 @@ export type BlockerKind =
   | "mergeability-unknown"
   | "merge-policy"
   | "human-authored"
-  | "governance-change";
+  | "governance-change"
+  | "merge-gate"
+  | "gate-config-invalid";
 
 export interface Blocker {
   kind: BlockerKind;
@@ -146,16 +168,12 @@ function isGeneratedWorkflow(path: string): boolean {
 /**
  * Which of `files` a pattern claims.
  *
- * Deliberately not a glob library. A pattern is either a literal path or a
- * directory followed by `/**`, because that is what naming a control surface
- * needs, and a half-implemented glob would be read as a full one.
+ * The matcher itself moved to `path-patterns.ts`, which explains the one pattern
+ * form Atoma accepts and why. `merge_gates` needed the same comparison, and two
+ * copies of a security-shaped one is the arrangement that drifts.
  */
 export function governedPathsIn(files: string[], patterns: readonly string[]): string[] {
-  return files.filter((file) =>
-    patterns.some((pattern) =>
-      pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern,
-    ),
-  );
+  return files.filter((file) => patterns.some((pattern) => pathMatches(file, pattern)));
 }
 
 /**
@@ -297,6 +315,39 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
             "workflow file — an agent can write config and cannot write a workflow. If this is an " +
             "upgrade of the generated deliverable, it is exactly what a person should be merging"
           : ""),
+    });
+  }
+
+  // The project's own version of the gate above. Same shape, same outcome — the
+  // agent reviews and reports, a person merges — but the condition comes from
+  // `merge_gates` in config.json rather than from this file, because what must
+  // not be merged unread is a property of the project and not of Atoma. A
+  // migration, a change to a pricing table, a release note: nothing here could
+  // have guessed them.
+  //
+  // The reason is relayed verbatim, in whatever language it was written in. It is
+  // addressed to the person who will merge, and they wrote it.
+  for (const match of signals.gateMatches) {
+    const shown = match.evidence.slice(0, 5).join(", ");
+    const rest = match.evidence.length - 5;
+    const because = shown ? ` (matched ${shown}${rest > 0 ? `, +${rest} more` : ""})` : "";
+    blockers.push({
+      kind: "merge-gate",
+      detail:
+        `a merge gate declared by this project applies${because}: ${match.reason}` +
+        " — review it and report, but leave the merge to a person",
+    });
+  }
+
+  // Fail closed. An unreadable gate is the case this whole mechanism exists for:
+  // if a broken declaration merely disappeared, the way to merge past a gate
+  // would be to break it, and the diff that breaks it would be merged by the
+  // agent the gate was meant to stop.
+  for (const problem of signals.gateProblems) {
+    blockers.push({
+      kind: "gate-config-invalid",
+      detail:
+        `a declared merge gate could not be evaluated, so this merge falls to a person: ${problem}`,
     });
   }
 
