@@ -1,0 +1,129 @@
+# Recurring work, as a recurring issue.
+#
+# COPY THIS FILE into your own `.github/workflows/`. It is an example, not part
+# of the Atoma deliverable: nothing generates it, upgrading will not touch it,
+# and it will not appear in your repository unless you put it there.
+#
+# You have to copy it by hand, and that is structural rather than an oversight.
+# GitHub refuses `GITHUB_TOKEN` writes to `.github/workflows/**` by identity, on
+# every path and branch, so no agent can install this for you. And `.github/**`
+# is a governed path, so a person merges the pull request that adds it.
+#
+# ## Why an issue rather than "run the agent on a schedule"
+#
+# Agents work on an issue or a pull request. Something you want done every week
+# is a work item that should exist every week -- so create the work item, and let
+# it travel the paths that already exist: triggers, the in-progress label,
+# session persistence, review, merge gates. No schedule-only execution path.
+#
+# It is also the honest place for the cost. An issue is free. Whether it becomes
+# an agent run is then an ordinary decision -- `auto_triggers`, a label, a
+# person's comment -- rather than something a cron expression decided months ago.
+#
+# ## Why this is not a setting in config.json
+#
+# `on:` takes no expression, so a cron schedule cannot come from configuration.
+# The workaround -- a fixed daily cron that checks the date in a script -- was
+# considered for deployments and rejected, and is worse here: a deployment's
+# no-op costs seconds of runner time, while an agent's costs a billed inference
+# whether or not there was work.
+#
+# See docs/customization.md, "Recurring work".
+
+name: Weekly dependency review
+
+on:
+  schedule:
+    # Every Monday at 09:00 JST (00:00 UTC). Cron here is UTC, always.
+    - cron: "0 0 * * 1"
+    # Monthly, on the 1st, would be: "0 0 1 * *"
+  # So you can try it once without waiting a week.
+  workflow_dispatch:
+
+# Least privilege for what this does: read the repository, write one issue, and
+# start one workflow.
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    steps:
+      # Do not create a second one while the first is still open.
+      #
+      # Without this, a fortnight of nobody getting to it leaves two identical
+      # issues, and a quarter leaves thirteen. Matched on the label rather than
+      # on the title: a title is the first thing someone edits, and matching one
+      # would silently start duplicating from that moment on.
+      - name: Skip if the last one is still open
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN=$(gh issue list --repo "${{ github.repository }}" \
+            --label "scheduled/dependency-review" --state open --json number --jq 'length')
+          echo "open=${OPEN}" >> "$GITHUB_OUTPUT"
+          if [ "${OPEN}" != "0" ]; then
+            echo "::notice::${OPEN} open issue(s) already; not creating another."
+          fi
+
+      - name: Create the issue
+        id: create
+        if: steps.existing.outputs.open == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The issue body lives here rather than in a heredoc inside `run:`.
+          # A heredoc's terminator has to match its line exactly, and a file
+          # edited on Windows arrives with CRLF -- at which point the shell is
+          # looking for `BODY` and reading `BODY\r`, never ends the document, and
+          # the step fails somewhere that looks nothing like the cause.
+          #
+          # Write the task the way you would write it for a person: what to look
+          # at, and what a finished answer contains.
+          ISSUE_BODY: |
+            Check this repository's dependencies for updates worth taking.
+
+            - Which direct dependencies have newer releases?
+            - Does any of them carry a published advisory?
+            - For anything you propose updating, say what changed and why it matters here.
+
+            Open one pull request per update that is worth making, and report the ones
+            that are not.
+        run: |
+          # `--label` fails on a label that does not exist yet, so make sure of it.
+          gh label create "scheduled/dependency-review" --repo "${{ github.repository }}" \
+            --force --color "0e8a16" --description "Created on a schedule" >/dev/null
+
+          URL=$(gh issue create --repo "${{ github.repository }}" \
+            --label "scheduled/dependency-review" \
+            --title "Weekly dependency review ($(date -u +%Y-%m-%d))" \
+            --body "$ISSUE_BODY")
+          echo "number=${URL##*/}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created ${URL}"
+
+      # Required, not optional.
+      #
+      # An issue created with GITHUB_TOKEN raises no `issues: opened` event --
+      # GitHub does not start workflows from events its own token caused. So the
+      # issue would sit there and nothing would pick it up.
+      #
+      # Atoma hits this in three other places and handles it the same way: agent
+      # pull requests use `pull_request_target`, and agent merges are followed by
+      # an explicit dispatch from `dispatchCi`/`dispatchCd`. This is that pattern,
+      # not a new mechanism.
+      #
+      # Choose the agent deliberately. `engineer` investigates and opens pull
+      # requests; `orchestrator` splits the work into sub-issues first, which is
+      # worth it when the task is genuinely several tasks and wasteful when it is
+      # not.
+      - name: Hand it to an agent
+        if: steps.create.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run atoma-runner.yml --repo "${{ github.repository }}" \
+            -f agent=engineer \
+            -f type=issue \
+            -f number="${{ steps.create.outputs.number }}"
