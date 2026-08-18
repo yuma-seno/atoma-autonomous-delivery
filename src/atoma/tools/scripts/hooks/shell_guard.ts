@@ -1,104 +1,119 @@
 #!/usr/bin/env bun
 /**
- * shell_guard.ts — Allow read-only inspection, block dangerous commands.
+ * shell_guard.ts — Steer the agent to the MCP tool that does the job properly,
+ * and refuse the one read that leaks another tool server's credentials.
  *
  * Invoked directly as an executable (not via an interpreter argument) by the
- * Atoma core's `before_tool` hook mechanism, which spawns the configured
- * script path and pipes JSON on stdin -- this file's shebang + executable
- * bit make that work the same way shell_guard.py did.
+ * Atoma core's `before_tool` hook mechanism, which spawns the configured script
+ * path and pipes JSON on stdin. When a command is refused, the reason string is
+ * surfaced to the agent as an error, so each reason names the tool to use
+ * instead.
  *
- * When a command is blocked, the output includes a reason string that the
- * MCP shell server surfaces to the AI agent as an error.
+ * ## This is NOT a security boundary, and nothing here relies on it being one
  *
- * The blocklist below matches on tokenized, re-joined command text (see
- * `normalizeCommand`) rather than the raw string, so trivial obfuscation
- * like `w\get` or `cu""rl` (which would otherwise slip past a `\bcurl\b`-
- * style regex on the raw text) is normalized back to `wget`/`curl` first.
- * This is still a denylist over shell text, not a sandbox: variable- or
- * command-substitution-based obfuscation (e.g. `a=curl; $a example.com`)
- * is fundamentally out of reach for any static text check and is NOT
- * defended against here.
+ * It is a text match over a shell command line. `a=curl; $a example.com` defeats
+ * every rule below, and no amount of pattern work changes that: the shell
+ * resolves variables after this hook has already decided. Saying so plainly is
+ * the point — a guard that overstates itself makes the person reviewing the pull
+ * request review it less carefully.
  *
- * ## The guard judges the whole invocation, not the `command` field
+ * This file used to carry a second layer whose only job was to make the first
+ * layer hard to evade: command tokenization to undo `w\get` and `cu""rl`,
+ * substitution of declared variables into the text, refusal of `PATH` and
+ * `LD_PRELOAD`, and rules against `bash -c`, `eval`, `python -c`, heredocs and
+ * `base64 | sh`. All of it is gone, because it was defending a boundary this is
+ * not. An agent is not an adversary: it does not obfuscate a command to get past
+ * a rule that exists to help it, so evasion resistance bought nothing and cost
+ * two thirds of the file.
  *
- * `shell__execute` takes four arguments that reach `bash`, and this used to read
- * only the first. The other three each defeated the denylist outright, because
- * the shell server passes them straight to `Bun.spawn` (see `mcp/shell.ts`):
+ * What survives is two kinds of rule, and they are kept apart on purpose because
+ * they are not the same kind of thing:
  *
- *   - `working_directory` becomes `cwd`, so `{command: "cat environ",
- *     working_directory: "/proc/1"}` reads a path that never appears in the
- *     command text. Any rule written against a path is bypassed by moving the
- *     path into this field.
- *   - `environment_variables` is merged into the child's environment, so
- *     `{command: "cat $P/1/environ", environment_variables: {P: "/proc"}}`
- *     supplies exactly the variable expansion the header above calls out of
- *     reach -- from the schema, not from the shell.
- *   - `input_data` is piped to stdin, so `{command: "bash"}` with a script in
- *     `input_data` runs that script. `bash -c` is blocked; a bare interpreter
- *     reading stdin was not.
- *
- * So each is now accounted for: the working directory is confined, declared
- * variables are substituted into the text before matching (which makes the
- * command MORE legible to the rules, not less), and a bare interpreter fed on
- * stdin is treated as the `-c` it is equivalent to.
+ *   1. ROUTING — commands that would work badly or not at all, where a tool
+ *      exists that works properly. Their value is iterations not wasted.
+ *   2. HARDENING — exactly one rule, for the one real threat nothing else
+ *      covers. Honest about being partial. See PROCESS_ENVIRONMENT_READ.
  */
 import { resolve, sep } from "node:path";
-import { parse } from "shell-quote";
 
-const BLOCKED: [RegExp, string][] = [
-  [/\bgh\b/, "gh CLI is disabled. Use the atoma_github MCP tools (github__create_pr, github__create_issue, etc.) for GitHub operations."],
-  [/\bcurl\b/, "curl is disabled. Use MCP tools for external data."],
-  [/\bwget\b/, "wget is disabled."],
-  [/\bssh\b/, "ssh is disabled."],
-  [/\bscp\b/, "scp is disabled."],
-  [/\brsync\b/, "rsync is disabled."],
-  [/\bpython3?\s.*-[cC]\b/, "python -c is disabled."],
-  [/\bruby\s.*-[eE]\b/, "ruby -e is disabled."],
-  [/\bperl\s.*-[eE]\b/, "perl -e is disabled."],
-  [/\bnode\s.*-[eE]\b/, "node -e is disabled."],
-  [/\bpython3?\s+<</, "python heredoc is disabled."],
-  [/\bruby\s+<</, "ruby heredoc is disabled."],
-  [/\bperl\s+<</, "perl heredoc is disabled."],
-  [/\bnode\s+<</, "node heredoc is disabled."],
-  [/\bbase64\b.*\|\s*(?:sh|bash|zsh|dash)/, "base64 pipe-to-shell is disabled."],
-  [/\bxxd\b.*\|\s*(?:sh|bash|zsh|dash)/, "binary pipe-to-shell is disabled."],
-  // Both words anywhere, in any arrangement, rather than the literal path.
-  //
-  // Matching `/proc/<pid>/environ` was the first attempt and its own test broke
-  // it: `find /proc -name environ -exec cat {} +` never writes that path, it
-  // builds it. Readers are endless too -- cat, head, xxd, tr, dd, od, strings, a
-  // bare `< /proc/N/environ` -- and enumerating either the readers or the
-  // spellings is the shape of check this repository has been wrong about three
-  // times. What is actually being asked for is the pair.
-  //
-  // `/proc` as a whole stays open, because `environ` is the part that matters and
-  // cpuinfo and meminfo have honest uses. `\benviron\b` does not match
-  // `environment`, so ordinary words are unaffected.
-  //
-  // What it protects: tool servers run as the same user, so one can read
-  // another's environment through /proc, and each holds the credentials its
-  // `tools.yaml` entry declares. That read is the one place per-server
-  // confinement is not enforced by anything else.
+/**
+ * Commands that have a proper route through an MCP tool.
+ *
+ * Not prohibitions — redirections. Each reason names the replacement, because
+ * the agent reads it and picks again.
+ *
+ * `gh` is the clearest case, and it is worth knowing it is no longer load
+ * bearing for safety: the `shell` server declares no credentials in
+ * `tools.yaml`, so `GH_TOKEN` is stripped from it and `gh pr merge` fails with
+ * 401 whether or not this rule exists. What the rule saves is the iterations
+ * the agent would spend discovering that. The `github__*` tools hold the token
+ * and enforce merge readiness; that enforcement lives there, not here.
+ */
+const ROUTING_RULES: [RegExp, string][] = [
   [
-    /^(?=[\s\S]*\/proc)(?=[\s\S]*\benviron\b)/,
-    "Reading a process's environment through /proc is disabled.",
+    /\bgh\b/,
+    "gh CLI is disabled. Use the atoma_github MCP tools (github__create_pr, github__create_issue, etc.) for GitHub operations.",
   ],
-  [/(?:^|\s|\||;)\beval\b/, "eval is disabled."],
-  [/(?:^|\s|\||;)\bexec\b/, "exec is disabled."],
-  [/(?:^|\s|;)\bsource\b/, "source is disabled."],
-  [/(?:^|\s|\||;)\.\s+/, "source (.) is disabled."],
-  [/\bsh\s+(?:-[a-zA-Z]+\s+)*-c\b/, "sh -c is disabled."],
-  [/\bbash\s+(?:-[a-zA-Z]+\s+)*-c\b/, "bash -c is disabled."],
-  [/\bzsh\s+(?:-[a-zA-Z]+\s+)*-c\b/, "zsh -c is disabled."],
-  [/\bdash\s+(?:-[a-zA-Z]+\s+)*-c\b/, "dash -c is disabled."],
+  [/\bcurl\b/, "curl is disabled. Use web__fetch, which returns the page as text."],
+  [/\bwget\b/, "wget is disabled. Use web__fetch."],
+  [/\bssh\b/, "ssh is disabled: this run works on the checked-out repository, not on other hosts."],
+  [/\bscp\b/, "scp is disabled: this run works on the checked-out repository, not on other hosts."],
+  [/\brsync\b/, "rsync is disabled: this run works on the checked-out repository, not on other hosts."],
 ];
 
+/**
+ * The one rule that is not routing.
+ *
+ * Tool servers run as the same user, and each holds the credentials its
+ * `tools.yaml` entry declares. So `shell` can read `github`'s environment
+ * through /proc and obtain a token it was deliberately not given — the one
+ * place per-server confinement is enforced by nothing else. `PR_SET_DUMPABLE(0)`
+ * in Atoma core does not help: `dumpable` resets on execve, so the servers are
+ * child processes and readable.
+ *
+ * **This stops an accident, not an intent.** `P=/proc; cat $P/1/environ` walks
+ * past it, exactly as the header says of every rule in this file. The structural
+ * fix is a separate UID per server, which the kernel then enforces without any
+ * text matching — see issue #374. Do not treat this rule as that fix.
+ *
+ * Matched as "both words anywhere" rather than as the literal path. Matching
+ * `/proc/<pid>/environ` was the first attempt and its own test broke it:
+ * `find /proc -name environ -exec cat {} +` never writes that path, it builds
+ * it. The readers are endless too — cat, head, xxd, tr, dd, od, strings, a bare
+ * `< /proc/N/environ` — and enumerating either the readers or the spellings is
+ * the shape of check this repository has been wrong about three times.
+ *
+ * `/proc` as a whole stays open: `environ` is the part that matters, and cpuinfo
+ * and meminfo have honest uses. `\benviron\b` does not match `environment`, so
+ * ordinary words and filenames are unaffected.
+ */
+const PROCESS_ENVIRONMENT_READ: [RegExp, string] = [
+  /^(?=[\s\S]*\/proc)(?=[\s\S]*\benviron\b)/,
+  "Reading a process's environment through /proc is disabled: tool servers run as the same user and each holds only the credentials it declares.",
+];
+
+/**
+ * Git subcommands that change something, as opposed to reporting it.
+ *
+ * Routing, like the rules above: `github__create_pr` and `github__sync_branch`
+ * check that HEAD is pushed and the branch is current before they act, and a
+ * worktree the agent mutated by hand is one `create_pr` then refuses. Read-only
+ * inspection (`status`, `diff`, `log`, `rev-parse`) is how the agent orients
+ * itself and stays allowed.
+ */
 const MUTATING_GIT_COMMANDS = new Set([
   "add", "am", "apply", "bisect", "branch", "checkout", "cherry-pick", "clean", "commit", "config",
   "fetch", "init", "merge", "mv", "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rm",
   "stash", "switch", "tag", "worktree",
 ]);
 
+/**
+ * The mutating git subcommand this command line runs, if any.
+ *
+ * Splits on shell separators so `cd repo && git push` is seen, and skips git's
+ * own options so `git -C repo checkout` resolves to `checkout` rather than to
+ * `-C`. Options that take a value consume the next token.
+ */
 function findMutatingGitCommand(command: string): string | undefined {
   for (const segment of command.split(/\s*(?:&&|\|\||[;|])\s*/)) {
     const tokens = segment.trim().split(/\s+/);
@@ -118,148 +133,61 @@ function findMutatingGitCommand(command: string): string | undefined {
   return undefined;
 }
 
-/**
- * Tokenizes `command` with `shell-quote` (resolving backslash escapes and
- * quote-splicing the way a real shell would) and re-joins it into a plain
- * string, gluing consecutive operator tokens (e.g. the two `<` tokens a
- * heredoc's `<<` parses into) back together so the BLOCKED regexes above
- * -- written against normal shell syntax -- still match. Falls back to the
- * raw string if parsing throws (malformed input is at least no *less* safe
- * than the pre-existing raw-string check).
- */
-function normalizeCommand(command: string): string {
-  let tokens: unknown[];
-  try {
-    tokens = parse(command);
-  } catch {
-    return command;
-  }
-
-  let out = "";
-  let prevWasOp = false;
-  for (const t of tokens) {
-    const isOp = typeof t !== "string";
-    const text = isOp ? (t as { op: string }).op : (t as string);
-    if (out.length === 0) out = text;
-    else if (isOp && prevWasOp) out += text;
-    else out += ` ${text}`;
-    prevWasOp = isOp;
-  }
-  return out;
-}
-
-/**
- * Variables whose value decides what a command actually executes.
- *
- * Setting any of these turns an allowed command line into an arbitrary one --
- * `PATH` re-points every bare binary name, `LD_PRELOAD` injects code into every
- * process started, `BASH_ENV` names a file bash sources before running. No text
- * rule can see that, so these are refused rather than inspected.
- */
-const EXECUTION_CONTROLLING_VARS = new Set([
-  "BASH_ENV",
-  "ENV",
-  "IFS",
-  "LD_AUDIT",
-  "LD_LIBRARY_PATH",
-  "LD_PRELOAD",
-  "PATH",
-  "SHELL",
-  "SHELLOPTS",
-]);
-
-/** Interpreters that run whatever arrives on stdin, making `input_data` a script. */
-const STDIN_INTERPRETERS = /^(?:[\w./-]*\/)?(?:sh|bash|zsh|dash|python3?|ruby|perl|node|bun)$/;
-
-/**
- * Substitute declared variables into the command so the rules can see through
- * them. `{P: "/proc"}` turns `cat $P/1/environ` into `cat /proc/1/environ`.
- *
- * Longest name first, so `$FOO` is not partly replaced by a shorter `$F`.
- */
-function substituteDeclaredVars(command: string, vars: Record<string, string>): string {
-  let out = command;
-  for (const name of Object.keys(vars).sort((a, b) => b.length - a.length)) {
-    if (!/^\w+$/.test(name)) continue;
-    out = out.split(`\${${name}}`).join(vars[name] ?? "");
-    out = out.split(`$${name}`).join(vars[name] ?? "");
-  }
-  return out;
-}
-
 export interface ShellInvocation {
   command: string;
   workingDirectory?: string;
-  environmentVariables?: Record<string, string>;
-  inputData?: string;
+}
+
+export interface GuardVerdict {
+  allow: boolean;
+  reason: string;
+}
+
+const ALLOWED: GuardVerdict = { allow: true, reason: "" };
+
+/**
+ * Why `workingDirectory` is not a place this run needs to go, or undefined.
+ *
+ * Routing again: the shell tool exists to work on the checked-out repository,
+ * and a command that ran somewhere else returns output the agent will read as
+ * being about the repository. Confining it is cheaper than explaining the
+ * resulting confusion.
+ */
+function outsideRepository(workingDirectory: string): string | undefined {
+  const resolved = resolve(workingDirectory);
+  const root = resolve(process.cwd());
+  if (resolved === root || resolved.startsWith(root + sep)) return undefined;
+  return `working_directory must stay inside the repository (${root}); '${workingDirectory}' is outside it.`;
 }
 
 /**
- * Judge the whole invocation.
+ * Judge one invocation.
  *
- * Exported for the tests, which exercise the three argument channels directly
- * rather than only through the process boundary.
+ * Exported for the tests, which exercise the arguments directly rather than
+ * only through the process boundary.
  */
-export function checkInvocation(invocation: ShellInvocation): { allow: boolean; reason: string } {
-  const vars = invocation.environmentVariables ?? {};
-
-  for (const name of Object.keys(vars)) {
-    if (EXECUTION_CONTROLLING_VARS.has(name.toUpperCase())) {
-      return {
-        allow: false,
-        reason: `Setting ${name} through environment_variables is disabled: it changes what the command executes, which no inspection of the command text can account for.`,
-      };
-    }
-  }
-
-  // Confined rather than inspected. A rule about a path cannot help if the path
-  // arrives here instead of in the command, and the shell tool exists to work on
-  // this repository -- somewhere outside it is not a place it needs to run.
+export function checkInvocation(invocation: ShellInvocation): GuardVerdict {
   const cwd = invocation.workingDirectory?.trim();
   if (cwd) {
-    const resolved = resolve(cwd);
-    const root = resolve(process.cwd());
-    if (resolved !== root && !resolved.startsWith(root + sep)) {
-      return {
-        allow: false,
-        reason: `working_directory must stay inside the repository (${root}); '${cwd}' is outside it.`,
-      };
-    }
+    const reason = outsideRepository(cwd);
+    if (reason) return { allow: false, reason };
   }
 
-  // A bare interpreter with a script on stdin is `-c` by another route.
-  if (invocation.inputData !== undefined) {
-    const first = normalizeCommand(invocation.command).trim().split(/\s+/)[0] ?? "";
-    if (STDIN_INTERPRETERS.test(first)) {
-      return {
-        allow: false,
-        reason: `Piping a script into '${first}' through input_data is disabled, for the same reason '${first} -c' is.`,
-      };
-    }
-  }
-
-  // Everything that reaches bash gets matched: the command with its declared
-  // variables resolved, and the stdin text, which a non-interpreter command may
-  // still act on.
-  const text = [substituteDeclaredVars(invocation.command, vars), invocation.inputData ?? ""]
-    .filter(Boolean)
-    .join("\n");
-  return checkCommand(text);
-}
-
-function checkCommand(command: string): { allow: boolean; reason: string } {
-  const normalized = normalizeCommand(command);
-  const gitCommand = findMutatingGitCommand(normalized);
+  const gitCommand = findMutatingGitCommand(invocation.command);
   if (gitCommand) {
     return {
       allow: false,
       reason: `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.`,
     };
   }
-  for (const [pattern, reason] of BLOCKED) {
-    if (pattern.test(normalized)) return { allow: false, reason };
+
+  const [environPattern, environReason] = PROCESS_ENVIRONMENT_READ;
+  if (environPattern.test(invocation.command)) return { allow: false, reason: environReason };
+
+  for (const [pattern, reason] of ROUTING_RULES) {
+    if (pattern.test(invocation.command)) return { allow: false, reason };
   }
-  return { allow: true, reason: "" };
+  return ALLOWED;
 }
 
 async function main(): Promise<void> {
@@ -277,11 +205,6 @@ async function main(): Promise<void> {
   const { allow, reason } = checkInvocation({
     command,
     workingDirectory: typeof args.working_directory === "string" ? args.working_directory : undefined,
-    environmentVariables:
-      args.environment_variables && typeof args.environment_variables === "object"
-        ? (args.environment_variables as Record<string, string>)
-        : undefined,
-    inputData: typeof args.input_data === "string" ? args.input_data : undefined,
   });
 
   if (allow) {

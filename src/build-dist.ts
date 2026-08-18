@@ -16,7 +16,7 @@
  * the shared `src/lib/**` kernel (so `src/scripts/**` and
  * `src/atoma/tools/scripts/**` can freely import shared code without any
  * hand-duplicated files between them) and npm dependencies like
- * `@modelcontextprotocol/sdk`/`shell-quote` (so the deployed output needs no
+ * `@modelcontextprotocol/sdk` (so the deployed output needs no
  * `node_modules`/`package.json`/`bun install` step at all -- verified: a
  * bundled `mcp/github.ts` runs standalone with zero dependencies nearby).
  * Bundled output keeps a `.ts` extension (Bun happily runs plain JS through
