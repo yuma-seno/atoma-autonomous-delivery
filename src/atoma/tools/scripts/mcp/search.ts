@@ -34,11 +34,8 @@
  * instructions while this repository's issues are Japanese, so this is a live
  * hazard rather than a theoretical one, and the description says so outright.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { AutoTokenizer, AutoModelForSequenceClassification } from "@huggingface/transformers";
-import { buildMcpTools, defineMcpTool, positiveInt, z } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
 import {
@@ -282,20 +279,7 @@ const { tools, dispatch } = buildMcpTools([
   }),
 ]);
 
-const server = new Server({ name: "atoma-search-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-  try {
-    const { text } = await dispatch(name, args);
-    return { content: [{ type: "text", text }], isError: false };
-  } catch (error) {
-    return { content: [{ type: "text", text: `Error: ${(error as Error).message ?? error}` }], isError: true };
-  }
-});
-
 async function main(): Promise<void> {
-  await server.connect(new StdioServerTransport());
+  await serveMcpServer({ name: "atoma-search-mcp", version: "1.0.0", tools, dispatch, log });
 }
-
 if (import.meta.main) void main();

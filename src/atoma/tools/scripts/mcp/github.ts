@@ -14,9 +14,6 @@
  * in-process (resolveNotify/dispatchOrchestratorIfSubIssueReady/etc.);
  * always `console.error()` (`log()` below) for logging.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
 import { getBaseBranch, getLabel, getMergePolicy } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
@@ -24,7 +21,7 @@ import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation
 import { logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
-import { buildMcpTools, defineMcpTool, positiveInt, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
 import { branchForCommit, resolveBranch, stackedPrBase } from "../../../../lib/branch-placement.ts";
 import { dispatchCd, dispatchCi, dispatchPostMergeAgent, dispatchPrValidation } from "../../../../lib/dispatch-targets.ts";
@@ -919,32 +916,9 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   }),
 ]);
 
-const server = new Server(
-  { name: "atoma-github-mcp", version: "1.0.0" },
-  { capabilities: { tools: {} } },
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-  try {
-    const { text, meta } = await dispatch(name, args);
-    return {
-      content: [{ type: "text", text }],
-      isError: false,
-      ...(meta ? { _meta: meta } : {}),
-    };
-  } catch (e) {
-    log(`Tool error: ${e}`);
-    return { content: [{ type: "text", text: `Error: ${(e as Error).message ?? e}` }], isError: true };
-  }
-});
-
 async function main(): Promise<void> {
   log(`Starting for ${REPO}`);
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await serveMcpServer({ name: "atoma-github-mcp", version: "1.0.0", tools: TOOLS, dispatch, log });
 }
 
 if (import.meta.main) void main();
