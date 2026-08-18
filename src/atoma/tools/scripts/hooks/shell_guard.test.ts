@@ -98,15 +98,26 @@ describe("shell_guard.ts", () => {
       expect(viaVar.stdout).toContain('"allow":false');
     });
 
-    // Blocking /proc wholesale would cost honest diagnostics.
+    // Blocking /proc wholesale would cost honest diagnostics. `environ` is the
+    // part that matters, and the word boundary keeps `environment` out of it.
     test("leaves the rest of /proc alone", () => {
-      for (const command of ["cat /proc/cpuinfo", "grep MemTotal /proc/meminfo"]) {
+      for (const command of ["cat /proc/cpuinfo", "grep MemTotal /proc/meminfo", "ls /proc/self/fd"]) {
         const r = spawnSync("bun", ["run", SCRIPT], {
           input: JSON.stringify({ arguments: { command } }),
           encoding: "utf8",
         });
         expect(r.stdout, command).toContain('"allow":true');
       }
+    });
+
+    // The word this rule keys on has an ordinary English prefix, and a repository
+    // full of files called `environment.ts` should not become unreadable.
+    test("does not catch the word environment", () => {
+      const r = spawnSync("bun", ["run", SCRIPT], {
+        input: JSON.stringify({ arguments: { command: "grep -rn environment src/ /proc/cpuinfo" } }),
+        encoding: "utf8",
+      });
+      expect(r.stdout).toContain('"allow":true');
     });
   });
 
