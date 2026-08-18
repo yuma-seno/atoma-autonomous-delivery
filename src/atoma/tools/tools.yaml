@@ -6,12 +6,21 @@
 # so removals must be checked against all three agents, not just the one in
 # front of you. `agent-definitions.test.ts` enforces this.
 #
-# Credentials do NOT go here. A server that needs one reads it from the
-# environment: add the secret to the repository, then name it in config.json's
-# `tool_secrets`, and it is exported under that name before any server starts.
-# Values written in an `env:` block below are literal — there is no `${...}`
-# expansion — so a secret pasted here would be committed in plain text.
-# See docs/customization.md, "Give a tool a credential".
+# This is where a credential is ROUTED to the server that needs it, with a
+# `${NAME}` reference in that server's `env`. A server receives exactly what it
+# names here and nothing else -- atoma removes every credential it knows about
+# from a server's environment before applying this block, so leaving `env: {}`
+# means "this server gets no credentials", and that is the point rather than an
+# oversight.
+#
+# Never write a value here, only a reference. `${SLACK_TOKEN}` is resolved at run
+# time; a pasted secret would be committed in plain text.
+#
+# Where the value comes from is a different layer. Add the secret to the
+# repository, then name it in config.json's `tools.secrets` -- that authorises the
+# run to obtain it. This file decides which server it reaches. Both steps are
+# needed and neither substitutes for the other; see docs/customization.md, "Give a
+# tool a credential".
 
 filesystem:
   command: mcp-server-filesystem
@@ -48,7 +57,11 @@ shell:
 github:
   command: bun
   args: ["run", ".github/atoma/tools/scripts/mcp/github.ts"]
-  env: {}
+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
+  # than inherited: atoma strips credentials from a server that does not name
+  # them, which is what keeps this one out of `shell`.
+  env:
+    GH_TOKEN: "${GH_TOKEN}"
   hooks: {}
 
 web:
@@ -64,11 +77,19 @@ web:
 search:
   command: bun
   args: ["run", ".github/atoma/tools/scripts/mcp/search.ts"]
-  env: {}
+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
+  # than inherited: atoma strips credentials from a server that does not name
+  # them, which is what keeps this one out of `shell`.
+  env:
+    GH_TOKEN: "${GH_TOKEN}"
   hooks: {}
 
 atoma:
   command: bun
   args: ["run", ".github/atoma/tools/scripts/mcp/atoma.ts"]
-  env: {}
+  # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
+  # than inherited: atoma strips credentials from a server that does not name
+  # them, which is what keeps this one out of `shell`.
+  env:
+    GH_TOKEN: "${GH_TOKEN}"
   hooks: {}
