@@ -48,19 +48,38 @@ export function resolveBranch(): string {
 }
 
 /**
- * The parent issue this one was split out of, or 0 for a root issue.
+ * What an issue's parentage turned out to be.
+ *
+ * Three answers, not two. `known: true, parent: 0` is a root issue; `known:
+ * false` is a read that failed, and the two are not interchangeable — one caller
+ * below can treat an unknown parent as absent and the other cannot.
+ */
+export type ParentIssue = { known: true; parent: number } | { known: false; why: string };
+
+/**
+ * The parent issue this one was split out of.
  *
  * Read from the issue body's `atoma:parent` tag, which `create_issue` writes
  * when an orchestrator creates a child. Nothing here asks which agent is
  * running: a sub-issue is a sub-issue whoever picks it up.
+ *
+ * This returned a bare `0` for both a root issue and a failed read, and the two
+ * callers did very different things with that. `stackedBaseFor` treats an
+ * unknown parent as absent and cuts from the base — documented, and a slower
+ * integration is genuinely not worth failing a commit over. `stackedPrBase` used
+ * the same value to mean "no parent", so `create_pr` aimed a sub-issue's pull
+ * request at the base branch: on merge, `dispatchCd` sees a non-issue branch and
+ * deploys one child's half of a feature. One transient `gh` failure was enough,
+ * and the only trace was a WARN in a runner log.
  */
-export function parentIssueOf(repo: string, issue: number): number {
-  const { code, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
+export function parentIssueOf(repo: string, issue: number): ParentIssue {
+  const { code, stderr, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
   if (code) {
-    log(`WARN could not read issue #${issue}; treating it as a root issue`);
-    return 0;
+    const why = `could not read issue #${issue}: ${stderr.trim() || `gh exited ${code}`}`;
+    log(`WARN ${why}`);
+    return { known: false, why };
   }
-  return PARENT_TAG.read(stdout) ?? 0;
+  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
 }
 
 /**
@@ -82,10 +101,12 @@ export function parentIssueOf(repo: string, issue: number): number {
  * not worth failing a commit over.
  */
 export function stackedBaseFor(repo: string, issue: number): string {
-  const parent = parentIssueOf(repo, issue);
-  if (!parent) return "";
+  // An unreadable parent falls in with every other failure here: cut from the
+  // base. `parentIssueOf` has already logged why.
+  const found = parentIssueOf(repo, issue);
+  if (!found.known || !found.parent) return "";
 
-  const parentBranch = branchOfIssue(parent);
+  const parentBranch = branchOfIssue(found.parent);
   const existing = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
   if (existing.code === 0 && existing.stdout.trim()) {
     const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
@@ -111,7 +132,7 @@ export function stackedBaseFor(repo: string, issue: number): string {
   }
   const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
   if (fetched.code) return "";
-  log(`commitAndPush: created parent branch ${parentBranch} for #${parent}`);
+  log(`commitAndPush: created parent branch ${parentBranch} for #${found.parent}`);
   return parentBranch;
 }
 
@@ -157,15 +178,27 @@ export function branchForCommit(repo: string): string {
  * The parent's own run is a root run by this test: its issue carries no parent
  * tag, so its pull request — the integration one, carrying every child's work —
  * targets the base branch like any other.
+ *
+ * Throws when the issue could not be read, rather than answering undefined.
+ * Unlike `stackedBaseFor`, this caller cannot absorb the uncertainty: its answer
+ * decides where a pull request merges to, and guessing the base branch for a
+ * sub-issue lands one child's half of a feature on the release branch and
+ * deploys it. A tool error the agent can retry is the cheaper wrong answer.
  */
 export function stackedPrBase(repo: string): string | undefined {
   const issue = runIssueNumber();
   if (issue === undefined) return undefined;
 
-  const parent = parentIssueOf(repo, issue);
-  if (!parent) return undefined;
+  const found = parentIssueOf(repo, issue);
+  if (!found.known) {
+    throw new Error(
+      `Cannot tell whether issue #${issue} is a sub-issue, so the base branch for its pull request is unknown: ` +
+        `${found.why}. Retry, or pass \`base\` explicitly.`,
+    );
+  }
+  if (!found.parent) return undefined;
 
-  const parentBranch = branchOfIssue(parent);
+  const parentBranch = branchOfIssue(found.parent);
   const { code, stdout } = gitRun("ls-remote", "--heads", "origin", `refs/heads/${parentBranch}`);
   return code === 0 && stdout.trim() ? parentBranch : undefined;
 }

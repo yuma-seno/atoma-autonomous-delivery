@@ -203,6 +203,20 @@ describe("decideMergeReadiness", () => {
     expect(result.blockers[0]?.detail).toContain(".github/workflows/ci.yml");
   });
 
+  // Same refusal, different reason, and the difference is the point. An
+  // unreadable file list used to arrive as the literal path
+  // "(could not read the changed files)", so the blocker asserted that the pull
+  // request changes how agents run -- which it may not. What is true is that
+  // nobody knows, and that is its own answer.
+  test("an unreadable file list blocks without claiming what the change touches", () => {
+    const result = decideMergeReadiness(signals({ governanceUnknown: "gh pr view failed: 502" }));
+    expect(result.ready).toBe(false);
+    expect(result.blockers.map((b) => b.kind)).toEqual(["governance-unknown"]);
+    expect(result.blockers[0]?.detail).toContain("could not be determined");
+    expect(result.blockers[0]?.detail).toContain("502");
+    expect(result.blockers[0]?.detail).not.toContain("changes how agents themselves run (");
+  });
+
   // Refusing the merge is the control; saying where the change belongs is what
   // stops the same pull request being opened again. The commonest reason to edit
   // a generated workflow is to change what CI does, and under Atoma that is

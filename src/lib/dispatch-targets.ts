@@ -135,7 +135,14 @@ export function dispatchCd(baseRef: string): boolean {
   }
 
   const workflow = configured || DEFAULT_CD_WORKFLOW;
-  const args = ["--ref", baseRef || "main"];
+  // No `--ref` rather than a guessed one. This used to fall back to `"main"`,
+  // in a file that argues a hundred lines above that guessing a workflow name
+  // "would dispatch a workflow that does not exist" -- and on a repository whose
+  // default branch is `develop`, the guess made the dispatch fail, logged as a
+  // WARN, so the merge landed and nothing deployed. Omitted, `gh workflow run`
+  // uses the repository's real default branch, which is what `getBaseBranch()`
+  // already relies on for the same reason.
+  const args = baseRef ? ["--ref", baseRef] : [];
   // Only the shipped workflow understands why it was started. A project's own
   // deployment workflow gets the bare dispatch it has always got.
   if (!configured) args.push("-f", "trigger=merge");
