@@ -17,7 +17,8 @@ import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
 import { describeGateResult, dispatchOrchestratorIfReady, needsAttention } from "../lib/aggregation.ts";
-import { injectSubResults, type Session } from "../lib/inject-sub-results.ts";
+import { gatherSubResults, injectSummary } from "../lib/inject-sub-results.ts";
+import type { Session } from "../lib/session.ts";
 import { PARENT_TAG } from "../lib/tags.ts";
 import { restoreSession, saveSession, sessionTargetPath } from "./lib/atoma-data.ts";
 
@@ -78,7 +79,9 @@ function injectResultsIntoOrchestratorSession(repo: string, parent: number): voi
   const existing = restoreSession(sessionPath);
   const session: Session = existing ? (JSON.parse(existing) as Session) : { messages: [] };
 
-  const updated = injectSubResults(session, repo, subIssues);
+  // Composed here, where the I/O belongs: read what the sub-issues did, then
+  // put it in the session. `injectSummary` is the half that decides where.
+  const updated = injectSummary(session, gatherSubResults(repo, subIssues));
   const message = `atoma: inject sub-issue results for parent #${parent}`;
   if (!saveSession(sessionPath, JSON.stringify(updated, null, 2), message)) {
     console.error(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);

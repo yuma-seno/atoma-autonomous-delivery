@@ -5,12 +5,16 @@
  * The one canonical implementation (was inject_sub_results.ts), called
  * directly by aggregate_sub_issues.ts -- no more subprocess spawn.
  */
-import { readFileSync, writeFileSync } from "node:fs";
 import { gh } from "./gh.ts";
 import type { GhPrSummary } from "./types.ts";
 import type { Session, SessionMessage } from "./session.ts";
 
-export type { Session, SessionMessage };
+// No `export type { Session, SessionMessage }` here.
+//
+// Eleven files import `Session` from `lib/session.ts`; exactly one used to get
+// it through this re-export, which made a second route to the same type. See
+// `config.ts`, which argues the same point about `getDeclaredSecrets`: the next
+// caller finds whichever route it meets first, and then the two exist forever.
 
 function findLastToolIndex(messages: SessionMessage[]): number | null {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -19,7 +23,7 @@ function findLastToolIndex(messages: SessionMessage[]): number | null {
   return null;
 }
 
-function gatherSubResults(repo: string, subIssues: number[]): string {
+export function gatherSubResults(repo: string, subIssues: number[]): string {
   const lines: string[] = ["All sub-issues have been completed.", "", "## Sub-issue Results", ""];
 
   for (const num of subIssues) {
@@ -80,11 +84,24 @@ function gatherSubResults(repo: string, subIssues: number[]): string {
   return lines.join("\n");
 }
 
-/** Pure transform: returns an updated copy-in-place `session` with the last tool message replaced (or a new user message appended if none exists). */
-export function injectSubResults(session: Session, repo: string, subIssues: number[]): Session {
+/**
+ * Put `summary` where the orchestrator will read it: over the last tool message,
+ * or appended as a user message when the session has none.
+ *
+ * Takes the text rather than fetching it. The doc comment here used to say
+ * "Pure transform: returns an updated copy-in-place" -- which is two claims and
+ * both were wrong. It was not pure: it called `gatherSubResults`, up to three
+ * `gh` calls per sub-issue. And it is not a copy: it mutates `session.messages`
+ * in place and returns the same object, which "copy-in-place" says in one
+ * self-contradictory breath.
+ *
+ * The cost was that this rule -- find the last tool message, replace it, append
+ * when there is none -- could not be tested without a fake `gh` on PATH. It is a
+ * decision about a data structure and now reads like one.
+ */
+export function injectSummary(session: Session, summary: string): Session {
   const messages = session.messages ?? [];
   const lastToolIdx = findLastToolIndex(messages);
-  const summary = gatherSubResults(repo, subIssues);
 
   if (lastToolIdx === null) {
     console.error("No tool message found in session. Appending as user message.");
@@ -97,9 +114,3 @@ export function injectSubResults(session: Session, repo: string, subIssues: numb
   return session;
 }
 
-/** File-based convenience wrapper matching the original CLI script's contract. */
-export function injectSubResultsFile(sessionPath: string, repo: string, subIssues: number[], outPath: string): void {
-  const session = JSON.parse(readFileSync(sessionPath, "utf8")) as Session;
-  const updated = injectSubResults(session, repo, subIssues);
-  writeFileSync(outPath, JSON.stringify(updated, null, 2));
-}

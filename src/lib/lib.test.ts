@@ -15,11 +15,13 @@
  * `gh` MUST spawn a fresh subprocess, never call such a function in-process.
  */
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeConfigDir, runWithFakeGh, type FakeGhRule } from "../scripts/testing/harness.ts";
 import { extractImageUrls, sniffMimeType } from "./issue-images.ts";
+import { injectSummary } from "./inject-sub-results.ts";
+import type { Session } from "./session.ts";
 
 const LIB_DIR = import.meta.dir;
 
@@ -84,46 +86,37 @@ describe("sibling-check.ts countOpenSiblings", () => {
   });
 });
 
-describe("inject-sub-results.ts injectSubResultsFile", () => {
-  test("replaces the last tool message with an aggregated summary", () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "atoma-test-"));
-    const sessionFile = join(dataDir, "session.json");
-    const outFile = join(dataDir, "out.json");
-    writeFileSync(
-      sessionFile,
-      JSON.stringify({
-        messages: [
-          { role: "user", content: "go" },
-          { role: "tool", content: "launched" },
-        ],
-      }),
-    );
-    const { file, dir } = makeShim(`
-      import { injectSubResultsFile } from "${join(LIB_DIR, "inject-sub-results.ts")}";
-      injectSubResultsFile(${JSON.stringify(sessionFile)}, "owner/repo", [2, 3], ${JSON.stringify(outFile)});
-    `);
-    try {
-      const r = runWithFakeGh(file, [], {
-        rules: [
-          { match: ["issue", "view", "2"], stdout: JSON.stringify({ title: "Fix A", state: "CLOSED" }) },
-          { match: ["issue", "view", "3"], stdout: JSON.stringify({ title: "Fix B", state: "CLOSED" }) },
-          { match: ["pr", "list", "merged"], stdout: JSON.stringify([{ number: 10, title: "Fix A", url: "http://x/10" }]) },
-          { match: ["pr", "list", "open"], stdout: "[]" },
-        ],
-      });
-      expect(r.status).toBe(0);
-      const session = JSON.parse(readFileSync(outFile, "utf8")) as { messages: { role: string; content: string }[] };
-      const toolMsg = session.messages.find((m) => m.role === "tool");
-      expect(toolMsg?.content).toContain("Fix A");
-      expect(toolMsg?.content).toContain("Fix B");
-      expect(toolMsg?.content).toContain("PR #10");
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-      rmSync(dir, { recursive: true, force: true });
-    }
+// The rule these cover -- find the last tool message, replace it, append when
+// there is none -- used to be reachable only through a function that made up to
+// three `gh` calls per sub-issue, so testing it needed a fake `gh` on PATH and a
+// subprocess. It is a decision about a data structure. It is tested as one.
+describe("inject-sub-results.ts injectSummary", () => {
+  test("replaces the last tool message", () => {
+    const session: Session = {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "tool", content: "launched" },
+        { role: "assistant", content: "working" },
+        { role: "tool", content: "still going" },
+      ],
+    };
+    const updated = injectSummary(session, "the summary");
+    expect(updated.messages?.map((m) => m.content)).toEqual(["go", "launched", "working", "the summary"]);
+  });
+
+  // The orchestrator has to see the results somewhere. A session with no tool
+  // message is not a reason to drop them.
+  test("appends a user message when the session has no tool message", () => {
+    const session: Session = { messages: [{ role: "user", content: "go" }] };
+    const updated = injectSummary(session, "the summary");
+    expect(updated.messages?.at(-1)).toEqual({ role: "user", content: "the summary" });
+  });
+
+  test("an empty session still receives the summary", () => {
+    const updated = injectSummary({ messages: [] }, "the summary");
+    expect(updated.messages).toEqual([{ role: "user", content: "the summary" }]);
   });
 });
-
 describe("agent-name.ts", () => {
   test("accepts a bare lowercase name and rejects everything a shell would reinterpret", async () => {
     const { isAgentName } = await import("./agent-name.ts");

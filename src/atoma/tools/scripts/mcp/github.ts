@@ -15,7 +15,7 @@
  * always `console.error()` (`log()` below) for logging.
  */
 import { gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
-import { getBaseBranch, getLabel, getMergePolicy } from "../../../../lib/config.ts";
+import { getBaseBranch, getLabel } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
 import {
   describeGateResult,
@@ -940,6 +940,24 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
 ]);
 
 async function main(): Promise<void> {
+  // Refused at startup, not per call.
+  //
+  // With `GITHUB_REPOSITORY` unset and a remote URL matching neither prefix,
+  // `REPO` stays "" and every tool runs `gh … --repo ""`. Each one then fails
+  // with a GitHub error about a malformed repository name, which reads as a
+  // broken tool rather than a server that was never told which repository it is
+  // for — and it reads that way once per call, for the whole run.
+  //
+  // `search.ts` already handles the same condition explicitly, and says exactly
+  // this. Saying it once, before anything can be called, is the version that
+  // costs nothing.
+  if (!REPO) {
+    log(
+      "GITHUB_REPOSITORY is unset and no GitHub remote could be read, so there is no repository to act on. " +
+        "Set GITHUB_REPOSITORY, or run where `git remote get-url origin` resolves to a github.com URL.",
+    );
+    process.exit(1);
+  }
   log(`Starting for ${REPO}`);
   await serveMcpServer({ name: "atoma-github-mcp", version: "1.0.0", tools: TOOLS, dispatch, log });
 }
