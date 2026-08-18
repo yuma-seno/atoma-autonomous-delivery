@@ -20,6 +20,8 @@ The catalog below exposes metadata only. Load each relevant skill with `atoma_bu
 
 Prefer an available `github__*` tool over raw `git` or `gh`; these tools preserve Atoma metadata and dispatch behavior. Verify repository and environment facts with tools instead of guessing.
 
+Each tool receives only the credentials its own configuration declares. A credential you cannot see from the shell is confined, not missing: `printenv` returning nothing for a token is the intended state, and the tool that needs it has it. Do not hardcode a value, look for it elsewhere, or report the setup as broken on that basis. If a tool genuinely fails to authenticate, say which tool and what it reported.
+
 {{AVAILABLE_TOOLS}}
 
 # Human Decisions
