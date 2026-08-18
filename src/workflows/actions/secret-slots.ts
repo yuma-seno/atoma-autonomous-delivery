@@ -49,6 +49,23 @@ export const SECRET_NAMES_STEP_ID = "secret-names";
  *
  * `$RUNNER_TEMP` rather than the workspace, so the file cannot be one the
  * checkout brought with it.
+ *
+ * ## Why the fetch writes its own ref instead of using FETCH_HEAD
+ *
+ * This used to be `git fetch ... || true` followed by
+ * `git show "FETCH_HEAD:.github/atoma/config.json"`. `actions/checkout` has
+ * already written a FETCH_HEAD for the pull request's own ref by the time this
+ * step runs, so a failed fetch did not reach the fall-back: the `git show`
+ * succeeded against the pull request's own file, the run took its declaration
+ * from the branch under review, and nothing warned because nothing had failed.
+ *
+ * The `|| true` was there so a fetch failure would not fail the run. It degraded
+ * open instead of safely, on the one guarantee this step provides. Fetching into
+ * a ref this step owns removes the thing there was to fall back to.
+ *
+ * The rationale lives here rather than in the emitted shell: an adopter reading
+ * the generated workflow needs to know what the line does, not which bug it
+ * replaced.
  */
 export function secretNamesStep(destination: SecretDestinationName): TypedOutputsStep<"names"> {
   const trustedConfig = "$RUNNER_TEMP/atoma-declared-secrets.json";
@@ -61,16 +78,9 @@ export function secretNamesStep(destination: SecretDestinationName): TypedOutput
       run: `DEFAULT_BRANCH="\${ATOMA_DEFAULT_BRANCH:-main}"
 TRUSTED_CONFIG="${trustedConfig}"
 
-# Fetched into a ref this line owns, and read back from that same ref.
-#
-# NOT via FETCH_HEAD, which is what this used to do: \`actions/checkout\` has
-# already written a FETCH_HEAD for the pull request's own ref, so a failed fetch
-# left it in place and \`git show FETCH_HEAD:...\` then read the declaration out
-# of the branch under review -- the one thing this step exists to prevent, and
-# silently, because the read succeeded and the warning below never printed.
-#
-# Shallow: one commit of one branch is all this needs, and the checkout that
-# preceded it is shallow too. \`+\` so a re-run overwrites rather than refusing.
+# Fetched into a ref this line owns, and read back from that same ref, so a
+# failed fetch has nothing to fall back to. Shallow: one commit of one branch is
+# all this needs. \`+\` so a re-run overwrites rather than refusing.
 if git fetch --quiet --depth=1 origin "+\$DEFAULT_BRANCH:refs/atoma/trusted-config" 2>/dev/null \\
   && git show "refs/atoma/trusted-config:.github/atoma/config.json" > "$TRUSTED_CONFIG" 2>/dev/null; then
   echo "Read the credential declaration from \${DEFAULT_BRANCH}."
