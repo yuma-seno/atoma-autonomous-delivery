@@ -28,8 +28,40 @@ const MAX_IMAGE_BYTES = 4_000_000;
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Schemes this server will fetch.
+ *
+ * `z.string().url()` accepts anything `new URL()` accepts, which is every scheme
+ * — `file:`, `data:`, `blob:`. The description said "http(s)" and nothing
+ * enforced it, so `web__fetch` was a general local-file read: Bun's `fetch`
+ * handles `file:` URLs, and this server declares `env: {}` precisely so that it
+ * holds no credentials.
+ *
+ * That made it the cheapest way to reach the two places a credential actually
+ * sits — `/proc/<pid>/environ` of a server that does hold one, and the
+ * `http.extraheader` line `actions/checkout` writes into `.git/config` — without
+ * going anywhere near the `shell` server or the routing rules that watch it.
+ *
+ * Checked here rather than in the handler so the constraint is in the JSON Schema
+ * the model reads, and so a rejected call names the reason.
+ */
+const FETCHABLE_SCHEMES = new Set(["http:", "https:"]);
+
 const FETCH_SCHEMA = z.object({
-  url: z.string().url().describe("Absolute http(s) URL to fetch."),
+  url: z
+    .string()
+    .url()
+    .refine(
+      (value) => {
+        try {
+          return FETCHABLE_SCHEMES.has(new URL(value).protocol);
+        } catch {
+          return false;
+        }
+      },
+      { message: "must be an http:// or https:// URL; this tool fetches the web, not the local filesystem" },
+    )
+    .describe("Absolute http:// or https:// URL to fetch. Other schemes, including file://, are refused."),
   raw: z
     .boolean()
     .optional()
