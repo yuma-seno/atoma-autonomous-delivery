@@ -18,6 +18,26 @@ var PROCESS_ENVIRONMENT_READ = [
   /^(?=[\s\S]*\/proc)(?=[\s\S]*\benviron\b)/,
   "Reading a process's environment through /proc is disabled: tool servers run as the same user and each holds only the credentials it declares."
 ];
+var ROUTED_GIT_COMMANDS = new Set([
+  "add",
+  "am",
+  "apply",
+  "cherry-pick",
+  "commit",
+  "fetch",
+  "merge",
+  "mv",
+  "pull",
+  "push",
+  "rebase",
+  "restore",
+  "revert",
+  "rm",
+  "checkout",
+  "switch",
+  "branch",
+  "tag"
+]);
 var MUTATING_GIT_COMMANDS = new Set([
   "add",
   "am",
@@ -82,9 +102,10 @@ function checkInvocation(invocation) {
   }
   const gitCommand = findMutatingGitCommand(invocation.command);
   if (gitCommand) {
+    const routed = ROUTED_GIT_COMMANDS.has(gitCommand);
     return {
       allow: false,
-      reason: `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.`
+      reason: routed ? `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.` : `Raw 'git ${gitCommand}' is disabled, and there is no MCP tool for it: this run does not do that. ` + `Commit with github__commit_and_push; read-only inspection (status, diff, log) runs normally.`
     };
   }
   const [environPattern, environReason] = PROCESS_ENVIRONMENT_READ;
@@ -122,6 +143,3 @@ async function main() {
 }
 if (import.meta.main)
   main();
-export {
-  checkInvocation
-};

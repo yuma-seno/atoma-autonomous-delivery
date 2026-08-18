@@ -42,6 +42,15 @@ function dispatchWorkflow(context, workflow, args = [], log = (m) => console.err
 import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
+var CI_WOULD_BE_WASTED = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing"
+]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/lib/config.ts
@@ -148,14 +157,20 @@ function readAnyParentTag(text) {
 }
 
 // src/lib/notify.ts
+function log(message) {
+  console.error(`[atoma-notify] ${message}`);
+}
 var MAX_HOPS = 10;
 function fetchIssueLookup(repo, number) {
-  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
-  if (code !== 0 || !stdout.trim())
+  const { code, stderr, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
+  if (code !== 0 || !stdout.trim()) {
+    log(`WARN could not read issue #${number} to resolve a mention: ${stderr.trim() || `gh exited ${code}`}`);
     return {};
+  }
   try {
     return JSON.parse(stdout);
   } catch {
+    log(`WARN issue #${number} lookup was not valid JSON; no mention will be resolved from it`);
     return {};
   }
 }
@@ -203,7 +218,11 @@ ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
   }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  if (commentsCode !== 0) {
+    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     return { ready: true, remaining: 0, dispatched: false };
   }

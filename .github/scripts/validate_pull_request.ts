@@ -8,7 +8,8 @@ import { parseArgs } from "util";
 // src/domain/pr-validation.ts
 var PASSING = new Set(["success", "skipped", "neutral"]);
 var CI_RETRY_LIMIT = 3;
-function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0) {
+function decideValidationOutcome(input) {
+  const { conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0 } = input;
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
   const checks = requiredContexts.map((name) => ({
@@ -16,10 +17,11 @@ function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, en
     conclusion: passed ? "success" : "failure"
   }));
   if (passed) {
-    return { checks, nextAgent: reviewerAgent, summary: `CI concluded ${normalised}.` };
+    return { verdict: "passed", checks, nextAgent: reviewerAgent, summary: `CI concluded ${normalised}.` };
   }
   if (!normalised) {
     return {
+      verdict: "no-conclusion",
       checks,
       nextAgent: "",
       summary: "CI never reported a conclusion. Nothing was dispatched; a human should look."
@@ -27,12 +29,14 @@ function decideValidationOutcome(conclusion, requiredContexts, reviewerAgent, en
   }
   if (priorRetries >= CI_RETRY_LIMIT) {
     return {
+      verdict: "retries-exhausted",
       checks,
       nextAgent: "",
       summary: `CI concluded ${normalised} after ${priorRetries} attempts at fixing it. ` + `Stopping rather than dispatching the engineer again; a human should look.`
     };
   }
   return {
+    verdict: "failed",
     checks,
     nextAgent: engineerAgent,
     summary: `CI concluded ${normalised}. Returning to the engineer with the failing job.`
@@ -54,6 +58,24 @@ function run(cmd) {
 }
 function gh(...args) {
   return run(["gh", ...args]);
+}
+
+// src/lib/branch-rules.ts
+function readRequiredChecks(repo, baseRef) {
+  if (!baseRef)
+    return { known: false, why: "no base branch was given" };
+  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
+  if (code)
+    return { known: false, why: `the branch rules for ${baseRef} could not be read` };
+  try {
+    const rules = JSON.parse(stdout || "[]");
+    return {
+      known: true,
+      contexts: rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check) => check.context)
+    };
+  } catch {
+    return { known: false, why: `the branch rules for ${baseRef} were not valid JSON` };
+  }
 }
 
 // src/lib/agent-name.ts
@@ -101,20 +123,6 @@ function defineScript(importMetaUrl) {
 var ref = defineScript(import.meta.url);
 function log(message) {
   console.error(`[atoma-validate-pr] ${message}`);
-}
-function readRequiredChecks(repo, baseRef) {
-  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
-  if (code) {
-    log(`WARN could not read branch rules for ${baseRef}; no checks will be written`);
-    return [];
-  }
-  try {
-    const rules = JSON.parse(stdout || "[]");
-    return rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check) => check.context);
-  } catch {
-    log(`WARN branch rules for ${baseRef} were not valid JSON`);
-    return [];
-  }
 }
 function pickDispatchedRun(runs, headSha, since) {
   const candidates = runs.filter((run3) => run3.event === "workflow_dispatch").filter((run3) => run3.head_sha === headSha).filter((run3) => run3.created_at >= since).sort((a, b) => a.created_at < b.created_at ? 1 : -1);
@@ -179,8 +187,16 @@ function main() {
     log("could not read the pull request's head SHA");
     process.exit(1);
   }
-  const requiredContexts = readRequiredChecks(repo, baseRef);
+  const required = readRequiredChecks(repo, baseRef);
+  if (!required.known) {
+    log(`cannot validate: ${required.why}`);
+    process.exit(1);
+  }
+  const requiredContexts = required.contexts;
   log(`required contexts on ${baseRef}: ${requiredContexts.join(", ") || "(none)"}`);
+  if (requiredContexts.length === 0) {
+    log(`::warning::${baseRef} requires no status checks, so CI results gate nothing here. ` + "Import .github/atoma/rulesets/main.json if that was not intended.");
+  }
   const since = new Date().toISOString();
   const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
   if (dispatch.code) {
@@ -208,7 +224,13 @@ function main() {
   if (!conclusion)
     log(`no conclusion within ${timeoutSeconds}s`);
   const priorRetries = countPriorRetries(repo, values.number ?? "");
-  const outcome = decideValidationOutcome(conclusion, requiredContexts, values.reviewer ?? "", values.engineer ?? "", priorRetries);
+  const outcome = decideValidationOutcome({
+    conclusion,
+    requiredContexts,
+    reviewerAgent: values.reviewer ?? "",
+    engineerAgent: values.engineer ?? "",
+    priorRetries
+  });
   for (const check of outcome.checks) {
     const created = gh("api", "--method", "POST", `repos/${repo}/check-runs`, "-f", `name=${check.name}`, "-f", `head_sha=${headSha}`, "-f", "status=completed", "-f", `conclusion=${check.conclusion}`);
     if (created.code)
@@ -216,9 +238,9 @@ function main() {
     else
       log(`wrote check "${check.name}" as ${check.conclusion}`);
   }
-  const passed = outcome.checks.every((check) => check.conclusion === "success");
-  if (!passed)
+  if (outcome.verdict !== "passed") {
     reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
+  }
   write(`next_agent=${outcome.nextAgent}`);
   write(`conclusion=${conclusion}`);
   write(`summary=${outcome.summary}`);

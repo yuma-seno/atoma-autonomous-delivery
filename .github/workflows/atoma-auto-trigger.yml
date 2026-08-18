@@ -58,12 +58,17 @@ jobs:
           REVIEW_STATE: ${{ github.event.review.state }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
-          AGENT=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/match_trigger.ts" 2>/dev/null || true)
+          if ! AGENT=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/match_trigger.ts"); then
+            echo "::error::match_trigger.ts failed, so no auto-trigger could be evaluated for this event. See the error above; a config.json that is missing or will not parse is the usual cause."
+            exit 1
+          fi
           if [ -n "${AGENT}" ]; then
             echo "Matched agent: ${AGENT}"
             echo "agent=${AGENT}" >> "$GITHUB_OUTPUT"
             echo "number=${{ steps.context.outputs.number }}" >> "$GITHUB_OUTPUT"
             echo "type=${{ steps.context.outputs.type }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "No auto_triggers entry matches this event; nothing to dispatch."
           fi
   run:
     if: needs.route.outputs.agent != ''

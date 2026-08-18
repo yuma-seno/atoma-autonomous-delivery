@@ -9,21 +9,26 @@ import { parseArgs } from "util";
 var SECRET_SLOTS = 10;
 var SECRET_SLOT_PREFIX = "ATOMA_SECRET_";
 var NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+var RUN_CREDENTIALS = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "ATOMA_COPILOT_TOKEN",
+  "GH_TOKEN"
+];
 var TOOL_SECRETS = {
   field: "tools.secrets",
   reserved: new Set([
+    ...RUN_CREDENTIALS,
     "AGENT",
-    "ANTHROPIC_API_KEY",
     "ATOMA_OPS_LOG",
     "ATOMA_PROVIDER",
     "ATOMA_RUN_TYPE",
-    "GH_TOKEN",
-    "GITHUB_PERSONAL_ACCESS_TOKEN",
     "GITHUB_RUN_ID",
     "ISSUE_NOTIFY",
     "ISSUE_NUMBER",
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL"
+    "OPENAI_BASE_URL",
+    "ATOMA_PROVIDER_IN",
+    "OPENAI_BASE_URL_IN"
   ])
 };
 var CHECK_SECRETS = {
@@ -32,7 +37,13 @@ var CHECK_SECRETS = {
 };
 var DEPLOY_SECRETS = {
   field: "deploy.secrets",
-  reserved: new Set(["ATOMA_DEPLOY_TARGET", "GH_TOKEN"])
+  reserved: new Set([
+    "ATOMA_DEPLOY_REF",
+    "ATOMA_DEPLOY_TARGET",
+    "ATOMA_DEPLOY_TARGET_INPUT",
+    "ATOMA_DEPLOY_TRIGGER",
+    "GH_TOKEN"
+  ])
 };
 var SECRET_DESTINATIONS = {
   tools: TOOL_SECRETS,
