@@ -13,6 +13,16 @@
 # means "this server gets no credentials", and that is the point rather than an
 # oversight.
 #
+# `args` paths carry `${ATOMA_MACHINERY_ROOT:-.}` for a different reason, and it is
+# not about secrets. On a pull request run the workspace IS the pull request, so a
+# server read from `.github/atoma/tools/scripts/...` would be the pull request's
+# own copy -- letting it replace the code of the tools that review it. The prefix
+# points at a checkout of the default branch instead, and falls back to `.` where
+# no such checkout exists, such as a hand-run `atoma`.
+#
+# `args: ["."]` on the filesystem servers is deliberately NOT prefixed: that one
+# is the workspace, which is exactly what those servers should be reading.
+#
 # Never write a value here, only a reference. `${SLACK_TOKEN}` is resolved at run
 # time; a pasted secret would be committed in plain text.
 #
@@ -49,14 +59,14 @@ filesystem_readonly:
 
 shell:
   command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/shell.ts"]
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
   env: {}
   hooks:
     before_tool: ./scripts/hooks/shell_guard.ts
 
 github:
   command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/github.ts"]
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/github.ts"]
   # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
   # than inherited: atoma strips credentials from a server that does not name
   # them, which is what keeps this one out of `shell`.
@@ -66,7 +76,7 @@ github:
 
 web:
   command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/web.ts"]
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/web.ts"]
   env: {}
   hooks: {}
 
@@ -76,7 +86,7 @@ web:
 # build-dist.ts for why that one cannot be inlined.
 search:
   command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/search.ts"]
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/search.ts"]
   # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
   # than inherited: atoma strips credentials from a server that does not name
   # them, which is what keeps this one out of `shell`.
@@ -86,7 +96,7 @@ search:
 
 atoma:
   command: bun
-  args: ["run", ".github/atoma/tools/scripts/mcp/atoma.ts"]
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/atoma.ts"]
   # Shells out to `gh`, so it needs the run's GitHub token. Declared rather
   # than inherited: atoma strips credentials from a server that does not name
   # them, which is what keeps this one out of `shell`.
