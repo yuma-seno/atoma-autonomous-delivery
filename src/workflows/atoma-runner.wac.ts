@@ -62,7 +62,13 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
 // So the two are one change: raising this pin without the declarations strips a
 // token nothing asks for, and shipping the declarations without raising it passes
 // a literal.
-const ATOMA_DEFAULT_VERSION = "v0.1.11";
+//
+// v0.1.12 adds the same coupling for `args`: it expands `${NAME}` there, from the
+// environment, which is how a tool server is read from the machinery checkout
+// rather than from the pull request under review. To v0.1.11 an `args` entry
+// carrying `${ATOMA_MACHINERY_ROOT:-.}` is a literal path that does not exist, so
+// this pin and `tools/tools.yaml` move together here too.
+const ATOMA_DEFAULT_VERSION = "v0.1.12";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
@@ -825,14 +831,14 @@ git checkout -B "\${BRANCH_NAME}" "refs/remotes/origin/\${BRANCH_NAME}"
     name: "Cache MCP server package downloads",
     with: {
       path: "~/.npm",
-      key: "mcp-npm-${{ hashFiles('.github/atoma/mcp-packages.json') }}",
+      key: "mcp-npm-${{ hashFiles('" + MACHINERY_DIR + "/.github/atoma/mcp-packages.json') }}",
       "restore-keys": "mcp-npm-",
     },
   }),
   new TypedOutputsStep({
     name: "Install MCP server packages",
     shell: "bash",
-    run: `MCP_PKGS_FILE=".github/atoma/mcp-packages.json"
+    run: `MCP_PKGS_FILE="${MACHINERY}/.github/atoma/mcp-packages.json"
 if [ ! -f "$MCP_PKGS_FILE" ]; then
   echo "No mcp-packages.json found; skipping MCP package installation."
   exit 0
@@ -890,8 +896,8 @@ fi
   new TypedOutputsStep({
     name: "Make tool hooks executable",
     shell: "bash",
-    run: `if [ -d "${TOOL_HOOKS_DIR}" ]; then
-  find "${TOOL_HOOKS_DIR}" -name '*.ts' -exec chmod +x {} +
+    run: `if [ -d "${MACHINERY}/${TOOL_HOOKS_DIR}" ]; then
+  find "${MACHINERY}/${TOOL_HOOKS_DIR}" -name '*.ts' -exec chmod +x {} +
 fi
 `,
   }),
