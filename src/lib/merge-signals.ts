@@ -134,14 +134,21 @@ function readChangedFiles(repo: string, num: number): ChangedFilesRead {
   // `--paginate` would silently stop at 100 files — a large pull request could
   // then hide a workflow change on page two.
   //
-  // Tab-separated because a filename may contain almost anything except a tab or
-  // a newline, and `previous_filename` is absent on all but a rename.
+  // One JSON array per line rather than `@tsv`, because a tracked path may
+  // legitimately contain a tab or a newline and `@tsv` renders both as escapes
+  // that split into the wrong fields — a file whose name held a tab would arrive
+  // as a status with no path, which `readChangedFiles` reports as unrecognised
+  // and turns into a blocker on an honest pull request.
+  //
+  // `@json` escapes them inside the string, so one file stays one line and
+  // `JSON.parse` gives the exact bytes back. `previous_filename` is absent on all
+  // but a rename, hence the `//` default.
   const { code, stdout } = gh(
     "api",
     `repos/${repo}/pulls/${num}/files?per_page=100`,
     "--paginate",
     "--jq",
-    '.[] | [.status, .filename, (.previous_filename // "")] | @tsv',
+    '.[] | [.status, .filename, (.previous_filename // "")] | @json',
   );
   if (code) {
     log(`WARN could not read changed files for #${num}; treating the merge as a person's`);
@@ -151,7 +158,17 @@ function readChangedFiles(repo: string, num: number): ChangedFilesRead {
   const files: ChangedFile[] = [];
   for (const line of stdout.split("\n")) {
     if (line.trim() === "") continue;
-    const [status, path, previous] = line.split("\t");
+    let status = "";
+    let path = "";
+    let previous = "";
+    try {
+      [status, path, previous] = JSON.parse(line) as [string, string, string];
+    } catch {
+      // Fail closed, like every other unreadable answer here. A line this cannot
+      // parse means the list is not the list, and guessing at the rest of it
+      // would be guessing at which files a gate should have seen.
+      return { files: [], problem: `the changed-file list of #${num} could not be parsed` };
+    }
     if (NOT_A_CHANGE.has((status ?? "").trim())) continue;
     const mapped = STATUS_MAP[(status ?? "").trim()];
     if (!mapped || !path) {
