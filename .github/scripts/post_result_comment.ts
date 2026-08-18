@@ -110,12 +110,7 @@ function tokenUsageLines() {
   const prompt = /prompt=(\d+)/.exec(usageLine)?.[1];
   const completion = /completion=(\d+)/.exec(usageLine)?.[1];
   const total = /total=(\d+)/.exec(usageLine)?.[1];
-  const lines = ["", "---", `_Tokens: ${total ?? "?"} total (${prompt ?? "?"} prompt + ${completion ?? "?"} completion)_`];
-  if (prompt && completion) {
-    const cost = Number(prompt) * 0.15 / 1e6 + Number(completion) * 0.6 / 1e6;
-    lines.push(`_Estimated cost: $${cost.toFixed(4)}_`);
-  }
-  return lines;
+  return ["", "---", `_Tokens: ${total ?? "?"} total (${prompt ?? "?"} prompt + ${completion ?? "?"} completion)_`];
 }
 function subIssueState(number, type) {
   if (type !== "issue")
