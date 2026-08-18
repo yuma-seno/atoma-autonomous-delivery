@@ -27,8 +27,23 @@ import type { ScriptRef } from "../../scripts/lib/script-ref.ts";
  * positional `<path> [default]`, built with its own `buildArgv()`). Pass a
  * pre-built argv array for that second case.
  */
+/**
+ * Where a workflow's own scripts are read from, as shell that resolves at run
+ * time.
+ *
+ * Unset means the checkout, which is what every workflow but one wants. The
+ * runner sets it, because a pull request run checks out the pull request and its
+ * scripts would then be the pull request's own -- letting it decide how the agent
+ * reviewing it behaves. See `atoma-runner.wac.ts`.
+ *
+ * A shell default rather than a generation-time choice, so one generated file
+ * serves both: the workflows that never set it are byte-identical to before.
+ */
+export const MACHINERY_ROOT = "${ATOMA_MACHINERY_ROOT:-.}";
+
 export function scriptCommand(ref: ScriptRef<void>, argv: readonly string[] = []): string {
-  return argv.length > 0 ? `bun run ${ref.runtimePath} ${argv.join(" ")}` : `bun run ${ref.runtimePath}`;
+  const path = `"${MACHINERY_ROOT}/${ref.runtimePath}"`;
+  return argv.length > 0 ? `bun run ${path} ${argv.join(" ")}` : `bun run ${path}`;
 }
 
 /**

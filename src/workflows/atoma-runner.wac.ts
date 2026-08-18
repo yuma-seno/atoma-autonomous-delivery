@@ -69,6 +69,29 @@ const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use 
 // src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
 // Referenced from three separate steps below (prepare/run/dispatch-next);
 // centralized here so they can't drift from each other by typo.
+/**
+ * Where the default branch is checked out, alongside the workspace.
+ *
+ * A pull request run checks out the pull request, and every script and setting
+ * this job reads used to come from there -- so a pull request could decide how
+ * the agent reviewing it behaves: which agent, which iteration budget, which
+ * commands, which credentials. #337 closed that for the credential declaration
+ * alone; this closes it for the rest.
+ *
+ * The split is between the work and the machinery. The workspace stays the pull
+ * request, because that is what is under review and what the agent writes to;
+ * the scripts, configuration, agent definitions, prompt and tools file come from
+ * here.
+ *
+ * A change to the machinery is therefore not exercised by its own review. That
+ * is the intent rather than a loss: `.github/**` is governed, so a person reads
+ * that diff, and CI still runs the pull request's own checks.
+ */
+const MACHINERY_DIR = "atoma-machinery";
+
+/** The same directory, as shell -- the job exports it so every step agrees. */
+const MACHINERY = "${ATOMA_MACHINERY_ROOT}";
+
 const ORCHESTRATION_FILE = ".github/atoma/config.json";
 const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
@@ -225,8 +248,8 @@ const buildContextStep = new TypedOutputsStep(
       "agent-name": "${{ inputs.agent }}",
       // Read for its `vision` field: an agent whose model cannot see a picture
       // must not be sent one.
-      "agent-def": `${AGENT_DEF_DIR}/\${{ inputs.agent }}.md`,
-      config: ORCHESTRATION_FILE,
+      "agent-def": `${MACHINERY}/${AGENT_DEF_DIR}/\${{ inputs.agent }}.md`,
+      config: `${MACHINERY}/${ORCHESTRATION_FILE}`,
       session: "session.json",
       out: "session.json",
     })}\n`,
@@ -363,8 +386,8 @@ const runAgentStep = new TypedOutputsStep(
 export AGENT
 
 TOOLS_ARG=""
-if [ -f "${TOOLS_FILE}" ]; then
-  TOOLS_ARG="--tools-file ${TOOLS_FILE}"
+if [ -f "${MACHINERY}/${TOOLS_FILE}" ]; then
+  TOOLS_ARG="--tools-file ${MACHINERY}/${TOOLS_FILE}"
 fi
 
 # Settings, not credentials. These two are repository VARIABLES -- which provider
@@ -384,11 +407,11 @@ done
 # GitHub context and the agent's chronological working history.
 EXIT_CODE=0
 atoma run \\
-  --agent-def "${AGENT_DEF_DIR}/\${AGENT}.md" \\
+  --agent-def "${MACHINERY}/${AGENT_DEF_DIR}/\${AGENT}.md" \\
   --in-session session.json \\
   --out-session session.json \\
-  --template "${PROMPT_TEMPLATE}" \\
-  --skills-dir "${SKILLS_DIR}" \\
+  --template "${MACHINERY}/${PROMPT_TEMPLATE}" \\
+  --skills-dir "${MACHINERY}/${SKILLS_DIR}" \\
   --max-iterations "${cfgStep.outputs.max_iterations}" \\
   --credentials-file "${CREDENTIALS_FILE}" \\
   \${TOOLS_ARG} \\
@@ -414,7 +437,7 @@ RESULT_EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
   echo "\${RESULT_EOF}"
 } >> "$GITHUB_OUTPUT"
 
-${scriptCommandWithArgs(extractDirectiveRef, { "output-file": "atoma_output.txt", "def-dir": AGENT_DEF_DIR })}
+${scriptCommandWithArgs(extractDirectiveRef, { "output-file": "atoma_output.txt", "def-dir": `${MACHINERY}/${AGENT_DEF_DIR}` })}
 
 # Detect whether a tool call already triggered an automatic follow-up
 # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
@@ -737,6 +760,9 @@ const runJob = new NormalJob("run", {
     "cancel-in-progress": false,
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
+  // Every step in this job reads its scripts and this project's configuration
+  // from here rather than from the checkout. See MACHINERY_DIR.
+  env: { ATOMA_MACHINERY_ROOT: MACHINERY_DIR },
 }).addSteps([
   // First, before the checkout: nothing should run at all on an input this job
   // is going to splice into shell text.
@@ -746,6 +772,10 @@ const runJob = new NormalJob("run", {
     with: {
       ref: "${{ inputs.type == 'pr' && format('refs/pull/{0}/head', inputs.number) || '' }}",
     },
+  }),
+  new ActionsCheckoutV4({
+    name: "Checkout the delivery machinery from the default branch",
+    with: { ref: "${{ github.event.repository.default_branch }}", path: MACHINERY_DIR },
   }),
   new TypedOutputsStep({
     name: "Set branch env for PR type",

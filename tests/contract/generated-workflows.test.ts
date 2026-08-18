@@ -248,6 +248,47 @@ describe("generated workflows", () => {
     expect(steps[agent]?.run).toContain("--credentials-file");
   });
 
+  // A pull request run checks out the pull request, so anything this job reads
+  // from the workspace is the pull request's own -- which let a pull request
+  // decide how the agent reviewing it behaves: which agent, which iteration
+  // budget, which commands, which credentials. #337 closed that for the
+  // credential declaration alone.
+  //
+  // The split is between the work and the machinery. Losing it is silent: runs
+  // keep working, and a pull request quietly regains control of its own review.
+  test("the runner reads its machinery from the default branch, not the checkout", () => {
+    type WorkflowStep = { name?: string; run?: string; with?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { env?: Record<string, string>; steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const job = workflow.jobs?.run;
+    const steps = job?.steps ?? [];
+
+    // The job says where the machinery is, once, and every step inherits it.
+    expect(job?.env?.ATOMA_MACHINERY_ROOT, "the job must name the machinery root").toBeTruthy();
+    const root = job!.env!.ATOMA_MACHINERY_ROOT!;
+
+    // And it is a checkout of the default branch, not of the pull request.
+    const machineryCheckout = steps.find((step) => step.with?.path === root);
+    expect(machineryCheckout, `a checkout into ${root}`).toBeDefined();
+    expect(machineryCheckout?.with?.ref).toContain("default_branch");
+
+    // Nothing runs a script from the workspace. A bare `.github/scripts/` would
+    // be the pull request's copy.
+    for (const step of steps) {
+      const run = step.run ?? "";
+      const bare = run.match(/(?<![\w/$}])\.github\/scripts\//g);
+      expect(bare, `${step.name}: scripts must be read from the machinery root`).toBeNull();
+    }
+
+    // Nor does the agent get its definition, prompt, skills or tools from there.
+    const agent = steps.find((step) => step.name === "Run agent");
+    for (const flag of ["--agent-def", "--template", "--skills-dir"]) {
+      const line = (agent?.run ?? "").split("\n").find((l) => l.includes(flag)) ?? "";
+      expect(line, `${flag} must resolve inside the machinery root`).toContain("ATOMA_MACHINERY_ROOT");
+    }
+  });
+
   // The two files are joined by a string and nothing else. A ruleset requires a
   // status check by `context`, which for an Actions job is the job's name -- so
   // renaming the job leaves the ruleset waiting for a check that will never
