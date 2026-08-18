@@ -7,12 +7,22 @@ import { join } from "node:path";
 const SCRIPTS_DIR = join(process.cwd(), "src/atoma/tools/scripts/mcp");
 const FAKE_GH_BIN_DIR = join(process.cwd(), "src/scripts/testing/bin");
 
+/**
+ * Send one JSON-RPC request to a server and resolve its first response line.
+ *
+ * `timeoutMs` is a parameter rather than a fixed five seconds because how long a
+ * server takes to answer `initialize` is a property of that server, not of this
+ * harness. Every server tested here answers well inside the default; the one
+ * that does not is `search.ts`, and it is not tested here at all -- see the note
+ * at the bottom of this file for why.
+ */
 function sendRequest(
   script: string,
   request: Record<string, unknown>,
   env: Record<string, string> = {},
   cwd = process.cwd(),
   extraArgs: string[] = [],
+  timeoutMs = 5000,
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["run", `${SCRIPTS_DIR}/${script}`, ...extraArgs], {
@@ -24,7 +34,7 @@ function sendRequest(
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`timed out waiting for response from ${script}`));
-    }, 5000);
+    }, timeoutMs);
     child.stdout.on("data", () => {
       const line = out.split("\n").find((l) => l.trim());
       if (line) {
@@ -389,3 +399,64 @@ describe("mcp/atoma.ts", () => {
     expect(r.result.content[0].text).toContain("tasks must be a non-empty list");
   });
 });
+
+// The two servers that had no round-trip test at all.
+//
+// Worth having on its own, and worth having now in particular: `serveMcpServer`
+// replaced five hand-written request handlers with one, and each of those had
+// been dropping a different part of a tool's result. `web` is the only server
+// whose tools return images, so it is the one place the newly-preserved `images`
+// field is exercised -- and it was outside the covered set.
+describe("mcp/web.ts", () => {
+  test("initializes and advertises fetch", async () => {
+    const init = await sendRequest("web.ts", INIT_REQUEST);
+    expect(init.result.serverInfo.name).toBe("atoma-web-mcp");
+
+    const list = await sendRequest("web.ts", { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const names = list.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain("fetch");
+  });
+
+  // Not "returns something": returns an ERROR. Every failure here used to come
+  // back as an ordinary result whose body happened to be one English sentence,
+  // so a model summarising several fetched pages had no structural signal that
+  // one of them was never read.
+  test("an unreachable host is an error, not a result", async () => {
+    const r = await sendRequest("web.ts", {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "fetch", arguments: { url: "http://127.0.0.1:1/nothing" } },
+    });
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("127.0.0.1");
+  });
+
+  test("a misspelled argument is refused rather than dropped", async () => {
+    const r = await sendRequest("web.ts", {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "fetch", arguments: { url: "https://example.com", rawe: true } },
+    });
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("rawe");
+  });
+});
+
+// `search.ts` is deliberately NOT round-tripped here.
+//
+// It imports `@huggingface/transformers` at module scope, and on a CI runner
+// that import does not finish inside sixty seconds -- measured, not guessed:
+// the whole check went from 42s to 3m28s and still timed out. Raising the
+// timeout further would buy a smoke test for one server at the cost of minutes
+// on every run of the suite.
+//
+// What such a test would cover is `serveMcpServer`, and the four servers above
+// cover it: `search.ts` calls it with the same arguments in the same shape. Its
+// own logic -- ranking, chunk selection, the current-issue filter -- is pure and
+// lives in `domain/bm25.ts`, which is tested directly.
+//
+// Written down rather than left as an absence, because a server missing from a
+// list of five reads as an oversight, and this one is a decision. If the import
+// ever becomes lazy, this is the note to delete.

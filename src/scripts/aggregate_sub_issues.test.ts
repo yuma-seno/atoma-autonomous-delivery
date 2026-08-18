@@ -21,7 +21,12 @@ describe("aggregate_sub_issues.ts", () => {
       expect(r.status).toBe(0);
       // stderr, not stdout: every diagnostic in this script goes to stderr so
       // that stdout stays free for data a caller may consume.
-      expect(r.stderr).toContain("Not all sub-tasks done yet");
+      // The property, not the wording. This used to pin the exact sentence "Not all
+      // sub-tasks done yet", which said nothing about how many remained -- the gate
+      // now reports the count, and a test that pins prose blocks that kind of
+      // improvement while catching none of the defects that matter.
+      expect(r.stderr).toContain("1 sibling(s)");
+      expect(r.stderr).toContain("No action needed");
       const commentCall = r.ghCalls.find((c) => c.includes("comment"));
       expect(commentCall?.join(" ")).toContain("atoma:sub-result=9");
       // The full aggregation path (siblingCount === 0) additionally performs

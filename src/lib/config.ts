@@ -15,6 +15,7 @@ import {
 } from "../domain/declared-secrets.ts";
 import { resolveDeployTargets, type DeployTargetsResolution } from "../domain/deploy-targets.ts";
 import { resolveMergeGates, type MergeGatesResolution } from "../domain/merge-gates.ts";
+import { resolveAutoTriggers } from "../domain/auto-triggers.ts";
 import type { AtomaConfig } from "./types.ts";
 
 /**
@@ -126,13 +127,20 @@ export function getMergeGates(): MergeGatesResolution {
 /**
  * Look up the agent configured for an unconditional `auto_triggers` event.
  *
- * Entries with a `condition` (e.g. changes_requested) are evaluated by
- * match_trigger.ts at workflow time, not here, so they're skipped -- this is
- * only for simple event->agent lookups like "who reviews a newly opened PR".
+ * Entries with a `condition` need an event's own context to answer — a review
+ * state, a draft flag — and this is called from a tool server that has none. So
+ * it asks only the question it can answer: which agent an event selects when
+ * nothing narrows it. `match_trigger.ts` answers the conditional form, from the
+ * workflow, where the context exists.
+ *
+ * Validation is shared, though. A malformed list resolves to no triggers, so
+ * this returns the fallback rather than reading an entry the configuration is
+ * not entitled to have.
  */
 export function getTriggerAgent(event: string, fallback = ""): string {
-  for (const trigger of loadConfig().auto_triggers ?? []) {
-    if (trigger.event === event && !trigger.condition) {
+  const { triggers } = resolveAutoTriggers(loadConfig().auto_triggers);
+  for (const trigger of triggers) {
+    if (trigger.event === event && !trigger.condition && !trigger.agent.startsWith("$")) {
       return trigger.agent || fallback;
     }
   }

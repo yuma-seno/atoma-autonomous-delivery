@@ -3,11 +3,17 @@
  * script and MCP server in this repo.
  */
 
-export interface AutoTrigger {
-  event: string;
-  agent: string;
-  condition?: "changes_requested" | "non_draft" | "atoma:dispatch";
-}
+// `AutoTrigger` belongs to `domain/auto-triggers.ts`, which owns the rules that
+// give `condition` its meaning. It used to be declared here, in a file with no
+// way to evaluate it — so the type listed three condition values while the
+// matcher implemented two, and nothing connected the two lists.
+//
+// Re-exported so the many callers that import their config types from one place
+// keep working. `domain/` is the definition; this is a doorway to it, not a
+// second copy.
+import type { AutoTrigger } from "../domain/auto-triggers.ts";
+
+export type { AutoTrigger };
 
 export interface AtomaConfig {
   merge_policy: "auto" | "manual" | string;

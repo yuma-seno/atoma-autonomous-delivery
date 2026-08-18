@@ -16,7 +16,7 @@
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
 import { defineScript } from "./lib/script-ref.ts";
-import { dispatchOrchestratorIfReady } from "../lib/aggregation.ts";
+import { describeGateResult, dispatchOrchestratorIfReady, needsAttention } from "../lib/aggregation.ts";
 import { injectSubResults, type Session } from "../lib/inject-sub-results.ts";
 import { PARENT_TAG } from "../lib/tags.ts";
 import { restoreSession, saveSession, sessionTargetPath } from "./lib/atoma-data.ts";
@@ -118,19 +118,10 @@ async function main(): Promise<void> {
     beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, Number(parent)),
   });
 
-  if (!result.ready) {
-    console.error("Not all sub-tasks done yet.");
-  } else if (!result.dispatched) {
-    // Two causes, and the gate does not distinguish them: another caller got
-    // there first (the normal race, harmless), or the dispatch itself failed and
-    // logged the gh error above. Say both rather than assert the benign one.
-    console.error(
-      `Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` +
-        `completion, or the dispatch failed -- check for a WARN above.`,
-    );
-  } else {
-    console.error("All sub-tasks completed! Orchestrator re-invoked.");
-  }
+  console.error(describeGateResult(result, Number(closedNum), Number(parent)));
+  // A run that left work undone must not look green. `needsAttention` is true
+  // only for the two outcomes nothing else will retry.
+  if (needsAttention(result)) process.exit(1);
 }
 
 if (import.meta.main) void main();

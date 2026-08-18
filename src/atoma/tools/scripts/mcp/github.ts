@@ -17,7 +17,12 @@
 import { gh, ghGraphql, gitRun } from "../../../../lib/gh.ts";
 import { getBaseBranch, getLabel, getMergePolicy } from "../../../../lib/config.ts";
 import { resolveNotify } from "../../../../lib/notify.ts";
-import { dispatchOrchestratorIfSubIssueReady } from "../../../../lib/aggregation.ts";
+import {
+  describeGateResult,
+  dispatchOrchestratorIfSubIssueReady,
+  needsAttention,
+  type DispatchGateResult,
+} from "../../../../lib/aggregation.ts";
 import { logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
@@ -423,14 +428,32 @@ function closeIssue(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
  * returned before phase-gating has actually run.
  */
 async function closeIssueAndDispatch(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
-  const result = closeIssue(a);
+  closeIssue(a);
   const num = a.number;
+
+  // The aggregation outcome is part of what happened, so it goes in the result.
+  // This used to be awaited and discarded, and `{ok: true}` was returned whether
+  // the parent's orchestrator had been re-invoked, had been left waiting, or had
+  // been skipped because something could not be read. The last of those leaves a
+  // parent that nothing will ever come back to -- and the agent that closed the
+  // issue is the last thing in a position to notice.
+  let aggregation: DispatchGateResult;
   try {
-    await dispatchOrchestratorIfSubIssueReady(REPO, num);
+    aggregation = await dispatchOrchestratorIfSubIssueReady(REPO, num);
   } catch (e) {
-    log(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
+    const why = (e as Error).message ?? String(e);
+    log(`closeIssueAndDispatch: aggregation check failed for #${num}: ${why}`);
+    aggregation = { kind: "undetermined", why };
   }
-  return result;
+
+  return JSON.stringify({
+    ok: true,
+    closed: num,
+    aggregation: aggregation.kind,
+    ...(needsAttention(aggregation)
+      ? { note: describeGateResult(aggregation, num) }
+      : {}),
+  });
 }
 
 function injectParentIssue(body: string): string {

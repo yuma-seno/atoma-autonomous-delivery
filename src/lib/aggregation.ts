@@ -54,21 +54,103 @@ export interface DispatchGateOptions {
   beforeDispatch?: () => Promise<void> | void;
 }
 
-export interface DispatchGateResult {
-  ready: boolean;
-  remaining: number;
-  dispatched: boolean;
+/**
+ * What the gate did, as one of six distinguishable answers.
+ *
+ * It used to be `{ready, remaining, dispatched}`, in which
+ * `{ready: true, dispatched: false}` meant four different things: another
+ * caller won the race (benign), the comment read failed so the gate refused to
+ * decide, the dispatch failed, or -- once the write below started being checked
+ * -- the marker write failed. Only some of those leave work undone.
+ *
+ * Both callers knew, and papered over it with the same duplicated sentence:
+ * "another caller already handled this completion, or the dispatch failed --
+ * check for a WARN above." Both were already out of date, naming two causes
+ * where there were three. A hedge repeated verbatim in two files is the tell
+ * that the return type cannot say what happened.
+ */
+export type DispatchGateResult =
+  /** Not this issue's business: it carries no `atoma:parent` tag. */
+  | { kind: "not-tracked" }
+  /** Siblings are still open. `remaining` is how many. */
+  | { kind: "waiting"; remaining: number }
+  /** Another caller reached this completion first. The normal race, and harmless. */
+  | { kind: "already-aggregated" }
+  /** The orchestrator is running. */
+  | { kind: "dispatched" }
+  /** Everything was ready and the dispatch itself failed. Nothing will retry. */
+  | { kind: "dispatch-failed" }
+  /**
+   * Something could not be read or written, so the gate refused to decide.
+   *
+   * Distinct from every answer above, because the safe move here is to do
+   * nothing and say so -- and a caller that cannot tell this from
+   * `already-aggregated` reports a benign race when work has actually stalled.
+   */
+  | { kind: "undetermined"; why: string };
+
+/** True when the orchestrator was not started and something is left undone. */
+export function needsAttention(result: DispatchGateResult): boolean {
+  return result.kind === "dispatch-failed" || result.kind === "undetermined";
 }
 
+/**
+ * The one sentence a gate result deserves in a run log.
+ *
+ * Both callers used to print the same hedge -- "another caller already handled
+ * this completion, or the dispatch failed" -- because the old return type could
+ * not tell those apart. It listed two causes where there were three, in two
+ * files, and neither noticed. A sentence duplicated verbatim across call sites
+ * is a return type asking to be a union.
+ */
+export function describeGateResult(result: DispatchGateResult, closedNum: number, parent?: number): string {
+  // `parent` is optional because one caller does not know it: `close_issue`
+  // reaches the gate through the sub-issue's own tag. Named as "the parent"
+  // there rather than printed as `#0`, which would be a number that identifies
+  // a different thing.
+  const which = parent === undefined ? "the parent issue" : `#${parent}`;
+  switch (result.kind) {
+    case "not-tracked":
+      return `#${closedNum} is not a tracked sub-issue; nothing to aggregate.`;
+    case "waiting":
+      return `${result.remaining} sibling(s) of ${which} still open. No action needed.`;
+    case "already-aggregated":
+      return `Another caller already aggregated #${closedNum}. Nothing to do -- this is the normal race.`;
+    case "dispatched":
+      return `All sub-tasks of ${which} complete. Orchestrator re-invoked.`;
+    case "dispatch-failed":
+      return (
+        `All sub-tasks of ${which} complete, but the orchestrator dispatch FAILED. ` +
+        `The aggregation marker is already written, so no other caller will retry: ` +
+        `re-run the orchestrator by hand.`
+      );
+    case "undetermined":
+      return `Did not aggregate #${closedNum}: ${result.why}. Nothing was dispatched, and nothing will retry.`;
+  }
+}
 export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Promise<DispatchGateResult> {
   const excludeNum = opts.exclude ? opts.closedNum : undefined;
-  let remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  const count = () => countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
 
-  if (opts.retry) {
-    for (let attempt = 1; remaining > 0 && attempt < 4; attempt++) {
-      await sleep(2000 * attempt);
-      remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  // `countOpenSiblings` throws on a failed `gh issue list`, while every other
+  // failure in this module is a return value. That exception used to escape the
+  // gate entirely, and the two call sites were inconsistent about it -- one
+  // wrapped the whole thing in try/catch and the other did not, which is not a
+  // policy, it is one of them having remembered. Caught here so the gate has one
+  // way of saying "could not tell".
+  let remaining: number;
+  try {
+    remaining = count();
+    if (opts.retry) {
+      for (let attempt = 1; remaining > 0 && attempt < 4; attempt++) {
+        await sleep(2000 * attempt);
+        remaining = count();
+      }
     }
+  } catch (error) {
+    const why = `could not count #${opts.parent}'s open sub-issues: ${(error as Error).message}`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
 
   if (remaining > 0) {
@@ -78,7 +160,7 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
         "--body", `${LLM_CONTEXT_TAG.write("exclude")}\n${SUB_RESULT_TAG.write(opts.closedNum)}\n${opts.progressMessage(remaining)}`,
       );
     }
-    return { ready: false, remaining, dispatched: false };
+    return { kind: "waiting", remaining };
   }
 
   // The exit code matters here: this read IS the idempotency check. A failed one
@@ -91,23 +173,41 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
     "--json", "comments", "--jq", ".comments[].body",
   );
   if (commentsCode !== 0) {
-    console.error(
-      `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`,
-    );
-    return { ready: true, remaining: 0, dispatched: false };
+    const why = `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran`;
+    console.error(`${why}; not dispatching`);
+    return { kind: "undetermined", why };
   }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     // Another caller already handled this exact completion (see module doc
     // comment for the race this guards against).
-    return { ready: true, remaining: 0, dispatched: false };
+    return { kind: "already-aggregated" };
   }
 
   if (opts.beforeDispatch) await opts.beforeDispatch();
 
-  gh(
+  // The exit code matters here too, and used to be discarded.
+  //
+  // The read above is guarded, with five lines explaining why: not finding the
+  // marker and not being able to look are different answers. The same argument
+  // applies to writing it, and was not applied. A rate limit or a transient 5xx
+  // on this one comment leaves no marker -- and the other racer, which by
+  // construction is running at this same moment, then finds none, decides it is
+  // first, and dispatches the orchestrator a second time. Two runs aggregate the
+  // same completion, post two final reports, and hold the in-progress guard with
+  // two `chain_continues` signals.
+  //
+  // A missed aggregation is recoverable by the other racer. A double dispatch is
+  // not, and that asymmetry is exactly what the read already relies on.
+  const marker = gh(
     "issue", "comment", String(opts.parent), "--repo", opts.repo,
     "--body", `${AGGREGATED_TAG.write(opts.closedNum)}\nAtoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`,
   );
+  if (marker.code !== 0) {
+    const why =
+      `could not write the aggregation marker on #${opts.parent}: ${marker.stderr.trim() || marker.stdout.trim()}`;
+    console.error(`${why}; not dispatching, because without the marker a second caller would dispatch too`);
+    return { kind: "undetermined", why };
+  }
 
   const dispatched = dispatchRunner({
     context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
@@ -121,7 +221,7 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
   // Reported rather than assumed. The `atoma:aggregated` marker above is already
   // written at this point, so a failed dispatch cannot be retried by the racing
   // caller either -- saying so is the only way it reaches a human.
-  return { ready: true, remaining: 0, dispatched };
+  return dispatched ? { kind: "dispatched" } : { kind: "dispatch-failed" };
 }
 
 /**
@@ -129,9 +229,10 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
  * tag, then runs the dispatch gate on it with retry enabled (GitHub's
  * search index is only eventually consistent -- the sub-issue we just
  * closed a moment ago may still be reported as open for a second or two).
- * No-ops (returns `{ready:false,remaining:0,dispatched:false}`) when
- * `subIssueNum` has no parent tag at all (not every closed issue is a
- * tracked Atoma sub-issue).
+ * Returns `not-tracked` when `subIssueNum` carries no parent tag at all (not
+ * every closed issue is a tracked Atoma sub-issue), and `undetermined` when its
+ * body could not be read -- which is a different thing, because an unread body
+ * may belong to a sub-issue that just completed.
  *
  * The one canonical "a sub-issue just closed -- is its parent ready?"
  * entry point, used identically by mcp/github.ts's closeIssue() and
@@ -145,13 +246,14 @@ export async function dispatchOrchestratorIfSubIssueReady(repo: string, subIssue
   // untracked and there is nothing to do, while an unread body means a tracked
   // sub-issue may have just completed and the orchestrator is never told.
   if (code !== 0) {
-    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
-    return { ready: false, remaining: 0, dispatched: false };
+    const why = `could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
-    return { ready: false, remaining: 0, dispatched: false };
+    return { kind: "not-tracked" };
   }
   return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
 }
