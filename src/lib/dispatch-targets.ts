@@ -46,10 +46,15 @@ function log(message: string): void {
  * it, or merged without one. Validation runs CI first and dispatches the agent
  * the result calls for: the reviewer when it passes, the engineer when it does
  * not. See `scripts/validate_pull_request.ts`.
+ *
+ * Returns whether the dispatch was sent. `create_pr` ends the engineer's
+ * session on success, so nothing is left running to notice a failure here: the
+ * pull request would sit with no CI, no required check, and no agent scheduled,
+ * while the tool reported success. The caller keeps the session open instead.
  */
-export function dispatchPrValidation(repo: string, prNumber: number, branch: string): void {
+export function dispatchPrValidation(repo: string, prNumber: number, branch: string): boolean {
   const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
-  dispatchWorkflow(
+  return dispatchWorkflow(
     `dispatchPrValidation: validating PR #${prNumber}`,
     "atoma-validate-pr.yml",
     [

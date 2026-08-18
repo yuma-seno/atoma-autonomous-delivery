@@ -42,7 +42,7 @@ const SECRET_LITERALS = literalsFrom(process.env, SECRET_ENV_NAMES);
 
 const SHELL_EXECUTE_SCHEMA = z.object({
   command: z.string().min(1).describe("Shell command to execute with bash."),
-  working_directory: z.string().optional().describe("Directory in which to run the command. Defaults to the server working directory."),
+  working_directory: z.string().optional().describe("Directory in which to run the command. Must be inside the checked-out repository; anywhere else is refused. Defaults to the server working directory."),
   environment_variables: z.record(z.string()).optional().describe("Environment variables to add or override for this command."),
   input_data: z.string().optional().describe("Text to provide on standard input."),
   timeout_seconds: z.number().int().min(1).max(3600).optional().default(300).describe("Maximum foreground execution time in seconds. Defaults to 300."),
@@ -140,7 +140,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
 const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "shell_execute",
-    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Git and GitHub mutations remain blocked by the configured hook.",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally.",
     schema: SHELL_EXECUTE_SCHEMA,
     handler: executeShell,
   }),

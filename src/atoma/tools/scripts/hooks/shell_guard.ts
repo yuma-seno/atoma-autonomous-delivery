@@ -101,6 +101,15 @@ const PROCESS_ENVIRONMENT_READ: [RegExp, string] = [
  * inspection (`status`, `diff`, `log`, `rev-parse`) is how the agent orients
  * itself and stays allowed.
  */
+/**
+ * The subset that really does have a github__* replacement, so the refusal can
+ * name one truthfully.
+ */
+const ROUTED_GIT_COMMANDS = new Set([
+  "add", "am", "apply", "cherry-pick", "commit", "fetch", "merge", "mv", "pull", "push", "rebase",
+  "restore", "revert", "rm", "checkout", "switch", "branch", "tag",
+]);
+
 const MUTATING_GIT_COMMANDS = new Set([
   "add", "am", "apply", "bisect", "branch", "checkout", "cherry-pick", "clean", "commit", "config",
   "fetch", "init", "merge", "mv", "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rm",
@@ -176,9 +185,18 @@ function checkInvocation(invocation: ShellInvocation): GuardVerdict {
 
   const gitCommand = findMutatingGitCommand(invocation.command);
   if (gitCommand) {
+    // Two different answers, because there are two different situations and the
+    // single blanket message sent an agent hunting for a tool that does not
+    // exist. `commit`/`push`/`checkout` and the rest of the everyday ones have a
+    // route; `config`, `stash`, `clean` and `bisect` do not, and saying so is
+    // more useful than naming a family of tools with nothing in it for them.
+    const routed = ROUTED_GIT_COMMANDS.has(gitCommand);
     return {
       allow: false,
-      reason: `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.`,
+      reason: routed
+        ? `Raw 'git ${gitCommand}' is disabled. Use the github__* MCP tools for Git mutations and branch synchronization.`
+        : `Raw 'git ${gitCommand}' is disabled, and there is no MCP tool for it: this run does not do that. `
+          + `Commit with github__commit_and_push; read-only inspection (status, diff, log) runs normally.`,
     };
   }
 
