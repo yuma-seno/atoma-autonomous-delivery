@@ -72,7 +72,7 @@ jobs:
             echo "::warning::No .github/atoma/config.json on ${DEFAULT_BRANCH}; this run reaches no declared credentials."
           fi
 
-          bun run .github/scripts/read_secret_names.ts --destination "deploy" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/read_secret_names.ts" --destination "deploy" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
       - name: Deploy the targets this run is for
         shell: bash
         env:
@@ -111,4 +111,4 @@ jobs:
             slot=$((slot + 1))
           done
 
-          bun run .github/scripts/run_deploy.ts --ref "${ATOMA_DEPLOY_REF}" --trigger "${ATOMA_DEPLOY_TRIGGER}" --target "${ATOMA_DEPLOY_TARGET_INPUT}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_deploy.ts" --ref "${ATOMA_DEPLOY_REF}" --trigger "${ATOMA_DEPLOY_TRIGGER}" --target "${ATOMA_DEPLOY_TARGET_INPUT}"

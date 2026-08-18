@@ -47,7 +47,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          bun run .github/scripts/extract_notify_tag.ts
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/extract_notify_tag.ts"
       - name: Match event to agent from config.json
         id: match
         shell: bash
@@ -55,7 +55,7 @@ jobs:
           EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
           REVIEW_STATE: ${{ github.event.review.state }}
         run: |
-          AGENT=$(bun run .github/scripts/match_trigger.ts 2>/dev/null || true)
+          AGENT=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/match_trigger.ts" 2>/dev/null || true)
           if [ -n "${AGENT}" ]; then
             echo "Matched agent: ${AGENT}"
             echo "agent=${AGENT}" >> "$GITHUB_OUTPUT"

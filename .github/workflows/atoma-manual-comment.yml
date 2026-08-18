@@ -46,7 +46,7 @@ jobs:
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENTER: ${{ github.event.comment.user.login }}
         run: |
-          bun run .github/scripts/guard_comment_during_run.ts --number "${NUMBER}" --comment-id "${COMMENT_ID}" --commenter "${COMMENTER}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/guard_comment_during_run.ts" --number "${NUMBER}" --comment-id "${COMMENT_ID}" --commenter "${COMMENTER}"
       - name: Parse slash command
         id: command
         if: |-
@@ -58,7 +58,7 @@ jobs:
         env:
           ATOMA_COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          bun run .github/scripts/parse_comment_command.ts
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/parse_comment_command.ts"
       - name: Resolve target context
         id: target
         shell: bash
