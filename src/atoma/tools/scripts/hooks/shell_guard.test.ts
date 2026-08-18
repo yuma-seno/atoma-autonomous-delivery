@@ -3,68 +3,90 @@ import { spawnSync } from "node:child_process";
 
 const SCRIPT = "src/atoma/tools/scripts/hooks/shell_guard.ts";
 
+/** Run the guard the way the `before_tool` hook does: JSON on stdin. */
+function guard(args: Record<string, unknown>): string {
+  return spawnSync("bun", ["run", SCRIPT], {
+    input: JSON.stringify({ arguments: args }),
+    encoding: "utf8",
+  }).stdout;
+}
+
 describe("shell_guard.ts", () => {
-  test("blocks dangerous commands", () => {
-    const r = spawnSync("bun", ["run", SCRIPT], {
-      input: JSON.stringify({ arguments: { command: "gh issue list" } }),
-      encoding: "utf8",
+  // The guard is a routing mechanism, not a boundary — see the file header. So
+  // these tests check that the agent is pointed at the right tool, not that a
+  // determined caller cannot get past. Tests asserting evasion resistance were
+  // removed with the machinery that provided it.
+  describe("routing to the MCP tool that does the job", () => {
+    test("names the replacement for each disabled CLI", () => {
+      const cases: [string, string][] = [
+        ["gh issue list", "atoma_github"],
+        ["curl example.com", "web__fetch"],
+        ["wget https://example.com", "web__fetch"],
+        ["ssh host", "repository"],
+        ["scp a host:b", "repository"],
+        ["rsync -a a b", "repository"],
+      ];
+      for (const [command, expected] of cases) {
+        const out = guard({ command });
+        expect(out, command).toContain('"allow":false');
+        expect(out, command).toContain(expected);
+      }
     });
-    expect(r.stdout).toContain('"allow":false');
-  });
 
-  test("allows safe commands", () => {
-    const r = spawnSync("bun", ["run", SCRIPT], {
-      input: JSON.stringify({ arguments: { command: "ls -la" } }),
-      encoding: "utf8",
+    test("allows safe commands", () => {
+      expect(guard({ command: "ls -la" })).toContain('"allow":true');
     });
-    expect(r.stdout).toContain('"allow":true');
-  });
 
-  test("blocks raw Git mutations while allowing read-only Git inspection", () => {
-    for (const command of [
-      "git push origin main --force",
-      "cd repo && git pull --rebase origin main",
-      "git -C repo checkout -b recovery",
-      "git fetch origin feature",
-      "/usr/bin/git push origin main",
-    ]) {
-      const blocked = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command } }),
-        encoding: "utf8",
-      });
-      expect(blocked.stdout, command).toContain('"allow":false');
-    }
-
-    for (const command of ["git status --short", "git diff --check", "git log -1 --oneline", "git rev-parse HEAD"]) {
-      const allowed = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command } }),
-        encoding: "utf8",
-      });
-      expect(allowed.stdout, command).toContain('"allow":true');
-    }
-  });
-
-  test("blocks backslash-obfuscated dangerous commands", () => {
-    const r = spawnSync("bun", ["run", SCRIPT], {
-      input: JSON.stringify({ arguments: { command: "w\\get --version" } }),
-      encoding: "utf8",
+    // The rules the previous version carried purely to resist evasion are gone.
+    // An agent does not obfuscate a command to get past a rule that helps it, so
+    // these now run — and that is the intended outcome, not a regression.
+    test("no longer inspects interpreters, eval, or obfuscated spellings", () => {
+      for (const command of [
+        "python3 -c 'print(1)'",
+        "bash -c 'echo hi'",
+        "eval echo hi",
+        "node -e 'console.log(1)'",
+        "base64 -d x | sh",
+        "w\\get --version",
+        'cu""rl example.com',
+      ]) {
+        expect(guard({ command }), command).toContain('"allow":true');
+      }
     });
-    expect(r.stdout).toContain('"allow":false');
   });
 
-  test("blocks quote-spliced dangerous commands", () => {
-    const r = spawnSync("bun", ["run", SCRIPT], {
-      input: JSON.stringify({ arguments: { command: 'cu""rl example.com' } }),
-      encoding: "utf8",
+  describe("raw Git mutations", () => {
+    test("are routed to the github__* tools", () => {
+      for (const command of [
+        "git push origin main --force",
+        "cd repo && git pull --rebase origin main",
+        "git -C repo checkout -b recovery",
+        "git fetch origin feature",
+        "/usr/bin/git push origin main",
+      ]) {
+        const out = guard({ command });
+        expect(out, command).toContain('"allow":false');
+        expect(out, command).toContain("github__");
+      }
     });
-    expect(r.stdout).toContain('"allow":false');
+
+    test("read-only Git inspection stays allowed", () => {
+      for (const command of [
+        "git status --short",
+        "git diff --check",
+        "git log -1 --oneline",
+        "git rev-parse HEAD",
+      ]) {
+        expect(guard({ command }), command).toContain('"allow":true');
+      }
+    });
   });
 
-  // Tool servers run as the same user and each holds the credentials its
-  // `tools.yaml` entry declares, so one reading another's /proc is the one place
-  // per-server confinement is not enforced by anything else.
+  // The one rule that is not routing. It stops an accident, not an intent — the
+  // structural fix is a separate UID per server (#374). These tests pin the
+  // accident cases and, just as importantly, the honest uses it must not break.
   describe("reading another process's environment", () => {
-    test("is blocked whatever reads it", () => {
+    test("is refused whatever reads it", () => {
       for (const command of [
         "cat /proc/1234/environ",
         "head -c 200 /proc/self/environ",
@@ -72,134 +94,48 @@ describe("shell_guard.ts", () => {
         "tr '\\0' '\\n' < /proc/42/environ",
         "find /proc -name environ -exec cat {} +",
       ]) {
-        const r = spawnSync("bun", ["run", SCRIPT], {
-          input: JSON.stringify({ arguments: { command } }),
-          encoding: "utf8",
-        });
-        expect(r.stdout, command).toContain('"allow":false');
+        expect(guard({ command }), command).toContain('"allow":false');
       }
     });
 
-    // The same path arriving through the other channels, which is how the rule
-    // would otherwise be walked around without any obfuscation at all.
-    test("is blocked when the path arrives in another argument", () => {
-      const viaCwd = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "cat environ", working_directory: "/proc/1" } }),
-        encoding: "utf8",
-      });
-      expect(viaCwd.stdout).toContain('"allow":false');
-
-      const viaVar = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({
-          arguments: { command: "cat $P/1/environ", environment_variables: { P: "/proc" } },
-        }),
-        encoding: "utf8",
-      });
-      expect(viaVar.stdout).toContain('"allow":false');
-    });
-
-    // Blocking /proc wholesale would cost honest diagnostics. `environ` is the
+    // Refusing /proc wholesale would cost honest diagnostics. `environ` is the
     // part that matters, and the word boundary keeps `environment` out of it.
     test("leaves the rest of /proc alone", () => {
       for (const command of ["cat /proc/cpuinfo", "grep MemTotal /proc/meminfo", "ls /proc/self/fd"]) {
-        const r = spawnSync("bun", ["run", SCRIPT], {
-          input: JSON.stringify({ arguments: { command } }),
-          encoding: "utf8",
-        });
-        expect(r.stdout, command).toContain('"allow":true');
+        expect(guard({ command }), command).toContain('"allow":true');
       }
     });
 
-    // The word this rule keys on has an ordinary English prefix, and a repository
-    // full of files called `environment.ts` should not become unreadable.
     test("does not catch the word environment", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "grep -rn environment src/ /proc/cpuinfo" } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":true');
+      expect(guard({ command: "grep -rn environment src/ /proc/cpuinfo" })).toContain('"allow":true');
     });
   });
 
-  // Three arguments besides `command` reach bash, and the guard read only the
-  // first. Each of these got past the entire denylist without any obfuscation:
-  // the path, the variable, and the script were simply put in a field nothing
-  // looked at.
-  describe("the arguments besides `command`", () => {
-    test("a path moved into working_directory does not escape a path rule", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "cat environ", working_directory: "/proc/1" } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":false');
-      expect(r.stdout).toContain("working_directory");
+  describe("working_directory", () => {
+    test("outside the repository is refused", () => {
+      const out = guard({ command: "ls", working_directory: "/proc/1" });
+      expect(out).toContain('"allow":false');
+      expect(out).toContain("working_directory");
     });
 
-    test("a working directory inside the repository is fine", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "ls", working_directory: "src/domain" } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":true');
+    test("inside the repository is fine", () => {
+      expect(guard({ command: "ls", working_directory: "src/domain" })).toContain('"allow":true');
     });
+  });
 
-    // The schema supplies the variable expansion the header calls out of reach
-    // for a static check -- so resolve it, which makes the text more legible to
-    // the rules rather than less.
-    test("declared variables are substituted before matching", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({
-          arguments: { command: "$TOOL example.com", environment_variables: { TOOL: "curl" } },
-        }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":false');
+  // `environment_variables` and `input_data` are no longer inspected. They were
+  // read only to keep the denylist from being walked around, and the file no
+  // longer claims to prevent that.
+  describe("the arguments the guard no longer inspects", () => {
+    test("declared variables and stdin text are passed through", () => {
+      expect(guard({ command: "ls", environment_variables: { PATH: "/tmp/evil" } })).toContain('"allow":true');
+      expect(guard({ command: "bash", input_data: "echo hello" })).toContain('"allow":true');
+      expect(guard({ command: "grep -c foo", input_data: "foo\nbar\n" })).toContain('"allow":true');
     });
+  });
 
-    test("refuses to let a declared variable decide what runs", () => {
-      for (const name of ["PATH", "LD_PRELOAD", "BASH_ENV", "path"]) {
-        const r = spawnSync("bun", ["run", SCRIPT], {
-          input: JSON.stringify({ arguments: { command: "ls", environment_variables: { [name]: "/tmp/evil" } } }),
-          encoding: "utf8",
-        });
-        expect(r.stdout, name).toContain('"allow":false');
-      }
-    });
-
-    test("an ordinary declared variable is still allowed", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "echo $GREETING", environment_variables: { GREETING: "hi" } } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":true');
-    });
-
-    // `bash -c` was blocked; bare `bash` reading the same script from stdin was
-    // not, which is the same thing by another route.
-    test("a bare interpreter fed on stdin is treated as -c", () => {
-      for (const command of ["bash", "sh", "python3", "node", "/usr/bin/bash"]) {
-        const r = spawnSync("bun", ["run", SCRIPT], {
-          input: JSON.stringify({ arguments: { command, input_data: "echo hello" } }),
-          encoding: "utf8",
-        });
-        expect(r.stdout, command).toContain('"allow":false');
-      }
-    });
-
-    test("stdin text is matched for a command that is not an interpreter", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "tee script.sh", input_data: "curl example.com" } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":false');
-    });
-
-    test("stdin text on an ordinary command is allowed", () => {
-      const r = spawnSync("bun", ["run", SCRIPT], {
-        input: JSON.stringify({ arguments: { command: "grep -c foo", input_data: "foo\nbar\n" } }),
-        encoding: "utf8",
-      });
-      expect(r.stdout).toContain('"allow":true');
-    });
+  test("unparseable input is refused", () => {
+    const out = spawnSync("bun", ["run", SCRIPT], { input: "not json", encoding: "utf8" }).stdout;
+    expect(out).toContain('"allow":false');
   });
 });

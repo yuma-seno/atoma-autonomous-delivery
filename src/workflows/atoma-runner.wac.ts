@@ -903,7 +903,7 @@ fi
   }),
   // No separate "install MCP server dependencies" step needed: build-dist.ts
   // bundles every script (via Bun.build) with all its imports -- including
-  // npm dependencies like @modelcontextprotocol/sdk/shell-quote -- inlined
+  // npm dependencies like @modelcontextprotocol/sdk -- inlined
   // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
   // needs no package.json/node_modules/bun install at all.
   new TypedOutputsStep({

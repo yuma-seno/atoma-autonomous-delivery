@@ -2,7 +2,7 @@
   "name": "atoma-autonomous-delivery",
   "private": true,
   "type": "module",
-  "version": "0.1.42",
+  "version": "0.1.43",
   "engines": {
     "bun": ">=1.2.0"
   },
@@ -20,8 +20,6 @@
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@octokit/webhooks-types": "^7.6.1",
     "@types/bun": "^1.2.14",
-    "@types/shell-quote": "^1.7.5",
-    "shell-quote": "^1.10.0",
     "typescript": "^5.6.3",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2"
