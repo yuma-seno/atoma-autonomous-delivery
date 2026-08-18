@@ -90,6 +90,8 @@ refuses, and never merges past a failing check.
 | `draft` | the author has not offered it for merging | report; do not mark it ready and do not retry the merge |
 | `human-authored` | a person opened it, so the merge is theirs | post the review and say it is ready for them to merge; do not retry |
 | `governance-change` | it changes how agents themselves run | review it as carefully as any change and post that review, then say it is ready for a person to merge; do not retry |
+| `merge-gate` | a condition this project declared in `merge_gates` applies | the blocker carries the project's own reason — relay it, post the review, say it is ready for a person to merge; do not retry, and never edit `merge_gates` to get past it |
+| `gate-config-invalid` | a declared gate could not be read, so it cannot say yes | report the problem verbatim; `/engineer` may fix the declaration, but a person merges that fix |
 
 **Five or more prior COMMENT review rounds:** do not send another engineer loop.
 Post the remaining blockers and escalate to the human.

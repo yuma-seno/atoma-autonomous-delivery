@@ -13,8 +13,14 @@
  * server's tool registry.
  */
 import { gh } from "./gh.ts";
-import { getGovernedPaths, getMergePolicy } from "./config.ts";
+import { getGovernedPaths, getMergeGates, getMergePolicy } from "./config.ts";
 import { governedPathsIn, type MergeSignals } from "../domain/merge-readiness.ts";
+import {
+  matchMergeGates,
+  type ChangedFile,
+  type FileStatus,
+  type MergeGateMatch,
+} from "../domain/merge-gates.ts";
 
 export interface PullRequestRefs {
   headRefName: string;
@@ -30,6 +36,9 @@ interface PullRequestView {
   headRefOid?: string;
   headRefName?: string;
   baseRefName?: string;
+  /** Both read only for `merge_gates` conditions; nothing else consults them. */
+  title?: string;
+  labels?: { name?: string }[];
 }
 
 interface CheckRunsResponse {
@@ -78,28 +87,91 @@ function readRequiredChecks(repo: string, baseRef: string): string[] {
 }
 
 /**
- * The files this pull request changes that govern how agents run.
+ * GitHub's per-file statuses, reduced to the three a gate can name.
  *
- * Fails CLOSED, unlike `readRequiredChecks` above: when the file list cannot be
- * read, this reports the pull request as touching governance so the merge falls
- * to a person. The two differ because of what each failure costs. An unreadable
- * rule list only makes a refusal less specific; an unreadable file list, treated
- * as empty, would let an agent merge exactly the change this exists to stop.
+ * `copied` is an addition. `renamed` is an addition at the new path, and the
+ * removal at the old one is added separately below. `changed` is GitHub's word
+ * for a mode or type change, which is a modification.
  */
-function readGovernancePaths(repo: string, num: number): string[] {
+const STATUS_MAP: Record<string, FileStatus> = {
+  added: "added",
+  copied: "added",
+  renamed: "added",
+  removed: "removed",
+  modified: "modified",
+  changed: "modified",
+};
+
+/**
+ * Statuses that are not a change at all.
+ *
+ * `unchanged` appears when GitHub lists a file whose content is identical to the
+ * base. Mapping it to `modified` would fire a gate over a file nobody touched.
+ */
+const NOT_A_CHANGE = new Set(["unchanged"]);
+
+interface ChangedFilesRead {
+  readonly files: readonly ChangedFile[];
+  /** Why the read cannot be trusted, or "" when it can. */
+  readonly problem: string;
+}
+
+/**
+ * What this pull request changes, and what happened to each file.
+ *
+ * Fails CLOSED, unlike `readRequiredChecks` above, and the two differ because of
+ * what each failure costs. An unreadable rule list only makes a refusal less
+ * specific; an unreadable file list, treated as empty, would let an agent merge
+ * exactly the change the governance gate and every declared merge gate exist to
+ * stop. So a failure here comes back as a problem, and a problem blocks.
+ *
+ * One read serves both gates. They ask different questions of the same list, and
+ * two calls would be two chances for one of them to silently see nothing.
+ */
+function readChangedFiles(repo: string, num: number): ChangedFilesRead {
   // `--jq` rather than parsing the response: with `--paginate` the pages arrive
   // as separate JSON documents, which `JSON.parse` cannot read, and dropping
   // `--paginate` would silently stop at 100 files — a large pull request could
   // then hide a workflow change on page two.
+  //
+  // Tab-separated because a filename may contain almost anything except a tab or
+  // a newline, and `previous_filename` is absent on all but a rename.
   const { code, stdout } = gh(
-    "api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", ".[].filename",
+    "api",
+    `repos/${repo}/pulls/${num}/files?per_page=100`,
+    "--paginate",
+    "--jq",
+    '.[] | [.status, .filename, (.previous_filename // "")] | @tsv',
   );
   if (code) {
     log(`WARN could not read changed files for #${num}; treating the merge as a person's`);
-    return ["(could not read the changed files)"];
+    return { files: [], problem: `the changed files of #${num} could not be read` };
   }
-  const files = stdout.split("\n").map((line) => line.trim()).filter(Boolean);
-  return governedPathsIn(files, getGovernedPaths());
+
+  const files: ChangedFile[] = [];
+  for (const line of stdout.split("\n")) {
+    if (line.trim() === "") continue;
+    const [status, path, previous] = line.split("\t");
+    if (NOT_A_CHANGE.has((status ?? "").trim())) continue;
+    const mapped = STATUS_MAP[(status ?? "").trim()];
+    if (!mapped || !path) {
+      // Not a case to guess at. Treating an unrecognised status as "modified"
+      // would let a `files_added` gate be walked past by whatever GitHub starts
+      // calling an addition next, and the failure would be invisible.
+      return {
+        files: [],
+        problem: `GitHub reported file status '${status}' for #${num}, which Atoma does not recognise`,
+      };
+    }
+    // A rename is an addition at the new path and a removal at the old one. Read
+    // as a bare "renamed" it would be neither, and `git mv` into a gated
+    // directory would add a file no `files_added` gate could see.
+    files.push({ path, status: mapped });
+    if ((status ?? "").trim() === "renamed" && previous) {
+      files.push({ path: previous, status: "removed" });
+    }
+  }
+  return { files, problem: "" };
 }
 
 /**
@@ -128,7 +200,12 @@ export function gatherMergeSignals(
     // `isDraft` is not that: it is an attribute of the pull request, not a second
     // opinion on mergeability. It is here because `mergeStateStatus` came back
     // `CLEAN` for a draft, so the verdict alone reported one as ready to merge.
-    "--json", "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName",
+    //
+    // `title` and `labels` are here for `merge_gates` only. They ride along on a
+    // call already being made, so a project that declares no gate pays nothing
+    // for the ones it could have declared.
+    "--json",
+    "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName,title,labels",
   );
 
   // Check runs hang off the commit, so a `workflow_dispatch` run against the
@@ -138,6 +215,23 @@ export function gatherMergeSignals(
   const runs = sha ? json<CheckRunsResponse>("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
 
   const baseRefName = pr?.baseRefName ?? "";
+
+  // One read, two gates. A failure to read it is a problem rather than an empty
+  // list, so both gates block instead of quietly finding nothing.
+  const changed = readChangedFiles(repo, num);
+  const gates = getMergeGates();
+  const gateProblems = [...gates.problems];
+  if (changed.problem) gateProblems.push(changed.problem);
+
+  const gateMatches: MergeGateMatch[] = changed.problem
+    ? []
+    : [
+        ...matchMergeGates(gates.gates, {
+          changedFiles: changed.files,
+          labels: (pr?.labels ?? []).map((label) => label.name ?? "").filter(Boolean),
+          title: pr?.title ?? "",
+        }),
+      ];
 
   return {
     signals: {
@@ -155,7 +249,18 @@ export function gatherMergeSignals(
       })),
       requiredChecks: readRequiredChecks(repo, baseRefName),
       mergePolicy: getMergePolicy(),
-      governancePaths: readGovernancePaths(repo, num),
+      // The sentinel keeps the governance gate's own fail-closed behaviour: an
+      // unreadable file list reports the pull request as touching governance, so
+      // that blocker fires with a legible reason of its own rather than relying
+      // on the gate problem below to do the blocking.
+      governancePaths: changed.problem
+        ? ["(could not read the changed files)"]
+        : governedPathsIn(
+            changed.files.map((file) => file.path),
+            getGovernedPaths(),
+          ),
+      gateMatches,
+      gateProblems,
     },
     refs: { headRefName: pr?.headRefName ?? "", baseRefName },
   };

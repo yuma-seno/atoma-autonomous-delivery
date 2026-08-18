@@ -40,6 +40,31 @@ export interface AtomaConfig {
    */
   governed_paths?: string[];
   /**
+   * Conditions under which an agent must not merge, beyond what a path can say.
+   *
+   * `governed_paths` above is the special case: paths, and nothing else. This is
+   * the general form — "only when a migration is ADDED", "only when the pull
+   * request carries this label", "only when the title says BREAKING" — for the
+   * situations a project knows about and Atoma could not have guessed.
+   *
+   * Same outcome as `governed_paths`: the agent reviews and reports, and a person
+   * merges. Not a required status check, because a required check stops people too.
+   *
+   * ```json
+   * "merge_gates": [
+   *   {
+   *     "reason": "新しいマイグレーションを含むため、人間が確認してください",
+   *     "when": { "files_added": ["db/migrations/**"] }
+   *   }
+   * ]
+   * ```
+   *
+   * Validated by `resolveMergeGates`; see `domain/merge-gates.ts` for the
+   * condition set, why it is configuration rather than a script, and why a
+   * misspelled condition is an error rather than a gate that quietly never fires.
+   */
+  merge_gates?: unknown;
+  /**
    * What this project runs to verify a change, as commands.
    *
    * Commands and not a workflow file because an agent can write one and not the
