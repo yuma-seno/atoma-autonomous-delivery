@@ -442,6 +442,28 @@ describe("mcp/web.ts", () => {
     expect(r.result.isError).toBe(true);
     expect(r.result.content[0].text).toContain("rawe");
   });
+
+  // This server declares `env: {}` so that it holds no credentials. Accepting
+  // any scheme `new URL()` parses made it a local-file read instead -- the
+  // cheapest route to `/proc/<pid>/environ` of a server that DOES hold one, and
+  // to the `http.extraheader` line `actions/checkout` writes into `.git/config`.
+  // No shell command, no routing rule to go around.
+  test("refuses a file:// URL, which would make this a local-file read", async () => {
+    for (const url of [
+      "file:///proc/1/environ",
+      "file:///home/runner/work/repo/repo/.git/config",
+      "data:text/plain,hello",
+    ]) {
+      const r = await sendRequest("web.ts", {
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "fetch", arguments: { url } },
+      });
+      expect(r.result.isError, url).toBe(true);
+      expect(r.result.content[0].text, url).toContain("http");
+    }
+  });
 });
 
 // `search.ts` is deliberately NOT round-tripped here.
