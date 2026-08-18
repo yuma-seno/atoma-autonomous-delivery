@@ -23,8 +23,9 @@ import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
-import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
+import { secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
+import { ref as writeCredentialsFileRef } from "../scripts/write_credentials_file.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
@@ -286,14 +287,56 @@ atoma --version
 `,
 });
 
+/** Outside the workspace, so the checkout cannot have placed it and nothing commits it. */
+const CREDENTIALS_FILE = "$RUNNER_TEMP/atoma-credentials.json";
+
+/**
+ * The one step that holds this run's credentials, and it exits before the agent
+ * starts.
+ *
+ * Everything a run needs goes into a file here rather than into the agent step's
+ * `env:`. That step's bash lives for the whole of `atoma run`, and
+ * `/proc/<pid>/environ` keeps what was on the stack at exec for a process's
+ * lifetime -- so credentials placed there are readable by every tool server the
+ * agent starts, for minutes, and `unsetenv` cannot take them back.
+ *
+ * atoma reads the file and deletes it before starting any server, so the file and
+ * the servers never coexist; from then on the values are only in atoma's heap,
+ * which is out of reach because it makes itself non-dumpable.
+ */
+const writeCredentialsStep = new TypedOutputsStep({
+  name: "Collect this run's credentials into a file",
+  shell: "bash",
+  env: {
+    // The credentials atoma needs for itself, and the token the GitHub-facing
+    // tool servers authenticate with. Named here and nowhere else.
+    OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
+    ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}",
+    ATOMA_COPILOT_TOKEN: "${{ secrets.ATOMA_COPILOT_TOKEN }}",
+    GH_TOKEN: "${{ github.token }}",
+    // Plus whatever config.json declared. See `actions/secret-slots.ts`.
+    ...secretSlotEnv(),
+  },
+  run: `${scriptCommandWithArgs(writeCredentialsFileRef, { out: CREDENTIALS_FILE })}\n`,
+});
+
 const runAgentStep = new TypedOutputsStep(
   {
     name: "Run agent",
     id: "atoma",
     if: `${buildContextStep.rawOutputs.new_event_count} != '0'`,
+    // No credentials here, and that is the point of the step above.
+    //
+    // This step's bash lives for the whole of `atoma run`, so anything in its
+    // `env:` sits in `/proc/<pid>/environ` for minutes, readable by every tool
+    // server the agent starts. `unsetenv` cannot take it back -- that file
+    // reflects what was on the stack at exec. So the values are written to a file
+    // by the previous step, whose bash exits before the agent begins, and atoma
+    // deletes that file before starting any server.
+    //
+    // `GITHUB_PERSONAL_ACCESS_TOKEN` is gone rather than moved: nothing in either
+    // repository reads it. It was a token in an environment for no consumer.
     env: {
-      GH_TOKEN: "${{ github.token }}",
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${{ github.token }}",
       GITHUB_RUN_ID: "${{ github.run_id }}",
       ISSUE_NUMBER: fetchEventsStep.outputs.resolved_number,
       // Whether ISSUE_NUMBER is an issue or a pull request. `commit_and_push`
@@ -305,18 +348,12 @@ const runAgentStep = new TypedOutputsStep(
       // is written to (see lib/ops-log.ts) -- read back below to determine
       // chain_continues, and generally useful as a per-run audit trail.
       ATOMA_OPS_LOG: "atoma_ops.log",
-      // Credentials and provider settings, passed as data rather than
-      // interpolated into the script body. The `_IN` suffix keeps them out of the
-      // names Atoma itself reads: the script re-exports each under its real name
-      // only when non-empty, so an unset secret cannot defeat provider
-      // auto-detection by arriving as an empty string.
-      OPENAI_API_KEY_IN: "${{ secrets.OPENAI_API_KEY }}",
+      // Repository variables, not secrets: which provider to use and which host
+      // to reach. The `_IN` suffix keeps them out of the names Atoma reads until
+      // the script has checked they are non-empty, so an unset variable cannot
+      // defeat provider auto-detection by arriving as an empty string.
       OPENAI_BASE_URL_IN: "${{ vars.OPENAI_BASE_URL }}",
-      ANTHROPIC_API_KEY_IN: "${{ secrets.ANTHROPIC_API_KEY }}",
       ATOMA_PROVIDER_IN: "${{ vars.ATOMA_PROVIDER }}",
-      // Credentials this project declared in config.json's `tools.secrets`, and
-      // the names to put back on them. See `actions/secret-slots.ts`.
-      ...secretSlotEnv(),
     },
     shell: "bash",
     run: `AGENT="\${{ inputs.agent }}"
@@ -330,23 +367,19 @@ if [ -f "${TOOLS_FILE}" ]; then
   TOOLS_ARG="--tools-file ${TOOLS_FILE}"
 fi
 
-# Credentials and settings arrive through the step's \`env:\` rather than being
-# interpolated into this script.
+# Settings, not credentials. These two are repository VARIABLES -- which provider
+# to use and which host to reach -- so they belong in the environment; the
+# credentials do not, and are not here any more.
 #
-# \`\${{ secrets.X }}\` written here would be substituted into the script TEXT before
-# bash ever parses it, so a key containing a quote or a backtick would break the
-# script or execute as part of it. Through \`env:\` the value is only ever data.
-#
-# Each is re-exported only when non-empty: exporting an empty OPENAI_API_KEY or
-# ATOMA_PROVIDER would defeat Atoma's provider auto-detection.
-for name in OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_API_KEY ATOMA_PROVIDER; do
+# Each is re-exported only when non-empty: exporting an empty ATOMA_PROVIDER would
+# defeat Atoma's provider auto-detection.
+for name in OPENAI_BASE_URL ATOMA_PROVIDER; do
   eval "value=\\\${\${name}_IN:-}"
   if [ -n "$value" ]; then
     export "\${name}=\${value}"
   fi
 done
 
-${renameSecretSlots()}
 # No --prompt-file or stdin is needed: the cached session contains both stable
 # GitHub context and the agent's chronological working history.
 EXIT_CODE=0
@@ -357,6 +390,7 @@ atoma run \\
   --template "${PROMPT_TEMPLATE}" \\
   --skills-dir "${SKILLS_DIR}" \\
   --max-iterations "${cfgStep.outputs.max_iterations}" \\
+  --credentials-file "${CREDENTIALS_FILE}" \\
   \${TOOLS_ARG} \\
   > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 
@@ -877,6 +911,7 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   // Immediately before the agent, because its output is what keys the secret
   // lookups in that step's own `env:`.
   toolSecretsStep,
+  writeCredentialsStep,
   runAgentStep,
   tokenUsageStep,
   postResultCommentStep,
