@@ -49,7 +49,16 @@ function main(): void {
     "issue", "view", String(values.number), "--repo", repo,
     "--json", "labels", "--jq", `([.labels[].name] | index("${label}")) != null`,
   );
-  const inProgress = code === 0 && stdout.trim() === "true";
+  // A failed lookup is not "no label". This script exists to keep a comment out
+  // of a race with a running agent, so the answer it could not determine must not
+  // be the one that lets the comment through.
+  if (code !== 0) {
+    console.error(
+      `Could not read the labels on #${values.number}, so this cannot tell whether a run is in progress.`,
+    );
+    process.exit(1);
+  }
+  const inProgress = stdout.trim() === "true";
 
   if (!inProgress) {
     if (githubOutput) appendFileSync(githubOutput, "blocked=false\n");
@@ -59,15 +68,23 @@ function main(): void {
   const { code: delCode, stdout: delOut, stderr: delErr } = gh(
     "api", "--method", "DELETE", `repos/${repo}/issues/comments/${values["comment-id"]}`,
   );
-  if (delCode !== 0) {
+  const deleted = delCode === 0;
+  if (!deleted) {
     console.error(`Warning: failed to delete comment #${values["comment-id"]} on #${values.number}: ${delErr || delOut}`);
   }
 
+  // Says which of the two actually happened. Telling someone their comment was
+  // removed when it is still on the page — and will not be parsed as a command
+  // either, since `blocked=true` suppresses that — leaves them waiting for a run
+  // that is not coming, with the evidence in front of them saying otherwise.
   const mention = values.commenter ? `@${values.commenter} ` : "";
+  const what = deleted
+    ? "Your comment was removed because"
+    : "Your comment could not be removed, and will not be acted on, because";
   gh(
     "issue", "comment", String(values.number), "--repo", repo,
     "--body",
-    `${mention}Your comment was removed because Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`,
+    `${mention}${what} Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`,
   );
 
   if (githubOutput) appendFileSync(githubOutput, "blocked=true\n");

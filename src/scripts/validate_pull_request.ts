@@ -77,6 +77,7 @@ import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { decideValidationOutcome } from "../domain/pr-validation.ts";
 import { gh } from "../lib/gh.ts";
+import { readRequiredChecks } from "../lib/branch-rules.ts";
 import { CI_RETRY_TAG, LLM_CONTEXT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
@@ -97,28 +98,6 @@ export const ref = defineScript<ValidatePullRequestArgs>(import.meta.url);
 
 function log(message: string): void {
   console.error(`[atoma-validate-pr] ${message}`);
-}
-
-/** Status check contexts the base branch's ruleset requires. */
-function readRequiredChecks(repo: string, baseRef: string): string[] {
-  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
-  if (code) {
-    log(`WARN could not read branch rules for ${baseRef}; no checks will be written`);
-    return [];
-  }
-  try {
-    const rules = JSON.parse(stdout || "[]") as {
-      type: string;
-      parameters?: { required_status_checks?: { context: string }[] };
-    }[];
-    return rules
-      .filter((rule) => rule.type === "required_status_checks")
-      .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
-      .map((check) => check.context);
-  } catch {
-    log(`WARN branch rules for ${baseRef} were not valid JSON`);
-    return [];
-  }
 }
 
 export interface RunRef {
@@ -222,8 +201,30 @@ function main(): void {
     process.exit(1);
   }
 
-  const requiredContexts = readRequiredChecks(repo, baseRef);
+  // An unknown answer stops the run rather than standing in for "nothing is
+  // required". This is the caller that cannot treat the two alike: it mirrors one
+  // check run per required context, and `passed` below is `every()` over that
+  // list, which is `true` for an empty one. So a failed read would report a
+  // FAILING run as passed, suppress the failure comment, and — because that
+  // comment is also the retry tally — leave the retry limit that bounds the
+  // engineer/CI loop unable to ever fire.
+  const required = readRequiredChecks(repo, baseRef);
+  if (!required.known) {
+    log(`cannot validate: ${required.why}`);
+    process.exit(1);
+  }
+  const requiredContexts = required.contexts;
   log(`required contexts on ${baseRef}: ${requiredContexts.join(", ") || "(none)"}`);
+  if (requiredContexts.length === 0) {
+    // Legitimate, and worth saying once: with nothing required, this writes no
+    // check runs and every run reports as passed. That is accurate — no required
+    // check failed — but it means CI results gate nothing, which is usually a
+    // ruleset that was never imported rather than a decision.
+    log(
+      `::warning::${baseRef} requires no status checks, so CI results gate nothing here. ` +
+        "Import .github/atoma/rulesets/main.json if that was not intended.",
+    );
+  }
 
   const since = new Date().toISOString();
   const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);

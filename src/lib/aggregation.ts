@@ -81,10 +81,21 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
     return { ready: false, remaining, dispatched: false };
   }
 
-  const { stdout: commentsOut } = gh(
+  // The exit code matters here: this read IS the idempotency check. A failed one
+  // returns no comments, the marker is not found, and both racing callers then
+  // decide they are the first — which is the one thing the marker exists to
+  // prevent. Not finding the marker and not being able to look are different
+  // answers, and only one of them means "go ahead".
+  const { code: commentsCode, stdout: commentsOut } = gh(
     "issue", "view", String(opts.parent), "--repo", opts.repo,
     "--json", "comments", "--jq", ".comments[].body",
   );
+  if (commentsCode !== 0) {
+    console.error(
+      `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`,
+    );
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     // Another caller already handled this exact completion (see module doc
     // comment for the race this guards against).
@@ -129,8 +140,15 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
  */
 export async function dispatchOrchestratorIfSubIssueReady(repo: string, subIssueNum: number): Promise<DispatchGateResult> {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
+  // A body that could not be read is not a body without a parent tag. Reported as
+  // itself, because the two lead to opposite places: no tag means this issue is
+  // untracked and there is nothing to do, while an unread body means a tracked
+  // sub-issue may have just completed and the orchestrator is never told.
+  if (code !== 0) {
+    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
+    return { ready: false, remaining: 0, dispatched: false };
+  }
+  const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
     return { ready: false, remaining: 0, dispatched: false };
