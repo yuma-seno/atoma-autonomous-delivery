@@ -24,7 +24,7 @@ import { gh } from "../../../../lib/gh.ts";
 import { dispatchSubAgent } from "../lib/dispatch_sub_agent.ts";
 import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
 import { concludeIssue } from "../lib/conclude_issue.ts";
-import { buildMcpTools, defineMcpTool, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { buildMcpTools, defineMcpTool, positiveInt, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-mcp] ${msg}`);
@@ -34,7 +34,12 @@ const LAUNCH_SUB_AGENT_SCHEMA = z.object({
   tasks: z
     .array(
       z.object({
-        issue: z.number().int().positive().describe("The sub-issue number."),
+        // `positiveInt`, not a bare `z.number()`. This was the only numeric
+        // argument in the tool tree skipping the helper whose docstring records
+        // the production failures that motivated it — models sending `"185"` for
+        // 185. Once per orchestrator run is where an avoidable rejection costs
+        // the most, since the whole plan is in that one call.
+        issue: positiveInt("The sub-issue number."),
         agent: z.string().min(1).describe("The agent to dispatch (e.g., 'engineer')."),
       }),
     )
@@ -86,13 +91,33 @@ function handleLaunchSubAgent(args: z.infer<typeof LAUNCH_SUB_AGENT_SCHEMA>): Mc
     mcpFail(`All dispatches failed: ${errors.join("; ")}`);
   }
 
-  const summaryLines = [`Dispatch comments posted for ${dispatched.length} sub-issue(s): ${dispatched.join(", ")}.`];
-  if (errors.length) summaryLines.push(`Warning: ${errors.length} failed: ${errors.join("; ")}`);
-  summaryLines.push("");
-  summaryLines.push("Agents will be dispatched automatically. The orchestrator session will now end.");
-  summaryLines.push("It will resume automatically when all sub-issues are closed.");
+  // The session ends only when every task was dispatched.
+  //
+  // A partial failure used to end it too, mentioning the failures in prose. By
+  // this tool's own contract the orchestrator is re-invoked when ALL sub-issues
+  // are closed — and a sub-issue nobody was dispatched onto is never closed, so
+  // the parent waited forever. The orchestrator is the one caller that can still
+  // fix a partial dispatch, and it was the one being told to stop.
+  const complete = errors.length === 0;
 
-  return { text: summaryLines.join("\n"), meta: { session_ends: true } };
+  // Structured, because the prose was wrong in both directions. "Agents will be
+  // dispatched automatically" described neither group: the successful ones were
+  // dispatched synchronously, in the loop above, and the failed ones never will
+  // be. "Dispatch comments posted for N sub-issue(s)" described the comment
+  // rather than the dispatch, which is the part the reader cares about.
+  return {
+    text: JSON.stringify({
+      dispatched,
+      failed: errors,
+      complete,
+      note: complete
+        ? "Every sub-agent is running. This session ends here, and resumes when all sub-issues are closed."
+        : "Some sub-agents were NOT dispatched, and nothing will retry them. This session stays open: " +
+          "re-dispatch the failures with atoma__launch_sub_agent, or the parent waits forever for sub-issues " +
+          "nobody is working on.",
+    }),
+    meta: complete ? { session_ends: true } : {},
+  };
 }
 
 async function handleRequestCloseIssue(args: z.infer<typeof REQUEST_CLOSE_ISSUE_SCHEMA>): Promise<McpToolResult> {

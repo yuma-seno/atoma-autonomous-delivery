@@ -73,11 +73,16 @@ async function fetchUrl(a: z.infer<typeof FETCH_SCHEMA>): Promise<McpToolResult>
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
-    return { text: `Fetch failed: ${(error as Error).message}` };
+    // Thrown, not returned. A returned string is `isError: false` -- an
+    // ordinary result whose body happens to be one English sentence -- so a
+    // model summarising several fetched pages had no structural signal that
+    // one of them was never read. Every other server in this tree throws and
+    // lets the request handler mark the result as an error; this one did not.
+    throw new Error(`Could not reach ${a.url}: ${(error as Error).message}`);
   }
 
   if (!response.ok) {
-    return { text: `HTTP ${response.status} ${response.statusText} from ${a.url}` };
+    throw new Error(`HTTP ${response.status} ${response.statusText} from ${a.url}; nothing was read.`);
   }
 
   const declared = (response.headers.get("content-type") ?? "").toLowerCase();
@@ -89,9 +94,9 @@ async function fetchUrl(a: z.infer<typeof FETCH_SCHEMA>): Promise<McpToolResult>
   if (declared.startsWith("image/")) {
     const bytes = new Uint8Array(await response.arrayBuffer());
     const mimeType = sniffMimeType(bytes);
-    if (!mimeType) return { text: `The response from ${a.url} is not an image format that can be shown.` };
+    if (!mimeType) throw new Error(`The response from ${a.url} is not an image format that can be shown.`);
     const data = Buffer.from(bytes).toString("base64");
-    if (data.length > MAX_IMAGE_BYTES) return { text: `The image at ${a.url} is too large to include.` };
+    if (data.length > MAX_IMAGE_BYTES) throw new Error(`The image at ${a.url} is too large to include.`);
     log(`fetch: image ${mimeType}, ${bytes.length}B, ${Date.now() - started}ms`);
     return {
       text: `Image from ${a.url} (${mimeType}).`,
@@ -120,7 +125,7 @@ const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "fetch",
     description:
-      "Fetch a URL and return its content. HTML is converted to Markdown so the result is readable prose rather than markup; pass raw: true to get the body unchanged. A URL that resolves to an image is returned as an image for models that can read one. Supports POST with a form-encoded body for endpoints that require it.",
+      "Fetch a URL and return its content. HTML is converted to Markdown so the result is readable prose rather than markup; pass raw: true to get the body unchanged. A URL that resolves to an image is returned as an image for models that can read one. Supports POST with a form-encoded body for endpoints that require it. An unreachable host or a non-2xx status is an error, never a result: anything returned successfully is content that was actually read.",
     schema: FETCH_SCHEMA,
     handler: fetchUrl,
   }),

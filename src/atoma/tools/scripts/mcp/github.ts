@@ -31,6 +31,7 @@ import { dispatchCd, dispatchCi, dispatchPostMergeAgent, dispatchPrValidation } 
 import { issueLinks } from "../../../../lib/issue-links.ts";
 import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
 import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
+import { selectCommentRange } from "../../../../domain/comment-range.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-github] ${msg}`);
@@ -127,15 +128,6 @@ const PR_CONTEXT_NUMBER_ARG_SCHEMA = z.object({
   ).optional(),
 });
 
-/**
- * How many comments come back when the caller did not ask for a range.
- *
- * Small on purpose. An unbounded read is how a single lookup buries a run's
- * context under a conversation it did not need, and the whole reason
- * `search__search_issues` reports which comment it matched is so that a caller
- * with a specific question asks a specific range.
- */
-const DEFAULT_COMMENT_WINDOW = 5;
 
 const ISSUE_COMMENTS_SCHEMA = z.object({
   number: positiveInt(
@@ -382,12 +374,10 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
   );
   const all = (issue?.comments ?? []).map((comment, i) => ({ index: i + 1, ...(comment as object) }));
 
-  // Without a range: the end of the conversation, because a caller who does not
-  // name a comment wants to know where things stand, and the beginning is what
-  // the body already covers.
-  const to = Math.min(a.to ?? a.from ?? all.length, all.length);
-  const from = Math.max(1, a.from ?? to - DEFAULT_COMMENT_WINDOW + 1);
-  const selected = from > to ? [] : all.slice(from - 1, to);
+  // The four interacting defaults live in `domain/comment-range.ts`, where the
+  // truth table is testable without a `gh` in the loop.
+  const range = selectCommentRange(all.length, a.from, a.to);
+  const selected = range.count > 0 ? all.slice(range.from - 1, range.to) : [];
 
   const links = issueLinks(REPO, number);
   return JSON.stringify({
@@ -400,11 +390,9 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
       pull_requests: links.pullRequests,
     },
     // Always stated, never implied. A truncated read that looks complete is how
-    // a caller concludes something is absent when it was merely not shown.
-    showing:
-      selected.length === all.length
-        ? `all ${all.length} comment(s)`
-        : `comment(s) ${from}-${to} of ${all.length}; pass from/to to read the rest`,
+    // a caller concludes something is absent when it was merely not shown -- and
+    // an empty one has to say why it is empty, or it reads as "nothing is there".
+    showing: range.showing,
     comments: selected,
   });
 }
@@ -817,13 +805,31 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
 
   switch (handoff.kind) {
     case "no-parent":
-      return JSON.stringify({ merged: true, closed_issue: null });
+      // Four different things used to serialise to the identical
+      // `{merged: true, closed_issue: null}`: no parent, the parent was already
+      // closed, the close failed, and the re-invocation was dispatched instead.
+      // Only one of those leaves an issue open that should not be, and it was
+      // the one the agent could not see -- the failure went to this server's
+      // stderr. `parent_outcome` names which happened.
+      return JSON.stringify({ merged: true, closed_issue: null, parent_outcome: "no-parent" });
     case "already-closed":
       log(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
-      return JSON.stringify({ merged: true, closed_issue: null });
+      return JSON.stringify({
+        merged: true,
+        closed_issue: null,
+        parent_issue: handoff.parentIssue,
+        parent_outcome: "already-closed",
+        note: "GitHub closed the parent itself, from a \"Closes #N\" line. Nothing further was needed.",
+      });
     case "reinvoke-origin-agent":
       if (dispatchPostMergeAgent(REPO, handoff.parentIssue, handoff.agent)) {
-        return JSON.stringify({ merged: true, closed_issue: null, reinvoked_agent: handoff.agent });
+        return JSON.stringify({
+          merged: true,
+          closed_issue: null,
+          parent_issue: handoff.parentIssue,
+          parent_outcome: "reinvoked",
+          reinvoked_agent: handoff.agent,
+        });
       }
       // The preferred handoff (re-invoking the origin agent) failed to
       // dispatch -- fall back to closing the parent directly ourselves,
@@ -838,10 +844,25 @@ async function mergePr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Promise<string> {
 async function closeParentAndReport(parentIssue: number): Promise<string> {
   try {
     await closeIssueAndDispatch({ number: parentIssue });
-    return JSON.stringify({ merged: true, closed_issue: parentIssue });
+    return JSON.stringify({
+      merged: true,
+      closed_issue: parentIssue,
+      parent_issue: parentIssue,
+      parent_outcome: "closed",
+    });
   } catch (e) {
-    log(`mergePr: could not close parent issue #${parentIssue}: ${e}`);
-    return JSON.stringify({ merged: true, closed_issue: null });
+    const why = (e as Error).message ?? String(e);
+    log(`mergePr: could not close parent issue #${parentIssue}: ${why}`);
+    // The one outcome that leaves work undone. The merge happened, the parent
+    // is still open, and nothing is scheduled to close it -- so the caller is
+    // told, rather than being handed the same shape as "there was no parent".
+    return JSON.stringify({
+      merged: true,
+      closed_issue: null,
+      parent_issue: parentIssue,
+      parent_outcome: "close-failed",
+      note: `The pull request merged, but issue #${parentIssue} could not be closed: ${why}. It is still open and nothing will retry. Close it with github__close_issue, or report it.`,
+    });
   }
 }
 
