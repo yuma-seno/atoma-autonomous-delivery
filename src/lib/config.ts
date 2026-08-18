@@ -2,8 +2,8 @@
  * config.ts — shared helper for reading .github/atoma/config.json. The one
  * canonical copy used by every script and MCP server in this repo.
  *
- * Assumes the current working directory is the repository root, matching
- * how every Atoma workflow step and MCP server invocation runs.
+ * Resolved against `ATOMA_MACHINERY_ROOT` when that is set, and against the
+ * working directory otherwise -- see `configPath()` for why a runner sets it.
  */
 import { readFileSync } from "node:fs";
 import { DEFAULT_GOVERNED_PATHS } from "../domain/merge-readiness.ts";
@@ -16,14 +16,29 @@ import {
 import { resolveDeployTargets, type DeployTargetsResolution } from "../domain/deploy-targets.ts";
 import type { AtomaConfig } from "./types.ts";
 
-const CONFIG_PATH = ".github/atoma/config.json";
+/**
+ * Where this project's configuration is read from.
+ *
+ * `ATOMA_MACHINERY_ROOT` is set by `atoma-runner` to a checkout of the default
+ * branch, and unset everywhere else. The difference matters on a pull request
+ * run: that workspace is the pull request's own head, so reading configuration
+ * from it would let a pull request decide how the run reviewing it behaves --
+ * which agent, which iteration budget, which commands, which credentials.
+ *
+ * Unset resolves to the working directory, which is what every other caller
+ * wants and what this did before.
+ */
+function configPath(): string {
+  const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
+  return root ? `${root}/.github/atoma/config.json` : ".github/atoma/config.json";
+}
 
 let cached: AtomaConfig | undefined;
 
 /** Load and parse config.json (cached after first read within a process). */
 export function loadConfig(): AtomaConfig {
   if (!cached) {
-    cached = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as AtomaConfig;
+    cached = JSON.parse(readFileSync(configPath(), "utf8")) as AtomaConfig;
   }
   return cached;
 }
@@ -114,16 +129,16 @@ export function getTriggerAgent(event: string, fallback = ""): string {
 // No `getDeclaredSecrets()` here on purpose, though every other setting has a
 // reader in this file.
 //
-// Everything `loadConfig()` returns comes from the working tree, and on a pull
-// request run the working tree is the pull request's own head. That is right for
-// the settings below -- the commands under test are the change under test -- and
-// wrong for the one setting that decides which credentials the run may reach: it
-// would let a pull request choose what it is handed.
-//
-// So the credential declaration is read from the default branch instead, by
-// `read_secret_names.ts`, which loads that file itself. A convenience wrapper
-// here would be a second path to the same answer with none of that protection,
+// The credential declaration is read from the default branch by
+// `read_secret_names.ts`, which loads that file itself and refuses to guess a
+// path. A convenience wrapper here would be a second route to the same answer,
 // and the next caller would find it first.
+//
+// `configPath()` above now sends every other setting to the default branch too on
+// a runner, which makes the two consistent -- but not interchangeable. That one
+// resolves a path it was handed; this one resolves one from the environment. The
+// separation is what keeps a missing `ATOMA_MACHINERY_ROOT` from silently
+// downgrading a credential decision to the working tree.
 
 /**
  * Commands that verify a change, in order.
