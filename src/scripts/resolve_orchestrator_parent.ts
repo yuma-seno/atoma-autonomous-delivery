@@ -1,17 +1,19 @@
 #!/usr/bin/env bun
 /**
- * resolve_orchestrator_parent.ts — Resolve a sub-issue's orchestrator
- * parent: prefer the official GitHub sub-issues GraphQL `parent` field;
- * fall back to the canonical `<!-- atoma:parent=N -->` metadata embedded by
- * issue creation when the GraphQL parent lookup is unavailable.
+ * resolve_orchestrator_parent.ts — print a sub-issue's orchestrator parent, for
+ * a workflow step that needs the number in bash.
+ *
+ * The rule itself is `lib/parent-issue.ts`. It used to be written out here as
+ * well -- its own GraphQL query and its own body-tag read -- which made this the
+ * only one of three call sites with the richer rule, for no reason anything
+ * recorded. Both halves already existed in `lib/`.
  *
  * Usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N
- * Prints the resolved parent issue number (possibly empty) to stdout.
+ * Prints the resolved parent issue number, or nothing, to stdout.
  */
 import { parseArgs } from "node:util";
-import { gh, ghGraphql } from "../lib/gh.ts";
+import { parentIssueOf } from "../lib/parent-issue.ts";
 import { defineScript } from "./lib/script-ref.ts";
-import { PARENT_TAG } from "../lib/tags.ts";
 
 export interface ResolveOrchestratorParentArgs {
   repo: string;
@@ -33,28 +35,20 @@ function main(): void {
     console.error("usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N");
     process.exit(2);
   }
-  const [owner, repoName] = values.repo.split("/", 2);
 
-  try {
-    const data = ghGraphql<{ repository: { issue: { parent: { number: number } | null } } }>(
-      "query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}",
-      { owner: owner!, repo: repoName!, num: Number(values.sub) },
-    );
-    const parent = data.repository.issue.parent?.number;
-    if (parent) {
-      console.error(`Resolved via GraphQL parent: sub-issue #${values.sub} → parent #${parent}`);
-      console.log(parent);
-      return;
-    }
-  } catch {
-    // fall through to body-comment fallback
+  const found = parentIssueOf(values.repo, Number(values.sub));
+  if (!found.known) {
+    // Empty stdout, and a non-zero exit. The caller reads stdout to decide
+    // whether there is a parent to aggregate, and "" is how "no parent" is
+    // spelled -- so a failed read that printed "" would be indistinguishable
+    // from a root issue, which is the whole class of defect this repository has
+    // been working through.
+    console.error(`::error::${found.why}`);
+    process.exit(1);
   }
 
-  const { code, stdout } = gh("issue", "view", String(values.sub), "--repo", values.repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
-  if (parent) console.error(`Resolved via fallback: sub-issue #${values.sub} → parent #${parent}`);
-  console.log(parent ?? "");
+  if (found.parent) console.error(`sub-issue #${values.sub} -> parent #${found.parent}`);
+  console.log(found.parent || "");
 }
 
 if (import.meta.main) main();

@@ -11,9 +11,14 @@
  * never quietly about a different repository than the caller meant.
  */
 import { gh, gitRun } from "./gh.ts";
-import { PARENT_TAG } from "./tags.ts";
+import { parentIssueOf, type ParentIssue } from "./parent-issue.ts";
 import { nextBranchName } from "../domain/issue-branch.ts";
 import { collectIssueBranches } from "./issue-branches.ts";
+
+// Re-exported because this module's own callers ask for it by this name. The
+// definition is `parent-issue.ts`'s: it used to live here, and the same
+// question was being answered in two other places by two other rules.
+export { parentIssueOf, type ParentIssue };
 
 function log(message: string): void {
   console.error(`[atoma-github] ${message}`);
@@ -47,40 +52,6 @@ export function resolveBranch(): string {
   throw new Error("Cannot determine branch name; set BRANCH env");
 }
 
-/**
- * What an issue's parentage turned out to be.
- *
- * Three answers, not two. `known: true, parent: 0` is a root issue; `known:
- * false` is a read that failed, and the two are not interchangeable — one caller
- * below can treat an unknown parent as absent and the other cannot.
- */
-export type ParentIssue = { known: true; parent: number } | { known: false; why: string };
-
-/**
- * The parent issue this one was split out of.
- *
- * Read from the issue body's `atoma:parent` tag, which `create_issue` writes
- * when an orchestrator creates a child. Nothing here asks which agent is
- * running: a sub-issue is a sub-issue whoever picks it up.
- *
- * This returned a bare `0` for both a root issue and a failed read, and the two
- * callers did very different things with that. `stackedBaseFor` treats an
- * unknown parent as absent and cuts from the base — documented, and a slower
- * integration is genuinely not worth failing a commit over. `stackedPrBase` used
- * the same value to mean "no parent", so `create_pr` aimed a sub-issue's pull
- * request at the base branch: on merge, `dispatchCd` sees a non-issue branch and
- * deploys one child's half of a feature. One transient `gh` failure was enough,
- * and the only trace was a WARN in a runner log.
- */
-export function parentIssueOf(repo: string, issue: number): ParentIssue {
-  const { code, stderr, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
-  if (code) {
-    const why = `could not read issue #${issue}: ${stderr.trim() || `gh exited ${code}`}`;
-    log(`WARN ${why}`);
-    return { known: false, why };
-  }
-  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
-}
 
 /**
  * The branch a sub-issue's work should be cut from, or "" for the base branch.

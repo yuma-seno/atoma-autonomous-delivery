@@ -240,6 +240,17 @@ export async function dispatchOrchestratorIfReady(opts: DispatchGateOptions): Pr
  * spawned the now-removed dispatch_orchestrator_if_ready.ts script).
  */
 export async function dispatchOrchestratorIfSubIssueReady(repo: string, subIssueNum: number): Promise<DispatchGateResult> {
+  // Deliberately the `atoma:parent` tag alone, NOT `lib/parent-issue.ts`, which
+  // prefers GitHub's native sub-issue link.
+  //
+  // This module is tag-based end to end: `countOpenSiblings` finds siblings with
+  // `atoma:parent=N in:body`, so a parent discovered through the native link
+  // would have no countable siblings and the gate would conclude "all done" on
+  // the strength of a search that could never have found any. Reading the richer
+  // answer here would make the two halves disagree about what a sibling is.
+  //
+  // Written down because the shared reader now exists and looks like the obvious
+  // thing to switch to.
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
   // A body that could not be read is not a body without a parent tag. Reported as
   // itself, because the two lead to opposite places: no tag means this issue is

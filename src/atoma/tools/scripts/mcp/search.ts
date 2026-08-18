@@ -94,7 +94,12 @@ const SEARCH_SCHEMA = z.object({
         "Write it in the language this repository's issues are written in, which is the language of the issue in front of you — not necessarily the language you are being instructed in. The first stage matches characters rather than meaning, so a question in the wrong language finds nothing at all.",
       ].join("\n"),
     ),
-  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured.").optional(),
+  limit: positiveInt(
+    "How many issues to return. Defaults to 3, which held the answer for every question measured. " +
+      "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.",
+  )
+    .max(CANDIDATES)
+    .optional(),
 });
 
 function log(message: string): void {
@@ -273,7 +278,7 @@ const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
     description:
-      "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question — 'why does a branch get created at the first commit rather than up front' — and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all.",
+      "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question — 'why does a branch get created at the first commit rather than up front' — and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all. The issue this run is working on is excluded from the results, since you can read it directly — so a decision recorded there will not appear here.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues,
   }),

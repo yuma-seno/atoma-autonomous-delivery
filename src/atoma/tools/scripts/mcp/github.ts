@@ -312,7 +312,29 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   }
 
   logOp("create_issue", { number: num, title, sub_issue: sub });
-  return JSON.stringify({ number: num, url: stdout.trim() });
+  // `parent` is returned because asking for a sub-issue does not guarantee
+  // getting one. With `sub_issue: true` and no `ISSUE_NUMBER` -- a run that is
+  // not working on an issue -- the label goes on and no `atoma:parent` tag is
+  // written, producing an issue that looks like a child and that no aggregation
+  // will ever pick up. `{number, url}` reported that as plain success.
+  //
+  // The tag is what matters, not the native link: `lib/aggregation.ts` counts
+  // siblings with `atoma:parent=N in:body`, and the `addSubIssue` call above is
+  // best-effort precisely because it is the cosmetic half.
+  const parent = sub && parentNum ? Number(parentNum) : null;
+  return JSON.stringify({
+    number: num,
+    url: stdout.trim(),
+    parent,
+    ...(sub && !parent
+      ? {
+          note:
+            "Labelled as a sub-issue, but this run has no current issue, so no parent was recorded. " +
+            "Nothing will aggregate it. Create it from a run that is working on the parent, or treat it " +
+            "as a root issue.",
+        }
+      : {}),
+  });
 }
 
 /**
@@ -338,6 +360,10 @@ function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
     parent: links.parent,
     children: links.children,
     pull_requests: links.pullRequests,
+    // Empty because there are none, or empty because nobody could look? The
+    // three fields above cannot say, and the difference decides whether
+    // "no open pull request" means the work landed or means nothing is known.
+    ...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
   });
 }
 
@@ -390,6 +416,9 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
       total_comments: all.length,
       parent: links.parent,
       pull_requests: links.pullRequests,
+      // See `get_issue`: an unread link list is not an empty one, and this
+      // header exists precisely so a comment is not read as settled work.
+      ...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
     },
     // Always stated, never implied. A truncated read that looks complete is how
     // a caller concludes something is absent when it was merely not shown -- and
