@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   resolveDeployTargets,
   tagMatches,
+  tagPatternProblem,
   targetByName,
   targetsForMerge,
   targetsForTag,
@@ -117,5 +118,34 @@ describe("tagMatches", () => {
   test("a pattern without a wildcard matches that one tag", () => {
     expect(tagMatches("v1.0.0", "v1.0.0")).toBe(true);
     expect(tagMatches("v1.0.0", "v1.0.0-rc1")).toBe(false);
+  });
+});
+
+// This was the one field in an otherwise strict validator with no form check, so
+// a pattern that reads as a glob validated cleanly and deployed on no tag.
+describe("tagPatternProblem", () => {
+  test("the supported forms are accepted", () => {
+    expect(tagPatternProblem("v*")).toBe("");
+    expect(tagPatternProblem("v1.0.0")).toBe("");
+    expect(tagPatternProblem("release/1.0")).toBe("");
+  });
+
+  test("a star anywhere but the end is rejected", () => {
+    // The natural way to write a semver tag, and it matched nothing.
+    expect(tagPatternProblem("v*.*.*")).toContain("match no tag");
+    expect(tagPatternProblem("*-rc*")).toContain("match no tag");
+  });
+
+  test("other glob characters are rejected", () => {
+    expect(tagPatternProblem("v?.0")).toContain("match no tag");
+    expect(tagPatternProblem("v[0-9]*")).toContain("match no tag");
+  });
+
+  test("a rejected pattern stops the whole target list", () => {
+    const { targets, problems } = resolveDeployTargets([
+      { name: "production", on: "tag", tags: ["v*.*.*"], commands: ["./deploy.sh"] },
+    ]);
+    expect(targets).toEqual([]);
+    expect(problems.join(" ")).toContain("match no tag");
   });
 });

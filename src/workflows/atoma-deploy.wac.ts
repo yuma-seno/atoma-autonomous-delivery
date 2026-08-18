@@ -87,7 +87,11 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
     // Every tag, filtered by `deploy.targets` at run time -- see above. The
     // branches are the default-branch merge path, narrowed again by the job's
     // `if:`.
-    push: { tags: ["*"], branches: ["main", "master"] },
+    // `**`, not `*`. This filter is meant to start the run for every tag and let
+    // `run_deploy.ts` decide whether any target wanted that one -- but GitHub's
+    // `*` does not cross `/`, so a validated `"tags": ["release/*"]` target never
+    // started a run at all. `**` matches the separator too.
+    push: { tags: ["**"], branches: ["main", "master"] },
   } as unknown as GWT.Workflow["on"],
   permissions: {
     // Write because cutting a release is a deployment, and the commonest thing a
