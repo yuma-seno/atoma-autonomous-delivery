@@ -76,8 +76,25 @@ the place that needs it:
 ```
 
 It arrives as an environment variable under that name. The three lists are
-separate on purpose and must not be merged: `tools.secrets` reaches your own
-process, `checks.secrets` and `deploy.secrets` reach only their workflows.
+separate on purpose and must not be merged: each reaches only its own workflow.
+
+**`tools.secrets` needs a second step, and the others do not.** Naming a secret
+there authorises the run to hold it; it does not deliver it to any tool. The tool
+that needs it must also name it in `tools.yaml`:
+
+```yaml
+slack:
+  env:
+    SLACK_TOKEN: "${SLACK_TOKEN}"
+```
+
+A reference, never a value. Every tool that does not name it — including `shell` —
+cannot see it, and that is deliberate rather than a gap to fix. If a tool reports
+a missing credential, check whether its `tools.yaml` entry declares it before
+concluding anything else is wrong.
+
+`checks` and `deploy` need no routing step: their commands run in a workflow of
+their own rather than beside an agent.
 
 **Do not invent a secret name and hope.** If a deployment needs a credential you
 cannot see, say so in your report and name exactly which one — a person adds it

@@ -60,6 +60,67 @@ describe("shell_guard.ts", () => {
     expect(r.stdout).toContain('"allow":false');
   });
 
+  // Tool servers run as the same user and each holds the credentials its
+  // `tools.yaml` entry declares, so one reading another's /proc is the one place
+  // per-server confinement is not enforced by anything else.
+  describe("reading another process's environment", () => {
+    test("is blocked whatever reads it", () => {
+      for (const command of [
+        "cat /proc/1234/environ",
+        "head -c 200 /proc/self/environ",
+        "xxd /proc/999/environ",
+        "tr '\\0' '\\n' < /proc/42/environ",
+        "find /proc -name environ -exec cat {} +",
+      ]) {
+        const r = spawnSync("bun", ["run", SCRIPT], {
+          input: JSON.stringify({ arguments: { command } }),
+          encoding: "utf8",
+        });
+        expect(r.stdout, command).toContain('"allow":false');
+      }
+    });
+
+    // The same path arriving through the other channels, which is how the rule
+    // would otherwise be walked around without any obfuscation at all.
+    test("is blocked when the path arrives in another argument", () => {
+      const viaCwd = spawnSync("bun", ["run", SCRIPT], {
+        input: JSON.stringify({ arguments: { command: "cat environ", working_directory: "/proc/1" } }),
+        encoding: "utf8",
+      });
+      expect(viaCwd.stdout).toContain('"allow":false');
+
+      const viaVar = spawnSync("bun", ["run", SCRIPT], {
+        input: JSON.stringify({
+          arguments: { command: "cat $P/1/environ", environment_variables: { P: "/proc" } },
+        }),
+        encoding: "utf8",
+      });
+      expect(viaVar.stdout).toContain('"allow":false');
+    });
+
+    // Blocking /proc wholesale would cost honest diagnostics. `environ` is the
+    // part that matters, and the word boundary keeps `environment` out of it.
+    test("leaves the rest of /proc alone", () => {
+      for (const command of ["cat /proc/cpuinfo", "grep MemTotal /proc/meminfo", "ls /proc/self/fd"]) {
+        const r = spawnSync("bun", ["run", SCRIPT], {
+          input: JSON.stringify({ arguments: { command } }),
+          encoding: "utf8",
+        });
+        expect(r.stdout, command).toContain('"allow":true');
+      }
+    });
+
+    // The word this rule keys on has an ordinary English prefix, and a repository
+    // full of files called `environment.ts` should not become unreadable.
+    test("does not catch the word environment", () => {
+      const r = spawnSync("bun", ["run", SCRIPT], {
+        input: JSON.stringify({ arguments: { command: "grep -rn environment src/ /proc/cpuinfo" } }),
+        encoding: "utf8",
+      });
+      expect(r.stdout).toContain('"allow":true');
+    });
+  });
+
   // Three arguments besides `command` reach bash, and the guard read only the
   // first. Each of these got past the entire denylist without any obfuscation:
   // the path, the variable, and the script were simply put in a field nothing

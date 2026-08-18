@@ -62,6 +62,27 @@ const BLOCKED: [RegExp, string][] = [
   [/\bnode\s+<</, "node heredoc is disabled."],
   [/\bbase64\b.*\|\s*(?:sh|bash|zsh|dash)/, "base64 pipe-to-shell is disabled."],
   [/\bxxd\b.*\|\s*(?:sh|bash|zsh|dash)/, "binary pipe-to-shell is disabled."],
+  // Both words anywhere, in any arrangement, rather than the literal path.
+  //
+  // Matching `/proc/<pid>/environ` was the first attempt and its own test broke
+  // it: `find /proc -name environ -exec cat {} +` never writes that path, it
+  // builds it. Readers are endless too -- cat, head, xxd, tr, dd, od, strings, a
+  // bare `< /proc/N/environ` -- and enumerating either the readers or the
+  // spellings is the shape of check this repository has been wrong about three
+  // times. What is actually being asked for is the pair.
+  //
+  // `/proc` as a whole stays open, because `environ` is the part that matters and
+  // cpuinfo and meminfo have honest uses. `\benviron\b` does not match
+  // `environment`, so ordinary words are unaffected.
+  //
+  // What it protects: tool servers run as the same user, so one can read
+  // another's environment through /proc, and each holds the credentials its
+  // `tools.yaml` entry declares. That read is the one place per-server
+  // confinement is not enforced by anything else.
+  [
+    /^(?=[\s\S]*\/proc)(?=[\s\S]*\benviron\b)/,
+    "Reading a process's environment through /proc is disabled.",
+  ],
   [/(?:^|\s|\||;)\beval\b/, "eval is disabled."],
   [/(?:^|\s|\||;)\bexec\b/, "exec is disabled."],
   [/(?:^|\s|;)\bsource\b/, "source is disabled."],

@@ -72,10 +72,19 @@ Supported top-level fields used by scripts/workflows:
 - `auto_triggers[]` with `event`, `agent`, optional `condition`
 
 Credentials are declared under the feature that consumes them, not in one list
-for the repository. `tools.secrets` reaches the agent's own process and nothing
-else does; a credential for somewhere else belongs beside whatever runs there.
-The nesting is the boundary, so keep it — collapsing these into a single list
-would put every credential in every destination.
+for the repository. The nesting is the boundary, so keep it — collapsing these
+into a single list would put every credential in every destination.
+
+| Layer | Decides | Lives in |
+| --- | --- | --- |
+| Repository secrets | the value | Settings |
+| `checks.secrets` / `deploy.secrets` / `tools.secrets` | whether that destination may hold it | `config.json` |
+| `env: ${NAME}` | which tool server receives it | `tools.yaml` |
+
+The third row applies to `tools.secrets` only, and it is easy to miss:
+authorising a credential does not deliver it. `checks` and `deploy` need no
+routing step, because their commands run in a workflow of their own rather than
+beside an agent. See [Give a tool a credential](#give-a-tool-a-credential).
 
 `config.json` is **yours**. Everything else under `.github/atoma/` is generated and
 is replaced when you upgrade the template; this file is not, so edits to it
@@ -564,8 +573,16 @@ declared, and the declaration is in a file this gate already covers — see
 ### Give a tool a credential
 
 A tool server that talks to something outside GitHub needs one — a Slack token,
-an API key for your issue tracker. Add the secret to the repository the usual
-way, then name it in `config.json`:
+an API key for your issue tracker.
+
+**Three steps, and each does a different job.** Doing two of them and wondering
+why nothing arrives is the usual way to get this wrong, so they are worth keeping
+straight.
+
+**1. Add the secret to the repository**, the usual way, in Settings. Nothing here
+creates a secret; the other two steps only refer to one.
+
+**2. Authorise the run to hold it**, in `config.json`:
 
 ```json
 {
@@ -573,24 +590,65 @@ way, then name it in `config.json`:
 }
 ```
 
-That is the whole change. You are naming a secret that already exists, not
-creating one, and you never edit a workflow: `atoma-runner.yml` is generated
-upstream and reaches your secrets through a key it learns at run time.
+This says the run may obtain that secret. It does not say which tool gets it — at
+this point no tool can see it.
 
-Each named secret is exported under its own name before any tool server starts,
-and servers inherit the environment they are spawned in, so a server that reads
-`SLACK_TOKEN` needs nothing further. A server that wants the value under a
-different name is what `tools.yaml`'s `env:` is for — but note those values are
-literal, with no `${...}` expansion, so the simplest arrangement is to name the
-repository secret whatever the server already looks for.
+**3. Route it to the tool that needs it**, in `tools.yaml`:
 
-Be deliberate about this list. It is the one setting that widens what an agent
-can read, and an agent reads issue text written by anyone who can open an issue.
-A credential named here is reachable by a prompt injection exactly as it is
-reachable by the tool you added it for. The shell hook and
-[redaction](#what-a-shell-command-may-print) reduce what leaves a run; neither
-makes a credential safe to hand over casually. Name the ones a tool genuinely
-needs, and nothing else.
+```yaml
+slack:
+  command: mcp-server-slack
+  env:
+    SLACK_TOKEN: "${SLACK_TOKEN}"
+```
+
+Now that one server receives it, under that name. **Every other tool still
+cannot see it**, including the shell.
+
+You never edit a workflow for any of this.
+
+### Why a credential has to be routed
+
+Because a tool server receives only what its own `env:` names. Anything Atoma
+recognises as a credential is removed from a server's environment before that
+block is applied, so `env: {}` means "this server gets no credentials" — which is
+the default, and is the point rather than an oversight.
+
+The shell tool is the one to think about. It can run anything, so a credential it
+can read is a credential the agent can read and send anywhere. Leaving it out of
+`shell`'s `env:` is what makes "the tool holds the secret, the agent does not"
+true rather than aspirational.
+
+Which layer decides what:
+
+| Layer | Decides |
+| --- | --- |
+| Repository secrets | the value |
+| `config.json` `tools.secrets` | whether the run may hold it |
+| `tools.yaml` `env: ${NAME}` | which tool receives it |
+
+Never write a value in `tools.yaml`, only a `${NAME}` reference. A pasted secret
+is committed in plain text.
+
+### What this does and does not protect
+
+A credential reaches the Atoma process and the servers that name it. Nothing else
+— not the shell, not another tool server's declared credentials by ordinary
+means, not a later workflow step.
+
+Two limits are worth stating plainly rather than discovering.
+
+**Tool servers are not isolated from each other.** They run as the same user, so
+a deliberate attempt from one can reach another's environment. Treat a credential
+declared for one tool as reachable by all of them if something is actively trying.
+
+**None of this stops intent, only accident.** An agent reads issue text written by
+anyone who can open an issue, and a prompt injection can ask it to do whatever a
+tool allows. What remains is the two controls that always mattered: declare only
+the credentials a tool genuinely needs, and read the diff when a governed file
+changes.
+
+### When it takes effect, and what fails loudly
 
 **Every credential list is read from your default branch**, whichever branch a
 run is otherwise working on. A pull request can change what a run *does* — that
