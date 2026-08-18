@@ -87,25 +87,43 @@ const NUMBER_ARG_SCHEMA = z.object({
 });
 
 /**
- * Schema for the two read-only ISSUE lookups, whose `number` defaults to the
- * issue this run is already operating on.
+ * Schema for read-only ISSUE lookups whose `number` defaults to the issue this
+ * run is already operating on.
  *
- * Deliberately not used for PR reads or for any mutation:
+ * Deliberately not used for mutations. Inferring the target of an irreversible,
+ * outward-facing action from an environment variable turns a malformed call into
+ * a wrong merge instead of an error message, so `close_issue` and `merge_pr`
+ * require the number.
  *
- * - Mutations (`close_issue`, `merge_pr`): inferring the target of an
- *   irreversible, outward-facing action from an environment variable turns a
- *   malformed call into a wrong merge instead of an error message.
- * - PR reads (`get_pr`, `get_pr_diff`, ...): `ISSUE_NUMBER` carries whichever
- *   number the run resolved, and the run env does not say whether that was an
- *   issue or a PR. Defaulting a PR read during an issue-context run would shell
- *   out `gh pr view <issue-number>`, replacing a precise "number: Required"
- *   with a confusing GitHub error. Observed production failures were all on the
- *   two issue reads, so the fallback stops there.
+ * It was also not meant for PR reads, and `check_merge_readiness` used it
+ * anyway. The comment here explained precisely the failure that caused: a
+ * defaulted PR read during an issue run shells out `gh pr view <issue-number>`
+ * and returns "Could not resolve to a PullRequest" — an iteration burnt on the
+ * one tool whose job is explaining refusals. `PR_CONTEXT_NUMBER_ARG_SCHEMA`
+ * below is the PR-shaped version, and it defaults only when the run really is a
+ * pull request run.
  */
 const ISSUE_CONTEXT_NUMBER_ARG_SCHEMA = z.object({
   number: positiveInt(
     "Positive GitHub issue number, without a leading '#'. " +
       "Omit to use the issue this run is already operating on.",
+  ).optional(),
+});
+
+/**
+ * Schema for a read-only PULL REQUEST lookup that may default to this run's own.
+ *
+ * The old comment above claimed "the run env does not say whether that was an
+ * issue or a PR". It does: `ATOMA_RUN_TYPE` is set by the runner and is exactly
+ * `"issue"` or `"pr"`, and `branch-placement.ts` — imported by this file —
+ * already guards on it. So the default is available to a PR read, provided it
+ * checks first.
+ */
+const PR_CONTEXT_NUMBER_ARG_SCHEMA = z.object({
+  number: positiveInt(
+    "Positive pull request number, without a leading '#'. " +
+      "Omit only on a pull request run, to use the pull request this run is reviewing; " +
+      "on an issue run, pass the number of the pull request that closes it.",
   ).optional(),
 });
 
@@ -148,6 +166,32 @@ function issueContextNumber(args: { number?: number }): number {
   return parsed;
 }
 
+/**
+ * Resolve a pull request read's target, falling back to this run's number only
+ * when the run is a pull request run.
+ *
+ * The type check is the whole point. Issues and pull requests share one number
+ * space, so `ISSUE_NUMBER` on an issue run is a perfectly valid-looking pull
+ * request number that belongs to a different thing entirely — and the resulting
+ * `gh pr view <issue-number>` fails with a GitHub error about resolving a
+ * PullRequest, which reads as a broken tool rather than a missing argument.
+ */
+function prContextNumber(args: { number?: number }): number {
+  if (args.number !== undefined) return args.number;
+  if (process.env.ATOMA_RUN_TYPE !== "pr") {
+    mcpFail(
+      "`number` was omitted, and this run is working on an issue rather than a pull request. " +
+        "Pass the pull request's number explicitly — an issue's number is not a pull request's.",
+    );
+  }
+  const raw = (process.env.ISSUE_NUMBER ?? "").trim();
+  const parsed = Number(raw);
+  if (!raw || !Number.isInteger(parsed) || parsed <= 0) {
+    mcpFail("`number` was omitted and this run has no current pull request number. Pass `number` explicitly.");
+  }
+  return parsed;
+}
+
 const CREATE_ISSUE_SCHEMA = z.object({
   title: z.string().min(1).describe("Concise issue title."),
   body: z.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
@@ -167,7 +211,7 @@ const LIST_ISSUES_SCHEMA = z.object({
 const CREATE_PR_SCHEMA = z.object({
   title: z.string().min(1).describe("Concise pull request title."),
   body: z.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
-  base: z.string().optional().describe("Target branch name. Omit to use the repository's configured base branch, or its default branch when none is configured."),
+  base: z.string().optional().describe("Target branch name. Omit and this is resolved in three steps: the parent's branch when this run is a sub-issue whose parent branch exists, so sibling work stacks and integrates once; otherwise the repository's configured base branch; otherwise its default branch. The resolved value is returned as `base`, and it decides whether merging this deploys."),
 });
 
 const LIST_PRS_SCHEMA = z.object({
@@ -190,13 +234,31 @@ const SYNC_BRANCH_SCHEMA = z.object({
 
 const SUBMIT_PR_REVIEW_SCHEMA = z.object({
   number: positiveInt("Positive pull request number, without a leading '#'."),
-  // APPROVE is accepted and silently downgraded to COMMENT (see submitPrReview).
-  // It is NOT in the description below, so the model is never told to use it --
-  // this is the runtime being forgiving about a shape it is not advertising, the
-  // same bargain positiveInt/stringArray strike in lib/mcp-tool.ts.
+  // APPROVE used to sit in this enum and be rewritten to COMMENT at run time.
+  //
+  // `zodToJsonSchema` emits an enum verbatim, so the model read "APPROVE is
+  // available" from the schema and "do not use APPROVE" from the description, in
+  // the same breath -- and reached for it. submitPrReview's own comment recorded
+  // the consequence: "Reviewers do reach for APPROVE despite the description
+  // saying not to." The schema was why.
+  //
+  // Removed rather than rewritten, because approving is not something an agent
+  // can do at all. Every Atoma agent shares the bot identity that opened the pull
+  // request, and GitHub refuses self-approval outright. The two things a reviewer
+  // actually means are both already expressible: "this change is good" is
+  // COMMENT, and "merge it" is github__merge_pr, which runs the whole
+  // merge-readiness gate that a review verdict cannot express.
+  //
+  // A model that sends APPROVE anyway now gets zod's own message naming the two
+  // valid values, which costs an iteration and teaches the right answer. The
+  // silent rewrite cost nothing and taught the wrong one.
   event: z
-    .enum(["COMMENT", "REQUEST_CHANGES", "APPROVE"])
-    .describe("Review outcome. Use COMMENT for approval-like feedback because GitHub forbids bot self-approval."),
+    .enum(["COMMENT", "REQUEST_CHANGES"])
+    .describe(
+      "Review outcome. COMMENT for approval-like feedback: every Atoma agent shares one bot identity, " +
+        "and GitHub never lets an identity approve its own pull request, so approving is not available. " +
+        "To merge, use github__merge_pr.",
+    ),
   body: z.string().optional().describe("Review summary in GitHub-flavored Markdown. Required in practice for REQUEST_CHANGES."),
 });
 
@@ -457,7 +519,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (!Number.isFinite(num)) mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
 
   logOp("create_pr", { number: num, title });
-  dispatchPrValidation(REPO, num, branch);
+  const validationDispatched = dispatchPrValidation(REPO, num, branch);
 
   // Traceability: the reviewer dispatch above is fire-and-forget, and (since
   // this call now ends the session immediately, see the returned
@@ -468,7 +530,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (currentIssue) {
     gh(
       "issue", "comment", currentIssue, "--repo", REPO,
-      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). Running CI; the reviewer follows if it passes.`,
+      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). ${validationDispatched ? "Running CI; the reviewer follows if it passes." : "CI could NOT be started, so no required check will appear and no agent is scheduled. See the run log."}`,
     );
   }
 
@@ -481,7 +543,34 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // call -- not a brand-new unrelated task. This keeps the engineer's own
   // run from continuing to execute concurrently with the reviewer run just
   // dispatched above (the whole point of the "serial" design).
-  return { text: JSON.stringify({ number: num, url: stdout.trim() }), meta: { session_ends: true } };
+  // `session_ends` only when something is actually going to happen next.
+  //
+  // This used to be unconditional, and `dispatchPrValidation` returned void, so
+  // a failed dispatch ended the engineer's session having reported success: no
+  // CI, no required check, no agent re-invoked, and a pull request that sits
+  // until a person finds it. The engineer is the only thing still able to fix
+  // that, and it was the thing being told to stop.
+  //
+  // `base` is returned for the same reason. It is resolved from three places
+  // (the argument, the parent's branch when this is a sub-issue, the project's
+  // configured base), and which one won decides whether merging this deploys.
+  return {
+    text: JSON.stringify({
+      number: num,
+      url: stdout.trim(),
+      base,
+      validation_dispatched: validationDispatched,
+      ...(validationDispatched
+        ? {}
+        : {
+            note:
+              "The pull request exists, but CI could not be started, so no required check will be written " +
+              "and no agent is scheduled to continue. Retry with github__commit_and_push, which dispatches " +
+              "validation again, or report this so a person can start it.",
+          }),
+    }),
+    meta: validationDispatched ? { session_ends: true } : {},
+  };
 }
 
 
@@ -615,44 +704,15 @@ function listPrReviewComments(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
 }
 
 function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
-  let event: string = a.event;
-  let substituted = false;
-  if (event === "APPROVE") {
-    // GitHub always rejects self-approval since all Atoma agents share the
-    // same bot identity ("Can not approve your own pull request"). Rewrite
-    // to COMMENT instead of letting the gh call fail.
-    //
-    // Reviewers do reach for APPROVE despite the description saying not to --
-    // it is the obvious word for what they mean. Rewriting costs nothing and
-    // preserves their intent; rejecting the call would spend an iteration
-    // teaching them a rule that changes nothing about the outcome.
-    log(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
-    event = "COMMENT";
-    substituted = true;
-  }
-  const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
+  // No substitution any more. APPROVE was removed from the schema rather than
+  // rewritten here -- see SUBMIT_PR_REVIEW_SCHEMA -- so `event` is exactly what
+  // the caller asked for and exactly what GitHub is given.
+  const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + a.event.toLowerCase()];
   if (a.body) cmd.push("--body", a.body);
   const { code, stdout, stderr } = gh(...cmd);
   if (code) mcpFail(stderr || stdout);
-  logOp("submit_pr_review", { number: a.number, event });
-  // Says what was actually submitted, not just that something was. The rewrite
-  // used to be logged to this server's stderr only, so the caller's sole evidence
-  // was `ok: true` for the action it asked for -- and a reviewer that believes it
-  // approved reports an approval, while a ruleset requiring one still blocks and
-  // the resulting `blocked` blocker names no cause.
-  return JSON.stringify(
-    substituted
-      ? {
-          ok: true,
-          event,
-          requested_event: a.event,
-          note:
-            "APPROVE was submitted as COMMENT: every Atoma agent shares one bot identity, and GitHub never lets an " +
-            "identity approve its own pull request. The review body was posted unchanged. If the ruleset requires an " +
-            "approving review, a person has to give it.",
-        }
-      : { ok: true, event },
-  );
+  logOp("submit_pr_review", { number: a.number, event: a.event });
+  return JSON.stringify({ ok: true, event: a.event });
 }
 
 /** True if `number` is currently closed (used to skip a pointless post-merge re-invocation when native "Closes #N" auto-close already did the job). */
@@ -662,8 +722,8 @@ function isIssueClosed(number: number): boolean {
 }
 
 
-function checkMergeReadiness(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
-  const num = issueContextNumber(a);
+function checkMergeReadiness(a: z.infer<typeof PR_CONTEXT_NUMBER_ARG_SCHEMA>): string {
+  const num = prContextNumber(a);
   const { signals, refs } = gatherMergeSignals(REPO, num, mcpFail);
   const headRefName = refs.headRefName;
   const readiness = decideMergeReadiness(signals);
@@ -796,7 +856,7 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({ name: "list_issues", description: "List issue summaries in the current repository, optionally filtered by state and labels. Use this to discover or scan issues; use get_issue when full body and comments are needed. Returns a JSON array and does not mutate GitHub.", schema: LIST_ISSUES_SCHEMA, handler: listIssues }),
   defineMcpTool({ name: "get_issue_comments", description: "Read a range of one issue's comments, numbered from 1 in the order they were posted. Pass `from` (and optionally `to`) to read exactly the comment a search result pointed at; with no range it returns the last few, and always states which of how many it showed. Each result also carries the issue's title, state, parent, and the pull requests that close it, so a comment read on its own is not mistaken for settled work when its pull request is still open. Returns JSON and does not mutate GitHub.", schema: ISSUE_COMMENTS_SCHEMA, handler: getIssueComments }),
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
-  defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number and URL. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches the configured reviewer and ends the current agent session.", schema: CREATE_PR_SCHEMA, handler: createPr }),
+  defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number, URL and resolved base. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches CI validation -- NOT the reviewer directly: validation runs the checks and then dispatches whichever agent the result calls for, the reviewer when they pass and the engineer when they do not. Read `validation_dispatched`: when it is true the session ends here and you are re-invoked later; when it is false nothing is scheduled and the session stays open for you to act.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
   defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request, truncated to 50,000 characters. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
   defineMcpTool({ name: "list_prs", description: "List pull request summaries in the current repository, optionally filtered by state. Use this to discover PRs; use get_pr for full metadata. Returns a JSON array and does not mutate GitHub.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
@@ -813,14 +873,14 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
     name: "check_merge_readiness",
     description:
       "Report whether a pull request can be merged right now, and every reason it cannot. Read the `blockers` array rather than assuming a fixed set: kinds include failing, pending and absent required checks, merge conflicts, a branch behind its base, branch protection, draft state, a human author, a change under a governed path, a condition this project declared in `merge_gates`, and merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so — re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
-    schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA,
+    schema: PR_CONTEXT_NUMBER_ARG_SCHEMA,
     handler: checkMergeReadiness,
   }),
   defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
   defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
   defineMcpTool({
     name: "submit_pr_review",
-    description: "Submit a pull request review as either a general COMMENT or REQUEST_CHANGES. Use this after inspecting the diff and checks; APPROVE is intentionally unavailable because all Atoma agents share the PR author's bot identity. This mutates GitHub and returns JSON success status.",
+    description: "Submit a pull request review as either a general COMMENT or REQUEST_CHANGES. Use this after inspecting the diff and checks. There is no APPROVE: every Atoma agent shares the identity that opened the pull request, and GitHub refuses to let an identity approve its own -- so COMMENT is how a review says the change is good, and github__merge_pr is how it merges. This mutates GitHub and returns JSON success status.",
     schema: SUBMIT_PR_REVIEW_SCHEMA,
     handler: submitPrReview,
   }),

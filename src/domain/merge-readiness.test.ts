@@ -186,12 +186,42 @@ describe("decideMergeReadiness", () => {
     expect(result.needsCiDispatch).toBe(false);
   });
 
-  test("a dispatch is not requested when something else is also wrong", () => {
+  // The rule is about the head commit, not about the merge. A blocker that stops
+  // the agent merging leaves the commit exactly as it is, so the missing check is
+  // still needed -- by whoever ends up doing the merge. This used to require
+  // `checks-missing` to be the ONLY blocker, and since `merge_policy` defaults to
+  // "manual" and adds a blocker to every pull request, the recovery path could
+  // never fire on a default-configured project at all.
+  test("a dispatch is still requested when the other blockers leave the commit alone", () => {
     const result = decideMergeReadiness(
       signals({ mergeStateStatus: "BLOCKED", checks: [], mergePolicy: "manual" }),
     );
-    expect(result.needsCiDispatch).toBe(false);
+    expect(result.needsCiDispatch).toBe(true);
     expect(result.blockers.length).toBeGreaterThan(1);
+  });
+
+  // The other side of the same rule: a draft's commit is going to change, so a
+  // run started against it is thrown away.
+  test("a dispatch is not requested when the commit has to change first", () => {
+    const result = decideMergeReadiness(signals({ mergeStateStatus: "BLOCKED", checks: [], isDraft: true }));
+    expect(result.blockers.map((b) => b.kind)).toContain("checks-missing");
+    expect(result.needsCiDispatch).toBe(false);
+  });
+
+  // Nothing to recover: a run for this commit already exists, so starting a
+  // second one just duplicates it.
+  test("a dispatch is not requested while another required check is still running", () => {
+    const result = decideMergeReadiness(
+      signals({
+        mergeStateStatus: "BLOCKED",
+        requiredChecks: ["check", "lint"],
+        checks: [{ name: "check", status: "in_progress", conclusion: null }],
+      }),
+    );
+    expect(result.blockers.map((b) => b.kind)).toEqual(
+      expect.arrayContaining(["checks-pending", "checks-missing"]),
+    );
+    expect(result.needsCiDispatch).toBe(false);
   });
 
   // The one gate an agent cannot satisfy and then merge past: the change would
@@ -366,9 +396,17 @@ describe("declared merge gates", () => {
     ]);
   });
 
-  // Only a missing check is worth dispatching CI for. A gate will still be there
-  // when the run finishes, so burning a run on it would report progress falsely.
-  test("a gate does not make the run look worth dispatching", () => {
+  // Reversed deliberately. The old rule was "only a missing check is worth
+  // dispatching CI for" -- a gate will still be there when the run finishes, so
+  // dispatching looked like reporting false progress.
+  //
+  // But a gate does not stop the merge, it moves it to a person, and that person
+  // still needs the required check written or GitHub will not let them merge
+  // either. The gate is exactly the case where CI is most needed and was least
+  // likely to run: the agent will not be merging, so nothing else was going to
+  // ask for it. The run is not wasted, because the commit it validates is the one
+  // that gets merged.
+  test("a gate still leaves a missing check worth dispatching", () => {
     const result = decideMergeReadiness(
       signals({
         mergeStateStatus: "BLOCKED",
@@ -376,6 +414,9 @@ describe("declared merge gates", () => {
         gateMatches: [{ reason: "x", evidence: [] }],
       }),
     );
-    expect(result.needsCiDispatch).toBe(false);
+    expect(result.blockers.map((b) => b.kind)).toEqual(
+      expect.arrayContaining(["merge-gate", "checks-missing"]),
+    );
+    expect(result.needsCiDispatch).toBe(true);
   });
 });

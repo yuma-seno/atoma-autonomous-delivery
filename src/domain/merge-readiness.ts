@@ -138,33 +138,40 @@ export interface Blocker {
 }
 
 /**
- * The one blocker a CI dispatch removes, named so the rule that uses it does not
- * quietly redefine itself.
+ * Blockers that mean this head commit is going to change, so a CI run started
+ * against it would be thrown away.
  *
- * `needsCiDispatch` is true when every blocker is this kind — i.e. a required
- * check has simply never run, and nothing else is in the way. Written as a
- * constant because the predicate is an `every()` over a growing union: each new
- * `BlockerKind` narrows what dispatches, and `merge-gate` did exactly that when
- * it was added, with nothing recording the decision.
+ * `needsCiDispatch` is the recovery path for a required check that never got
+ * written -- the normal path is `create_pr` and `commit_and_push` dispatching
+ * validation, and this exists for when that did not happen. It fires when a
+ * check is missing and nothing in this list is in the way.
  *
- * The kinds it excludes exclude themselves for two different reasons, and only
- * one of them is about correctness:
+ * It used to fire only when `checks-missing` was the sole blocker, which is a
+ * different and much narrower rule: `merge_policy` defaults to `"manual"`, and
+ * that adds a `merge-policy` blocker to every pull request. So on any project
+ * using the default -- most of them -- the recovery path could never run at all,
+ * and the person who has to do the merge was left waiting on a required check
+ * that nothing was going to create.
  *
- *   **The commit is going to change.** `draft`, `conflicting`, `behind`,
- *   `not-open`, `mergeability-unknown`. A run against this commit is thrown
- *   away, so not starting one is simply right.
+ * The rule is now about the commit rather than about the merge. `merge-policy`,
+ * `human-authored`, `governance-change`, `merge-gate`, `gate-config-invalid`,
+ * `governance-unknown` and `blocked` all stop the agent from merging and leave
+ * the head commit exactly as it is -- so the check is still needed, and still
+ * worth writing, by whoever ends up merging. The kinds below are the ones where
+ * it is not: the commit must change first, or there is nothing to validate.
  *
- *   **The commit is fine; the merge is not.** `merge-policy`, `human-authored`,
- *   `governance-change`, `merge-gate`, `gate-config-invalid`, `blocked`, and the
- *   two check kinds where a run already exists. CI would not be wasted here —
- *   and the person who has to merge past one of these still needs the required
- *   check written. Withholding the dispatch is a cost decision: an agent calls
- *   this on every readiness check, and these blockers do not clear on their own.
- *
- * The second group is a live question rather than a settled one. If it should
- * dispatch, this is the line to change.
+ * `checks-pending` and `checks-failing` are here for the other reason: a run
+ * already exists for this commit, so starting a second one duplicates it.
  */
-const CI_DISPATCH_CLEARS: BlockerKind = "checks-missing";
+const CI_WOULD_BE_WASTED: ReadonlySet<BlockerKind> = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing",
+]);
 
 export interface MergeReadiness {
   ready: boolean;
@@ -407,7 +414,8 @@ export function decideMergeReadiness(signals: MergeSignals): MergeReadiness {
     });
   }
 
-  const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === CI_DISPATCH_CLEARS);
+  const needsCiDispatch =
+    blockers.some((b) => b.kind === "checks-missing") && !blockers.some((b) => CI_WOULD_BE_WASTED.has(b.kind));
 
   return { ready: blockers.length === 0, blockers, needsCiDispatch };
 }
