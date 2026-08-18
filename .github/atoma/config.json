@@ -71,5 +71,18 @@
   "governed_paths": [
     ".github/**",
     "scripts/**"
+  ],
+  "merge_gates": [
+    {
+      "reason": "This changes the code that decides what an agent may merge. Read it before merging: a weakening here would not be caught anywhere later.",
+      "when": {
+        "files_changed": [
+          "src/domain/merge-readiness.ts",
+          "src/domain/merge-gates.ts",
+          "src/domain/path-patterns.ts",
+          "src/lib/merge-signals.ts"
+        ]
+      }
+    }
   ]
 }

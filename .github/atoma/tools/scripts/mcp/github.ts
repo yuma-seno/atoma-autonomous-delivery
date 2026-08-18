@@ -17908,6 +17908,25 @@ function dispatchWorkflow(context, workflow, args = [], log = (m) => console.err
 // src/lib/config.ts
 import { readFileSync } from "fs";
 
+// src/domain/path-patterns.ts
+function pathMatches(file, pattern) {
+  return pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern;
+}
+function pathPatternProblem(pattern) {
+  if (typeof pattern !== "string" || pattern.trim() === "") {
+    return "a path pattern must be a non-empty string";
+  }
+  if (pattern !== pattern.trim()) {
+    return `"${pattern}" has surrounding whitespace`;
+  }
+  const firstStar = pattern.indexOf("*");
+  if (firstStar === -1)
+    return "";
+  if (pattern.endsWith("/**") && firstStar === pattern.length - 2)
+    return "";
+  return `"${pattern}" uses a wildcard this matcher cannot honour, so it would match nothing. ` + 'Write a literal path, or a directory followed by "/**".';
+}
+
 // src/domain/merge-readiness.ts
 var PASSING = new Set(["success", "neutral", "skipped"]);
 var DEFAULT_GOVERNED_PATHS = [".github/**"];
@@ -17915,7 +17934,7 @@ function isGeneratedWorkflow(path) {
   return path.startsWith(".github/workflows/");
 }
 function governedPathsIn(files, patterns) {
-  return files.filter((file) => patterns.some((pattern) => pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern));
+  return files.filter((file) => patterns.some((pattern) => pathMatches(file, pattern)));
 }
 function explainRequiredChecks(signals) {
   const blockers = [];
@@ -18008,6 +18027,21 @@ function decideMergeReadiness(signals) {
       detail: `this pull request changes how agents themselves run (${shown}${rest > 0 ? `, +${rest} more` : ""}); ` + "review it and report, but leave the merge to a person" + (signals.governancePaths.some(isGeneratedWorkflow) ? ". If the intent was to change what CI or deployment does, that belongs in " + "`.github/atoma/config.json` (`checks.commands`, `deploy.targets`) rather than in a " + "workflow file \u2014 an agent can write config and cannot write a workflow. If this is an " + "upgrade of the generated deliverable, it is exactly what a person should be merging" : "")
     });
   }
+  for (const match of signals.gateMatches) {
+    const shown = match.evidence.slice(0, 5).join(", ");
+    const rest = match.evidence.length - 5;
+    const because = shown ? ` (matched ${shown}${rest > 0 ? `, +${rest} more` : ""})` : "";
+    blockers.push({
+      kind: "merge-gate",
+      detail: `a merge gate declared by this project applies${because}: ${match.reason}` + " \u2014 review it and report, but leave the merge to a person"
+    });
+  }
+  for (const problem of signals.gateProblems) {
+    blockers.push({
+      kind: "gate-config-invalid",
+      detail: `a declared merge gate could not be evaluated, so this merge falls to a person: ${problem}`
+    });
+  }
   const needsCiDispatch = blockers.length > 0 && blockers.every((b) => b.kind === "checks-missing");
   return { ready: blockers.length === 0, blockers, needsCiDispatch };
 }
@@ -18097,6 +18131,167 @@ function targetsForMerge(targets) {
   return targets.filter((target) => target.on === "merge");
 }
 
+// src/domain/merge-gates.ts
+var CONDITION_KEYS = [
+  "files_added",
+  "files_removed",
+  "files_modified",
+  "files_changed",
+  "labels",
+  "title_matches"
+];
+var GATE_KEYS = ["reason", "when"];
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function readPatterns(raw, where, problems) {
+  if (raw === undefined)
+    return [];
+  if (!Array.isArray(raw)) {
+    problems.push(`${where} must be an array of path patterns.`);
+    return [];
+  }
+  if (raw.length === 0) {
+    problems.push(`${where} is empty, so it constrains nothing; remove the key instead.`);
+    return [];
+  }
+  const patterns = [];
+  for (const entry of raw) {
+    const problem = pathPatternProblem(entry);
+    if (problem) {
+      problems.push(`${where}: ${problem}`);
+      continue;
+    }
+    patterns.push(entry.trim());
+  }
+  return patterns;
+}
+function readLabels(raw, where, problems) {
+  if (raw === undefined)
+    return [];
+  if (!Array.isArray(raw) || raw.some((label) => typeof label !== "string" || label.trim() === "")) {
+    problems.push(`${where} must be an array of non-empty label names.`);
+    return [];
+  }
+  if (raw.length === 0) {
+    problems.push(`${where} is empty, so it constrains nothing; remove the key instead.`);
+    return [];
+  }
+  return raw.map((label) => label.trim());
+}
+function readTitleMatches(raw, where, problems) {
+  if (raw === undefined)
+    return "";
+  if (typeof raw !== "string" || raw.trim() === "") {
+    problems.push(`${where} must be a non-empty regular expression.`);
+    return "";
+  }
+  try {
+    new RegExp(raw, "i");
+  } catch (error2) {
+    problems.push(`${where} is not a valid regular expression: ${error2.message}`);
+    return "";
+  }
+  return raw;
+}
+function constrainsAnything(when) {
+  return when.filesAdded.length > 0 || when.filesRemoved.length > 0 || when.filesModified.length > 0 || when.filesChanged.length > 0 || when.labels.length > 0 || when.titleMatches !== "";
+}
+function resolveMergeGates(raw) {
+  if (raw === undefined || raw === null)
+    return { gates: [], problems: [] };
+  if (!Array.isArray(raw)) {
+    return { gates: [], problems: ["`merge_gates` must be an array of gate objects."] };
+  }
+  const problems = [];
+  const gates = [];
+  raw.forEach((entry, index) => {
+    const where = `\`merge_gates[${index}]\``;
+    if (!isRecord2(entry)) {
+      problems.push(`${where} must be an object with \`reason\` and \`when\`.`);
+      return;
+    }
+    for (const key of Object.keys(entry)) {
+      if (!GATE_KEYS.includes(key)) {
+        problems.push(`${where}: unknown key \`${key}\`; a gate has \`reason\` and \`when\`.`);
+      }
+    }
+    const reason = typeof entry.reason === "string" ? entry.reason.trim() : "";
+    if (reason === "") {
+      problems.push(`${where}: \`reason\` must say why a person should merge this, in their words.`);
+    }
+    if (!isRecord2(entry.when)) {
+      problems.push(`${where}: \`when\` must be an object naming at least one condition ` + `(${CONDITION_KEYS.join(", ")}).`);
+      return;
+    }
+    const declared = entry.when;
+    for (const key of Object.keys(declared)) {
+      if (!CONDITION_KEYS.includes(key)) {
+        problems.push(`${where}: unknown condition \`${key}\`. A misspelled condition matches nothing, which ` + `looks exactly like a gate nobody needed -- so it is an error rather than a no-op. ` + `Known conditions: ${CONDITION_KEYS.join(", ")}.`);
+      }
+    }
+    const when = {
+      filesAdded: readPatterns(declared.files_added, `${where}.when.files_added`, problems),
+      filesRemoved: readPatterns(declared.files_removed, `${where}.when.files_removed`, problems),
+      filesModified: readPatterns(declared.files_modified, `${where}.when.files_modified`, problems),
+      filesChanged: readPatterns(declared.files_changed, `${where}.when.files_changed`, problems),
+      labels: readLabels(declared.labels, `${where}.when.labels`, problems),
+      titleMatches: readTitleMatches(declared.title_matches, `${where}.when.title_matches`, problems)
+    };
+    if (!constrainsAnything(when)) {
+      problems.push(`${where}: \`when\` names no usable condition, so this gate would stop every merge. ` + `Set \`merge_policy\` to "manual" if that is the intent.`);
+      return;
+    }
+    gates.push({ reason, when });
+  });
+  return problems.length > 0 ? { gates: [], problems } : { gates, problems };
+}
+var ALL_STATUSES = ["added", "removed", "modified"];
+function filesMatching(files, statuses, patterns) {
+  if (patterns.length === 0)
+    return [];
+  return files.filter((file) => statuses.includes(file.status)).filter((file) => patterns.some((pattern) => pathMatches(file.path, pattern))).map((file) => file.path);
+}
+function matchMergeGates(gates, facts) {
+  const matches = [];
+  for (const gate of gates) {
+    const { when } = gate;
+    const evidence = [];
+    const fileConditions = [
+      { patterns: when.filesAdded, statuses: ["added"] },
+      { patterns: when.filesRemoved, statuses: ["removed"] },
+      { patterns: when.filesModified, statuses: ["modified"] },
+      { patterns: when.filesChanged, statuses: ALL_STATUSES }
+    ];
+    let applies = true;
+    for (const condition of fileConditions) {
+      if (condition.patterns.length === 0)
+        continue;
+      const hits = filesMatching(facts.changedFiles, condition.statuses, condition.patterns);
+      if (hits.length === 0) {
+        applies = false;
+        break;
+      }
+      evidence.push(...hits);
+    }
+    if (!applies)
+      continue;
+    if (when.labels.length > 0) {
+      const hits = facts.labels.filter((label) => when.labels.includes(label));
+      if (hits.length === 0)
+        continue;
+      evidence.push(...hits.map((label) => `label:${label}`));
+    }
+    if (when.titleMatches !== "") {
+      if (!new RegExp(when.titleMatches, "i").test(facts.title))
+        continue;
+      evidence.push(`title:${facts.title}`);
+    }
+    matches.push({ reason: gate.reason, evidence });
+  }
+  return matches;
+}
+
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -18124,6 +18319,9 @@ function getBaseBranch(fallback = "") {
 }
 function getGovernedPaths() {
   return loadConfig().governed_paths ?? DEFAULT_GOVERNED_PATHS;
+}
+function getMergeGates() {
+  return resolveMergeGates(loadConfig().merge_gates);
 }
 function getTriggerAgent(event, fallback = "") {
   for (const trigger of loadConfig().auto_triggers ?? []) {
@@ -18659,15 +18857,42 @@ function readRequiredChecks(repo, baseRef) {
     return [];
   }
 }
-function readGovernancePaths(repo, num) {
-  const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", ".[].filename");
+var STATUS_MAP = {
+  added: "added",
+  copied: "added",
+  renamed: "added",
+  removed: "removed",
+  modified: "modified",
+  changed: "modified"
+};
+var NOT_A_CHANGE = new Set(["unchanged"]);
+function readChangedFiles(repo, num) {
+  const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", '.[] | [.status, .filename, (.previous_filename // "")] | @tsv');
   if (code) {
     log4(`WARN could not read changed files for #${num}; treating the merge as a person's`);
-    return ["(could not read the changed files)"];
+    return { files: [], problem: `the changed files of #${num} could not be read` };
   }
-  const files = stdout.split(`
-`).map((line) => line.trim()).filter(Boolean);
-  return governedPathsIn(files, getGovernedPaths());
+  const files = [];
+  for (const line of stdout.split(`
+`)) {
+    if (line.trim() === "")
+      continue;
+    const [status, path, previous] = line.split("\t");
+    if (NOT_A_CHANGE.has((status ?? "").trim()))
+      continue;
+    const mapped = STATUS_MAP[(status ?? "").trim()];
+    if (!mapped || !path) {
+      return {
+        files: [],
+        problem: `GitHub reported file status '${status}' for #${num}, which Atoma does not recognise`
+      };
+    }
+    files.push({ path, status: mapped });
+    if ((status ?? "").trim() === "renamed" && previous) {
+      files.push({ path: previous, status: "removed" });
+    }
+  }
+  return { files, problem: "" };
 }
 function gatherMergeSignals(repo, num, throwOnFailure) {
   const json = (...args) => {
@@ -18676,10 +18901,22 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
       throwOnFailure(stderr || stdout);
     return stdout ? JSON.parse(stdout) : null;
   };
-  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName");
+  const pr = json("pr", "view", String(num), "--repo", repo, "--json", "mergeStateStatus,isDraft,author,state,headRefOid,headRefName,baseRefName,title,labels");
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
   const baseRefName = pr?.baseRefName ?? "";
+  const changed = readChangedFiles(repo, num);
+  const gates = getMergeGates();
+  const gateProblems = [...gates.problems];
+  if (changed.problem)
+    gateProblems.push(changed.problem);
+  const gateMatches = changed.problem ? [] : [
+    ...matchMergeGates(gates.gates, {
+      changedFiles: changed.files,
+      labels: (pr?.labels ?? []).map((label) => label.name ?? "").filter(Boolean),
+      title: pr?.title ?? ""
+    })
+  ];
   return {
     signals: {
       mergeStateStatus: pr?.mergeStateStatus ?? "UNKNOWN",
@@ -18694,7 +18931,9 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
       })),
       requiredChecks: readRequiredChecks(repo, baseRefName),
       mergePolicy: getMergePolicy(),
-      governancePaths: readGovernancePaths(repo, num)
+      governancePaths: changed.problem ? ["(could not read the changed files)"] : governedPathsIn(changed.files.map((file) => file.path), getGovernedPaths()),
+      gateMatches,
+      gateProblems
     },
     refs: { headRefName: pr?.headRefName ?? "", baseRefName }
   };
