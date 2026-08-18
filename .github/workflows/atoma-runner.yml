@@ -326,21 +326,13 @@ jobs:
           fi
 
           bun run .github/scripts/read_secret_names.ts --destination "tools" --config "$RUNNER_TEMP/atoma-declared-secrets.json"
-      - name: Run agent
-        id: atoma
-        if: steps.context.outputs.new_event_count != '0'
+      - name: Collect this run's credentials into a file
+        shell: bash
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ATOMA_COPILOT_TOKEN: ${{ secrets.ATOMA_COPILOT_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ github.token }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
-          ATOMA_RUN_TYPE: ${{ inputs.type }}
-          ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
-          ATOMA_OPS_LOG: atoma_ops.log
-          OPENAI_API_KEY_IN: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
-          ANTHROPIC_API_KEY_IN: ${{ secrets.ANTHROPIC_API_KEY }}
-          ATOMA_PROVIDER_IN: ${{ vars.ATOMA_PROVIDER }}
           ATOMA_SECRET_0: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[0]] }}
           ATOMA_SECRET_1: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[1]] }}
           ATOMA_SECRET_2: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[2]] }}
@@ -352,6 +344,19 @@ jobs:
           ATOMA_SECRET_8: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[8]] }}
           ATOMA_SECRET_9: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[9]] }}
           ATOMA_SECRET_NAMES: ${{ steps.secret-names.outputs.names }}
+        run: |
+          bun run .github/scripts/write_credentials_file.ts --out "$RUNNER_TEMP/atoma-credentials.json"
+      - name: Run agent
+        id: atoma
+        if: steps.context.outputs.new_event_count != '0'
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
+          ATOMA_RUN_TYPE: ${{ inputs.type }}
+          ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
+          ATOMA_OPS_LOG: atoma_ops.log
+          OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
+          ATOMA_PROVIDER_IN: ${{ vars.ATOMA_PROVIDER }}
         shell: bash
         run: |
           AGENT="${{ inputs.agent }}"
@@ -365,39 +370,17 @@ jobs:
             TOOLS_ARG="--tools-file .github/atoma/tools/tools.yaml"
           fi
 
-          # Credentials and settings arrive through the step's `env:` rather than being
-          # interpolated into this script.
+          # Settings, not credentials. These two are repository VARIABLES -- which provider
+          # to use and which host to reach -- so they belong in the environment; the
+          # credentials do not, and are not here any more.
           #
-          # `${{ secrets.X }}` written here would be substituted into the script TEXT before
-          # bash ever parses it, so a key containing a quote or a backtick would break the
-          # script or execute as part of it. Through `env:` the value is only ever data.
-          #
-          # Each is re-exported only when non-empty: exporting an empty OPENAI_API_KEY or
-          # ATOMA_PROVIDER would defeat Atoma's provider auto-detection.
-          for name in OPENAI_API_KEY OPENAI_BASE_URL ANTHROPIC_API_KEY ATOMA_PROVIDER; do
+          # Each is re-exported only when non-empty: exporting an empty ATOMA_PROVIDER would
+          # defeat Atoma's provider auto-detection.
+          for name in OPENAI_BASE_URL ATOMA_PROVIDER; do
             eval "value=\${${name}_IN:-}"
             if [ -n "$value" ]; then
               export "${name}=${value}"
             fi
-          done
-
-          # Credentials arrive in numbered slots because this file is generated and cannot
-          # know what a project called its Slack token; config.json does, and the resolve
-          # step above published that list. Put the declared name back on each slot before
-          # anything that needs one runs.
-          ATOMA_DECLARED_SECRETS="${ATOMA_SECRET_NAMES:-[]}"
-          ATOMA_DECLARED_COUNT=$(echo "$ATOMA_DECLARED_SECRETS" | jq -r 'length')
-          slot=0
-          while [ "$slot" -lt "$ATOMA_DECLARED_COUNT" ]; do
-            secret_name=$(echo "$ATOMA_DECLARED_SECRETS" | jq -r ".[${slot}]")
-            eval "secret_value=\${ATOMA_SECRET_${slot}:-}"
-            if [ -n "$secret_value" ]; then
-              export "${secret_name}=${secret_value}"
-              echo "Secret ${secret_name} is available to this run."
-            else
-              echo "::warning::config.json declares secret ${secret_name}, but this repository has no secret by that name. Whatever needs it will fail."
-            fi
-            slot=$((slot + 1))
           done
 
           # No --prompt-file or stdin is needed: the cached session contains both stable
@@ -410,6 +393,7 @@ jobs:
             --template ".github/atoma/prompt-template.md" \
             --skills-dir ".github/atoma/skills" \
             --max-iterations "${{ steps.cfg.outputs.max_iterations }}" \
+            --credentials-file "$RUNNER_TEMP/atoma-credentials.json" \
             ${TOOLS_ARG} \
             > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 
