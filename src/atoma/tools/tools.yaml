@@ -23,6 +23,21 @@
 # `args: ["."]` on the filesystem servers is deliberately NOT prefixed: that one
 # is the workspace, which is exactly what those servers should be reading.
 #
+# `before_tool` is NOT prefixed either, and for a third reason: atoma resolves a
+# relative hook path against the directory of THIS file, not against the working
+# directory. Verified in the core -- `persistence/tool_def.rs` sets
+# `base_dir = path.parent()` and joins any non-absolute hook path onto it, then
+# fails the run if the result does not exist. The runner passes
+# `--tools-file ${ATOMA_MACHINERY_ROOT}/.github/atoma/tools/tools.yaml`, so the
+# hook comes from the same default-branch checkout the `args` prefix points at,
+# and gets there without being asked.
+#
+# Written down because the paragraph above argues the pull-request-replaces-the-
+# code point for `args` and said nothing about the hook -- and the hook is the
+# one piece of code that inspects what the agent is about to run, so a reader
+# checking that argument holds should not have to go and read the core to
+# find out.
+#
 # Never write a value here, only a reference. `${SLACK_TOKEN}` is resolved at run
 # time; a pasted secret would be committed in plain text.
 #

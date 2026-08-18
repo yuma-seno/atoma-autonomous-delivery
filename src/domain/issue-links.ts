@@ -36,6 +36,20 @@ export interface IssueLinks {
   parent?: LinkedIssue;
   children: LinkedIssue[];
   pullRequests: LinkedPr[];
+  /**
+   * Why the links could not be read, when they could not.
+   *
+   * Absent means the lists above are the answer. Present means they are empty
+   * because nobody could look, which is a different fact -- and the one
+   * `get_issue_comments`' header rests its whole value on: "'Implemented it'
+   * on a sub-issue whose pull request is still open is a proposal, not a
+   * fact." A failed read silently produced exactly the reading that comment
+   * exists to prevent.
+   *
+   * Not throwing stays right -- this decorates a read that already succeeded.
+   * Reporting the degradation is the part that was missing.
+   */
+  unavailable?: string;
 }
 
 /**

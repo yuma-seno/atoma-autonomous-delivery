@@ -72,16 +72,21 @@ function asPr(node: GqlPr): LinkedPr {
  */
 export function issueLinks(repo: string, number: number): IssueLinks {
   const [owner, name] = repo.split("/");
-  if (!owner || !name) return { children: [], pullRequests: [] };
+  if (!owner || !name) {
+    return { children: [], pullRequests: [], unavailable: `"${repo}" is not an owner/name repository` };
+  }
 
   let issue: GqlIssueLinks | null = null;
   try {
     issue = ghGraphql<GqlResponse>(QUERY, { owner, name, number, limit: LINK_LIMIT }).repository?.issue ?? null;
   } catch (error) {
-    console.error(`[atoma-github] WARN could not read links for #${number}: ${(error as Error).message}`);
-    return { children: [], pullRequests: [] };
+    const why = (error as Error).message;
+    console.error(`[atoma-github] WARN could not read links for #${number}: ${why}`);
+    return { children: [], pullRequests: [], unavailable: `GitHub could not be reached: ${why}` };
   }
-  if (!issue) return { children: [], pullRequests: [] };
+  // A null issue is not a failure: the number may simply not exist. Said as
+  // itself rather than as empty links.
+  if (!issue) return { children: [], pullRequests: [], unavailable: `issue #${number} was not found` };
 
   // GitHub's own closing links first — where they exist they are authoritative.
   // Then the cross-reference timeline, filtered to pull requests that say they
