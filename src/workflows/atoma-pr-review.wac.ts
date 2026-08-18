@@ -1,64 +1,32 @@
 import { Workflow } from "@github-actions-workflow-ts/lib";
 import type { PullRequestReviewSubmittedEvent } from "@octokit/webhooks-types";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { startJob, TypedOutputsStep } from "./actions/base.ts";
+import { startJob } from "./actions/base.ts";
 import { githubEvent, githubEventRaw, isRepositoryMember } from "./actions/github-context.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
-import { scriptCommand } from "./actions/script-call.ts";
+import { routeByTriggerMatch } from "./actions/route-by-trigger.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { dispatchToAtomaRunner } from "./atoma-runner.wac.ts";
-import { ref as extractNotifyTagRef } from "../scripts/extract_notify_tag.ts";
-import { ref as matchTriggerRef, type MatchTriggerEnv } from "../scripts/match_trigger.ts";
 
 // Separate workflow for pull_request_review events.
 // Cannot be combined with pull_request_target in atoma-auto-trigger.wac.ts.
 //
+// The routing itself -- read the number, resolve the notify login, match the
+// agent -- is `routeByTriggerMatch`, shared with atoma-auto-trigger. Only the
+// event type and the fields read from its payload differ, and those stay here so
+// they are still checked against this workflow's own declared event.
+//
 // Job graph:
 //   route --> run (atoma-runner.yml, reusable)
 
-const contextStep = new TypedOutputsStep(
-  {
-    name: "Determine PR number",
-    id: "context",
-    shell: "bash",
-    run: `echo "number=${githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.number)}" >> "$GITHUB_OUTPUT"
-echo "type=pr" >> "$GITHUB_OUTPUT"
-`,
+const route = routeByTriggerMatch({
+  prNumber: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.number),
+  prBody: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.body),
+  matchEnv: {
+    EVENT_TYPE: `\${{ github.event_name }}.\${{ ${githubEventRaw<PullRequestReviewSubmittedEvent>((e) => e.action)} }}`,
+    REVIEW_STATE: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.review.state),
   },
-  ["number", "type"] as const,
-);
-
-const notifyStep = new TypedOutputsStep(
-  {
-    name: "Resolve notify login from PR body tag",
-    id: "notify",
-    shell: "bash",
-    env: { PR_BODY: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.pull_request.body) },
-    run: `${scriptCommand(extractNotifyTagRef)}\n`,
-  },
-  ["notify"] as const,
-);
-
-const matchStep = new TypedOutputsStep(
-  {
-    name: "Match event to agent from config.json",
-    id: "match",
-    shell: "bash",
-    env: {
-      EVENT_TYPE: `\${{ github.event_name }}.\${{ ${githubEventRaw<PullRequestReviewSubmittedEvent>((e) => e.action)} }}`,
-      REVIEW_STATE: githubEvent<PullRequestReviewSubmittedEvent>((e) => e.review.state),
-    } satisfies MatchTriggerEnv,
-    run: `AGENT=$(${scriptCommand(matchTriggerRef)} 2>/dev/null || true)
-if [ -n "\${AGENT}" ]; then
-  echo "Matched agent: \${AGENT}"
-  echo "agent=\${AGENT}" >> "$GITHUB_OUTPUT"
-  echo "number=${contextStep.outputs.number}" >> "$GITHUB_OUTPUT"
-  echo "type=${contextStep.outputs.type}" >> "$GITHUB_OUTPUT"
-fi
-`,
-  },
-  ["agent", "number", "type"] as const,
-);
+});
 
 export const atomaPrReview = new Workflow("atoma-pr-review", {
   name: "Atoma PR Review",
@@ -74,12 +42,7 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
       // Only a repository member's review starts an agent. Otherwise anyone could
       // dispatch the engineer by submitting REQUEST_CHANGES on a pull request.
       if: isRepositoryMember(githubEventRaw<PullRequestReviewSubmittedEvent>((e) => e.review.author_association)),
-      outputs: {
-        agent: matchStep.outputs.agent,
-        number: matchStep.outputs.number,
-        type: matchStep.outputs.type,
-        notify: notifyStep.outputs.notify,
-      },
+      outputs: route.outputs,
     },
     [
       new ActionsCheckoutV4({}),
@@ -87,9 +50,7 @@ export const atomaPrReview = new Workflow("atoma-pr-review", {
       // match_trigger.ts via `bun run` -- not preinstalled on GitHub-hosted
       // runners.
       new SetupBunAction({ name: "Setup Bun" }),
-      contextStep,
-      notifyStep,
-      matchStep,
+      ...route.steps,
     ],
   )
     // `secrets: inherit`, like every other routing workflow. Its absence was

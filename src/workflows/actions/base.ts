@@ -1,19 +1,26 @@
 /**
- * base.ts — A minimal, typed wrapper for GitHub composite actions
- * that aren't in the public `@github-actions-workflow-ts/actions` registry
- * (e.g. third-party actions like `oven-sh/setup-bun`, see `third-party.ts`).
+ * base.ts — the typed building blocks every `.wac.ts` file composes workflows
+ * from.
  *
- * Unlike `@github-actions-workflow-ts/actions`'s `BaseAction`, this does NOT
- * attempt marketplace semver-tag validation (that machinery assumes a public
- * `owner/repo@vX` action pinned to a released version; some third-party
- * actions are pinned to a branch like `@main`, not a semver tag). What it
- * DOES give us, matching the same idea as `BaseAction`:
- *   - A typed `with` object -- the input keys/types are checked at the call
- *     site, so a typo'd or missing required input is a compile error.
- *   - A typed `outputs` object -- each key resolves to the
- *     `${{ steps.<id>.outputs.<name> }}` expression string, so referencing a
- *     step's output elsewhere is typo-checked and refactor-safe (renaming an
- *     output name updates every usage via TS, not a raw string search).
+ * One theme runs through all of them: in GitHub Actions, everything refers to
+ * everything else by a string that nothing checks. `steps.foo.outputs.bar`,
+ * `needs.foo.outputs.bar`, `needs: [foo]` — each is a name written twice, in two
+ * files, with no error if the two stop agreeing. GitHub resolves an unknown
+ * reference to the empty string, so the failure is not a broken workflow but a
+ * green one that skipped the work.
+ *
+ * Each export closes one of those gaps by making the definition the only place
+ * the name is written, and every use a TypeScript property:
+ *
+ *   - `TypedOutputsStep` — a step's own `$GITHUB_OUTPUT` values and `outcome`,
+ *     as `.outputs` / `.rawOutputs` / `.outcome` / `.rawOutcome`.
+ *   - `DefinedJob` — a job's `outputs:` map doubling as the reference surface,
+ *     so `needs.<job>.outputs.<name>` cannot name an output the job lacks.
+ *   - `startJob` / `JobChain` — the `needs:` graph derived from the order jobs
+ *     are chained in, rather than restated as a list of job-name strings.
+ *   - `CustomAction` — a typed `with:` for third-party actions outside the
+ *     `@github-actions-workflow-ts/actions` registry. See its own comment for
+ *     why it skips that package's semver-tag validation.
  */
 import { NormalJob, ReusableWorkflowCallJob, Step } from "@github-actions-workflow-ts/lib";
 import type { GeneratedWorkflowTypes as GWT } from "@github-actions-workflow-ts/lib";
@@ -35,6 +42,27 @@ export type StepBaseProps = Pick<GWT.Step, "id" | "name" | "if" | "env" | "timeo
 export class TypedOutputsStep<TOutputs extends string = never> extends Step {
   readonly outputs: Record<TOutputs, string>;
   readonly rawOutputs: Record<TOutputs, string>;
+  /**
+   * This step's `outcome`, in the same two forms as its outputs.
+   *
+   * `outcome` is not a `$GITHUB_OUTPUT` value -- GitHub sets it -- but it is
+   * referenced by step id exactly like one, so it belongs to the same problem
+   * this class exists to solve. Seven `if:` conditions in `atoma-runner.wac.ts`
+   * spelled `steps.atoma.outcome` as a literal, which is the one thing renaming
+   * a step id does not update.
+   *
+   * That failure is silent and total: GitHub resolves an unknown step reference
+   * to the empty string, `'' == 'success'` is false, and the five steps guarded
+   * that way -- the result comment, the run metadata, the saved session, the
+   * dirty-worktree notice, the loop control -- simply do not run. The job stays
+   * green, having done none of them.
+   *
+   * Empty when the step has no id, matching `outputs` above: an unidentified
+   * step cannot be referenced at all, and an empty string in a condition is
+   * visibly wrong where a plausible-looking `steps.undefined.outcome` is not.
+   */
+  readonly outcome: string;
+  readonly rawOutcome: string;
 
   constructor(stepProps: GWT.Step, outputNames: readonly TOutputs[] = []) {
     super(stepProps);
@@ -45,6 +73,8 @@ export class TypedOutputsStep<TOutputs extends string = never> extends Step {
       this.outputs[name] = ref ? `\${{ ${ref} }}` : "";
       this.rawOutputs[name] = ref;
     }
+    this.rawOutcome = this.id ? `steps.${this.id}.outcome` : "";
+    this.outcome = this.rawOutcome ? `\${{ ${this.rawOutcome} }}` : "";
   }
 }
 
