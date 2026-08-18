@@ -28,8 +28,29 @@ describe("pathPatternProblem", () => {
   // match nothing, and leave someone believing they had a gate.
   test("a wildcard anywhere but the trailing /** is rejected", () => {
     for (const pattern of ["**/*.sql", "*.ts", "db/*/migrations/**", "db/mig*/**", "db/**/x.sql"]) {
-      expect(pathPatternProblem(pattern), pattern).toContain("wildcard");
+      expect(pathPatternProblem(pattern), pattern).toContain("glob character");
     }
+  });
+
+  // A trailing slash is how most people write a directory, and it was the one
+  // spelling that passed this check and then matched nothing — the failure the
+  // module exists to prevent, reached through the validator rather than around
+  // it. The message names the fix because the fix is one character.
+  test("a trailing slash is rejected, and the message says what to write", () => {
+    const problem = pathPatternProblem("db/migrations/");
+    expect(problem).toContain("matches nothing");
+    expect(problem).toContain('"db/migrations/**"');
+  });
+
+  // Same class: read as a glob, behaved as a filename.
+  test("other glob characters are rejected", () => {
+    for (const pattern of ["logs/?.txt", "db/[0-9]/x.sql", "src/{a,b}/x.ts", "logs/a].txt"]) {
+      expect(pathPatternProblem(pattern), pattern).toContain("glob character");
+    }
+  });
+
+  test("a directory pattern must name a directory", () => {
+    expect(pathPatternProblem("/**")).toContain("names no directory");
   });
 
   test("empty and untrimmed patterns are rejected", () => {

@@ -18,22 +18,33 @@ export interface IssueBranch {
   merged: boolean;
 }
 
-const SUFFIX = /-(\d+)$/;
+/**
+ * What may follow `atoma/issue-<n>` in a branch that issue owns.
+ *
+ * Anchored at both ends, which is the whole point. Unanchored, the remainder of
+ * `atoma/issue-12-3` after the prefix for issue **1** is `2-3`, and a pattern
+ * looking only for a trailing `-<digits>` finds one — so a run on issue 1 would
+ * resume issue 12's branch, commit to it, and open a pull request from it.
+ *
+ * The check used to live in two places, the filter and the ordinal, each
+ * unanchored in the same way. One arbiter now: an ordinal of 0 means the branch
+ * is not this issue's, and nothing else decides ownership.
+ */
+const OWNED_SUFFIX = /^-(\d+)$/;
 
-/** `atoma/issue-12` -> 1, `atoma/issue-12-3` -> 3. Unsuffixed counts as the first. */
-function ordinalOf(name: string, prefix: string): number {
-  const rest = name.slice(prefix.length);
+/** `""` -> 1 (the first), `"-3"` -> 3, anything else -> 0, meaning not owned. */
+function ordinalOf(rest: string): number {
   if (rest === "") return 1;
-  const match = SUFFIX.exec(rest);
+  const match = OWNED_SUFFIX.exec(rest);
   return match ? Number(match[1]) : 0;
 }
 
-/** Every branch this issue could own, newest first. */
+/** Every branch this issue owns, newest first. */
 function ownedBranches(branches: IssueBranch[], issueNumber: number): { branch: IssueBranch; ordinal: number }[] {
   const prefix = `atoma/issue-${issueNumber}`;
   return branches
-    .filter((branch) => branch.name === prefix || SUFFIX.test(branch.name.slice(prefix.length)))
-    .map((branch) => ({ branch, ordinal: ordinalOf(branch.name, prefix) }))
+    .filter((branch) => branch.name.startsWith(prefix))
+    .map((branch) => ({ branch, ordinal: ordinalOf(branch.name.slice(prefix.length)) }))
     .filter((entry) => entry.ordinal > 0)
     .sort((a, b) => b.ordinal - a.ordinal);
 }

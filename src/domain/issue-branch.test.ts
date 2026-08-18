@@ -35,6 +35,16 @@ describe("branchToResume", () => {
     expect(branchToResume([b("atoma/issue-12-x")], 12)).toBe("");
   });
 
+  // The case the comment above describes and the assertions above missed: it is
+  // the *suffixed* branch of the longer number that got claimed. For issue 1 the
+  // remainder of `atoma/issue-12-3` is `2-3`, and an unanchored search for a
+  // trailing `-<digits>` finds one — so issue 1 resumed issue 12's work, committed
+  // to it, and opened a pull request from it.
+  test("does not claim the suffixed branch of an issue whose number is longer", () => {
+    expect(branchToResume([b("atoma/issue-12-3")], 1)).toBe("");
+    expect(branchToResume([b("atoma/issue-120-7")], 12)).toBe("");
+  });
+
   test("ignores branches belonging to no issue", () => {
     expect(branchToResume([b("main"), b("feature/thing")], 12)).toBe("");
   });

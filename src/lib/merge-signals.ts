@@ -15,6 +15,7 @@
 import { gh } from "./gh.ts";
 import { getGovernedPaths, getMergeGates, getMergePolicy } from "./config.ts";
 import { governedPathsIn, type MergeSignals } from "../domain/merge-readiness.ts";
+import { pathPatternProblem } from "../domain/path-patterns.ts";
 import {
   matchMergeGates,
   type ChangedFile,
@@ -84,6 +85,26 @@ function readRequiredChecks(repo: string, baseRef: string): string[] {
     log(`WARN branch rules for ${baseRef} were not valid JSON`);
     return [];
   }
+}
+
+/**
+ * Why this project's `governed_paths` cannot be honoured as written.
+ *
+ * The same check `merge_gates` patterns get, on the gate that matters more.
+ * `governed_paths` decides which changes to the agent's own limits fall to a
+ * person, so a pattern that matches nothing hands the agent exactly what the
+ * setting was written to withhold -- and does it in silence, which is the one
+ * outcome this repository has been wrong about often enough to check for.
+ *
+ * Reported through the same `gate-config-invalid` blocker as a bad `merge_gates`
+ * entry, because it is the same sentence to the person reading it: a gate this
+ * project declared could not be evaluated, so the merge is theirs.
+ */
+function governedPathProblems(): string[] {
+  return getGovernedPaths()
+    .map((pattern) => pathPatternProblem(pattern))
+    .filter((problem) => problem !== "")
+    .map((problem) => `\`governed_paths\`: ${problem}`);
 }
 
 /**
@@ -237,7 +258,7 @@ export function gatherMergeSignals(
   // list, so both gates block instead of quietly finding nothing.
   const changed = readChangedFiles(repo, num);
   const gates = getMergeGates();
-  const gateProblems = [...gates.problems];
+  const gateProblems = [...gates.problems, ...governedPathProblems()];
   if (changed.problem) gateProblems.push(changed.problem);
 
   const gateMatches: MergeGateMatch[] = changed.problem
