@@ -17,7 +17,7 @@
  * in one call.
  */
 import { buildMcpTools, defineMcpTool, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
-import { htmlToMarkdown } from "../../../../lib/html-to-markdown.ts";
+import { htmlToMarkdown } from "../../../../domain/html-to-markdown.ts";
 import { sniffMimeType } from "../../../../lib/issue-images.ts";
 
 /** Longest text returned from one fetch. */

@@ -2,6 +2,12 @@
  * html-to-markdown.ts — turns a fetched page into something worth spending
  * tokens on.
  *
+ * In `domain/` because it is a pure function of a string: no environment, no
+ * filesystem, no `gh`, no network. It sat in `lib/` for no reason but the
+ * accident of having been written next to its one caller -- and the only cost of
+ * leaving it there was that the next pure helper would have had a precedent for
+ * either directory.
+ *
  * Raw HTML is mostly not content. A page that reads as a few hundred words
  * arrives as tens of kilobytes of markup, and every byte of it is resent on
  * each later inference of the run. Converting first is not a nicety; it is the

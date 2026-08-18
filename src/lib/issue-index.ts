@@ -186,7 +186,7 @@ export function mergeIssues(stored: IndexedIssue[], fresh: IndexedIssue[]): Inde
  * its own title back to the reader wastes the excerpt it is shown in, while a
  * document that omits it loses the words the issue is about.
  */
-export function chunksFor(issues: IndexedIssue[]): Chunk[] {
+function chunksFor(issues: IndexedIssue[]): Chunk[] {
   const chunks: Chunk[] = [];
   for (const issue of issues) {
     chunks.push({ issue: issue.number, source: "title", text: issue.title });

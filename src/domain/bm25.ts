@@ -58,14 +58,36 @@ const MIN_CHUNK = 40;
  * Markdown headings are where the author already decided one subject ends and
  * the next begins, so they are the natural seam. Blank lines are the fallback
  * for a section that is still too long to be about one thing.
+ *
+ * Lossless, which it was not. The last step used to be
+ * `.map((piece) => piece.slice(0, limit))`, and that does not shorten a long
+ * passage — it deletes the rest of it. A section with no heading and no blank
+ * line inside it lost everything past the first 700 characters, and with
+ * `MAX_BODY` at 6000 that is most of a long issue silently absent from search.
+ *
+ * Nothing said so. The doc described where it cuts, and a reader would
+ * reasonably expect a function called "split" to keep what it splits.
+ *
+ * The overflow is now cut into further chunks at a fixed width instead. Fixed
+ * width is a poor seam — it lands mid-sentence, and the two halves each match a
+ * little worse than the whole would have — but a poor seam still matches, and a
+ * passage that was never indexed cannot.
  */
 export function splitBody(text: string, limit = CHUNK_LIMIT): string[] {
   return text
     .split(/\n(?=#{1,4}\s)/)
     .flatMap((section) => (section.length > limit ? section.split(/\n\n+/) : [section]))
     .map((piece) => piece.trim())
-    .filter((piece) => piece.length >= MIN_CHUNK)
-    .map((piece) => piece.slice(0, limit));
+    .flatMap((piece) => cutToWidth(piece, limit))
+    .filter((piece) => piece.length >= MIN_CHUNK);
+}
+
+/** One piece, as consecutive chunks of at most `limit` characters. */
+function cutToWidth(piece: string, limit: number): string[] {
+  if (piece.length <= limit) return [piece];
+  const chunks: string[] = [];
+  for (let at = 0; at < piece.length; at += limit) chunks.push(piece.slice(at, at + limit).trim());
+  return chunks;
 }
 
 /**

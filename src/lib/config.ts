@@ -63,15 +63,22 @@ export function getMergePolicy(fallback = "manual"): string {
  * that never sets this needs no special case anywhere.
  */
 export function getBaseBranch(fallback = ""): string {
-  // The one reader here that tolerates a missing config.json. No config means no
+  // The one reader here that tolerates a MISSING config.json. No config means no
   // base branch, which is the same answer as a config without the key, so
   // `create_pr` should not start failing over a setting whose absence is the
   // normal case. The others deliberately still throw: defaulting a merge policy
   // or a label because a file could not be read would act on a guess.
+  //
+  // Narrowed to ENOENT, having been a bare `catch`. That caught a config.json
+  // that exists and will not parse as well — the one case where every other
+  // reader in this file throws, and where this one quietly aimed `create_pr` at
+  // the default branch instead. "The file is not there" and "the file is broken"
+  // are different facts and only the first is ordinary.
   try {
     return loadConfig().base_branch?.trim() || fallback;
-  } catch {
-    return fallback;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
+    throw error;
   }
 }
 

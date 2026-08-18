@@ -43,13 +43,20 @@ export function ghBytes(...args: string[]): { code: number; bytes: Uint8Array } 
   return { code: proc.exitCode ?? 1, bytes: proc.stdout ?? new Uint8Array() };
 }
 
-/** Run `gh` and parse its stdout as JSON. Throws on non-zero exit. */
-export function ghJson<T = unknown>(...args: string[]): T {
+/**
+ * Run `gh` and parse its stdout as JSON. Throws on non-zero exit.
+ *
+ * `T | null`, because empty stdout produces `null` and the signature used to say
+ * `T`. `null as T` is a cast that makes the type system agree with a claim that
+ * is not true: the one production caller defends with `?? []`, and the next one
+ * would have had no reason to.
+ */
+export function ghJson<T = unknown>(...args: string[]): T | null {
   const { code, stdout, stderr } = gh(...args);
   if (code !== 0) {
     throw new Error(`gh ${args.join(" ")}: ${stderr || stdout}`);
   }
-  return stdout ? (JSON.parse(stdout) as T) : (null as T);
+  return stdout ? (JSON.parse(stdout) as T) : null;
 }
 
 /** Run a GraphQL query via `gh api graphql`. */

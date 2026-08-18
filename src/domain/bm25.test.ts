@@ -28,8 +28,30 @@ describe("splitBody", () => {
     expect(parts.length).toBe(2);
   });
 
-  test("clips a passage that is long even after splitting", () => {
-    expect(splitBody("x".repeat(2000))[0]!.length).toBe(700);
+  // This used to assert `splitBody("x".repeat(2000))[0].length === 700` and stop
+  // there, which pinned the defect: the other 1300 characters were dropped, and
+  // the test recorded the first chunk's size as if that were the whole story.
+  describe("a passage too long even after splitting", () => {
+    test("is cut into chunks of the limit", () => {
+      const parts = splitBody("x".repeat(2000));
+      expect(parts[0]!.length).toBe(700);
+      expect(parts.every((p) => p.length <= 700)).toBe(true);
+    });
+
+    // The property that matters. A section with no heading and no blank line
+    // inside it is ordinary in a long issue, and everything past the first chunk
+    // was absent from the index entirely -- so a search for a phrase near the end
+    // of a long body could not match it at all.
+    test("keeps every character, rather than dropping the tail", () => {
+      const parts = splitBody("x".repeat(2000));
+      expect(parts.join("").length).toBe(2000);
+    });
+
+    test("keeps the end of a real body reachable", () => {
+      const filler = "あ".repeat(1500);
+      const parts = splitBody(`${filler}ブランチはコミット時に作られる`);
+      expect(parts.some((p) => p.includes("ブランチはコミット時に作られる"))).toBe(true);
+    });
   });
 });
 
