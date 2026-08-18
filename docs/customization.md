@@ -37,6 +37,7 @@ Task-oriented recipes:
 | [Change merge behavior](#change-merge-behavior) | require a human to merge |
 | [Customize prompt template](#customize-prompt-template) | change what every agent is told |
 | [Customize skills and tools](#customize-skills-and-tools) | add a skill or an MCP server |
+| [Recurring work](#recurring-work) | have something happen every week without a schedule setting |
 
 ## Source vs deliverable
 
@@ -851,6 +852,55 @@ Dynamic skill behavior:
 
 - Skill metadata is listed in prompt context.
 - Full skill body is loaded only when agent calls `atoma_builtin__load_skill`.
+
+### Recurring work
+
+You want a check run every week. Atoma has no schedule setting, and will not
+grow one — but the thing you want is two steps away, and both are ordinary.
+
+Copy [`examples/workflows/scheduled-issue.yml`](../examples/workflows/scheduled-issue.yml)
+into your own `.github/workflows/`, edit the cron, the title, the body and the
+agent, and you are done.
+
+**Why it is not a setting.** `on:` accepts no expression, so a cron string cannot
+come from `config.json`. That is GitHub's rule, not a choice made here. The
+workaround — a fixed daily cron that checks the date inside a script — was
+considered for deployments and rejected, and is worse for agents: a deployment
+that no-ops costs a few seconds of runner time, while an agent that starts and
+finds nothing to do costs a billed inference.
+
+**Why it creates an issue instead of starting an agent.** Agents work on an issue
+or a pull request. Something you want done every week *is* a work item that should
+exist every week — so the schedule creates the work item, and everything after
+that is the machinery you already have: triggers, the in-progress label, session
+persistence, review, merge gates. Nothing needs a schedule-only execution path.
+
+It also puts the cost where you can see it. An issue is free. Whether it becomes
+an agent run is then an ordinary decision — `auto_triggers`, a label, someone's
+comment — rather than something a cron expression decided months ago and nobody
+has looked at since.
+
+**The part that will catch you.** An issue created with `GITHUB_TOKEN` raises no
+`issues: opened` event. GitHub does not start workflows from events its own token
+caused, so the issue appears and nothing picks it up. The example therefore
+dispatches `atoma-runner.yml` explicitly, in its last step, and that step is not
+optional.
+
+Atoma meets this rule in three other places and answers it the same way: agent
+pull requests use `pull_request_target`, and agent merges are followed by an
+explicit dispatch from `dispatchCi` / `dispatchCd`.
+
+**You have to copy it yourself.** GitHub refuses `GITHUB_TOKEN` writes to
+`.github/workflows/**` by identity, on every path and branch, so no agent can add
+this for you — and `.github/**` is a governed path, so a person merges the pull
+request that adds it. Both of those are the system working, not obstacles to
+route around.
+
+**What it will cost.** One agent run per firing, whether or not there was
+anything to do. Multiply your provider's per-run cost by 52 for a weekly
+schedule, 12 for a monthly one, and decide with that number in front of you. If
+the answer is uncomfortable, the schedule is probably too frequent for the work —
+which is the question this arrangement puts in front of you rather than hiding.
 
 ## Regenerate and deploy changes
 
