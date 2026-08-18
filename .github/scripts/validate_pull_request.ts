@@ -56,6 +56,24 @@ function gh(...args) {
   return run(["gh", ...args]);
 }
 
+// src/lib/branch-rules.ts
+function readRequiredChecks(repo, baseRef) {
+  if (!baseRef)
+    return { known: false, why: "no base branch was given" };
+  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
+  if (code)
+    return { known: false, why: `the branch rules for ${baseRef} could not be read` };
+  try {
+    const rules = JSON.parse(stdout || "[]");
+    return {
+      known: true,
+      contexts: rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check) => check.context)
+    };
+  } catch {
+    return { known: false, why: `the branch rules for ${baseRef} were not valid JSON` };
+  }
+}
+
 // src/lib/agent-name.ts
 var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
 var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
@@ -101,20 +119,6 @@ function defineScript(importMetaUrl) {
 var ref = defineScript(import.meta.url);
 function log(message) {
   console.error(`[atoma-validate-pr] ${message}`);
-}
-function readRequiredChecks(repo, baseRef) {
-  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
-  if (code) {
-    log(`WARN could not read branch rules for ${baseRef}; no checks will be written`);
-    return [];
-  }
-  try {
-    const rules = JSON.parse(stdout || "[]");
-    return rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check) => check.context);
-  } catch {
-    log(`WARN branch rules for ${baseRef} were not valid JSON`);
-    return [];
-  }
 }
 function pickDispatchedRun(runs, headSha, since) {
   const candidates = runs.filter((run3) => run3.event === "workflow_dispatch").filter((run3) => run3.head_sha === headSha).filter((run3) => run3.created_at >= since).sort((a, b) => a.created_at < b.created_at ? 1 : -1);
@@ -179,8 +183,16 @@ function main() {
     log("could not read the pull request's head SHA");
     process.exit(1);
   }
-  const requiredContexts = readRequiredChecks(repo, baseRef);
+  const required = readRequiredChecks(repo, baseRef);
+  if (!required.known) {
+    log(`cannot validate: ${required.why}`);
+    process.exit(1);
+  }
+  const requiredContexts = required.contexts;
   log(`required contexts on ${baseRef}: ${requiredContexts.join(", ") || "(none)"}`);
+  if (requiredContexts.length === 0) {
+    log(`::warning::${baseRef} requires no status checks, so CI results gate nothing here. ` + "Import .github/atoma/rulesets/main.json if that was not intended.");
+  }
   const since = new Date().toISOString();
   const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
   if (dispatch.code) {

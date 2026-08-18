@@ -64,6 +64,11 @@ function resolveDeployTargets(raw) {
       return;
     }
     const tags = tagsRaw.map((tag) => tag.trim());
+    const badPattern = tags.map((tag) => tagPatternProblem(tag)).find((problem) => problem !== "");
+    if (badPattern) {
+      problems.push(`${where}: ${badPattern}`);
+      return;
+    }
     if (trigger === "tag" && tags.length === 0) {
       problems.push(`${where}: \`on: tag\` needs at least one pattern in \`tags\` \u2014 e.g. ["v*"].`);
       return;
@@ -83,6 +88,16 @@ function resolveDeployTargets(raw) {
 }
 function tagMatches(pattern, tag) {
   return pattern.endsWith("*") ? tag.startsWith(pattern.slice(0, -1)) : tag === pattern;
+}
+function tagPatternProblem(pattern) {
+  const body = pattern.endsWith("*") ? pattern.slice(0, -1) : pattern;
+  if (body.includes("*")) {
+    return `"${pattern}" uses a '*' somewhere other than the end, which this matcher cannot honour, ` + 'so it would match no tag. Write a literal tag, or a prefix followed by "*" \u2014 e.g. "v*".';
+  }
+  if (/[?[\]{}]/.test(body)) {
+    return `"${pattern}" uses a glob character this matcher cannot honour, so it would match no tag. ` + 'Write a literal tag, or a prefix followed by "*".';
+  }
+  return "";
 }
 function targetsForMerge(targets) {
   return targets.filter((target) => target.on === "merge");

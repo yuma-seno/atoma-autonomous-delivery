@@ -203,7 +203,11 @@ ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
   }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  if (commentsCode !== 0) {
+    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     return { ready: true, remaining: 0, dispatched: false };
   }

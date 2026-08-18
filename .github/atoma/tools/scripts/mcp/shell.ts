@@ -17865,15 +17865,19 @@ class StdioServerTransport {
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
 }
+function refuseUnknownKeys(schema) {
+  return schema instanceof exports_external.ZodObject ? schema.strict() : schema;
+}
 function defineMcpTool(spec) {
-  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(spec.schema, {
+  const schema = refuseUnknownKeys(spec.schema);
+  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(schema, {
     target: "jsonSchema7",
     $refStrategy: "none"
   });
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema },
     async call(args) {
-      const result = spec.schema.safeParse(args);
+      const result = schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
         throw new Error(`Invalid arguments for ${spec.name}: ${message}`);

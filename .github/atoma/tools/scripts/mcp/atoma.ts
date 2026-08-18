@@ -18084,7 +18084,11 @@ ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
   }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  if (commentsCode !== 0) {
+    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     return { ready: true, remaining: 0, dispatched: false };
   }
@@ -18104,8 +18108,11 @@ Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestra
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
+  if (code !== 0) {
+    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
+    return { ready: false, remaining: 0, dispatched: false };
+  }
+  const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
     return { ready: false, remaining: 0, dispatched: false };
@@ -18116,7 +18123,10 @@ async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
 // src/atoma/tools/scripts/lib/conclude_issue.ts
 async function concludeIssue(issue2, reason, summary) {
   const repo = process.env.GITHUB_REPOSITORY ?? "";
-  const { stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "author");
+  const { code, stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "author");
+  if (code !== 0) {
+    throw new Error(`Could not read the author of issue #${issue2}, so this cannot tell whether closing it is yours to do.`);
+  }
   const authorInfo = stdout ? JSON.parse(stdout) : {};
   const isBot = authorInfo.author?.is_bot ?? false;
   let body = `Atoma: orchestrator considers work on this issue complete.
@@ -18148,15 +18158,19 @@ This issue was opened directly by a human, so it will not be closed automaticall
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
 }
+function refuseUnknownKeys(schema) {
+  return schema instanceof exports_external.ZodObject ? schema.strict() : schema;
+}
 function defineMcpTool(spec) {
-  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(spec.schema, {
+  const schema = refuseUnknownKeys(spec.schema);
+  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(schema, {
     target: "jsonSchema7",
     $refStrategy: "none"
   });
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema },
     async call(args) {
-      const result = spec.schema.safeParse(args);
+      const result = schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
         throw new Error(`Invalid arguments for ${spec.name}: ${message}`);

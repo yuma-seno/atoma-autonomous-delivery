@@ -6,17 +6,16 @@ import { appendFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/domain/issue-branch.ts
-var SUFFIX = /-(\d+)$/;
-function ordinalOf(name, prefix) {
-  const rest = name.slice(prefix.length);
+var OWNED_SUFFIX = /^-(\d+)$/;
+function ordinalOf(rest) {
   if (rest === "")
     return 1;
-  const match = SUFFIX.exec(rest);
+  const match = OWNED_SUFFIX.exec(rest);
   return match ? Number(match[1]) : 0;
 }
 function ownedBranches(branches, issueNumber) {
   const prefix = `atoma/issue-${issueNumber}`;
-  return branches.filter((branch) => branch.name === prefix || SUFFIX.test(branch.name.slice(prefix.length))).map((branch) => ({ branch, ordinal: ordinalOf(branch.name, prefix) })).filter((entry) => entry.ordinal > 0).sort((a, b) => b.ordinal - a.ordinal);
+  return branches.filter((branch) => branch.name.startsWith(prefix)).map((branch) => ({ branch, ordinal: ordinalOf(branch.name.slice(prefix.length)) })).filter((entry) => entry.ordinal > 0).sort((a, b) => b.ordinal - a.ordinal);
 }
 function branchToResume(branches, issueNumber) {
   const unmerged = ownedBranches(branches, issueNumber).find((entry) => !entry.branch.merged);

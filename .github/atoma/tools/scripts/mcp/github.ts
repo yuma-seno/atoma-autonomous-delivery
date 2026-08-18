@@ -17912,6 +17912,7 @@ import { readFileSync } from "fs";
 function pathMatches(file, pattern) {
   return pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : file === pattern;
 }
+var GLOB_CHARACTERS = /[*?[\]{}]/;
 function pathPatternProblem(pattern) {
   if (typeof pattern !== "string" || pattern.trim() === "") {
     return "a path pattern must be a non-empty string";
@@ -17919,12 +17920,18 @@ function pathPatternProblem(pattern) {
   if (pattern !== pattern.trim()) {
     return `"${pattern}" has surrounding whitespace`;
   }
-  const firstStar = pattern.indexOf("*");
-  if (firstStar === -1)
-    return "";
-  if (pattern.endsWith("/**") && firstStar === pattern.length - 2)
-    return "";
-  return `"${pattern}" uses a wildcard this matcher cannot honour, so it would match nothing. ` + 'Write a literal path, or a directory followed by "/**".';
+  if (pattern.endsWith("/")) {
+    return `"${pattern}" ends in a slash, so it would match nothing. ` + `Write "${pattern}**" for everything under it, or drop the slash to match that one path.`;
+  }
+  const body = pattern.endsWith("/**") ? pattern.slice(0, -3) : pattern;
+  if (body === "") {
+    return `"${pattern}" names no directory. Write the directory before the "/**".`;
+  }
+  const glob = GLOB_CHARACTERS.exec(body);
+  if (glob) {
+    return `"${pattern}" uses the glob character '${glob[0]}', which this matcher cannot honour, ` + 'so it would match nothing. Write a literal path, or a directory followed by "/**".';
+  }
+  return "";
 }
 
 // src/domain/merge-readiness.ts
@@ -18110,6 +18117,11 @@ function resolveDeployTargets(raw) {
       return;
     }
     const tags = tagsRaw.map((tag) => tag.trim());
+    const badPattern = tags.map((tag) => tagPatternProblem(tag)).find((problem) => problem !== "");
+    if (badPattern) {
+      problems.push(`${where}: ${badPattern}`);
+      return;
+    }
     if (trigger === "tag" && tags.length === 0) {
       problems.push(`${where}: \`on: tag\` needs at least one pattern in \`tags\` \u2014 e.g. ["v*"].`);
       return;
@@ -18126,6 +18138,16 @@ function resolveDeployTargets(raw) {
     targets.push({ name, on: trigger, tags, commands });
   });
   return problems.length > 0 ? { targets: [], problems } : { targets, problems };
+}
+function tagPatternProblem(pattern) {
+  const body = pattern.endsWith("*") ? pattern.slice(0, -1) : pattern;
+  if (body.includes("*")) {
+    return `"${pattern}" uses a '*' somewhere other than the end, which this matcher cannot honour, ` + 'so it would match no tag. Write a literal tag, or a prefix followed by "*" \u2014 e.g. "v*".';
+  }
+  if (/[?[\]{}]/.test(body)) {
+    return `"${pattern}" uses a glob character this matcher cannot honour, so it would match no tag. ` + 'Write a literal tag, or a prefix followed by "*".';
+  }
+  return "";
 }
 function targetsForMerge(targets) {
   return targets.filter((target) => target.on === "merge");
@@ -18481,7 +18503,11 @@ ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
   }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  if (commentsCode !== 0) {
+    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     return { ready: true, remaining: 0, dispatched: false };
   }
@@ -18501,8 +18527,11 @@ Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestra
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
+  if (code !== 0) {
+    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
+    return { ready: false, remaining: 0, dispatched: false };
+  }
+  const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
     return { ready: false, remaining: 0, dispatched: false };
@@ -18520,15 +18549,19 @@ function stringArray(description) {
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
 }
+function refuseUnknownKeys(schema) {
+  return schema instanceof exports_external.ZodObject ? schema.strict() : schema;
+}
 function defineMcpTool(spec) {
-  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(spec.schema, {
+  const schema = refuseUnknownKeys(spec.schema);
+  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(schema, {
     target: "jsonSchema7",
     $refStrategy: "none"
   });
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema },
     async call(args) {
-      const result = spec.schema.safeParse(args);
+      const result = schema.safeParse(args);
       if (!result.success) {
         const message = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
         throw new Error(`Invalid arguments for ${spec.name}: ${message}`);
@@ -18563,17 +18596,16 @@ function decidePostMergeHandoff(signals) {
 }
 
 // src/domain/issue-branch.ts
-var SUFFIX = /-(\d+)$/;
-function ordinalOf(name, prefix) {
-  const rest = name.slice(prefix.length);
+var OWNED_SUFFIX = /^-(\d+)$/;
+function ordinalOf(rest) {
   if (rest === "")
     return 1;
-  const match = SUFFIX.exec(rest);
+  const match = OWNED_SUFFIX.exec(rest);
   return match ? Number(match[1]) : 0;
 }
 function ownedBranches(branches, issueNumber) {
   const prefix = `atoma/issue-${issueNumber}`;
-  return branches.filter((branch) => branch.name === prefix || SUFFIX.test(branch.name.slice(prefix.length))).map((branch) => ({ branch, ordinal: ordinalOf(branch.name, prefix) })).filter((entry) => entry.ordinal > 0).sort((a, b) => b.ordinal - a.ordinal);
+  return branches.filter((branch) => branch.name.startsWith(prefix)).map((branch) => ({ branch, ordinal: ordinalOf(branch.name.slice(prefix.length)) })).filter((entry) => entry.ordinal > 0).sort((a, b) => b.ordinal - a.ordinal);
 }
 function nextBranchName(branches, issueNumber) {
   const prefix = `atoma/issue-${issueNumber}`;
@@ -18837,25 +18869,30 @@ function issueLinks(repo, number4) {
   };
 }
 
+// src/lib/branch-rules.ts
+function readRequiredChecks(repo, baseRef) {
+  if (!baseRef)
+    return { known: false, why: "no base branch was given" };
+  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
+  if (code)
+    return { known: false, why: `the branch rules for ${baseRef} could not be read` };
+  try {
+    const rules = JSON.parse(stdout || "[]");
+    return {
+      known: true,
+      contexts: rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check2) => check2.context)
+    };
+  } catch {
+    return { known: false, why: `the branch rules for ${baseRef} were not valid JSON` };
+  }
+}
+
 // src/lib/merge-signals.ts
 function log4(message) {
   console.error(`[atoma-merge-signals] ${message}`);
 }
-function readRequiredChecks(repo, baseRef) {
-  if (!baseRef)
-    return [];
-  const { code, stdout } = gh("api", `repos/${repo}/rules/branches/${baseRef}`);
-  if (code) {
-    log4(`WARN could not read branch rules for ${baseRef}; blockers will be less specific`);
-    return [];
-  }
-  try {
-    const rules = JSON.parse(stdout || "[]");
-    return rules.filter((rule) => rule.type === "required_status_checks").flatMap((rule) => rule.parameters?.required_status_checks ?? []).map((check2) => check2.context);
-  } catch {
-    log4(`WARN branch rules for ${baseRef} were not valid JSON`);
-    return [];
-  }
+function governedPathProblems() {
+  return getGovernedPaths().map((pattern) => pathPatternProblem(pattern)).filter((problem) => problem !== "").map((problem) => `\`governed_paths\`: ${problem}`);
 }
 var STATUS_MAP = {
   added: "added",
@@ -18912,9 +18949,12 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
   const sha = pr?.headRefOid ?? "";
   const runs = sha ? json("api", `repos/${repo}/commits/${sha}/check-runs`) : null;
   const baseRefName = pr?.baseRefName ?? "";
+  const required2 = readRequiredChecks(repo, baseRefName);
+  if (!required2.known)
+    log4(`WARN ${required2.why}; blockers will be less specific`);
   const changed = readChangedFiles(repo, num);
   const gates = getMergeGates();
-  const gateProblems = [...gates.problems];
+  const gateProblems = [...gates.problems, ...governedPathProblems()];
   if (changed.problem)
     gateProblems.push(changed.problem);
   const gateMatches = changed.problem ? [] : [
@@ -18936,7 +18976,7 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
         conclusion: run2.conclusion,
         ...run2.details_url ? { detailsUrl: run2.details_url } : {}
       })),
-      requiredChecks: readRequiredChecks(repo, baseRefName),
+      requiredChecks: required2.known ? required2.contexts : [],
       mergePolicy: getMergePolicy(),
       governancePaths: changed.problem ? ["(could not read the changed files)"] : governedPathsIn(changed.files.map((file) => file.path), getGovernedPaths()),
       gateMatches,
@@ -19336,9 +19376,11 @@ function listPrReviewComments(a) {
 }
 function submitPrReview(a) {
   let event = a.event;
+  let substituted = false;
   if (event === "APPROVE") {
     log5(`submitPrReview: rewriting event APPROVE -> COMMENT for PR #${a.number} (self-approval is never possible)`);
     event = "COMMENT";
+    substituted = true;
   }
   const cmd = ["pr", "review", String(a.number), "--repo", REPO, "--" + event.toLowerCase()];
   if (a.body)
@@ -19347,7 +19389,12 @@ function submitPrReview(a) {
   if (code)
     mcpFail(stderr || stdout);
   logOp("submit_pr_review", { number: a.number, event });
-  return JSON.stringify({ ok: true });
+  return JSON.stringify(substituted ? {
+    ok: true,
+    event,
+    requested_event: a.event,
+    note: "APPROVE was submitted as COMMENT: every Atoma agent shares one bot identity, and GitHub never lets an " + "identity approve its own pull request. The review body was posted unchanged. If the ruleset requires an " + "approving review, a person has to give it."
+  } : { ok: true, event });
 }
 function isIssueClosed(number4) {
   const d = ghJsonOrThrow("issue", "view", String(number4), "--repo", REPO, "--json", "state");
@@ -19464,7 +19511,7 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
   defineMcpTool({
     name: "check_merge_readiness",
-    description: "Report whether a pull request can be merged right now, and every reason it cannot: failing checks (by name, with a link), still-running checks, an absent CI run, merge conflicts, draft state, or a non-auto merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so \u2014 re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
+    description: "Report whether a pull request can be merged right now, and every reason it cannot. Read the `blockers` array rather than assuming a fixed set: kinds include failing, pending and absent required checks, merge conflicts, a branch behind its base, branch protection, draft state, a human author, a change under a governed path, a condition this project declared in `merge_gates`, and merge policy. Call this before github__merge_pr, and to explain a refused merge. When the only thing missing is a CI run on the head commit, this dispatches CI and says so \u2014 re-check afterwards rather than merging blind. Read-only apart from that dispatch.",
     schema: ISSUE_CONTEXT_NUMBER_ARG_SCHEMA,
     handler: checkMergeReadiness
   }),
@@ -19484,7 +19531,7 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
   }),
   defineMcpTool({
     name: "merge_pr",
-    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable: CI not green on the head commit, no CI run at all, conflicts, draft state, or merge_policy not 'auto'. It never merges past a failing check, so a refusal is a real defect to fix, not a condition to retry around \u2014 read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
+    description: "Merge a pull request, then continue Atoma's issue handoff. Refuses and returns merged:false with a `blockers` list whenever the PR is not mergeable. The list is open-ended, so read it rather than assuming a fixed set: it covers failing, pending and absent required checks, conflicts, a branch behind its base, branch protection, draft state, a human author, a change under a governed path, a condition this project declared in `merge_gates`, and merge policy. A refusal is a decision or a real defect, never a condition to retry around \u2014 read `blockers`, and use github__check_merge_readiness for detail. On success this may merge the PR, close its linked issue, and dispatch follow-up work.",
     schema: NUMBER_ARG_SCHEMA,
     handler: mergePr
   })
