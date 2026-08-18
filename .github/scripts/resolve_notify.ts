@@ -66,14 +66,20 @@ function readAnyParentTag(text) {
 }
 
 // src/lib/notify.ts
+function log(message) {
+  console.error(`[atoma-notify] ${message}`);
+}
 var MAX_HOPS = 10;
 function fetchIssueLookup(repo, number) {
-  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
-  if (code !== 0 || !stdout.trim())
+  const { code, stderr, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
+  if (code !== 0 || !stdout.trim()) {
+    log(`WARN could not read issue #${number} to resolve a mention: ${stderr.trim() || `gh exited ${code}`}`);
     return {};
+  }
   try {
     return JSON.parse(stdout);
   } catch {
+    log(`WARN issue #${number} lookup was not valid JSON; no mention will be resolved from it`);
     return {};
   }
 }

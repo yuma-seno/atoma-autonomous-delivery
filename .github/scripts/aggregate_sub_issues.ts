@@ -45,6 +45,15 @@ function defineScript(importMetaUrl) {
 import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
+var CI_WOULD_BE_WASTED = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing"
+]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/lib/config.ts
@@ -151,14 +160,20 @@ function readAnyParentTag(text) {
 }
 
 // src/lib/notify.ts
+function log(message) {
+  console.error(`[atoma-notify] ${message}`);
+}
 var MAX_HOPS = 10;
 function fetchIssueLookup(repo, number) {
-  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
-  if (code !== 0 || !stdout.trim())
+  const { code, stderr, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
+  if (code !== 0 || !stdout.trim()) {
+    log(`WARN could not read issue #${number} to resolve a mention: ${stderr.trim() || `gh exited ${code}`}`);
     return {};
+  }
   try {
     return JSON.parse(stdout);
   } catch {
+    log(`WARN issue #${number} lookup was not valid JSON; no mention will be resolved from it`);
     return {};
   }
 }
@@ -206,7 +221,11 @@ ${opts.progressMessage(remaining)}`);
     }
     return { ready: false, remaining, dispatched: false };
   }
-  const { stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
+  if (commentsCode !== 0) {
+    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
+    return { ready: true, remaining: 0, dispatched: false };
+  }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
     return { ready: true, remaining: 0, dispatched: false };
   }
@@ -237,16 +256,17 @@ function gatherSubResults(repo, subIssues) {
   const lines = ["All sub-issues have been completed.", "", "## Sub-issue Results", ""];
   for (const num of subIssues) {
     let title = "Unknown";
-    let state = "closed";
+    let state = "could not be read";
     try {
       const { code, stdout } = gh("issue", "view", String(num), "--repo", repo, "--json", "title,state,closedAt");
       if (code === 0 && stdout) {
         const info = JSON.parse(stdout);
         title = info.title ?? "Unknown";
-        state = info.state ?? "closed";
+        state = info.state ?? "could not be read";
       }
     } catch {}
     const linkedPrs = [];
+    let prLookupFailed = false;
     for (const state_ of ["merged", "open"]) {
       try {
         const { code, stdout } = gh("pr", "list", "--repo", repo, "--state", state_, "--search", `#${num} in:body`, "--json", "number,title,url");
@@ -255,14 +275,20 @@ function gatherSubResults(repo, subIssues) {
           for (const pr of prs) {
             linkedPrs.push(`- PR #${pr.number}: ${pr.title} (${pr.url})`);
           }
+        } else {
+          prLookupFailed = true;
         }
-      } catch {}
+      } catch {
+        prLookupFailed = true;
+      }
     }
     lines.push(`### #${num}: ${title}`);
     lines.push(`Status: ${state}`);
     if (linkedPrs.length) {
       lines.push("Linked PRs:");
       lines.push(...linkedPrs);
+    } else if (prLookupFailed) {
+      lines.push("Linked PRs could not be read.");
     } else {
       lines.push("No linked PRs found.");
     }

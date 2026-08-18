@@ -26,6 +26,15 @@ function gh(...args) {
 import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
+var CI_WOULD_BE_WASTED = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing"
+]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/lib/config.ts
@@ -71,7 +80,11 @@ function main() {
   const label = getLabel("in_progress", "atoma/in-progress");
   const githubOutput = process.env.GITHUB_OUTPUT;
   const { code, stdout } = gh("issue", "view", String(values.number), "--repo", repo, "--json", "labels", "--jq", `([.labels[].name] | index("${label}")) != null`);
-  const inProgress = code === 0 && stdout.trim() === "true";
+  if (code !== 0) {
+    console.error(`Could not read the labels on #${values.number}, so this cannot tell whether a run is in progress.`);
+    process.exit(1);
+  }
+  const inProgress = stdout.trim() === "true";
   if (!inProgress) {
     if (githubOutput)
       appendFileSync(githubOutput, `blocked=false
@@ -79,11 +92,13 @@ function main() {
     return;
   }
   const { code: delCode, stdout: delOut, stderr: delErr } = gh("api", "--method", "DELETE", `repos/${repo}/issues/comments/${values["comment-id"]}`);
-  if (delCode !== 0) {
+  const deleted = delCode === 0;
+  if (!deleted) {
     console.error(`Warning: failed to delete comment #${values["comment-id"]} on #${values.number}: ${delErr || delOut}`);
   }
   const mention = values.commenter ? `@${values.commenter} ` : "";
-  gh("issue", "comment", String(values.number), "--repo", repo, "--body", `${mention}Your comment was removed because Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`);
+  const what = deleted ? "Your comment was removed because" : "Your comment could not be removed, and will not be acted on, because";
+  gh("issue", "comment", String(values.number), "--repo", repo, "--body", `${mention}${what} Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`);
   if (githubOutput)
     appendFileSync(githubOutput, `blocked=true
 `);

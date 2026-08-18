@@ -35,7 +35,7 @@ jobs:
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
-      - name: Determine PR number
+      - name: Determine PR number from event context
         id: context
         shell: bash
         run: |
@@ -55,12 +55,17 @@ jobs:
           EVENT_TYPE: ${{ github.event_name }}.${{ github.event.action }}
           REVIEW_STATE: ${{ github.event.review.state }}
         run: |
-          AGENT=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/match_trigger.ts" 2>/dev/null || true)
+          if ! AGENT=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/match_trigger.ts"); then
+            echo "::error::match_trigger.ts failed, so no auto-trigger could be evaluated for this event. See the error above; a config.json that is missing or will not parse is the usual cause."
+            exit 1
+          fi
           if [ -n "${AGENT}" ]; then
             echo "Matched agent: ${AGENT}"
             echo "agent=${AGENT}" >> "$GITHUB_OUTPUT"
             echo "number=${{ steps.context.outputs.number }}" >> "$GITHUB_OUTPUT"
             echo "type=${{ steps.context.outputs.type }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "No auto_triggers entry matches this event; nothing to dispatch."
           fi
   run:
     if: needs.route.outputs.agent != ''

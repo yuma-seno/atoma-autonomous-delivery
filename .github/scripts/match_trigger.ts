@@ -5,6 +5,15 @@
 import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
+var CI_WOULD_BE_WASTED = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing"
+]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/lib/config.ts

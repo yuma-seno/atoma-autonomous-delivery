@@ -11,6 +11,7 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function readCommands(raw, where, problems) {
+  const before = problems.length;
   if (!Array.isArray(raw)) {
     problems.push(`${where}: \`commands\` must be an array of shell commands.`);
     return [];
@@ -23,7 +24,7 @@ function readCommands(raw, where, problems) {
     }
     commands.push(entry);
   }
-  if (commands.length === 0 && problems.length === 0) {
+  if (commands.length === 0 && problems.length === before) {
     problems.push(`${where}: declares no commands, so it would deploy nothing.`);
   }
   return commands;
@@ -64,6 +65,11 @@ function resolveDeployTargets(raw) {
       return;
     }
     const tags = tagsRaw.map((tag) => tag.trim());
+    const badPattern = tags.map((tag) => tagPatternProblem(tag)).find((problem) => problem !== "");
+    if (badPattern) {
+      problems.push(`${where}: ${badPattern}`);
+      return;
+    }
     if (trigger === "tag" && tags.length === 0) {
       problems.push(`${where}: \`on: tag\` needs at least one pattern in \`tags\` \u2014 e.g. ["v*"].`);
       return;
@@ -84,6 +90,16 @@ function resolveDeployTargets(raw) {
 function tagMatches(pattern, tag) {
   return pattern.endsWith("*") ? tag.startsWith(pattern.slice(0, -1)) : tag === pattern;
 }
+function tagPatternProblem(pattern) {
+  const body = pattern.endsWith("*") ? pattern.slice(0, -1) : pattern;
+  if (body.includes("*")) {
+    return `"${pattern}" uses a '*' somewhere other than the end, which this matcher cannot honour, ` + 'so it would match no tag. Write a literal tag, or a prefix followed by "*" \u2014 e.g. "v*".';
+  }
+  if (/[?[\]{}]/.test(body)) {
+    return `"${pattern}" uses a glob character this matcher cannot honour, so it would match no tag. ` + 'Write a literal tag, or a prefix followed by "*".';
+  }
+  return "";
+}
 function targetsForMerge(targets) {
   return targets.filter((target) => target.on === "merge");
 }
@@ -99,6 +115,15 @@ function targetByName(targets, name) {
 import { readFileSync } from "fs";
 
 // src/domain/merge-readiness.ts
+var CI_WOULD_BE_WASTED = new Set([
+  "not-open",
+  "draft",
+  "conflicting",
+  "behind",
+  "mergeability-unknown",
+  "checks-pending",
+  "checks-failing"
+]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/lib/config.ts
