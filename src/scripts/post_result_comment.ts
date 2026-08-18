@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * post_result_comment.ts — Post the agent's final output as a GitHub
- * comment, including token usage/cost and (when nothing further will
+ * comment, including token usage and (when nothing further will
  * happen automatically) a mention.
  *
  * Reads atoma_output.txt (required) and atoma_logs.txt (optional, for the
@@ -34,6 +34,36 @@ export interface PostResultCommentArgs {
 
 export const ref = defineScript<PostResultCommentArgs>(import.meta.url);
 
+/**
+ * The token counts the run reported, and deliberately no money.
+ *
+ * This used to multiply the counts by a hardcoded `0.15 / 0.6` per million and
+ * print an `Estimated cost`. That number could not be right, for three reasons
+ * at once, pulling in different directions:
+ *
+ *   1. The rate was one model's, applied to every model. It matched no model
+ *      any agent here runs — the three agents are on three different ones.
+ *   2. `prompt` is not the input total. Providers report the tokens that missed
+ *      the cache, so a cached prefix is absent from the number entirely.
+ *   3. Whatever `prompt` did contain was charged at the full uncached rate,
+ *      though most of it is cache reads at a fraction of that.
+ *
+ * The errors did not even share a sign, so the printed figure could not be
+ * called high or low — only meaningless. A confident wrong number is worse than
+ * no number, so it is gone.
+ *
+ * Getting it right needs one of two things, and neither is wanted here. A price
+ * table is configuration that silently goes stale and then produces confident
+ * wrong numbers again — the state this is leaving. Reading the real charge from
+ * the provider works, but only one of the four providers Atoma supports reports
+ * one at all: OpenRouter returns `usage.cost`, while OpenAI and Anthropic report
+ * tokens only, and GitHub Copilot bills per request rather than per token, so
+ * the figure does not exist there even in principle.
+ *
+ * So: tokens, which every provider reports and which are a measurement rather
+ * than a derivation. Add money here only when it arrives from the provider as
+ * money.
+ */
 function tokenUsageLines(): string[] {
   if (!existsSync("atoma_logs.txt")) return [];
   const usageLine = readFileSync("atoma_logs.txt", "utf8")
@@ -45,12 +75,7 @@ function tokenUsageLines(): string[] {
   const completion = /completion=(\d+)/.exec(usageLine)?.[1];
   const total = /total=(\d+)/.exec(usageLine)?.[1];
 
-  const lines = ["", "---", `_Tokens: ${total ?? "?"} total (${prompt ?? "?"} prompt + ${completion ?? "?"} completion)_`];
-  if (prompt && completion) {
-    const cost = (Number(prompt) * 0.15) / 1_000_000 + (Number(completion) * 0.6) / 1_000_000;
-    lines.push(`_Estimated cost: $${cost.toFixed(4)}_`);
-  }
-  return lines;
+  return ["", "---", `_Tokens: ${total ?? "?"} total (${prompt ?? "?"} prompt + ${completion ?? "?"} completion)_`];
 }
 
 /**
