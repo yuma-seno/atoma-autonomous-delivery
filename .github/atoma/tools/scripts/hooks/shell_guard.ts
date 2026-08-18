@@ -355,6 +355,10 @@ var BLOCKED = [
   [/\bnode\s+<</, "node heredoc is disabled."],
   [/\bbase64\b.*\|\s*(?:sh|bash|zsh|dash)/, "base64 pipe-to-shell is disabled."],
   [/\bxxd\b.*\|\s*(?:sh|bash|zsh|dash)/, "binary pipe-to-shell is disabled."],
+  [
+    /^(?=[\s\S]*\/proc)(?=[\s\S]*\benviron\b)/,
+    "Reading a process's environment through /proc is disabled."
+  ],
   [/(?:^|\s|\||;)\beval\b/, "eval is disabled."],
   [/(?:^|\s|\||;)\bexec\b/, "exec is disabled."],
   [/(?:^|\s|;)\bsource\b/, "source is disabled."],
