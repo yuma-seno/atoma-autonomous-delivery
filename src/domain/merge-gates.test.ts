@@ -63,11 +63,13 @@ describe("resolveMergeGates", () => {
 
   // A pattern form the matcher cannot honour would compare literally and claim
   // nothing, which is the same silent failure by another route.
-  test("a wildcard the matcher cannot honour is rejected", () => {
-    for (const pattern of ["**/*.sql", "db/*/migrations/**", "*.ts"]) {
+  test("a pattern form the matcher cannot honour is rejected", () => {
+    for (const pattern of ["**/*.sql", "db/*/migrations/**", "*.ts", "db/migrations/", "logs/?.txt"]) {
       const { gates, problems } = resolveMergeGates([{ reason: "x", when: { files_added: [pattern] } }]);
       expect(gates, pattern).toEqual([]);
-      expect(problems.join(" "), pattern).toContain("wildcard");
+      // The property, not the wording: a trailing slash gets a message naming the
+      // one-character fix, the rest name the glob character. Both say this.
+      expect(problems.join(" "), pattern).toContain("match nothing");
     }
   });
 

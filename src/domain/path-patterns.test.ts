@@ -38,7 +38,7 @@ describe("pathPatternProblem", () => {
   // it. The message names the fix because the fix is one character.
   test("a trailing slash is rejected, and the message says what to write", () => {
     const problem = pathPatternProblem("db/migrations/");
-    expect(problem).toContain("matches nothing");
+    expect(problem).toContain("match nothing");
     expect(problem).toContain('"db/migrations/**"');
   });
 
