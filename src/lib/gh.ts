@@ -68,9 +68,10 @@ export function ghRead(...args: string[]): RunResult {
  * request to wait, and waiting is what a retry does.
  */
 export function looksTransient(result: RunResult): boolean {
-  const text = `${result.stderr}
-${result.stdout}`;
-  if (/HTTP (429|5dd)/.test(text)) return true;
+  const text = `${result.stderr} ${result.stdout}`;
+  // Character classes rather than shorthand: this line has lost a backslash to
+  // tooling twice, and `5dd` compiles just as happily as the version that works.
+  if (/HTTP (429|5[0-9][0-9])(?![0-9])/.test(text)) return true;
   return /(timeout|timed out|connection reset|unexpected EOF|TLS handshake|temporary failure)/i.test(text);
 }
 
