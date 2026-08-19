@@ -118,11 +118,28 @@ filesystem_readonly:
 #                        and an error naming a file names the same file on both
 #                        sides.
 #
-#   unmask=...           Only what a nested container runtime needs. Docker's
-#                        equivalent is all-or-nothing and leaves
-#                        /proc/sysrq-trigger writable, which is a way to reboot
-#                        the runner; podman can open /proc/sys and leave that
-#                        closed. Measured both ways.
+#   unmask=ALL           A nested container cannot mount its own /proc while any
+#                        part of this container's /proc is hidden. The kernel
+#                        refuses it outright, so that an unprivileged user cannot
+#                        mount a fresh procfs to see past a mask -- and podman's
+#                        masks ARE over-mounts, on /proc/kcore, /proc/keys,
+#                        /proc/timer_list and the rest. Unmasking four
+#                        directories was not enough for the same reason it looked
+#                        sufficient: the files still counted. Measured, exactly
+#                        here:
+#                          crun: mount `proc` to `proc`: Operation not permitted
+#
+#                        ALL rather than the current list of masks, because a
+#                        list has to be right for every podman version and gets
+#                        this same failure when it is not.
+#
+#                        The earlier note here said Docker's all-or-nothing was
+#                        the thing to avoid, since it leaves /proc/sysrq-trigger
+#                        writable and rebooting the runner is a real thing to be
+#                        able to do. That argument does not transfer: under
+#                        Docker the container is root, and here it is uid 1234
+#                        with the file owned by an unmapped root. /proc/kcore
+#                        needs CAP_SYS_RAWIO, which is not in the list above.
 #
 #   XDG_*                A nested container runtime keeps its config, storage and
 #                        runtime state under these. Left unset they resolve under
@@ -190,8 +207,7 @@ shell:
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subgid:/etc/subgid:ro",
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/containers.conf:/etc/containers/containers.conf:ro",
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/storage.conf:/etc/containers/storage.conf:ro",
-     "--security-opt", "unmask=/proc/bus", "--security-opt", "unmask=/proc/fs",
-     "--security-opt", "unmask=/proc/irq", "--security-opt", "unmask=/proc/sys",
+     "--security-opt", "unmask=ALL",
      "--security-opt", "seccomp=unconfined",
      "--cap-add", "SETUID", "--cap-add", "SETGID",
      "--device", "/dev/fuse", "--device", "/dev/net/tun",
