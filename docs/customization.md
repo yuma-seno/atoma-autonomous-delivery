@@ -304,7 +304,18 @@ Example:
 
 ### Add environment setup commands
 
-Add shell commands to `environment.setup_commands`. They run before `atoma run` through `bash -c`, in order, and stop on first failure.
+Add shell commands to `environment.setup_commands`. They run through `bash -c`, in
+order, and stop on first failure — before the agent starts, before `checks.commands`,
+and before `deploy.targets`. One declaration, three jobs.
+
+That is the reason to use this field rather than putting `npm ci` at the front of
+`checks.commands`, which works and drifts: the agent's shell and CI then install
+their dependencies from two places, and a test that passes for the agent and fails
+in CI reaches an engineer as a defect that does not reproduce on the machine they
+can see.
+
+Nothing here receives a secret. Setup runs before any credential enters the
+environment, in all three jobs.
 
 Agents are told to treat the runner as already provisioned and never to spend
 iterations installing or configuring tooling themselves, so anything they need at

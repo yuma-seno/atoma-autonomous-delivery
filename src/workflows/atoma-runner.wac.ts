@@ -7,12 +7,12 @@ import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { CacheAction } from "./actions/cache.ts";
+import { environmentSetupStep } from "./actions/environment-setup.ts";
 import { ref as resolveNotifyRef } from "../scripts/resolve_notify.ts";
 import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
 import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
-import { ref as runEnvironmentSetupRef } from "../scripts/run_environment_setup.ts";
 import { ref as prepareShellConfinementRef } from "../scripts/prepare_shell_confinement.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
@@ -921,11 +921,7 @@ fi
   // npm dependencies like @modelcontextprotocol/sdk -- inlined
   // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
   // needs no package.json/node_modules/bun install at all.
-  new TypedOutputsStep({
-    name: "Run configured environment setup",
-    shell: "bash",
-    run: `${scriptCommand(runEnvironmentSetupRef)}\n`,
-  }),
+  environmentSetupStep(),
   // Build the sandbox the `shell` tool server runs in. See #374, and
   // `prepare_shell_confinement.ts` for why this exists at all.
   //
