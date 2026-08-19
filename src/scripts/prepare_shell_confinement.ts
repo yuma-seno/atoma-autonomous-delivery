@@ -108,9 +108,22 @@ const CONTAINER_USER_NAME = "atoma-builder";
  * translation for, which it refuses -- and it refuses with the same EPERM as a
  * missing privilege, so the two failures are indistinguishable from the message.
  *
- * 10000..60000 fits, and steps around CONTAINER_UID rather than through it.
+ * Starting at 1 rather than above CONTAINER_UID, and as wide as the parent allows,
+ * because the range decides which ids can EXIST inside a nested container. At
+ * 10000:50000 the ids inside ran 1..50000, and an image with a non-root USER above
+ * that could not start:
+ *
+ *   crun: setgroups: Invalid argument
+ *
+ * Which is most of them that matter -- distroless is 65532, `nobody` is 65534. So
+ * 1..65535, the whole of what this container has.
+ *
+ * NOT from 0. Inner 0 already maps to CONTAINER_UID through podman's first mapping
+ * line, and leaving outer 0 out of the delegated range is what keeps the host
+ * runner user -- which is what outer 0 is -- out of reach of anything a nested
+ * container runs.
  */
-const SUBID_RANGE = "10000:50000";
+const SUBID_RANGE = "1:65535";
 
 /**
  * `newuidmap` and `newgidmap`, as one script that is deliberately NOT setuid.

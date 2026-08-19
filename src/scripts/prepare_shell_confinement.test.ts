@@ -42,10 +42,25 @@ describe("the container's subordinate id range", () => {
     ).toBeLessThanOrEqual(IDS_THE_CONTAINER_HAS);
   });
 
-  test("does not run through the id the container itself uses", () => {
+  // The boundary that matters is the bottom, not CONTAINER_UID. Outer 0 is the host
+  // runner user; leaving it out of the delegated range is what keeps it out of reach
+  // of anything a nested container runs. Inner 0 does not need it -- podman's first
+  // mapping line points inner 0 at CONTAINER_UID.
+  test("does not delegate outer 0, which is the host runner user", () => {
+    const [start] = SUBID_RANGE.split(":").map(Number) as [number, number];
+    expect(start, `${SUBID_RANGE} hands out outer 0`).toBeGreaterThan(0);
+  });
+
+  // At 50000 wide, an image with a non-root USER above that could not start:
+  // `crun: setgroups: Invalid argument`. distroless is 65532 and `nobody` is 65534,
+  // so the width is not a detail.
+  test("is wide enough for the non-root users images actually use", () => {
     const [start, count] = SUBID_RANGE.split(":").map(Number) as [number, number];
-    const contains = CONTAINER_UID >= start && CONTAINER_UID < start + count;
-    expect(contains, `${SUBID_RANGE} contains CONTAINER_UID ${CONTAINER_UID}`).toBe(false);
+    for (const uid of [1000, 65532, 65534]) {
+      const inside = uid >= start && uid < start + count;
+      expect(inside, `uid ${uid} does not exist inside a nested container`).toBe(true);
+    }
+    expect(CONTAINER_UID).toBeGreaterThan(0);
   });
 });
 
