@@ -1,18 +1,28 @@
-# A temporary probe, not part of the deliverable.
+# Does the confined shell still start a container of its own?
 #
-# Runs `scripts/probe-nested-containers.ts` on a real runner: the confinement step
-# from atoma-runner.yml, then the shell container from tools.yaml, with a script in
-# place of the tool server that tries to start a nested container.
+# The confinement in #374 is expressed in three files, and whether it WORKS cannot
+# be read off them: the failures were a uid the runner image already used, a
+# subordinate range naming ids that did not exist, a setuid bit throwing away the
+# capabilities it needed, and a masked /proc the kernel refuses to mount past. Each
+# one produced a single line inside a single tool call, in a run nobody was watching.
 #
-# It exists because three agent runs were asked this mechanical question and the
-# third one answered with 822k tokens about repositories that do not exist. Delete
-# this file once #374 is settled.
+# So it is measured instead. This runs the real confinement step and the real
+# container argv, with a script in place of the tool server, and tries to start a
+# nested container. It exists because three agent runs were asked this mechanical
+# question and the third answered with 822k tokens about repositories that do not
+# exist.
 #
-# Triggered by pushing a `probe/**` branch, so it never runs for anything else and
-# needs nothing on the default branch.
-name: Probe nested containers
+# Not part of the deliverable -- this repository's own CI, like ci.yml.
+name: Nested containers
 
 'on':
+  pull_request:
+    paths:
+      - 'src/atoma/tools/tools.yaml'
+      - 'src/scripts/prepare_shell_confinement.ts'
+      - 'src/workflows/atoma-runner.wac.ts'
+      - 'scripts/probe-nested-containers.ts'
+      - '.github/workflows/probe-nested.yml'
   push:
     branches:
       - 'probe/**'
@@ -32,6 +42,11 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      - name: Build the deliverable from src
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run synth
       - name: What the runner brings
         shell: bash
         run: |
@@ -40,7 +55,6 @@ jobs:
           getent passwd | cut -d: -f1,3 | tr '\n' ' '
           echo
           cat /proc/self/uid_map
-          ls -l /usr/bin/newuidmap
       - name: Probe
         shell: bash
         run: bun run scripts/probe-nested-containers.ts

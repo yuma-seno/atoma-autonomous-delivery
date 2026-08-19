@@ -24,8 +24,21 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
-const RUNNER_WORKFLOW = ".github/workflows/atoma-runner.yml";
-const TOOLS_YAML = ".github/atoma/tools/tools.yaml";
+/**
+ * `dist/`, not `.github/`, and that is the difference between a guard and a
+ * decoration.
+ *
+ * `.github/` holds the last RELEASE. A pull request that changes the confinement
+ * changes `src/`, and the deployed copy only catches up two pull requests later --
+ * so a probe reading `.github/` would pass by testing the configuration the change
+ * was replacing. `dist/` is what synth just produced from `src/`.
+ *
+ * ATOMA_MACHINERY_ROOT below is the same idea: the confinement step resolves its
+ * script through it, so pointing it at `dist` runs the generated one.
+ */
+const DIST = "dist";
+const RUNNER_WORKFLOW = `${DIST}/.github/workflows/atoma-runner.yml`;
+const TOOLS_YAML = `${DIST}/.github/atoma/tools/tools.yaml`;
 const CONFINEMENT_STEP = "Confine the shell tool server";
 
 /** What the probe runs INSIDE the confined container, in place of the tool server. */
@@ -106,7 +119,12 @@ function main(): void {
   const script = "/tmp/atoma-confinement-step.sh";
   writeFileSync(script, confinementScript());
   console.log(`--- running ${RUNNER_WORKFLOW}'s "${CONFINEMENT_STEP}" verbatim ---`);
-  const setup = Bun.spawnSync({ cmd: ["bash", "-e", script], stdout: "inherit", stderr: "inherit" });
+  const setup = Bun.spawnSync({
+    cmd: ["bash", "-e", script],
+    env: { ...process.env, ATOMA_MACHINERY_ROOT: DIST },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   if (setup.exitCode !== 0) {
     console.error(`::error::the confinement step failed with ${setup.exitCode}; nothing further can be measured`);
     process.exit(setup.exitCode ?? 1);
