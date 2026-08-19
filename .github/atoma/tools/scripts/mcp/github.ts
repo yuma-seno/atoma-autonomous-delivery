@@ -18664,6 +18664,17 @@ function positiveInt(description) {
 function stringArray(description) {
   return exports_external.preprocess((value) => typeof value === "string" ? [value] : value, exports_external.array(exports_external.string())).describe(description);
 }
+var NUMBER_ALIASES = ["issue_number", "pr_number", "pull_number", "pull_request_number"];
+function acceptNumberAliases(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+    return raw;
+  const value = raw;
+  const alias = NUMBER_ALIASES.find((name) => (name in value));
+  if (alias === undefined)
+    return raw;
+  const { [alias]: aliased, ...rest } = value;
+  return "number" in rest ? rest : { ...rest, number: aliased };
+}
 function normalizeResult(result) {
   return typeof result === "string" ? { text: result } : result;
 }
@@ -18679,7 +18690,7 @@ function defineMcpTool(spec) {
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema },
     async call(args) {
-      const result = schema.safeParse(args);
+      const result = schema.safeParse(acceptNumberAliases(args));
       if (!result.success) {
         const message = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
         throw new Error(`Invalid arguments for ${spec.name}: ${message}`);
