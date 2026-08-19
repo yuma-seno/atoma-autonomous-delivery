@@ -21,17 +21,40 @@ Everything a pipeline actually *does* is a command, and commands go in
 `.github/atoma/config.json`, which you can write. Two workflows that already ship
 run them.
 
+## The environment
+
+What the project needs *installed* is separate from what verifies it:
+
+```json
+{
+  "environment": {
+    "setup_commands": ["bun install --frozen-lockfile"]
+  }
+}
+```
+
+Write it here once and every job runs it: the agent's own shell, the checks, and
+the deployment. That is the point of the separate block. Putting `bun install` at
+the front of `checks.commands` instead looks equivalent and is not — the agent's
+shell then has the dependencies and CI installs them again, or the reverse, and the
+two environments drift. A test that passes for the agent and fails in CI comes back
+to an engineer as a defect that does not reproduce.
+
+System packages belong here too, and only here. An agent cannot install one during
+a run.
+
 ## Verification
 
 ```json
 {
   "checks": {
-    "commands": ["bun install --frozen-lockfile", "bun run typecheck", "bun test"]
+    "commands": ["bun run typecheck", "bun test"]
   }
 }
 ```
 
-They run in order in `atoma-check.yml`, and the first failure ends the run.
+They run in order in `atoma-check.yml`, after the environment setup above, and the
+first failure ends the run.
 Whatever a contributor would type to check the project locally is what belongs
 here — read the README, the package manifest's scripts, and any CONTRIBUTING
 file before writing this, rather than guessing a stack.

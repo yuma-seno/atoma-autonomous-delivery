@@ -36,6 +36,10 @@ jobs:
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
+      - name: Run configured environment setup
+        shell: bash
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_environment_setup.ts"
       - name: Resolve which repository secrets may reach this run
         id: secret-names
         shell: bash
