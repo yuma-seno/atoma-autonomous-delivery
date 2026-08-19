@@ -1,12 +1,13 @@
 {
   "merge_policy": "auto",
   "environment": {
-    "setup_commands": []
+    "setup_commands": [
+      "bun install --frozen-lockfile"
+    ]
   },
   "checks": {
     "commands": [
       "./scripts/scan-secrets.sh",
-      "bun install --frozen-lockfile",
       "bun run typecheck",
       "bun run synth",
       "bun run test"
