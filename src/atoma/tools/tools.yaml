@@ -141,6 +141,18 @@ filesystem_readonly:
 #                        through `--pid=host`, and the confinement is worth
 #                        nothing.
 #
+#   ~/.local/bin first   Where the confinement step puts copies of newuidmap and
+#                        newgidmap that the runner user OWNS. The host's are
+#                        setuid root, and in here host uid 0 is mapped to
+#                        nothing, so the kernel ignores the bit and a nested
+#                        rootless runtime cannot map its own ids:
+#                          newuidmap: write to uid_map failed: Operation not
+#                          permitted
+#                        A copy this user owns is owned by uid 0 *inside* this
+#                        namespace, where the bit works -- and confers that
+#                        namespace's root, which the container's own mapping
+#                        already bounds.
+#
 # What the agent gives up: writes outside the work tree do not outlive the run.
 # `shell_execute`'s description says so, because it is the kind of thing that
 # looks like it worked.
@@ -160,7 +172,7 @@ shell:
      "--security-opt", "seccomp=unconfined",
      "--device", "/dev/fuse", "--device", "/dev/net/tun",
      "-w", "${GITHUB_WORKSPACE}",
-     "-e", "HOME=/home/runner", "-e", "PATH=${PATH}",
+     "-e", "HOME=/home/runner", "-e", "PATH=/home/runner/.local/bin:${PATH}",
      "-e", "XDG_RUNTIME_DIR=/tmp/atoma-xdg",
      "-e", "XDG_CONFIG_HOME=/tmp/atoma-xdg/config",
      "-e", "XDG_DATA_HOME=/tmp/atoma-xdg/data",

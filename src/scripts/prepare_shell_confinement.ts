@@ -92,8 +92,25 @@ const CONTAINER_UID = 1234;
 const CONTAINER_GID = 0;
 const CONTAINER_USER_NAME = "atoma-builder";
 
-/** Subordinate ids for the nested runtime, inside what the outer mapping allows. */
-const SUBID_RANGE = "100000:60000";
+/**
+ * Subordinate ids for the nested runtime, inside what the outer mapping allows.
+ *
+ * "Inside" is the whole content of this constant, and the first version got it
+ * wrong. A user namespace can only map ids that exist in its PARENT, and the
+ * parent here is this container, whose own map was measured from inside it:
+ *
+ *   $ cat /proc/self/uid_map
+ *            0       1001          1
+ *            1     165536      65536
+ *
+ * So the ids that exist in here run 0..65536, and a range starting at 100000 names
+ * nothing. `newuidmap` was being asked to map onto ids the kernel has no
+ * translation for, which it refuses -- and it refuses with the same EPERM as a
+ * missing privilege, so the two failures are indistinguishable from the message.
+ *
+ * 10000..60000 fits, and steps around CONTAINER_UID rather than through it.
+ */
+const SUBID_RANGE = "10000:50000";
 
 function main(): void {
   const { values } = parseArgs({ args: Bun.argv.slice(2), options: { out: { type: "string" } } });
@@ -159,6 +176,6 @@ function readHostPasswd(): string {
   return text.endsWith("\n") || text === "" ? text : `${text}\n`;
 }
 
-export { CONTAINER_GID, CONTAINER_UID, CONTAINER_USER_NAME, OVERLAY_ROOT };
+export { assertIdentityIsFree, CONTAINER_GID, CONTAINER_UID, CONTAINER_USER_NAME, OVERLAY_ROOT, SUBID_RANGE };
 
 if (import.meta.main) main();
