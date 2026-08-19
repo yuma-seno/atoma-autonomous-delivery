@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { CONTAINER_GID, CONTAINER_UID } from "../../src/scripts/prepare_shell_confinement.ts";
 
 /**
  * `tools.yaml` decides how every tool server is started, and nothing was reading
@@ -75,6 +76,23 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
       expect(joined, "the host PID namespace would undo all of it").not.toContain("pid=host");
     });
   }
+
+  // The identity is written in two places: `--user` here, and CONTAINER_UID in the
+  // script that generates the container's /etc/passwd. When they drift, podman
+  // resolves the uid against the HOST's passwd -- which that generated file
+  // includes -- finds no subuid range for whatever account holds it, and falls
+  // back to a single mapping. Nested containers then fail, and the only sign is a
+  // warning inside one tool result. uid 1000 did exactly this, to the runner
+  // image's `packer`.
+  test("the shell server's uid matches the passwd entry generated for it", () => {
+    for (const path of [SOURCE, DEPLOYED]) {
+      const args = (parse(path).shell?.args ?? []) as string[];
+      const user = args[args.indexOf("--user") + 1];
+      expect(user, `${path}: --user disagrees with prepare_shell_confinement.ts`).toBe(
+        `${CONTAINER_UID}:${CONTAINER_GID}`,
+      );
+    }
+  });
 
   // Credentials reach a server by being named in its own `env`. The confined
   // server naming one would defeat the point of confining it.
