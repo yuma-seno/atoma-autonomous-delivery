@@ -141,39 +141,39 @@ filesystem_readonly:
 #                        through `--pid=host`, and the confinement is worth
 #                        nothing.
 #
-#   ~/.local/bin first   Where the confinement step puts copies of newuidmap and
-#                        newgidmap that the runner user OWNS. The host's are
-#                        setuid root, and in here host uid 0 is mapped to
-#                        nothing, so the kernel ignores the bit outright.
-#                        A copy this user owns is owned by uid 0 *inside* this
-#                        namespace, where the bit does apply.
+#   ~/.local/bin first   Where the confinement step puts ONE generated script under
+#                        both names a nested rootless runtime delegates its id
+#                        mapping to. Deliberately not setuid -- that bit is what
+#                        broke this, not what was missing.
 #
-#   --cap-add SETUID     What makes that copy worth anything. A setuid binary
-#   --cap-add SETGID     raises euid to 0, but euid 0 confers no capability on
-#                        its own -- the permitted set is drawn from the BOUNDING
-#                        set, and podman leaves that empty for a non-root
-#                        --user. So newuidmap became root and still could not
-#                        write a second mapping line:
+#   --cap-add SETUID     What the mapping actually needs. Measured inside the
+#   --cap-add SETGID     container on #426:
+#                          CapPrm: 00000000000000c0  CapEff: 00000000000000c0
+#                        podman hands a non-root --user its added capabilities as
+#                        AMBIENT ones, and ambient capabilities are effective. The
+#                        same run wrote podman's own two-line mapping by hand and
+#                        it worked. Only the delegation failed: executing a setuid
+#                        binary CLEARS the ambient set, and inside a non-initial
+#                        user namespace a setuid-root file confers nothing to
+#                        replace it, so newuidmap arrived as euid 0 with nothing to
+#                        be root with:
 #                          newuidmap: write to uid_map failed: Operation not
 #                          permitted
-#                        It had opened the file, which is the tell: euid was 0
-#                        and CAP_SETUID was not there to use. Measured on #422.
 #
-#                        Adding them to the bounding set does NOT hand them to
-#                        the agent. For a non-root uid the effective set is
-#                        empty at exec, so only a setuid-0 binary can pick them
-#                        up -- and the only ones whose owner this namespace can
-#                        see are the two copies above. The host's /usr/bin/su
-#                        and friends belong to an unmapped root, which is why
-#                        `su root` fails in here and keeps failing.
-#                        Making a new one needs CAP_CHOWN to own a file as uid
-#                        0, which is not in this list.
+#                        Be clear about what this costs: with CAP_SETUID effective,
+#                        the container CAN reach uid 0 in its own namespace, which
+#                        rootless podman maps to the host runner user. That is not
+#                        the same as the host's root and it reaches nothing new --
+#                        /usr, /opt and /etc are read-only, $HOME is the overlay,
+#                        and the PID namespace is separate, which is what actually
+#                        closes the environ route. The uid was never the part doing
+#                        that work.
 #
-#   storage.conf         ignore_chown_errors, for the case where the runtime
-#                        ends up in single-mapping mode: one id inside means an
-#                        image's non-root files cannot be restored, and podman
-#                        would rather fail the extraction than approximate it.
-#                        Here the alternative is no nested containers at all.
+#   storage.conf         ignore_chown_errors, for the case where the runtime ends
+#                        up in single-mapping mode: one id inside means an image's
+#                        non-root files cannot be restored, and podman would rather
+#                        fail the extraction than approximate it. Here the
+#                        alternative is no nested containers at all.
 #
 # What the agent gives up: writes outside the work tree do not outlive the run.
 # `shell_execute`'s description says so, because it is the kind of thing that

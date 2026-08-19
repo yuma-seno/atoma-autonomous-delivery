@@ -69,10 +69,15 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
       // The overlay is what makes $HOME readable, writable, and harmless at once.
       expect(joined).toContain("/home/runner");
 
-      // Exactly two capabilities, and they are in the BOUNDING set of a non-root
-      // --user, where only a setuid-0 binary can pick them up. ALL or SYS_ADMIN
-      // there would turn the container's namespace-local root into something that
-      // means the same thing as the host's.
+      // Exactly two capabilities, and podman makes them AMBIENT for a non-root
+      // --user -- so they are effective, and the container can reach uid 0 in its
+      // own namespace. That is the deal #426 settled: the id mapping a nested
+      // runtime needs cannot happen without them, and what they reach is the host
+      // runner user rather than the host's root, behind read-only mounts and a
+      // separate PID namespace.
+      //
+      // Which is exactly why the list must not grow. ALL, or SYS_ADMIN, would stop
+      // being namespace-local.
       const caps = args.filter((_, i) => args[i - 1] === "--cap-add");
       expect([...caps].sort(), "the capability list must stay at what newuidmap needs").toEqual([
         "SETGID",
