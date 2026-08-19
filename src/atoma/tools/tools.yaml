@@ -144,14 +144,36 @@ filesystem_readonly:
 #   ~/.local/bin first   Where the confinement step puts copies of newuidmap and
 #                        newgidmap that the runner user OWNS. The host's are
 #                        setuid root, and in here host uid 0 is mapped to
-#                        nothing, so the kernel ignores the bit and a nested
-#                        rootless runtime cannot map its own ids:
+#                        nothing, so the kernel ignores the bit outright.
+#                        A copy this user owns is owned by uid 0 *inside* this
+#                        namespace, where the bit does apply.
+#
+#   --cap-add SETUID     What makes that copy worth anything. A setuid binary
+#   --cap-add SETGID     raises euid to 0, but euid 0 confers no capability on
+#                        its own -- the permitted set is drawn from the BOUNDING
+#                        set, and podman leaves that empty for a non-root
+#                        --user. So newuidmap became root and still could not
+#                        write a second mapping line:
 #                          newuidmap: write to uid_map failed: Operation not
 #                          permitted
-#                        A copy this user owns is owned by uid 0 *inside* this
-#                        namespace, where the bit works -- and confers that
-#                        namespace's root, which the container's own mapping
-#                        already bounds.
+#                        It had opened the file, which is the tell: euid was 0
+#                        and CAP_SETUID was not there to use. Measured on #422.
+#
+#                        Adding them to the bounding set does NOT hand them to
+#                        the agent. For a non-root uid the effective set is
+#                        empty at exec, so only a setuid-0 binary can pick them
+#                        up -- and the only ones whose owner this namespace can
+#                        see are the two copies above. The host's /usr/bin/su
+#                        and friends belong to an unmapped root, which is why
+#                        `su root` fails in here and keeps failing.
+#                        Making a new one needs CAP_CHOWN to own a file as uid
+#                        0, which is not in this list.
+#
+#   storage.conf         ignore_chown_errors, for the case where the runtime
+#                        ends up in single-mapping mode: one id inside means an
+#                        image's non-root files cannot be restored, and podman
+#                        would rather fail the extraction than approximate it.
+#                        Here the alternative is no nested containers at all.
 #
 # What the agent gives up: writes outside the work tree do not outlive the run.
 # `shell_execute`'s description says so, because it is the kind of thing that
@@ -167,9 +189,11 @@ shell:
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subuid:/etc/subuid:ro",
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subgid:/etc/subgid:ro",
      "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/containers.conf:/etc/containers/containers.conf:ro",
+     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/storage.conf:/etc/containers/storage.conf:ro",
      "--security-opt", "unmask=/proc/bus", "--security-opt", "unmask=/proc/fs",
      "--security-opt", "unmask=/proc/irq", "--security-opt", "unmask=/proc/sys",
      "--security-opt", "seccomp=unconfined",
+     "--cap-add", "SETUID", "--cap-add", "SETGID",
      "--device", "/dev/fuse", "--device", "/dev/net/tun",
      "-w", "${GITHUB_WORKSPACE}",
      "-e", "HOME=/home/runner", "-e", "PATH=/home/runner/.local/bin:${PATH}",
