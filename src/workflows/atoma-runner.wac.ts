@@ -973,28 +973,24 @@ for dir in .local .local/share .local/share/containers .local/share/containers/s
   chmod g+rwxs "${SHELL_OVERLAY_ROOT}/merged/$dir"
 done
 
-# The two setuid helpers a nested rootless runtime needs, as copies THIS user owns.
+# The two names a nested rootless runtime delegates its id mapping to, as ONE
+# generated script under both -- and not setuid, which is the whole point.
 #
-# The host's own are setuid root, and that is exactly why they cannot work inside:
-# in the container's user namespace host uid 0 is mapped to nothing, so the kernel
-# ignores the bit -- \`ls\` shows the file as \`nobody\` and owning the s -- and the
-# call fails with a message that reads like a missing privilege:
+# The container already holds CAP_SETUID and CAP_SETGID effectively: podman hands a
+# non-root --user its added capabilities as AMBIENT ones. #426 measured that, and
+# measured the two-line mapping podman wants succeeding when written by hand. What
+# fails is the delegation, because executing a SETUID binary clears the ambient set
+# and a setuid-root file confers nothing inside a non-initial user namespace -- so
+# both the host's newuidmap and the owned copy v0.1.53 put here arrived as euid 0
+# with no capability left to use:
 #
 #   newuidmap: write to uid_map failed: Operation not permitted
 #
-# A copy owned by the runner user is owned by uid 0 INSIDE that namespace, where
-# the bit does take effect. What it confers is that namespace's root, which the
-# container's own mapping already bounds; nothing about the host's root. And
-# newuidmap grants no more than /etc/subuid allows the calling user, which is the
-# generated file above.
+# A plain executable keeps the ambient set and writes the file itself. It grants
+# nothing the calling process did not already have.
 mkdir -p ${SHELL_OVERLAY_ROOT}/merged/.local/bin
 for tool in newuidmap newgidmap; do
-  # Absent only on a runner without the uidmap package, where nested containers
-  # were never going to work. That is not a reason to fail every run, so say it
-  # and carry on.
-  src=$(command -v $tool) || { echo "no $tool on this runner; nested containers will not work"; continue; }
-  cp "$src" "${SHELL_OVERLAY_ROOT}/merged/.local/bin/$tool"
-  chmod 4755 "${SHELL_OVERLAY_ROOT}/merged/.local/bin/$tool"
+  install -m 0755 "${SHELL_SANDBOX_DIR}/newidmap" "${SHELL_OVERLAY_ROOT}/merged/.local/bin/$tool"
 done
 
 echo "confined shell: overlay at ${SHELL_OVERLAY_ROOT}/merged, mounts from ${SHELL_SANDBOX_DIR}"
