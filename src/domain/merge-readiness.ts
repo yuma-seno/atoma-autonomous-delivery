@@ -5,7 +5,7 @@
  * The verdict comes from the repository's own branch protection, not from an
  * opinion held here. GitHub computes `mergeStateStatus` against whatever the
  * active ruleset requires, and the ruleset is a reviewed file
- * (`.github/rulesets/*.json`), so changing what "mergeable" means is a change to
+ * (`.github/atoma/rulesets/*.json`), so changing what "mergeable" means is a change to
  * that file — this module and the tools built on it follow automatically, with no
  * second definition to keep in step.
  *

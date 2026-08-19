@@ -40,7 +40,7 @@ When changing template behavior, treat `src/` as canonical.
 
 ## Branch protection
 
-What may reach `main` is declared in `.github/rulesets/main.json`: no direct
+What may reach `main` is declared in `.github/atoma/rulesets/main.json`: no direct
 pushes, no force-pushes, no branch deletion, and a pull request that cannot merge
 until the `atoma-check` job passes.
 
@@ -50,7 +50,7 @@ together; this repository's copy of the ruleset is applied by hand, so renaming
 either side means applying it again:
 
 ```bash
-gh api -X PUT repos/{owner}/{repo}/rulesets/{id} --input .github/rulesets/main.json
+gh api -X PUT repos/{owner}/{repo}/rulesets/{id} --input .github/atoma/rulesets/main.json
 ```
 
 A required context no job produces does not fail a pull request — it leaves it
@@ -74,7 +74,7 @@ app, which is not an app installable on a repository and therefore not a valid
 contains an invalid actor`, and the entry was never applied at all.
 
 A ruleset is **not** read from the repository. It is a server-side setting, and
-`.github/rulesets/main.json` is this project's own convention: the reviewed
+`.github/atoma/rulesets/main.json` is this project's own convention: the reviewed
 declaration of what the setting should be. Something has to carry it across.
 
 CI cannot: creating or updating a ruleset goes through the repository
@@ -90,7 +90,7 @@ that stops nobody, which is worse than no mark at all.
 **From the web UI** — easiest, and needs nothing installed:
 
 > Settings → Rules → Rulesets → *New ruleset* → **Import a ruleset**, then upload
-> `.github/rulesets/main.json`.
+> `.github/atoma/rulesets/main.json`.
 
 If the import option is unavailable, create it through the form instead and set:
 target the default branch; restrict deletions; block force pushes; require a pull
@@ -101,7 +101,7 @@ the bypass list empty.
 
 ```bash
 gh api --method POST repos/yuma-seno/atoma-autonomous-delivery/rulesets \
-  --input .github/rulesets/main.json
+  --input .github/atoma/rulesets/main.json
 ```
 
 To change the rules later, edit the JSON in a pull request, then re-import (or

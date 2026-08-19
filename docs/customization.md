@@ -213,12 +213,25 @@ the engineer does not.
 
 The frontmatter `provider` field selects the client, not the vendor:
 
-| Value | API |
-| --- | --- |
-| `openai` | Chat Completions (`/chat/completions`) — the default, and what OpenAI-compatible servers speak |
-| `openai-responses` | OpenAI's Responses API (`/responses`) |
-| `anthropic` | Anthropic Messages |
-| `github-copilot` | Copilot, over Chat Completions |
+| Value | API | Credential | Endpoint |
+| --- | --- | --- | --- |
+| `openai` | Chat Completions (`/chat/completions`) | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| `openai-responses` | OpenAI's Responses API (`/responses`) | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| `openrouter` | Chat Completions | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
+| `orcarouter` | Chat Completions | `ORCAROUTER_API_KEY` | `https://api.orcarouter.ai/v1` |
+| `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` |
+| `github-copilot` | Copilot, over Chat Completions | `ATOMA_COPILOT_TOKEN` | `https://api.githubcopilot.com` |
+
+**One provider, one credential, and the credential is what selects the provider**
+when neither the agent definition nor the `ATOMA_PROVIDER` variable names one. Add
+exactly the secret for the provider you intend to use. Adding two is an error naming
+both, rather than a precedence that picks for you — before atoma v0.1.13,
+`OPENAI_API_KEY` selected a client whose endpoint defaulted to OpenRouter, so the
+name of the secret said nothing about where the key was sent.
+
+Each endpoint moves with its own `*_BASE_URL` variable (`OPENROUTER_BASE_URL` and so
+on). None of them may be declared in `tools.secrets`: moving a provider's endpoint is
+a way to send its credential somewhere else.
 
 The two OpenAI entries reach the same models by different routes. Prefer
 `openai` unless you need the other: it is what vLLM, Ollama, LM Studio, Azure and
@@ -231,9 +244,12 @@ that route the image is moved into a following message; the Responses API's
 `function_call_output` takes it directly. If your agents never receive pictures,
 the two behave alike and `openai` is the safer default.
 
-Both read `OPENAI_API_KEY` and `OPENAI_BASE_URL`. Point `OPENAI_BASE_URL` at a
-host that serves the endpoint you picked — not every OpenAI-compatible gateway
-implements `/responses`.
+Both read `OPENAI_API_KEY` and `OPENAI_BASE_URL`, because they are one vendor
+reached two ways. That pair is also how to reach a provider with no row of its own:
+point `OPENAI_BASE_URL` at any host serving the endpoint you picked — not every
+OpenAI-compatible gateway implements `/responses`. What you give up by doing that
+instead of naming a provider is that the run's log says `openai`, so where it went is
+only visible in the variable.
 
 ### Pin which OpenRouter endpoint serves a model
 

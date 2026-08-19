@@ -109,6 +109,13 @@ export interface SecretDestination {
  */
 export const RUN_CREDENTIALS: readonly string[] = [
   "OPENAI_API_KEY",
+  // One provider, one credential, since atoma v0.1.13. `OPENAI_API_KEY` used to
+  // authenticate anything speaking OpenAI's dialect, including OpenRouter, so the
+  // name said nothing about where the key was going to be sent. These two are the
+  // routers' own names, and there is no fallback to the old one: a run holding both
+  // is an error naming both rather than a silent precedence.
+  "OPENROUTER_API_KEY",
+  "ORCAROUTER_API_KEY",
   "ANTHROPIC_API_KEY",
   "ATOMA_COPILOT_TOKEN",
   "GH_TOKEN",
@@ -136,7 +143,14 @@ export const TOOL_SECRETS: SecretDestination = {
     "GITHUB_RUN_ID",
     "ISSUE_NOTIFY",
     "ISSUE_NUMBER",
+    // One per provider, all of them the same shape since atoma v0.1.13: a
+    // declared secret that shadowed one would move that provider's endpoint, which
+    // is a way to send a credential somewhere else.
     "OPENAI_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "ORCAROUTER_BASE_URL",
+    "ANTHROPIC_BASE_URL",
+    "COPILOT_BASE_URL",
     // The repository-variable forms the step is actually given. The run script
     // promotes each to the unsuffixed name above once it has checked it is not
     // empty, so shadowing either would decide the provider or its host before
