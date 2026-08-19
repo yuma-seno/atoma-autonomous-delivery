@@ -76,9 +76,21 @@ const OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
  * Group 0, though, which rootless podman maps to the host user's primary group.
  * That is what lets the container write a work tree the host owns, once the tree
  * is group-writable.
+ *
+ * And not 1000 either, which was the first choice and collided. The runner image
+ * already has a `packer` account there, and the passwd below is the HOST's plus
+ * one appended line — so the earlier entry wins every lookup. podman resolved uid
+ * 1000 to `packer`, found no subuid range for that name, and quietly fell back to
+ * a single mapping:
+ *
+ *   cannot find UID/GID for user packer: no subuid ranges found for user "packer"
+ *
+ * A warning inside a tool call nobody was reading. `assertIdentityIsFree` below
+ * turns the next such collision into a failed run instead.
  */
-const CONTAINER_USER = "1000:0";
-const CONTAINER_USER_NAME = "builder";
+const CONTAINER_UID = 1234;
+const CONTAINER_GID = 0;
+const CONTAINER_USER_NAME = "atoma-builder";
 
 /** Subordinate ids for the nested runtime, inside what the outer mapping allows. */
 const SUBID_RANGE = "100000:60000";
@@ -94,7 +106,10 @@ function main(): void {
 
   // `/etc` is mounted from the host read-only, so these are laid over it as
   // deeper mounts rather than edited in place.
-  const passwd = `${readHostPasswd()}${CONTAINER_USER_NAME}:x:1000:0::/home/runner:/bin/bash\n`;
+  const hostPasswd = readHostPasswd();
+  assertIdentityIsFree(hostPasswd);
+  const passwd =
+    `${hostPasswd}${CONTAINER_USER_NAME}:x:${CONTAINER_UID}:${CONTAINER_GID}::/home/runner:/bin/bash\n`;
   writeFileSync(join(out, "passwd"), passwd);
   writeFileSync(join(out, "subuid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}\n`);
   writeFileSync(join(out, "subgid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}\n`);
@@ -111,6 +126,32 @@ function main(): void {
   console.error(`shell confinement: overlay root is ${OVERLAY_ROOT}`);
 }
 
+/**
+ * Refuse to proceed if the host already uses this uid or this name.
+ *
+ * `tools.yaml` names the uid, so it cannot be chosen here at run time. What can be
+ * done is stop rather than hand the container somebody else's identity — which is
+ * exactly what uid 1000 did, and it surfaced only as a warning in a tool result.
+ */
+function assertIdentityIsFree(hostPasswd: string): void {
+  for (const line of hostPasswd.split("\n")) {
+    const [name, , uid] = line.split(":");
+    if (name === CONTAINER_USER_NAME) {
+      throw new Error(
+        `the host already has an account named ${CONTAINER_USER_NAME}. ` +
+          "Pick another name in prepare_shell_confinement.ts.",
+      );
+    }
+    if (uid === String(CONTAINER_UID)) {
+      throw new Error(
+        `the host already uses uid ${CONTAINER_UID} (${name}), so the container would run as ` +
+          "that account and podman would find no subuid range for it. Pick another uid here " +
+          "AND in tools.yaml's --user.",
+      );
+    }
+  }
+}
+
 /** The host's own passwd, so every real account still resolves inside. */
 function readHostPasswd(): string {
   const result = Bun.spawnSync({ cmd: ["getent", "passwd"], stdout: "pipe" });
@@ -118,6 +159,6 @@ function readHostPasswd(): string {
   return text.endsWith("\n") || text === "" ? text : `${text}\n`;
 }
 
-export { CONTAINER_USER, CONTAINER_USER_NAME, OVERLAY_ROOT };
+export { CONTAINER_GID, CONTAINER_UID, CONTAINER_USER_NAME, OVERLAY_ROOT };
 
 if (import.meta.main) main();

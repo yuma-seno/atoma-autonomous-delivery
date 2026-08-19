@@ -962,6 +962,21 @@ chmod g+w ${SHELL_OVERLAY_ROOT}/merged
 chmod -R g+w "$GITHUB_WORKSPACE" 2>/dev/null || true
 find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} + 2>/dev/null || true
 
+# podman's signature lookaside is hardcoded to $HOME/.local/share/containers/
+# sigstore and does NOT consult XDG_DATA_HOME, so the XDG redirection tools.yaml
+# does for config, storage and runtime state misses this one. Every nested
+# "podman run" opens a path under it, and on the host that chain is owner-only, so
+# the container -- a different uid, carrying only the host user's group -- got:
+#   open /home/runner/.local/share/containers/sigstore/library/alpine@sha256=...:
+#   permission denied
+# Opening the chain to the group is a write to the overlay's UPPER layer, so the
+# host's own $HOME keeps its modes. This chain only, not $HOME at large: chmod -R
+# there would copy the entire home directory up into the overlay.
+for dir in .local .local/share .local/share/containers .local/share/containers/sigstore; do
+  mkdir -p "${SHELL_OVERLAY_ROOT}/merged/$dir"
+  chmod g+rwxs "${SHELL_OVERLAY_ROOT}/merged/$dir"
+done
+
 echo "confined shell: overlay at ${SHELL_OVERLAY_ROOT}/merged, mounts from ${SHELL_SANDBOX_DIR}"
 `,
   }),
