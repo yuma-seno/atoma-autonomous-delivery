@@ -4,6 +4,7 @@ import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { environmentSetupStep } from "./actions/environment-setup.ts";
 import { ref as runChecksRef } from "../scripts/run_checks.ts";
 
 // Runs whatever config.json's `checks.commands` says verifies this project.
@@ -92,6 +93,7 @@ export const atomaCheck = new Workflow("atoma-check", {
     [
       new ActionsCheckoutV4({ name: "Checkout repository" }),
       new SetupBunAction({ name: "Setup Bun" }),
+      environmentSetupStep(),
       secretNamesStep("checks"),
       runStep,
     ],

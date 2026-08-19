@@ -4,6 +4,7 @@ import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { scriptCommandWithArgs } from "./actions/script-call.ts";
 import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { environmentSetupStep } from "./actions/environment-setup.ts";
 import { ref as runDeployRef } from "../scripts/run_deploy.ts";
 
 // Runs whatever config.json's `deploy.targets` says this project deploys.
@@ -135,6 +136,7 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
     [
       new ActionsCheckoutV4({ name: "Checkout repository" }),
       new SetupBunAction({ name: "Setup Bun" }),
+      environmentSetupStep(),
       secretNamesStep("deploy"),
       runStep,
     ],
