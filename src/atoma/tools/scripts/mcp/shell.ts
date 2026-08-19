@@ -2,6 +2,7 @@
 /** Foreground-only shell MCP server for deterministic agent validation commands. */
 import { buildMcpTools, defineMcpTool, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { literalsFrom, redact } from "../../../../domain/redaction.ts";
+import { RUN_CREDENTIALS } from "../../../../domain/declared-secrets.ts";
 
 /**
  * This server's diagnostics, prefixed like every other server's.
@@ -40,11 +41,9 @@ const MAX_OUTPUT_BYTES = 1_000_000;
  * every mention of the word.
  */
 const SECRET_ENV_NAMES = [
-  "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "ORCAROUTER_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GH_TOKEN",
+  ...RUN_CREDENTIALS,
+  // The two GitHub names a run does not supply but a project might, so a value under
+  // either is still redacted from this server's own output.
   "GITHUB_TOKEN",
   "GITHUB_PERSONAL_ACCESS_TOKEN",
 ] as const;

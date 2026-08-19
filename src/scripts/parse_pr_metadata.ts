@@ -8,6 +8,7 @@
  * $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
+import { closedIssueNumber } from "../domain/issue-links.ts";
 import { PARENT_ISSUE_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
@@ -25,7 +26,12 @@ function main(): void {
   if (parent) console.error(`PR #${prNumber} is linked to parent issue #${parent}`);
   else console.error(`PR #${prNumber} has no parent-issue metadata`);
 
-  const sub = /Closes #(\d+)/.exec(body)?.[1] ?? "";
+  // The domain's rule, not a third spelling of it. This was `/Closes #(\d+)/`:
+  // case-sensitive, exactly one space, and only one of GitHub's six keywords, while the
+  // tool that decides whether to inject such a line matches all six case-insensitively.
+  // A body saying `closes #12` therefore got no injected line AND no match here.
+  const closed = closedIssueNumber(body);
+  const sub = closed === undefined ? "" : String(closed);
   if (sub) console.error(`PR closes sub-issue #${sub}`);
 
   if (githubOutput) {
