@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeConfigDir, runWithFakeGh, type FakeGhRule } from "../scripts/testing/harness.ts";
 import { extractImageUrls, sniffMimeType } from "./issue-images.ts";
+import { looksTransient } from "./gh.ts";
 import { injectSummary } from "./inject-sub-results.ts";
 import type { Session } from "./session.ts";
 
@@ -391,5 +392,39 @@ describe("issue-images.ts sniffMimeType", () => {
   test("says nothing for bytes that are not a known image", () => {
     expect(sniffMimeType(bytes(0x25, 0x50, 0x44, 0x46))).toBe("");
     expect(sniffMimeType(new Uint8Array())).toBe("");
+  });
+});
+
+/**
+ * A failure from the far end is not an answer, and the difference decides whether a
+ * run dies.
+ *
+ * One `HTTP 504` on a pull request lookup ended a run on #427 -- the reviewer never
+ * started, and a red check appeared for a defect in neither the code nor the
+ * machinery. What must NOT be retried matters just as much: a 404 is an answer, and
+ * retrying it would turn a clear failure into three of them.
+ */
+describe("gh.ts looksTransient", () => {
+  const failure = (stderr: string) => ({ code: 1, stdout: "", stderr });
+
+  test("the far end failing is not an answer", () => {
+    expect(looksTransient(failure("gh: HTTP 504")), "the failure that ended a run on #427").toBe(true);
+    expect(looksTransient(failure("gh: HTTP 502 Bad Gateway"))).toBe(true);
+    expect(looksTransient(failure("HTTP 429 rate limit exceeded")), "429 asks for a wait").toBe(true);
+    expect(looksTransient(failure("dial tcp: i/o timeout"))).toBe(true);
+    expect(looksTransient(failure("unexpected EOF"))).toBe(true);
+  });
+
+  test("a refusal IS an answer, and repeating the question does not change it", () => {
+    expect(looksTransient(failure("gh: Not Found (HTTP 404)"))).toBe(false);
+    expect(looksTransient(failure("gh: HTTP 403 Resource not accessible by integration"))).toBe(false);
+    expect(looksTransient(failure("gh: HTTP 422 Validation Failed"))).toBe(false);
+    expect(looksTransient(failure("unknown flag: --nope"))).toBe(false);
+  });
+
+  // A status code, not any digits that begin with one.
+  test("reads a status code and not a longer number that starts with one", () => {
+    expect(looksTransient(failure("gh: HTTP 500"))).toBe(true);
+    expect(looksTransient(failure("gh: HTTP 5001"))).toBe(false);
   });
 });

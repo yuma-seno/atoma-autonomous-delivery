@@ -31,6 +31,51 @@ export function gh(...args: string[]): RunResult {
 }
 
 /**
+ * Run a READ through `gh`, treating an upstream failure as no answer rather than as
+ * an answer of "no".
+ *
+ * GitHub returned `HTTP 504` for one `gh api repos/.../pulls/427` call and the run
+ * died on it: the reviewer never started, and the pull request carried a red check
+ * for a defect in neither the code nor the machinery. There is nothing to learn from
+ * a 504 and nothing for an agent to do about it.
+ *
+ * Reads only, which is the whole reason this is a separate function rather than a
+ * change to `gh` itself. A mutation that returns 502 may well have been applied, and
+ * the invariants here are the kind a second attempt breaks -- one comment per run,
+ * one dispatch per handoff. So the retry has to be asked for, by a caller that knows
+ * its call changes nothing.
+ *
+ * Three attempts, widening, because the point is to outlast a blip rather than to
+ * sit out an outage: a run holds a runner while it sleeps.
+ */
+export function ghRead(...args: string[]): RunResult {
+  let result = gh(...args);
+  for (const delay of [2_000, 6_000]) {
+    if (result.code === 0 || !looksTransient(result)) return result;
+    console.error(
+      `::warning::gh ${args.slice(0, 2).join(" ")} failed transiently, retrying: ${result.stderr || result.stdout}`,
+    );
+    Bun.sleepSync(delay);
+    result = gh(...args);
+  }
+  return result;
+}
+
+/**
+ * Whether a failure came from the far end rather than from the request.
+ *
+ * A 404 is an answer; a 504 is the absence of one. 429 belongs here as well: it is a
+ * request to wait, and waiting is what a retry does.
+ */
+export function looksTransient(result: RunResult): boolean {
+  const text = `${result.stderr} ${result.stdout}`;
+  // Character classes rather than shorthand: this line has lost a backslash to
+  // tooling twice, and `5dd` compiles just as happily as the version that works.
+  if (/HTTP (429|5[0-9][0-9])(?![0-9])/.test(text)) return true;
+  return /(timeout|timed out|connection reset|unexpected EOF|TLS handshake|temporary failure)/i.test(text);
+}
+
+/**
  * Run `gh` and keep its stdout as bytes.
  *
  * `gh` above decodes stdout as UTF-8 and trims it, which is right for JSON and
