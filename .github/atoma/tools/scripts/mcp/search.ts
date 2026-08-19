@@ -17929,7 +17929,15 @@ async function serveMcpServer(options) {
 var CHUNK_LIMIT = 700;
 var MIN_CHUNK = 40;
 function splitBody(text, limit = CHUNK_LIMIT) {
-  return text.split(/\n(?=#{1,4}\s)/).flatMap((section) => section.length > limit ? section.split(/\n\n+/) : [section]).map((piece) => piece.trim()).filter((piece) => piece.length >= MIN_CHUNK).map((piece) => piece.slice(0, limit));
+  return text.split(/\n(?=#{1,4}\s)/).flatMap((section) => section.length > limit ? section.split(/\n\n+/) : [section]).map((piece) => piece.trim()).flatMap((piece) => cutToWidth(piece, limit)).filter((piece) => piece.length >= MIN_CHUNK);
+}
+function cutToWidth(piece, limit) {
+  if (piece.length <= limit)
+    return [piece];
+  const chunks = [];
+  for (let at = 0;at < piece.length; at += limit)
+    chunks.push(piece.slice(at, at + limit).trim());
+  return chunks;
 }
 function tokenize(text) {
   const compact = text.toLowerCase().replace(/[\s\u3001\u3002\uFF08\uFF09()\uFF1A:,.\n\r\t`*#|[\]{}<>/\\"'-]+/g, "");
@@ -18014,6 +18022,14 @@ var CI_WOULD_BE_WASTED = new Set([
   "checks-failing"
 ]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
+
+// src/domain/auto-triggers.ts
+var TRIGGER_CONDITIONS = {
+  changes_requested: "runtime",
+  non_draft: "runtime",
+  "atoma:dispatch": "elsewhere"
+};
+var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 
 // src/lib/config.ts
 function configPath() {
@@ -18268,7 +18284,7 @@ var SEARCH_SCHEMA = exports_external.object({
     "Write it in the language this repository's issues are written in, which is the language of the issue in front of you \u2014 not necessarily the language you are being instructed in. The first stage matches characters rather than meaning, so a question in the wrong language finds nothing at all."
   ].join(`
 `)),
-  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured.").optional()
+  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured. " + "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.").max(CANDIDATES).optional()
 });
 function log2(message) {
   console.error(`[atoma-search] ${message}`);
@@ -18389,7 +18405,7 @@ function locationOf(source) {
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
-    description: "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question \u2014 'why does a branch get created at the first commit rather than up front' \u2014 and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all.",
+    description: "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question \u2014 'why does a branch get created at the first commit rather than up front' \u2014 and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all. The issue this run is working on is excluded from the results, since you can read it directly \u2014 so a decision recorded there will not appear here.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues
   })

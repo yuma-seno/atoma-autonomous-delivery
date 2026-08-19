@@ -6658,6 +6658,14 @@ var CI_WOULD_BE_WASTED = new Set([
 ]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
+// src/domain/auto-triggers.ts
+var TRIGGER_CONDITIONS = {
+  changes_requested: "runtime",
+  non_draft: "runtime",
+  "atoma:dispatch": "elsewhere"
+};
+var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
+
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -6831,14 +6839,42 @@ function countOpenSiblings(opts) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function needsAttention(result) {
+  return result.kind === "dispatch-failed" || result.kind === "undetermined";
+}
+function describeGateResult(result, closedNum, parent) {
+  const which = parent === undefined ? "the parent issue" : `#${parent}`;
+  switch (result.kind) {
+    case "not-tracked":
+      return `#${closedNum} is not a tracked sub-issue; nothing to aggregate.`;
+    case "waiting":
+      return `${result.remaining} sibling(s) of ${which} still open. No action needed.`;
+    case "already-aggregated":
+      return `Another caller already aggregated #${closedNum}. Nothing to do -- this is the normal race.`;
+    case "dispatched":
+      return `All sub-tasks of ${which} complete. Orchestrator re-invoked.`;
+    case "dispatch-failed":
+      return `All sub-tasks of ${which} complete, but the orchestrator dispatch FAILED. ` + `The aggregation marker is already written, so no other caller will retry: ` + `re-run the orchestrator by hand.`;
+    case "undetermined":
+      return `Did not aggregate #${closedNum}: ${result.why}. Nothing was dispatched, and nothing will retry.`;
+  }
+}
 async function dispatchOrchestratorIfReady(opts) {
   const excludeNum = opts.exclude ? opts.closedNum : undefined;
-  let remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
-  if (opts.retry) {
-    for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
-      await sleep(2000 * attempt);
-      remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  const count = () => countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  let remaining;
+  try {
+    remaining = count();
+    if (opts.retry) {
+      for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
+        await sleep(2000 * attempt);
+        remaining = count();
+      }
     }
+  } catch (error) {
+    const why = `could not count #${opts.parent}'s open sub-issues: ${error.message}`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   if (remaining > 0) {
     if (opts.progressMessage) {
@@ -6846,20 +6882,26 @@ async function dispatchOrchestratorIfReady(opts) {
 ${SUB_RESULT_TAG.write(opts.closedNum)}
 ${opts.progressMessage(remaining)}`);
     }
-    return { ready: false, remaining, dispatched: false };
+    return { kind: "waiting", remaining };
   }
   const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
   if (commentsCode !== 0) {
-    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
-    return { ready: true, remaining: 0, dispatched: false };
+    const why = `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran`;
+    console.error(`${why}; not dispatching`);
+    return { kind: "undetermined", why };
   }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
-    return { ready: true, remaining: 0, dispatched: false };
+    return { kind: "already-aggregated" };
   }
   if (opts.beforeDispatch)
     await opts.beforeDispatch();
-  gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
+  const marker = gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
+  if (marker.code !== 0) {
+    const why = `could not write the aggregation marker on #${opts.parent}: ${marker.stderr.trim() || marker.stdout.trim()}`;
+    console.error(`${why}; not dispatching, because without the marker a second caller would dispatch too`);
+    return { kind: "undetermined", why };
+  }
   const dispatched = dispatchRunner({
     context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
     agent: "orchestrator",
@@ -6868,18 +6910,19 @@ Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestra
     notify: resolveNotify(opts.repo, opts.parent),
     repo: opts.repo
   });
-  return { ready: true, remaining: 0, dispatched };
+  return dispatched ? { kind: "dispatched" } : { kind: "dispatch-failed" };
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
   if (code !== 0) {
-    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
-    return { ready: false, remaining: 0, dispatched: false };
+    const why = `could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
-    return { ready: false, remaining: 0, dispatched: false };
+    return { kind: "not-tracked" };
   }
   return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
 }
@@ -6919,8 +6962,9 @@ This issue was opened directly by a human, so it will not be closed automaticall
   mustSucceed(gh("issue", "comment", String(issue), "--repo", repo, "--body", body), `comment on issue #${issue}`);
   mustSucceed(gh("issue", "close", String(issue), "--repo", repo), `close issue #${issue}`);
   console.error(`closed: issue=#${issue} (bot-authored)`);
-  await dispatchOrchestratorIfSubIssueReady(repo, issue);
-  return { outcome: "closed" };
+  const aggregation = await dispatchOrchestratorIfSubIssueReady(repo, issue);
+  console.error(describeGateResult(aggregation, issue));
+  return { outcome: "closed", aggregation };
 }
 
 // node_modules/zod/v3/external.js
@@ -18306,8 +18350,22 @@ async function handleRequestCloseIssue(args) {
     log2(`concludeIssue failed for #${issueNumber}: ${message}`);
     mcpFail(`Failed to conclude issue #${issueNumber}: ${message}`);
   }
-  const text = result.outcome === "closed" ? `Issue #${issueNumber} was created by an Atoma agent (a sub-issue) and has been closed automatically. Phase-gating/aggregation for its parent has been checked.` : `Issue #${issueNumber} was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.`;
-  return { text, meta: { session_ends: true } };
+  if (result.outcome !== "closed") {
+    return {
+      text: `Issue #${issueNumber} was opened directly by a human. It has NOT been closed automatically -- a comment mentioning them was posted with your reason/summary, asking them to review and close it themselves.`,
+      meta: { session_ends: true }
+    };
+  }
+  const aggregation = result.aggregation;
+  const stalled = aggregation !== undefined && needsAttention(aggregation);
+  return {
+    text: [
+      `Issue #${issueNumber} was created by an Atoma agent (a sub-issue) and has been closed automatically.`,
+      aggregation ? describeGateResult(aggregation, issueNumber) : "",
+      stalled ? "This session is staying open because you are the last thing able to act on that: report it on the parent issue so a person sees it." : ""
+    ].filter(Boolean).join(" "),
+    meta: stalled ? {} : { session_ends: true }
+  };
 }
 var { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({

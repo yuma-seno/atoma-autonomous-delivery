@@ -1,0 +1,61 @@
+#!/usr/bin/env bun
+// @bun
+
+// src/scripts/prepare_shell_confinement.ts
+import { chmodSync, mkdirSync, writeFileSync } from "fs";
+import { parseArgs } from "util";
+import { join } from "path";
+
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
+
+// src/scripts/prepare_shell_confinement.ts
+var ref = defineScript(import.meta.url);
+var OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
+var CONTAINER_USER = "1000:0";
+var CONTAINER_USER_NAME = "builder";
+var SUBID_RANGE = "100000:60000";
+function main() {
+  const { values } = parseArgs({ args: Bun.argv.slice(2), options: { out: { type: "string" } } });
+  if (!values.out) {
+    console.error("usage: prepare_shell_confinement.ts --out DIR");
+    process.exit(2);
+  }
+  const out = values.out;
+  mkdirSync(out, { recursive: true });
+  const passwd = `${readHostPasswd()}${CONTAINER_USER_NAME}:x:1000:0::/home/runner:/bin/bash
+`;
+  writeFileSync(join(out, "passwd"), passwd);
+  writeFileSync(join(out, "subuid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}
+`);
+  writeFileSync(join(out, "subgid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}
+`);
+  writeFileSync(join(out, "containers.conf"), `[containers]
+default_sysctls = []
+`);
+  for (const name of ["passwd", "subuid", "subgid", "containers.conf"]) {
+    chmodSync(join(out, name), 420);
+  }
+  console.error(`shell confinement: wrote mount sources to ${out}`);
+  console.error(`shell confinement: overlay root is ${OVERLAY_ROOT}`);
+}
+function readHostPasswd() {
+  const result = Bun.spawnSync({ cmd: ["getent", "passwd"], stdout: "pipe" });
+  const text = result.stdout?.toString("utf8") ?? "";
+  return text.endsWith(`
+`) || text === "" ? text : `${text}
+`;
+}
+if (import.meta.main)
+  main();
+export {
+  ref,
+  OVERLAY_ROOT,
+  CONTAINER_USER_NAME,
+  CONTAINER_USER
+};

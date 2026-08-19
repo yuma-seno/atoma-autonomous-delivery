@@ -221,6 +221,24 @@ jobs:
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_environment_setup.ts"
+      - name: Confine the shell tool server
+        shell: bash
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/prepare_shell_confinement.ts" --out "${RUNNER_TEMP}/atoma-shell-sandbox"
+          sudo mkdir -p /mnt/atoma-shell-overlay/upper /mnt/atoma-shell-overlay/work /mnt/atoma-shell-overlay/merged
+          sudo chown "$(id -un):$(id -gn)" /mnt/atoma-shell-overlay /mnt/atoma-shell-overlay/upper /mnt/atoma-shell-overlay/work /mnt/atoma-shell-overlay/merged
+          sudo mount -t overlay overlay \
+            -o lowerdir="$HOME",upperdir=/mnt/atoma-shell-overlay/upper,workdir=/mnt/atoma-shell-overlay/work \
+            /mnt/atoma-shell-overlay/merged
+          chmod g+w /mnt/atoma-shell-overlay/merged
+
+          # The tree the container shares with the host, reachable through the group it
+          # runs as. Failures are tolerated: a path the runner cannot chmod is one the
+          # container was never going to write either.
+          chmod -R g+w "$GITHUB_WORKSPACE" 2>/dev/null || true
+          find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} + 2>/dev/null || true
+
+          echo "confined shell: overlay at /mnt/atoma-shell-overlay/merged, mounts from ${RUNNER_TEMP}/atoma-shell-sandbox"
       - name: Configure git identity
         shell: bash
         run: |

@@ -56,6 +56,14 @@ var CI_WOULD_BE_WASTED = new Set([
 ]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
+// src/domain/auto-triggers.ts
+var TRIGGER_CONDITIONS = {
+  changes_requested: "runtime",
+  non_draft: "runtime",
+  "atoma:dispatch": "elsewhere"
+};
+var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
+
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -204,14 +212,42 @@ function resolveNotify(repo, number) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function needsAttention(result) {
+  return result.kind === "dispatch-failed" || result.kind === "undetermined";
+}
+function describeGateResult(result, closedNum, parent) {
+  const which = parent === undefined ? "the parent issue" : `#${parent}`;
+  switch (result.kind) {
+    case "not-tracked":
+      return `#${closedNum} is not a tracked sub-issue; nothing to aggregate.`;
+    case "waiting":
+      return `${result.remaining} sibling(s) of ${which} still open. No action needed.`;
+    case "already-aggregated":
+      return `Another caller already aggregated #${closedNum}. Nothing to do -- this is the normal race.`;
+    case "dispatched":
+      return `All sub-tasks of ${which} complete. Orchestrator re-invoked.`;
+    case "dispatch-failed":
+      return `All sub-tasks of ${which} complete, but the orchestrator dispatch FAILED. ` + `The aggregation marker is already written, so no other caller will retry: ` + `re-run the orchestrator by hand.`;
+    case "undetermined":
+      return `Did not aggregate #${closedNum}: ${result.why}. Nothing was dispatched, and nothing will retry.`;
+  }
+}
 async function dispatchOrchestratorIfReady(opts) {
   const excludeNum = opts.exclude ? opts.closedNum : undefined;
-  let remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
-  if (opts.retry) {
-    for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
-      await sleep(2000 * attempt);
-      remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  const count = () => countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  let remaining;
+  try {
+    remaining = count();
+    if (opts.retry) {
+      for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
+        await sleep(2000 * attempt);
+        remaining = count();
+      }
     }
+  } catch (error) {
+    const why = `could not count #${opts.parent}'s open sub-issues: ${error.message}`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   if (remaining > 0) {
     if (opts.progressMessage) {
@@ -219,20 +255,26 @@ async function dispatchOrchestratorIfReady(opts) {
 ${SUB_RESULT_TAG.write(opts.closedNum)}
 ${opts.progressMessage(remaining)}`);
     }
-    return { ready: false, remaining, dispatched: false };
+    return { kind: "waiting", remaining };
   }
   const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
   if (commentsCode !== 0) {
-    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
-    return { ready: true, remaining: 0, dispatched: false };
+    const why = `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran`;
+    console.error(`${why}; not dispatching`);
+    return { kind: "undetermined", why };
   }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
-    return { ready: true, remaining: 0, dispatched: false };
+    return { kind: "already-aggregated" };
   }
   if (opts.beforeDispatch)
     await opts.beforeDispatch();
-  gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
+  const marker = gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
+  if (marker.code !== 0) {
+    const why = `could not write the aggregation marker on #${opts.parent}: ${marker.stderr.trim() || marker.stdout.trim()}`;
+    console.error(`${why}; not dispatching, because without the marker a second caller would dispatch too`);
+    return { kind: "undetermined", why };
+  }
   const dispatched = dispatchRunner({
     context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
     agent: "orchestrator",
@@ -241,7 +283,7 @@ Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestra
     notify: resolveNotify(opts.repo, opts.parent),
     repo: opts.repo
   });
-  return { ready: true, remaining: 0, dispatched };
+  return dispatched ? { kind: "dispatched" } : { kind: "dispatch-failed" };
 }
 
 // src/lib/inject-sub-results.ts
@@ -299,10 +341,9 @@ function gatherSubResults(repo, subIssues) {
   return lines.join(`
 `);
 }
-function injectSubResults(session, repo, subIssues) {
+function injectSummary(session, summary) {
   const messages = session.messages ?? [];
   const lastToolIdx = findLastToolIndex(messages);
-  const summary = gatherSubResults(repo, subIssues);
   if (lastToolIdx === null) {
     console.error("No tool message found in session. Appending as user message.");
     messages.push({ role: "user", content: summary });
@@ -390,7 +431,7 @@ function injectResultsIntoOrchestratorSession(repo, parent) {
   const sessionPath = sessionTargetPath("issue", parent, "orchestrator");
   const existing = restoreSession(sessionPath);
   const session = existing ? JSON.parse(existing) : { messages: [] };
-  const updated = injectSubResults(session, repo, subIssues);
+  const updated = injectSummary(session, gatherSubResults(repo, subIssues));
   const message = `atoma: inject sub-issue results for parent #${parent}`;
   if (!saveSession(sessionPath, JSON.stringify(updated, null, 2), message)) {
     console.error(`::warning::Failed to save session to atoma-data:${sessionPath} after all retries.`);
@@ -421,13 +462,9 @@ async function main() {
     progressMessage: (remaining) => `Atoma: Sub-task #${closedNum} completed. ${remaining} sub-task(s) still in progress.`,
     beforeDispatch: () => injectResultsIntoOrchestratorSession(repo, Number(parent))
   });
-  if (!result.ready) {
-    console.error("Not all sub-tasks done yet.");
-  } else if (!result.dispatched) {
-    console.error(`Orchestrator was not dispatched for #${closedNum}: another caller already handled this ` + `completion, or the dispatch failed -- check for a WARN above.`);
-  } else {
-    console.error("All sub-tasks completed! Orchestrator re-invoked.");
-  }
+  console.error(describeGateResult(result, Number(closedNum), Number(parent)));
+  if (needsAttention(result))
+    process.exit(1);
 }
 if (import.meta.main)
   main();

@@ -23,6 +23,21 @@
 # `args: ["."]` on the filesystem servers is deliberately NOT prefixed: that one
 # is the workspace, which is exactly what those servers should be reading.
 #
+# `before_tool` is NOT prefixed either, and for a third reason: atoma resolves a
+# relative hook path against the directory of THIS file, not against the working
+# directory. Verified in the core -- `persistence/tool_def.rs` sets
+# `base_dir = path.parent()` and joins any non-absolute hook path onto it, then
+# fails the run if the result does not exist. The runner passes
+# `--tools-file ${ATOMA_MACHINERY_ROOT}/.github/atoma/tools/tools.yaml`, so the
+# hook comes from the same default-branch checkout the `args` prefix points at,
+# and gets there without being asked.
+#
+# Written down because the paragraph above argues the pull-request-replaces-the-
+# code point for `args` and said nothing about the hook -- and the hook is the
+# one piece of code that inspects what the agent is about to run, so a reader
+# checking that argument holds should not have to go and read the core to
+# find out.
+#
 # Never write a value here, only a reference. `${SLACK_TOKEN}` is resolved at run
 # time; a pasted secret would be committed in plain text.
 #
@@ -57,9 +72,82 @@ filesystem_readonly:
       - "filesystem_readonly__list_directory"
       - "filesystem_readonly__get_file_info"
 
+# The one server that runs arbitrary commands, and therefore the one that runs
+# third-party code: a dependency's postinstall, a setup.py, a build.rs. Those run
+# with this server's privileges, and every other server here holds exactly the
+# credentials its own entry declares. So this is the server that must not be able
+# to read the others.
+#
+# It runs in a rootless podman container. `env: {}` was never enough on its own:
+# a process running as the same user can read /proc/<pid>/environ of the servers
+# that DO hold credentials, and can drop a fake `gh` into ~/.bun/bin, which is on
+# their PATH. Neither needs an exploit or a misbehaving agent.
+#
+# See #374 for the twenty-four measurements behind each flag, and the four other
+# designs they ruled out. In short:
+#
+#   --user 1000:0        NOT uid 0. Rootless podman maps container uid 0 to the
+#                        host user, which would put this container's environment
+#                        back within reach of everything running as that user.
+#                        Any other id maps into the subuid range instead, and
+#                        /proc/<pid>/environ becomes unreadable from the host.
+#                        Group 0 maps to the host user's primary group, which is
+#                        how the container writes a work tree the host owns.
+#
+#   /usr /opt /etc :ro   The host's whole toolchain, at the same paths, read-only.
+#                        No published image and nothing language-specific: bun,
+#                        node, python, go, cargo, java and dotnet all come from
+#                        the runner. Read-only is also what stops PATH poisoning,
+#                        since /usr/local/bin is world-writable on the host.
+#
+#   the overlay          $HOME has to be readable (rustup, nvm and pyenv keep the
+#                        toolchain there, not just caches), writable (every
+#                        ecosystem caches there), and without effect on the host
+#                        (~/.bun/bin is on the PATH; ~/.gitconfig makes host git
+#                        run what it is told). An overlay is one mechanism that
+#                        gives all three, with no list of blocked filenames.
+#
+#   the work tree        A plain bind at its REAL path, so `pwd` matches the host
+#                        and an error naming a file names the same file on both
+#                        sides.
+#
+#   unmask=...           Only what a nested container runtime needs. Docker's
+#                        equivalent is all-or-nothing and leaves
+#                        /proc/sysrq-trigger writable, which is a way to reboot
+#                        the runner; podman can open /proc/sys and leave that
+#                        closed. Measured both ways.
+#
+#   /dev/fuse, /dev/net/tun
+#                        Storage and networking for containers the agent starts
+#                        itself. The docker socket is deliberately NOT mounted:
+#                        with it, the container reads a host process's environ
+#                        through `--pid=host`, and the confinement is worth
+#                        nothing.
+#
+# What the agent gives up: writes outside the work tree do not outlive the run.
+# `shell_execute`'s description says so, because it is the kind of thing that
+# looks like it worked.
 shell:
-  command: bun
-  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
+  command: podman
+  args:
+    ["run", "--rm", "-i", "--user", "1000:0",
+     "-v", "/usr:/usr:ro", "-v", "/opt:/opt:ro", "-v", "/etc:/etc:ro",
+     "-v", "/mnt/atoma-shell-overlay/merged:/home/runner",
+     "-v", "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}",
+     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/passwd:/etc/passwd:ro",
+     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subuid:/etc/subuid:ro",
+     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subgid:/etc/subgid:ro",
+     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/containers.conf:/etc/containers/containers.conf:ro",
+     "--security-opt", "unmask=/proc/bus", "--security-opt", "unmask=/proc/fs",
+     "--security-opt", "unmask=/proc/irq", "--security-opt", "unmask=/proc/sys",
+     "--security-opt", "seccomp=unconfined",
+     "--device", "/dev/fuse", "--device", "/dev/net/tun",
+     "-w", "${GITHUB_WORKSPACE}",
+     "-e", "HOME=/home/runner", "-e", "PATH=${PATH}",
+     "-e", "XDG_RUNTIME_DIR=/tmp/atoma-xdg",
+     "--entrypoint", "/usr/bin/bash",
+     "docker.io/library/ubuntu:24.04",
+     "-c", "exec bun run ${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
   env: {}
   hooks:
     before_tool: ./scripts/hooks/shell_guard.ts
