@@ -41,7 +41,13 @@ function main() {
   writeFileSync(join(out, "containers.conf"), `[containers]
 default_sysctls = []
 `);
-  for (const name of ["passwd", "subuid", "subgid", "containers.conf"]) {
+  writeFileSync(join(out, "storage.conf"), `[storage.options.overlay]
+ignore_chown_errors = "true"
+
+` + `[storage.options.vfs]
+ignore_chown_errors = "true"
+`);
+  for (const name of ["passwd", "subuid", "subgid", "containers.conf", "storage.conf"]) {
     chmodSync(join(out, name), 420);
   }
   console.error(`shell confinement: wrote mount sources to ${out}`);
