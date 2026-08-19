@@ -17,8 +17,9 @@ function defineScript(importMetaUrl) {
 // src/scripts/prepare_shell_confinement.ts
 var ref = defineScript(import.meta.url);
 var OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
-var CONTAINER_USER = "1000:0";
-var CONTAINER_USER_NAME = "builder";
+var CONTAINER_UID = 1234;
+var CONTAINER_GID = 0;
+var CONTAINER_USER_NAME = "atoma-builder";
 var SUBID_RANGE = "100000:60000";
 function main() {
   const { values } = parseArgs({ args: Bun.argv.slice(2), options: { out: { type: "string" } } });
@@ -28,7 +29,9 @@ function main() {
   }
   const out = values.out;
   mkdirSync(out, { recursive: true });
-  const passwd = `${readHostPasswd()}${CONTAINER_USER_NAME}:x:1000:0::/home/runner:/bin/bash
+  const hostPasswd = readHostPasswd();
+  assertIdentityIsFree(hostPasswd);
+  const passwd = `${hostPasswd}${CONTAINER_USER_NAME}:x:${CONTAINER_UID}:${CONTAINER_GID}::/home/runner:/bin/bash
 `;
   writeFileSync(join(out, "passwd"), passwd);
   writeFileSync(join(out, "subuid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}
@@ -44,6 +47,18 @@ default_sysctls = []
   console.error(`shell confinement: wrote mount sources to ${out}`);
   console.error(`shell confinement: overlay root is ${OVERLAY_ROOT}`);
 }
+function assertIdentityIsFree(hostPasswd) {
+  for (const line of hostPasswd.split(`
+`)) {
+    const [name, , uid] = line.split(":");
+    if (name === CONTAINER_USER_NAME) {
+      throw new Error(`the host already has an account named ${CONTAINER_USER_NAME}. ` + "Pick another name in prepare_shell_confinement.ts.");
+    }
+    if (uid === String(CONTAINER_UID)) {
+      throw new Error(`the host already uses uid ${CONTAINER_UID} (${name}), so the container would run as ` + "that account and podman would find no subuid range for it. Pick another uid here " + "AND in tools.yaml's --user.");
+    }
+  }
+}
 function readHostPasswd() {
   const result = Bun.spawnSync({ cmd: ["getent", "passwd"], stdout: "pipe" });
   const text = result.stdout?.toString("utf8") ?? "";
@@ -57,5 +72,6 @@ export {
   ref,
   OVERLAY_ROOT,
   CONTAINER_USER_NAME,
-  CONTAINER_USER
+  CONTAINER_UID,
+  CONTAINER_GID
 };

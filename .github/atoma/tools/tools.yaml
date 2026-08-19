@@ -86,13 +86,20 @@ filesystem_readonly:
 # See #374 for the twenty-four measurements behind each flag, and the four other
 # designs they ruled out. In short:
 #
-#   --user 1000:0        NOT uid 0. Rootless podman maps container uid 0 to the
+#   --user 1234:0        NOT uid 0. Rootless podman maps container uid 0 to the
 #                        host user, which would put this container's environment
 #                        back within reach of everything running as that user.
 #                        Any other id maps into the subuid range instead, and
 #                        /proc/<pid>/environ becomes unreadable from the host.
 #                        Group 0 maps to the host user's primary group, which is
 #                        how the container writes a work tree the host owns.
+#                        Not 1000 either: the runner image already carries a
+#                        `packer` account at that id, and the passwd the container
+#                        sees is the host's plus one line, so that name won the
+#                        lookup and the nested runtime found no subuid range for
+#                        it. Keep this in step with CONTAINER_UID in
+#                        prepare_shell_confinement.ts, which now fails the run if
+#                        the host ever takes the id.
 #
 #   /usr /opt /etc :ro   The host's whole toolchain, at the same paths, read-only.
 #                        No published image and nothing language-specific: bun,
@@ -140,7 +147,7 @@ filesystem_readonly:
 shell:
   command: podman
   args:
-    ["run", "--rm", "-i", "--user", "1000:0",
+    ["run", "--rm", "-i", "--user", "1234:0",
      "-v", "/usr:/usr:ro", "-v", "/opt:/opt:ro", "-v", "/etc:/etc:ro",
      "-v", "/mnt/atoma-shell-overlay/merged:/home/runner",
      "-v", "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}",
