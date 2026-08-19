@@ -69,7 +69,16 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
 // rather than from the pull request under review. To v0.1.11 an `args` entry
 // carrying `${ATOMA_MACHINERY_ROOT:-.}` is a literal path that does not exist, so
 // this pin and `tools/tools.yaml` move together here too.
-const ATOMA_DEFAULT_VERSION = "v0.1.12";
+//
+// v0.1.13 is a third coupling, and this one is with the repository's SECRETS.
+// Providers became a table there: `openai` means OpenAI rather than defaulting to
+// OpenRouter, the routers have their own names, and each provider reads its own
+// credential -- `OPENROUTER_API_KEY`, `ORCAROUTER_API_KEY` -- with no fallback to
+// `OPENAI_API_KEY`. Two credentials present is an error naming both, so a
+// repository that keeps an OpenRouter key under the old name AND adds it under the
+// new one gets a failed run rather than a guess. Raising this pin means the secret
+// has to have been renamed first.
+const ATOMA_DEFAULT_VERSION = "v0.1.13";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
@@ -355,6 +364,12 @@ const writeCredentialsStep = new TypedOutputsStep({
     // The credentials atoma needs for itself, and the token the GitHub-facing
     // tool servers authenticate with. Named here and nowhere else.
     OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
+    // One name per provider, from atoma v0.1.13. A secret that is not set arrives
+    // as an empty string and `write_credentials_file.ts` drops it, which is what
+    // keeps "more than one credential present" -- now an error rather than a
+    // precedence -- from meaning "more than one name written here".
+    OPENROUTER_API_KEY: "${{ secrets.OPENROUTER_API_KEY }}",
+    ORCAROUTER_API_KEY: "${{ secrets.ORCAROUTER_API_KEY }}",
     ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}",
     ATOMA_COPILOT_TOKEN: "${{ secrets.ATOMA_COPILOT_TOKEN }}",
     GH_TOKEN: "${{ github.token }}",

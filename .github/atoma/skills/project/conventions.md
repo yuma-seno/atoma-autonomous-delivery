@@ -49,7 +49,7 @@ so a change there is yours to make and review.
 
 ## main is protected; everything lands by pull request
 
-`.github/rulesets/main.json` is the source of truth for what may reach main:
+`.github/atoma/rulesets/main.json` is the source of truth for what may reach main:
 direct pushes are refused, and a pull request cannot merge until the `check` job
 passes. It is applied by hand from an account with admin, and taken as correctly
 configured thereafter — nothing verifies it, because a check could only report and
