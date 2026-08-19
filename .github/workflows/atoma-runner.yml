@@ -253,6 +253,30 @@ jobs:
             chmod g+rwxs "/mnt/atoma-shell-overlay/merged/$dir"
           done
 
+          # The two setuid helpers a nested rootless runtime needs, as copies THIS user owns.
+          #
+          # The host's own are setuid root, and that is exactly why they cannot work inside:
+          # in the container's user namespace host uid 0 is mapped to nothing, so the kernel
+          # ignores the bit -- `ls` shows the file as `nobody` and owning the s -- and the
+          # call fails with a message that reads like a missing privilege:
+          #
+          #   newuidmap: write to uid_map failed: Operation not permitted
+          #
+          # A copy owned by the runner user is owned by uid 0 INSIDE that namespace, where
+          # the bit does take effect. What it confers is that namespace's root, which the
+          # container's own mapping already bounds; nothing about the host's root. And
+          # newuidmap grants no more than /etc/subuid allows the calling user, which is the
+          # generated file above.
+          mkdir -p /mnt/atoma-shell-overlay/merged/.local/bin
+          for tool in newuidmap newgidmap; do
+            # Absent only on a runner without the uidmap package, where nested containers
+            # were never going to work. That is not a reason to fail every run, so say it
+            # and carry on.
+            src=$(command -v $tool) || { echo "no $tool on this runner; nested containers will not work"; continue; }
+            cp "$src" "/mnt/atoma-shell-overlay/merged/.local/bin/$tool"
+            chmod 4755 "/mnt/atoma-shell-overlay/merged/.local/bin/$tool"
+          done
+
           echo "confined shell: overlay at /mnt/atoma-shell-overlay/merged, mounts from ${RUNNER_TEMP}/atoma-shell-sandbox"
       - name: Configure git identity
         shell: bash

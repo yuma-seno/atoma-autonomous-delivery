@@ -20,7 +20,7 @@ var OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
 var CONTAINER_UID = 1234;
 var CONTAINER_GID = 0;
 var CONTAINER_USER_NAME = "atoma-builder";
-var SUBID_RANGE = "100000:60000";
+var SUBID_RANGE = "10000:50000";
 function main() {
   const { values } = parseArgs({ args: Bun.argv.slice(2), options: { out: { type: "string" } } });
   if (!values.out) {
@@ -70,6 +70,8 @@ if (import.meta.main)
   main();
 export {
   ref,
+  assertIdentityIsFree,
+  SUBID_RANGE,
   OVERLAY_ROOT,
   CONTAINER_USER_NAME,
   CONTAINER_UID,
