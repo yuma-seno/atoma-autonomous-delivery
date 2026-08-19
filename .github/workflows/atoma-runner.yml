@@ -40,7 +40,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.12
+        default: v0.1.14
   workflow_dispatch:
     inputs:
       agent:
@@ -75,7 +75,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.12
+        default: v0.1.14
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -393,6 +393,8 @@ jobs:
         shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ATOMA_COPILOT_TOKEN: ${{ secrets.ATOMA_COPILOT_TOKEN }}
           GH_TOKEN: ${{ github.token }}
