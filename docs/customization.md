@@ -218,7 +218,9 @@ The frontmatter `provider` field selects the client, not the vendor:
 | `openai` | Chat Completions (`/chat/completions`) | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
 | `openai-responses` | OpenAI's Responses API (`/responses`) | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
 | `openrouter` | Chat Completions | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
+| `openrouter-responses` | Responses | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
 | `orcarouter` | Chat Completions | `ORCAROUTER_API_KEY` | `https://api.orcarouter.ai/v1` |
+| `orcarouter-responses` | Responses | `ORCAROUTER_API_KEY` | `https://api.orcarouter.ai/v1` |
 | `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` |
 | `github-copilot` | Copilot, over Chat Completions | `ATOMA_COPILOT_TOKEN` | `https://api.githubcopilot.com` |
 
@@ -238,18 +240,22 @@ The two OpenAI entries reach the same models by different routes. Prefer
 every gateway built to that shape accept, so it is the one that keeps your choice
 of host open.
 
-`openai-responses` earns its place in one case — **a tool that returns an
+The Responses variants earn their place in one case — **a tool that returns an
 image**. Chat Completions cannot carry a picture in a tool result at all, so on
 that route the image is moved into a following message; the Responses API's
 `function_call_output` takes it directly. If your agents never receive pictures,
 the two behave alike and `openai` is the safer default.
 
-Both read `OPENAI_API_KEY` and `OPENAI_BASE_URL`, because they are one vendor
-reached two ways. That pair is also how to reach a provider with no row of its own:
-point `OPENAI_BASE_URL` at any host serving the endpoint you picked — not every
-OpenAI-compatible gateway implements `/responses`. What you give up by doing that
-instead of naming a provider is that the run's log says `openai`, so where it went is
-only visible in the variable.
+Each pair reads one credential and one endpoint variable, because a pair is one
+vendor reached two ways. The `openai` pair is also how to reach a provider with no row
+of its own: point `OPENAI_BASE_URL` at any host serving the endpoint you picked — not
+every OpenAI-compatible gateway implements `/responses`.
+
+What you give up by doing that instead of naming a provider is that the run's log says
+`openai`, so where it went is only visible in the variable. **This repository's own
+agent definitions were that case**, reading `provider: openai-responses # openrouter`
+— and the trailing comment was there because the name did not say where the request
+went. They name `openrouter-responses` now.
 
 ### Pin which OpenRouter endpoint serves a model
 

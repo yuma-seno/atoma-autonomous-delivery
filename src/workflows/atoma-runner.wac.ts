@@ -78,7 +78,12 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
 // repository that keeps an OpenRouter key under the old name AND adds it under the
 // new one gets a failed run rather than a guess. Raising this pin means the secret
 // has to have been renamed first.
-const ATOMA_DEFAULT_VERSION = "v0.1.13";
+//
+// v0.1.14 gives each router a name for each dialect it serves, which is what the
+// agent definitions here needed: they read `provider: openai-responses # openrouter`,
+// a row that in v0.1.13 means OpenAI itself. So this pin moves with
+// `agent-definitions/*.md` as well.
+const ATOMA_DEFAULT_VERSION = "v0.1.14";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
