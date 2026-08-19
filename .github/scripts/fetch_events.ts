@@ -21,6 +21,23 @@ function run(cmd) {
 function gh(...args) {
   return run(["gh", ...args]);
 }
+function ghRead(...args) {
+  let result = gh(...args);
+  for (const delay of [2000, 6000]) {
+    if (result.code === 0 || !looksTransient(result))
+      return result;
+    console.error(`::warning::gh ${args.slice(0, 2).join(" ")} failed transiently, retrying: ${result.stderr || result.stdout}`);
+    Bun.sleepSync(delay);
+    result = gh(...args);
+  }
+  return result;
+}
+function looksTransient(result) {
+  const text = `${result.stderr} ${result.stdout}`;
+  if (/HTTP (429|5[0-9][0-9])(?![0-9])/.test(text))
+    return true;
+  return /(timeout|timed out|connection reset|unexpected EOF|TLS handshake|temporary failure)/i.test(text);
+}
 function ghJson(...args) {
   const { code, stdout, stderr } = gh(...args);
   if (code !== 0) {
@@ -137,7 +154,7 @@ function contextList(what, ...args) {
   }
 }
 function requiredJson(what, ...args) {
-  const { code, stdout, stderr } = gh(...args);
+  const { code, stdout, stderr } = ghRead(...args);
   if (code !== 0) {
     throw new Error(`Could not fetch ${what}, which a run cannot proceed without: ${stderr || stdout}`);
   }
