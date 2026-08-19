@@ -93,24 +93,39 @@ const CONTAINER_GID = 0;
 const CONTAINER_USER_NAME = "atoma-builder";
 
 /**
- * Subordinate ids for the nested runtime, inside what the outer mapping allows.
+ * Subordinate ids for the nested runtime, as the ranges of THIS container's ids it
+ * may hand out.
  *
- * "Inside" is the whole content of this constant, and the first version got it
- * wrong. A user namespace can only map ids that exist in its PARENT, and the
- * parent here is this container, whose own map was measured from inside it:
+ * Three measurements shaped this, each one a run of the probe:
  *
- *   $ cat /proc/self/uid_map
- *            0       1001          1
- *            1     165536      65536
+ * The ids have to exist in the parent, and the parent is this container. Its own
+ * map, read from inside it, is `0 1001 1` plus `1 165536 65536` -- so what exists
+ * in here is 0..65536, and the first version's 100000 named nothing at all.
  *
- * So the ids that exist in here run 0..65536, and a range starting at 100000 names
- * nothing. `newuidmap` was being asked to map onto ids the kernel has no
- * translation for, which it refuses -- and it refuses with the same EPERM as a
- * missing privilege, so the two failures are indistinguishable from the message.
+ * The width decides which users an image may declare. At 50000 an image with a
+ * non-root USER above that could not start:
  *
- * 10000..60000 fits, and steps around CONTAINER_UID rather than through it.
+ *   crun: setgroups: Invalid argument
+ *
+ * which rules out most of the ones that matter -- distroless is 65532, `nobody` is
+ * 65534.
+ *
+ * And the range cannot contain the id this container itself runs as:
+ *
+ *   invalid configuration: the specified mapping 1:65535 in "/etc/subuid"
+ *   includes the user UID
+ *
+ * So: everything below CONTAINER_UID, and everything above it, as two entries --
+ * which is ordinary for these files and gives 65534 usable ids inside. Not from 0.
+ * Inner 0 already reaches CONTAINER_UID through podman's own first mapping line,
+ * and keeping outer 0 undelegated is what keeps the host runner user -- which is
+ * what outer 0 maps to -- out of reach of anything a nested container runs.
  */
-const SUBID_RANGE = "10000:50000";
+const IDS_IN_THIS_CONTAINER = 65536;
+const SUBID_RANGES = [
+  `1:${CONTAINER_UID - 1}`,
+  `${CONTAINER_UID + 1}:${IDS_IN_THIS_CONTAINER - CONTAINER_UID}`,
+];
 
 /**
  * `newuidmap` and `newgidmap`, as one script that is deliberately NOT setuid.
@@ -182,8 +197,9 @@ function main(): void {
   const passwd =
     `${hostPasswd}${CONTAINER_USER_NAME}:x:${CONTAINER_UID}:${CONTAINER_GID}::/home/runner:/bin/bash\n`;
   writeFileSync(join(out, "passwd"), passwd);
-  writeFileSync(join(out, "subuid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}\n`);
-  writeFileSync(join(out, "subgid"), `${CONTAINER_USER_NAME}:${SUBID_RANGE}\n`);
+  const subids = SUBID_RANGES.map((range) => `${CONTAINER_USER_NAME}:${range}`).join("\n") + "\n";
+  writeFileSync(join(out, "subuid"), subids);
+  writeFileSync(join(out, "subgid"), subids);
 
   // Podman sets net.ipv4.ping_group_range by default and cannot write /proc/sys
   // from inside a container, which fails every nested container it starts.
@@ -262,8 +278,9 @@ export {
   CONTAINER_UID,
   CONTAINER_USER_NAME,
   ID_MAP_SHIM,
+  IDS_IN_THIS_CONTAINER,
   OVERLAY_ROOT,
-  SUBID_RANGE,
+  SUBID_RANGES,
 };
 
 if (import.meta.main) main();

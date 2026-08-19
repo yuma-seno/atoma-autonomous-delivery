@@ -12,7 +12,8 @@ import {
   CONTAINER_UID,
   CONTAINER_USER_NAME,
   ID_MAP_SHIM,
-  SUBID_RANGE,
+  IDS_IN_THIS_CONTAINER,
+  SUBID_RANGES,
 } from "./prepare_shell_confinement.ts";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,22 +31,47 @@ import { join } from "node:path";
  */
 const IDS_THE_CONTAINER_HAS = 65536;
 
-describe("the container's subordinate id range", () => {
-  test("fits inside the mapping the container itself has", () => {
-    const [start, count] = SUBID_RANGE.split(":").map(Number) as [number, number];
-    expect(start).toBeGreaterThan(0);
-    expect(
-      start + count,
-      `${SUBID_RANGE} reaches id ${start + count}, which does not exist inside the ` +
-        `container. newuidmap refuses that with the same EPERM as a missing privilege, ` +
-        `so the message does not say which of the two went wrong.`,
-    ).toBeLessThanOrEqual(IDS_THE_CONTAINER_HAS);
+describe("the container's subordinate id ranges", () => {
+  const ranges = () => SUBID_RANGES.map((range) => range.split(":").map(Number) as [number, number]);
+  const total = () => ranges().reduce((sum, [, count]) => sum + count, 0);
+
+  // Every one of these is a run of the probe that failed, and each failure named
+  // something different, at a depth where the message alone did not say which.
+  test("stays inside the ids this container has", () => {
+    for (const [start, count] of ranges()) {
+      expect(start, "outer 0 is the host runner user and stays undelegated").toBeGreaterThan(0);
+      expect(
+        start + count - 1,
+        `this container's own map covers 1..${IDS_IN_THIS_CONTAINER}, so anything above names nothing`,
+      ).toBeLessThanOrEqual(IDS_IN_THIS_CONTAINER);
+    }
   });
 
-  test("does not run through the id the container itself uses", () => {
-    const [start, count] = SUBID_RANGE.split(":").map(Number) as [number, number];
-    const contains = CONTAINER_UID >= start && CONTAINER_UID < start + count;
-    expect(contains, `${SUBID_RANGE} contains CONTAINER_UID ${CONTAINER_UID}`).toBe(false);
+  // "invalid configuration: the specified mapping 1:65535 in /etc/subuid includes
+  // the user UID" -- podman refuses to start at all, so this is not a subtle one.
+  test("hands out no range containing the id the container runs as", () => {
+    for (const [start, count] of ranges()) {
+      const contains = CONTAINER_UID >= start && CONTAINER_UID < start + count;
+      expect(contains, `${start}:${count} includes CONTAINER_UID ${CONTAINER_UID}`).toBe(false);
+    }
+  });
+
+  // The ids inside a nested container are numbered 1..total, so the total is what
+  // decides which USER an image may declare. Too narrow and it cannot start:
+  // "crun: setgroups: Invalid argument". distroless is 65532; `nobody` is 65534.
+  test("is wide enough for the non-root users images actually declare", () => {
+    expect(total(), "an image declaring nobody (65534) could not start").toBeGreaterThanOrEqual(65534);
+  });
+
+  test("leaves no id between the ranges unaccounted for", () => {
+    // Two entries exist only to step over CONTAINER_UID. If they ever drift apart
+    // further than that, ids vanish from the middle for no stated reason.
+    const sorted = ranges().sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < sorted.length; i++) {
+      const previousEnd = (sorted[i - 1] as [number, number])[0] + (sorted[i - 1] as [number, number])[1];
+      const gap = (sorted[i] as [number, number])[0] - previousEnd;
+      expect(gap, "the only gap should be CONTAINER_UID itself").toBe(1);
+    }
   });
 });
 
