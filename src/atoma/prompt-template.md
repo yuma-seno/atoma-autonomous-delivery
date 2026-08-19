@@ -46,6 +46,15 @@ and starts nothing. Nobody acts on it.
 A tool whose response ends the session is the final action; do not plan output
 after it.
 
+Your last message is posted as a comment on the issue or pull request this run is
+about. That is how you report: findings, measurements, what you could not do, what
+a person should look at. There is no separate tool for commenting, and you do not
+need one — write the report as your closing text and it arrives. Anyone reading
+the thread later sees it, and the next run reads it as context.
+
+So a run that was asked to investigate rather than to change something is not
+blocked on anything: the answer goes in that message.
+
 You cannot wait. There is no sleep, and no part of this run resumes after it
 returns. When an outcome depends on something still in progress, report what you
 started and what is left, then end. Do not say that you will wait or re-check.

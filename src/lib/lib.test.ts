@@ -208,6 +208,58 @@ describe("mcp-tool schema helpers", () => {
     }
   });
 
+  // Measured on a real run, three times in a row:
+  //
+  //   Tool error for get_issue: Unrecognized key(s) in object: 'issue_number'
+  //
+  // `issue_number` is what the GitHub REST API calls it, so a model has seen it
+  // far more often than a bare `number`. Before schemas became strict, zod dropped
+  // the unknown key and the defaulted `number` filled in, so these silently
+  // worked. Strictness surfaced them by refusing the call outright.
+  describe("a synonym for `number` is accepted", () => {
+    const tool = async () => {
+      const { defineMcpTool, positiveInt, z } = await import("./mcp-tool.ts");
+      return defineMcpTool({
+        name: "probe",
+        description: "probe",
+        schema: z.object({ number: positiveInt("n").optional(), from: positiveInt("f").optional() }),
+        handler: (a) => JSON.stringify(a),
+      });
+    };
+
+    test("every alias arrives as `number`", async () => {
+      const t = await tool();
+      for (const alias of ["issue_number", "pr_number", "pull_number", "pull_request_number"]) {
+        const { text } = await t.call({ [alias]: 42 });
+        expect(JSON.parse(text), alias).toEqual({ number: 42 });
+      }
+    });
+
+    // The explicit one wins. An alias must never silently override a value the
+    // caller actually named.
+    test("an explicit `number` is not overridden", async () => {
+      const t = await tool();
+      const { text } = await t.call({ number: 7, issue_number: 42 });
+      expect(JSON.parse(text)).toEqual({ number: 7 });
+    });
+
+    // The point of strictness stands: a MISSPELLING is a different call that must
+    // not succeed. `form` for `from` returned the default window and the agent
+    // read it as the range it asked for.
+    test("a misspelling is still refused", async () => {
+      const t = await tool();
+      await expect(t.call({ number: 1, form: 3 })).rejects.toThrow(/form/);
+    });
+
+    // And the advertised schema stays strict, so the constraint still reaches the
+    // model before the call rather than after.
+    test("the alias is not advertised", async () => {
+      const t = await tool();
+      expect(JSON.stringify(t.tool.inputSchema)).not.toContain("issue_number");
+      expect(JSON.stringify(t.tool.inputSchema)).toContain("additionalProperties");
+    });
+  });
+
   // A lenient runtime must not cost us a precise contract: zod-to-json-schema
   // silently emits `{}` for schemas built the wrong way (see mcp-tool.ts's
   // header), which would leave the model with no shape at all to follow.

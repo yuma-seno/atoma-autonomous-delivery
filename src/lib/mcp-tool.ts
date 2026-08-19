@@ -78,6 +78,51 @@ export function stringArray(description: string) {
     .describe(description);
 }
 
+/**
+ * Names a model reaches for when the schema says `number`.
+ *
+ * Measured, not guessed. A verification run on a real runner produced three of
+ * these in a row:
+ *
+ *   Tool error for get_issue: Unrecognized key(s) in object: 'issue_number'
+ *   Tool error for get_issue_comments: Unrecognized key(s) in object: 'issue_number'
+ *   Tool error for request_close_issue: Unrecognized key(s) in object: 'issue_number'
+ *
+ * `issue_number` is what the GitHub REST API calls it, so a model has seen it far
+ * more often than a bare `number`. Before schemas became strict, zod dropped the
+ * unknown key and the defaulted `number` filled in from `ISSUE_NUMBER` — so these
+ * calls silently worked, which is why nothing surfaced until strictness arrived.
+ *
+ * Strictness stays: it exists because a MISSPELLED key (`form` for `from`) turned
+ * into a different call that succeeded, and that is a real defect. This is not
+ * that. `issue_number` is not a typo for `number`, it is a synonym for it, and
+ * accepting it changes nothing about what the call does.
+ *
+ * That is the distinction to hold on to. `positiveInt` and `stringArray` are the
+ * same bargain — advertise the strict shape, be forgiving at run time about a
+ * KNOWN confusion whose intent is unambiguous. It is the opposite of the APPROVE
+ * case, where the runtime used to accept a value that could never work and taught
+ * the model to keep asking for it.
+ */
+const NUMBER_ALIASES = ["issue_number", "pr_number", "pull_number", "pull_request_number"] as const;
+
+/**
+ * Fold a synonym for `number` into `number`, before validation sees it.
+ *
+ * Applied to whole object schemas rather than to a field, because the key itself
+ * is what needs renaming and a field-level check never sees a key it does not
+ * know. An alias present alongside a real `number` is ignored — the explicit one
+ * wins, and nothing silently overrides it.
+ */
+function acceptNumberAliases(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return raw;
+  const value = raw as Record<string, unknown>;
+  const alias = NUMBER_ALIASES.find((name) => name in value);
+  if (alias === undefined) return raw;
+  const { [alias]: aliased, ...rest } = value;
+  return "number" in rest ? rest : { ...rest, number: aliased };
+}
+
 /** An image in MCP's own content-block shape, which the Atoma core maps per provider. */
 export interface McpImageBlock {
   type: "image";
@@ -159,7 +204,10 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
   return {
     tool: { name: spec.name, description: spec.description, inputSchema: jsonSchema as Tool["inputSchema"] },
     async call(args: Record<string, unknown>): Promise<McpToolPayload> {
-      const result = schema.safeParse(args);
+      // Before validation, not inside the schema: the key is what is being
+      // renamed, and a strict object rejects an unknown key before any field-level
+      // rule could see it.
+      const result = schema.safeParse(acceptNumberAliases(args));
       if (!result.success) {
         const message = result.error.issues
           .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
