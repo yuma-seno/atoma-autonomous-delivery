@@ -22,7 +22,15 @@ export interface ManageDispatchLoopArgs {
 
 export const ref = defineScript<ManageDispatchLoopArgs>(import.meta.url);
 
-const LOOP_LIMIT = 5;
+/**
+ * How many consecutive handoffs may happen with nothing new to act on.
+ *
+ * Exported because the comment a person receives when the chain stops names the number.
+ * That sentence used to carry its own `5`, so raising this would have told them "loop
+ * limit (5 consecutive runs) reached" while the real limit was something else — on the
+ * one message they get.
+ */
+export const LOOP_LIMIT = 5;
 
 export function manageDispatchLoop(
   session: Session,
