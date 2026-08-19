@@ -1,0 +1,46 @@
+# A temporary probe, not part of the deliverable.
+#
+# Runs `scripts/probe-nested-containers.ts` on a real runner: the confinement step
+# from atoma-runner.yml, then the shell container from tools.yaml, with a script in
+# place of the tool server that tries to start a nested container.
+#
+# It exists because three agent runs were asked this mechanical question and the
+# third one answered with 822k tokens about repositories that do not exist. Delete
+# this file once #374 is settled.
+#
+# Triggered by pushing a `probe/**` branch, so it never runs for anything else and
+# needs nothing on the default branch.
+name: Probe nested containers
+
+'on':
+  push:
+    branches:
+      - 'probe/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: What the runner brings
+        shell: bash
+        run: |
+          podman --version
+          id
+          getent passwd | cut -d: -f1,3 | tr '\n' ' '
+          echo
+          cat /proc/self/uid_map
+          ls -l /usr/bin/newuidmap
+      - name: Probe
+        shell: bash
+        run: bun run scripts/probe-nested-containers.ts
