@@ -64,17 +64,24 @@ const ROUTING_RULES: [RegExp, string][] = [
 /**
  * The one rule that is not routing.
  *
- * Tool servers run as the same user, and each holds the credentials its
- * `tools.yaml` entry declares. So `shell` can read `github`'s environment
- * through /proc and obtain a token it was deliberately not given — the one
- * place per-server confinement is enforced by nothing else. `PR_SET_DUMPABLE(0)`
- * in Atoma core does not help: `dumpable` resets on execve, so the servers are
- * child processes and readable.
+ * Each tool server holds the credentials its `tools.yaml` entry declares, and a
+ * process reading `/proc/<pid>/environ` of another server obtains a credential it
+ * was deliberately not given.
  *
- * **This stops an accident, not an intent.** `P=/proc; cat $P/1/environ` walks
- * past it, exactly as the header says of every rule in this file. The structural
- * fix is a separate UID per server, which the kernel then enforces without any
- * text matching — see issue #374. Do not treat this rule as that fix.
+ * **The structural fix has landed, and this is no longer the thing standing
+ * between them.** On a runner the `shell` server runs in a rootless container
+ * with its own PID namespace, so the other servers are not visible to it at all
+ * — measured, along with the four designs that did not work, in #374. The kernel
+ * enforces that, without text matching.
+ *
+ * This rule is kept for the case the container does not cover: a hand-run
+ * `atoma`, where `tools.yaml`'s `podman` invocation is not in play and every
+ * server really is one process among siblings. There it stops an accident and not
+ * an intent — `P=/proc; cat $P/1/environ` walks straight past it, exactly as the
+ * header says of every rule in this file.
+ *
+ * So: still worth having, no longer load-bearing. Do not restore a dependency on
+ * it.
  *
  * Matched as "both words anywhere" rather than as the literal path. Matching
  * `/proc/<pid>/environ` was the first attempt and its own test broke it:

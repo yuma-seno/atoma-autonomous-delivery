@@ -122,12 +122,25 @@ describe("deployment contract", () => {
   });
 
   test("mcp-packages.json declares the servers tools.yaml invokes by bare command", () => {
-    // tools.yaml entries whose `command:` is not `bun` are external binaries;
-    // nothing installs them except the runner's MCP package step, which reads
-    // mcp-packages.json.
+    // A `command:` that is not `bun` is an external binary, and there are only
+    // two ways one can exist on a runner: the MCP package step installs it from
+    // mcp-packages.json, or the runner image already carries it.
+    //
+    // The second is a real category and has to be named rather than assumed. It
+    // is also the weaker of the two — an image can drop a tool between runner
+    // releases and nothing here would notice — so listing them makes adding one
+    // a decision instead of an omission.
+    const PROVIDED_BY_THE_RUNNER = new Map([
+      [
+        "podman",
+        "GitHub-hosted images ship it; the shell server runs in a rootless container (#374)",
+      ],
+    ]);
+
     const yaml = readFileSync(join(ATOMA_SRC, "tools/tools.yaml"), "utf8");
     const commands = [...yaml.matchAll(/^\s{2}command:\s*(\S+)\s*$/gm)].map((m) => m[1] as string);
     const external = [...new Set(commands.filter((c) => c !== "bun" && c !== "npx"))];
+    const mustBeInstalled = external.filter((c) => !PROVIDED_BY_THE_RUNNER.has(c));
 
     const packages = JSON.parse(readFileSync(join(ATOMA_SRC, "mcp-packages.json"), "utf8")) as {
       npm?: string[];
@@ -135,12 +148,14 @@ describe("deployment contract", () => {
     };
     const declared = [...(packages.npm ?? []), ...(packages.pip ?? [])].join(" ");
 
-    for (const command of external) {
+    for (const command of mustBeInstalled) {
       // The npm package name need not equal the binary name, so require only
       // that something is declared to install — an empty list cannot be right.
       expect(
         declared.length > 0,
-        `tools.yaml spawns "${command}", but mcp-packages.json installs nothing`,
+        `tools.yaml spawns "${command}", and neither mcp-packages.json nor the ` +
+          `runner image accounts for it. Install it, or add it to ` +
+          `PROVIDED_BY_THE_RUNNER with the reason.`,
       ).toBe(true);
     }
   });

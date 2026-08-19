@@ -13,6 +13,7 @@ import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
 import { ref as runEnvironmentSetupRef } from "../scripts/run_environment_setup.ts";
+import { ref as prepareShellConfinementRef } from "../scripts/prepare_shell_confinement.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
@@ -103,6 +104,20 @@ const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
 const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
 const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
+
+/**
+ * Where the shell server's sandbox is assembled.
+ *
+ * The generated `/etc` overlays go under `$RUNNER_TEMP`, which is outside the
+ * work tree so nothing commits them. The overlay itself cannot: overlayfs
+ * refuses an upperdir nested inside its own lowerdir, and `$RUNNER_TEMP` lives
+ * under `$HOME`. `/mnt` is the runner's scratch disk and is outside it.
+ *
+ * Both are written as shell rather than resolved here, because `tools.yaml`
+ * needs the same two paths and expands `${NAME}` from the environment.
+ */
+const SHELL_SANDBOX_DIR = "${RUNNER_TEMP}/atoma-shell-sandbox";
+const SHELL_OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
 
 const resolveIssueBranchStep = new TypedOutputsStep(
   {
@@ -910,6 +925,45 @@ fi
     name: "Run configured environment setup",
     shell: "bash",
     run: `${scriptCommand(runEnvironmentSetupRef)}\n`,
+  }),
+  // Build the sandbox the `shell` tool server runs in. See #374, and
+  // `prepare_shell_confinement.ts` for why this exists at all.
+  //
+  // AFTER environment setup on purpose: the overlay's lower layer is the host's
+  // $HOME as it stands when the overlay is created, so anything setup installed
+  // there -- a rustup toolchain, a pip --user package -- has to already be in
+  // place. Creating the overlay first would hide it.
+  //
+  // Two things the container cannot arrange for itself, both needing the host:
+  //
+  //   The overlay. `mount -t overlay` needs privilege, and its directories must
+  //   be owned by the runner rather than by root -- rootless podman maps host
+  //   root outside its id range, where it appears as `nobody` and the container
+  //   matches neither owner nor group.
+  //
+  //   The work tree's group bit. The container runs as a subordinate uid with the
+  //   runner's primary GROUP, so it writes the tree through group permission.
+  //   `setgid` on directories keeps that true for files created later, by either
+  //   side. Measured at 9ms for 302 files.
+  new TypedOutputsStep({
+    name: "Confine the shell tool server",
+    shell: "bash",
+    run: `${scriptCommandWithArgs(prepareShellConfinementRef, { out: SHELL_SANDBOX_DIR })}
+sudo mkdir -p ${SHELL_OVERLAY_ROOT}/upper ${SHELL_OVERLAY_ROOT}/work ${SHELL_OVERLAY_ROOT}/merged
+sudo chown "$(id -un):$(id -gn)" ${SHELL_OVERLAY_ROOT} ${SHELL_OVERLAY_ROOT}/upper ${SHELL_OVERLAY_ROOT}/work ${SHELL_OVERLAY_ROOT}/merged
+sudo mount -t overlay overlay \\
+  -o lowerdir="$HOME",upperdir=${SHELL_OVERLAY_ROOT}/upper,workdir=${SHELL_OVERLAY_ROOT}/work \\
+  ${SHELL_OVERLAY_ROOT}/merged
+chmod g+w ${SHELL_OVERLAY_ROOT}/merged
+
+# The tree the container shares with the host, reachable through the group it
+# runs as. Failures are tolerated: a path the runner cannot chmod is one the
+# container was never going to write either.
+chmod -R g+w "$GITHUB_WORKSPACE" 2>/dev/null || true
+find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} + 2>/dev/null || true
+
+echo "confined shell: overlay at ${SHELL_OVERLAY_ROOT}/merged, mounts from ${SHELL_SANDBOX_DIR}"
+`,
   }),
   new TypedOutputsStep({
     name: "Configure git identity",
