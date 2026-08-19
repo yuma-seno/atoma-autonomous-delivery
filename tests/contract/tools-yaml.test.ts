@@ -69,6 +69,16 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
       // The overlay is what makes $HOME readable, writable, and harmless at once.
       expect(joined).toContain("/home/runner");
 
+      // Exactly two capabilities, and they are in the BOUNDING set of a non-root
+      // --user, where only a setuid-0 binary can pick them up. ALL or SYS_ADMIN
+      // there would turn the container's namespace-local root into something that
+      // means the same thing as the host's.
+      const caps = args.filter((_, i) => args[i - 1] === "--cap-add");
+      expect([...caps].sort(), "the capability list must stay at what newuidmap needs").toEqual([
+        "SETGID",
+        "SETUID",
+      ]);
+
       // With the docker socket the container reads a host process's environ
       // through --pid=host, and the confinement is worth nothing.
       expect(joined, "the docker socket must never be mounted here").not.toContain("docker.sock");

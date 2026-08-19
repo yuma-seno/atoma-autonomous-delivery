@@ -135,7 +135,30 @@ function main(): void {
   // from inside a container, which fails every nested container it starts.
   writeFileSync(join(out, "containers.conf"), "[containers]\ndefault_sysctls = []\n");
 
-  for (const name of ["passwd", "subuid", "subgid", "containers.conf"]) {
+  // Storage for the nested runtime, and the one option the single-mapping case
+  // needs.
+  //
+  // With only one id available inside, extracting an image cannot restore a file
+  // owned by anyone else, and the extraction fails rather than approximating. That
+  // is the right default for a real installation and the wrong one here, where the
+  // alternative is no nested containers at all. Measured on #408: podman announces
+  // the mode it is in --
+  //
+  //   Using rootless single mapping into the namespace. This might break some
+  //   images.
+  //
+  // -- and what breaks is an image with a non-root USER, not images generally.
+  //
+  // Both drivers, because which one podman picks depends on what the kernel lets it
+  // mount and the option is per-driver. No `driver =` of our own: podman's own
+  // detection is better informed than a guess written here.
+  writeFileSync(
+    join(out, "storage.conf"),
+    '[storage.options.overlay]\nignore_chown_errors = "true"\n\n' +
+      '[storage.options.vfs]\nignore_chown_errors = "true"\n',
+  );
+
+  for (const name of ["passwd", "subuid", "subgid", "containers.conf", "storage.conf"]) {
     chmodSync(join(out, name), 0o644);
   }
 
