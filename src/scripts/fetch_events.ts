@@ -24,7 +24,7 @@
  */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { gh, ghJson, ghPaginated } from "../lib/gh.ts";
+import { gh, ghJson, ghPaginated, ghRead } from "../lib/gh.ts";
 import { PARENT_ISSUE_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
@@ -140,7 +140,10 @@ function contextList<T>(what: string, ...args: string[]): T[] {
  * that actually failed.
  */
 function requiredJson<T>(what: string, ...args: string[]): T {
-  const { code, stdout, stderr } = gh(...args);
+  // `ghRead`, because this is the call that has to succeed for the run to exist at
+  // all, and one HTTP 504 on a pull request lookup ended a run that had nothing wrong
+  // with it. Every caller here is a plain GET.
+  const { code, stdout, stderr } = ghRead(...args);
   if (code !== 0) {
     throw new Error(`Could not fetch ${what}, which a run cannot proceed without: ${stderr || stdout}`);
   }
