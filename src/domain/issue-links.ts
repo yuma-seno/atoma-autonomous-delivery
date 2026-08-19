@@ -77,6 +77,23 @@ export function claimsToClose(body: string, issue: number): boolean {
   return new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s*:?\\s+#${issue}\\b`, "i").test(body);
 }
 
+/**
+ * The issue a pull request body claims to close, if it claims to close one.
+ *
+ * The same keywords as [`claimsToClose`], asked the other way round: that one is given
+ * a number, this one finds it. Both exist because two callers need different questions
+ * of one rule, and until now the second caller wrote its own `/Closes #(\d+)/` —
+ * case-sensitive, one space, one keyword. A body saying `closes #12` matched the
+ * injector that decides whether to ADD such a line (case-insensitive, so it added
+ * nothing) and did not match the parser, so `sub_number` came out empty and every job
+ * gated on it was skipped: the parent was never notified and the sub-issue's results
+ * never reached the orchestrator's session. Green, and silent.
+ */
+export function closedIssueNumber(body: string): number | undefined {
+  const match = new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s*:?\\s+#(\\d+)\\b`, "i").exec(body);
+  return match ? Number(match[1]) : undefined;
+}
+
 /** Combine link lists from several sources, first mention of a number winning. */
 export function dedupeByNumber<T extends { number: number }>(...lists: T[][]): T[] {
   const seen = new Map<number, T>();
