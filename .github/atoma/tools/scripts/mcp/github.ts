@@ -7083,6 +7083,60 @@ function matchMergeGates(gates, facts) {
   return matches;
 }
 
+// src/domain/auto-triggers.ts
+var TRIGGER_CONDITIONS = {
+  changes_requested: "runtime",
+  non_draft: "runtime",
+  "atoma:dispatch": "elsewhere"
+};
+var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
+function readTrigger(raw, where, problems) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    problems.push(`${where}: each entry must be an object with \`event\` and \`agent\`.`);
+    return;
+  }
+  const entry = raw;
+  const unknownKeys = Object.keys(entry).filter((key) => !["event", "agent", "condition"].includes(key));
+  if (unknownKeys.length > 0) {
+    problems.push(`${where}: unknown key(s) ${unknownKeys.join(", ")}; expected event, agent, condition.`);
+  }
+  if (typeof entry.event !== "string" || entry.event.trim() === "") {
+    problems.push(`${where}: \`event\` must be a non-empty string, e.g. "pull_request.opened".`);
+  }
+  if (typeof entry.agent !== "string" || entry.agent.trim() === "") {
+    problems.push(`${where}: \`agent\` must be a non-empty string.`);
+  }
+  if (entry.condition !== undefined) {
+    if (typeof entry.condition !== "string") {
+      problems.push(`${where}: \`condition\` must be a string; found ${JSON.stringify(entry.condition)}.`);
+    } else if (!(entry.condition in TRIGGER_CONDITIONS)) {
+      problems.push(`${where}: unknown condition "${entry.condition}". Known conditions are ${KNOWN.join(", ")}. ` + `An unrecognised condition used to be ignored, which made the trigger fire every time instead of never.`);
+    }
+  }
+  if (typeof entry.event !== "string" || typeof entry.agent !== "string")
+    return;
+  return {
+    event: entry.event,
+    agent: entry.agent,
+    ...typeof entry.condition === "string" ? { condition: entry.condition } : {}
+  };
+}
+function resolveAutoTriggers(raw) {
+  if (raw === undefined)
+    return { triggers: [], problems: [] };
+  if (!Array.isArray(raw)) {
+    return { triggers: [], problems: ["`auto_triggers` must be an array of {event, agent, condition?} objects."] };
+  }
+  const problems = [];
+  const triggers = [];
+  raw.forEach((entry, index) => {
+    const trigger = readTrigger(entry, `auto_triggers[${index}]`, problems);
+    if (trigger)
+      triggers.push(trigger);
+  });
+  return problems.length > 0 ? { triggers: [], problems } : { triggers, problems };
+}
+
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -7104,8 +7158,10 @@ function getMergePolicy(fallback = "manual") {
 function getBaseBranch(fallback = "") {
   try {
     return loadConfig().base_branch?.trim() || fallback;
-  } catch {
-    return fallback;
+  } catch (error) {
+    if (error.code === "ENOENT")
+      return fallback;
+    throw error;
   }
 }
 function getGovernedPaths() {
@@ -7115,8 +7171,9 @@ function getMergeGates() {
   return resolveMergeGates(loadConfig().merge_gates);
 }
 function getTriggerAgent(event, fallback = "") {
-  for (const trigger of loadConfig().auto_triggers ?? []) {
-    if (trigger.event === event && !trigger.condition) {
+  const { triggers } = resolveAutoTriggers(loadConfig().auto_triggers);
+  for (const trigger of triggers) {
+    if (trigger.event === event && !trigger.condition && !trigger.agent.startsWith("$")) {
       return trigger.agent || fallback;
     }
   }
@@ -7261,14 +7318,42 @@ function resolveNotify(repo, number) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function needsAttention(result) {
+  return result.kind === "dispatch-failed" || result.kind === "undetermined";
+}
+function describeGateResult(result, closedNum, parent) {
+  const which = parent === undefined ? "the parent issue" : `#${parent}`;
+  switch (result.kind) {
+    case "not-tracked":
+      return `#${closedNum} is not a tracked sub-issue; nothing to aggregate.`;
+    case "waiting":
+      return `${result.remaining} sibling(s) of ${which} still open. No action needed.`;
+    case "already-aggregated":
+      return `Another caller already aggregated #${closedNum}. Nothing to do -- this is the normal race.`;
+    case "dispatched":
+      return `All sub-tasks of ${which} complete. Orchestrator re-invoked.`;
+    case "dispatch-failed":
+      return `All sub-tasks of ${which} complete, but the orchestrator dispatch FAILED. ` + `The aggregation marker is already written, so no other caller will retry: ` + `re-run the orchestrator by hand.`;
+    case "undetermined":
+      return `Did not aggregate #${closedNum}: ${result.why}. Nothing was dispatched, and nothing will retry.`;
+  }
+}
 async function dispatchOrchestratorIfReady(opts) {
   const excludeNum = opts.exclude ? opts.closedNum : undefined;
-  let remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
-  if (opts.retry) {
-    for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
-      await sleep(2000 * attempt);
-      remaining = countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  const count = () => countOpenSiblings({ repo: opts.repo, parent: opts.parent, exclude: excludeNum });
+  let remaining;
+  try {
+    remaining = count();
+    if (opts.retry) {
+      for (let attempt = 1;remaining > 0 && attempt < 4; attempt++) {
+        await sleep(2000 * attempt);
+        remaining = count();
+      }
     }
+  } catch (error) {
+    const why = `could not count #${opts.parent}'s open sub-issues: ${error.message}`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   if (remaining > 0) {
     if (opts.progressMessage) {
@@ -7276,20 +7361,26 @@ async function dispatchOrchestratorIfReady(opts) {
 ${SUB_RESULT_TAG.write(opts.closedNum)}
 ${opts.progressMessage(remaining)}`);
     }
-    return { ready: false, remaining, dispatched: false };
+    return { kind: "waiting", remaining };
   }
   const { code: commentsCode, stdout: commentsOut } = gh("issue", "view", String(opts.parent), "--repo", opts.repo, "--json", "comments", "--jq", ".comments[].body");
   if (commentsCode !== 0) {
-    console.error(`could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran; not dispatching`);
-    return { ready: true, remaining: 0, dispatched: false };
+    const why = `could not read #${opts.parent}'s comments, so this cannot tell whether the aggregation already ran`;
+    console.error(`${why}; not dispatching`);
+    return { kind: "undetermined", why };
   }
   if (commentsOut.includes(AGGREGATED_TAG.write(opts.closedNum))) {
-    return { ready: true, remaining: 0, dispatched: false };
+    return { kind: "already-aggregated" };
   }
   if (opts.beforeDispatch)
     await opts.beforeDispatch();
-  gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
+  const marker = gh("issue", "comment", String(opts.parent), "--repo", opts.repo, "--body", `${AGGREGATED_TAG.write(opts.closedNum)}
 Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestrator for aggregation.`);
+  if (marker.code !== 0) {
+    const why = `could not write the aggregation marker on #${opts.parent}: ${marker.stderr.trim() || marker.stdout.trim()}`;
+    console.error(`${why}; not dispatching, because without the marker a second caller would dispatch too`);
+    return { kind: "undetermined", why };
+  }
   const dispatched = dispatchRunner({
     context: `dispatchOrchestratorIfReady: re-invoking orchestrator on #${opts.parent}`,
     agent: "orchestrator",
@@ -7298,18 +7389,19 @@ Atoma: All sub-tasks completed (last: #${opts.closedNum}). Re-invoking orchestra
     notify: resolveNotify(opts.repo, opts.parent),
     repo: opts.repo
   });
-  return { ready: true, remaining: 0, dispatched };
+  return dispatched ? { kind: "dispatched" } : { kind: "dispatch-failed" };
 }
 async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   const { code, stdout } = gh("issue", "view", String(subIssueNum), "--repo", repo, "--json", "body", "--jq", ".body");
   if (code !== 0) {
-    console.error(`could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`);
-    return { ready: false, remaining: 0, dispatched: false };
+    const why = `could not read issue #${subIssueNum}; cannot tell whether it belongs to a parent`;
+    console.error(why);
+    return { kind: "undetermined", why };
   }
   const parent = PARENT_TAG.read(stdout);
   if (parent === undefined) {
     console.error(`issue #${subIssueNum} has no atoma:parent tag, nothing to do`);
-    return { ready: false, remaining: 0, dispatched: false };
+    return { kind: "not-tracked" };
   }
   return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
 }
@@ -18641,6 +18733,34 @@ function decidePostMergeHandoff(signals) {
   return { kind: "close-directly", parentIssue: signals.parentIssue };
 }
 
+// src/lib/parent-issue.ts
+function log2(message) {
+  console.error(`[atoma-parent] ${message}`);
+}
+function nativeParent(repo, issue2) {
+  const [owner, name] = repo.split("/", 2);
+  if (!owner || !name)
+    return;
+  try {
+    const data = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}", { owner, repo: name, num: issue2 });
+    return data.repository.issue.parent?.number;
+  } catch {
+    return;
+  }
+}
+function parentIssueOf(repo, issue2) {
+  const native = nativeParent(repo, issue2);
+  if (native)
+    return { known: true, parent: native };
+  const { code, stderr, stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "body", "--jq", ".body");
+  if (code) {
+    const why = `could not read issue #${issue2}: ${stderr.trim() || `gh exited ${code}`}`;
+    log2(`WARN ${why}`);
+    return { known: false, why };
+  }
+  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
+}
+
 // src/domain/issue-branch.ts
 var OWNED_SUFFIX = /^-(\d+)$/;
 function ordinalOf(rest) {
@@ -18662,13 +18782,13 @@ function nextBranchName(branches, issueNumber) {
 }
 
 // src/lib/issue-branches.ts
-function log2(message) {
+function log3(message) {
   console.error(`[atoma-issue-branch] ${message}`);
 }
 function collectIssueBranches(repo, issueNumber) {
   const refs = gh("api", `repos/${repo}/git/matching-refs/heads/atoma/issue-${issueNumber}`);
   if (refs.code) {
-    log2(`WARN could not list branches: ${refs.stderr || refs.stdout}`);
+    log3(`WARN could not list branches: ${refs.stderr || refs.stdout}`);
     return [];
   }
   let names;
@@ -18676,7 +18796,7 @@ function collectIssueBranches(repo, issueNumber) {
     const parsed = JSON.parse(refs.stdout || "[]");
     names = parsed.map((entry) => entry.ref.replace(/^refs\/heads\//, ""));
   } catch {
-    log2("WARN branch list was not valid JSON");
+    log3("WARN branch list was not valid JSON");
     return [];
   }
   const owner = repo.split("/", 1)[0] ?? "";
@@ -18685,20 +18805,20 @@ function collectIssueBranches(repo, issueNumber) {
 function headBranchMerged(repo, owner, branch) {
   const prs = gh("api", `repos/${repo}/pulls?state=all&per_page=100&head=${owner}:${branch}`);
   if (prs.code) {
-    log2(`WARN could not read pull requests for ${branch}; treating it as unmerged`);
+    log3(`WARN could not read pull requests for ${branch}; treating it as unmerged`);
     return false;
   }
   try {
     const parsed = JSON.parse(prs.stdout || "[]");
     return parsed.some((pr) => Boolean(pr.merged_at));
   } catch {
-    log2(`WARN pull request list for ${branch} was not valid JSON`);
+    log3(`WARN pull request list for ${branch} was not valid JSON`);
     return false;
   }
 }
 
 // src/lib/branch-placement.ts
-function log3(message) {
+function log4(message) {
   console.error(`[atoma-github] ${message}`);
 }
 var BRANCH_PREFIX = "atoma/issue-";
@@ -18725,15 +18845,6 @@ function resolveBranch() {
   }
   throw new Error("Cannot determine branch name; set BRANCH env");
 }
-function parentIssueOf(repo, issue2) {
-  const { code, stderr, stdout } = gh("issue", "view", String(issue2), "--repo", repo, "--json", "body", "--jq", ".body");
-  if (code) {
-    const why = `could not read issue #${issue2}: ${stderr.trim() || `gh exited ${code}`}`;
-    log3(`WARN ${why}`);
-    return { known: false, why };
-  }
-  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
-}
 function stackedBaseFor(repo, issue2) {
   const found = parentIssueOf(repo, issue2);
   if (!found.known || !found.parent)
@@ -18743,7 +18854,7 @@ function stackedBaseFor(repo, issue2) {
   if (existing.code === 0 && existing.stdout.trim()) {
     const fetched2 = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
     if (fetched2.code) {
-      log3(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
+      log4(`WARN could not fetch ${parentBranch}; cutting from the base branch instead`);
       return "";
     }
     return parentBranch;
@@ -18753,13 +18864,13 @@ function stackedBaseFor(repo, issue2) {
     return "";
   const { code, stderr, stdout } = gh("api", `repos/${repo}/git/refs`, "-X", "POST", "-f", `ref=refs/heads/${parentBranch}`, "-f", `sha=${head.stdout.trim()}`);
   if (code) {
-    log3(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
+    log4(`WARN could not create ${parentBranch}: ${stderr || stdout}; cutting from the base branch instead`);
     return "";
   }
   const fetched = gitRun("fetch", "origin", `refs/heads/${parentBranch}:refs/remotes/origin/${parentBranch}`);
   if (fetched.code)
     return "";
-  log3(`commitAndPush: created parent branch ${parentBranch} for #${found.parent}`);
+  log4(`commitAndPush: created parent branch ${parentBranch} for #${found.parent}`);
   return parentBranch;
 }
 function branchForCommit(repo) {
@@ -18775,7 +18886,7 @@ function branchForCommit(repo) {
   const created = from ? gitRun("checkout", "-b", name, `origin/${from}`) : gitRun("checkout", "-b", name);
   if (created.code)
     throw new Error(`Could not create branch '${name}': ${created.stderr || created.stdout}`);
-  log3(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
+  log4(`commitAndPush: created branch ${name}${from ? ` from ${from}` : ""}`);
   return name;
 }
 function stackedPrBase(repo) {
@@ -18802,7 +18913,7 @@ function runIssueNumber() {
 // src/lib/dispatch-targets.ts
 var DEFAULT_CI_WORKFLOW = "atoma-check.yml";
 var DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
-function log4(message) {
+function log5(message) {
   console.error(`[atoma-github] ${message}`);
 }
 function dispatchPrValidation(repo, prNumber, branch) {
@@ -18818,13 +18929,13 @@ function dispatchPrValidation(repo, prNumber, branch) {
     `reviewer=${reviewer}`,
     "-f",
     "engineer=engineer"
-  ], log4);
+  ], log5);
 }
 function dispatchPostMergeAgent(repo, subIssueNum, agent) {
   const notify = resolveNotify(repo, subIssueNum);
   const { code, stdout, stderr } = gh("issue", "comment", String(subIssueNum), "--repo", repo, "--body", "Atoma: Your PR was merged. Please confirm completion and close this sub-task.");
   if (code) {
-    log4(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
+    log5(`dispatchPostMergeAgent: could not post trigger comment on #${subIssueNum}: ${stderr || stdout}`);
     return false;
   }
   return dispatchRunner({
@@ -18834,22 +18945,22 @@ function dispatchPostMergeAgent(repo, subIssueNum, agent) {
     number: subIssueNum,
     notify,
     repo,
-    log: log4
+    log: log5
   });
 }
 function dispatchCi(branch) {
-  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", DEFAULT_CI_WORKFLOW), ["--ref", branch], log4);
+  return dispatchWorkflow("dispatchCi", getWorkflowName("ci", DEFAULT_CI_WORKFLOW), ["--ref", branch], log5);
 }
 function dispatchCd(baseRef) {
   if (isIssueBranch(baseRef)) {
-    log4(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
+    log5(`dispatchCd: merged into ${baseRef}, which is work in progress; not deploying`);
     return false;
   }
   const configured = getWorkflowName("cd");
   if (!configured) {
     const { targets, problems } = getDeployTargets();
     if (problems.length === 0 && targetsForMerge(targets).length === 0) {
-      log4("dispatchCd: no deploy.targets deploy on merge, and workflows.cd is unset; nothing to dispatch");
+      log5("dispatchCd: no deploy.targets deploy on merge, and workflows.cd is unset; nothing to dispatch");
       return false;
     }
   }
@@ -18857,7 +18968,7 @@ function dispatchCd(baseRef) {
   const args = baseRef ? ["--ref", baseRef] : [];
   if (!configured)
     args.push("-f", "trigger=merge");
-  return dispatchWorkflow("dispatchCd", workflow, args, log4);
+  return dispatchWorkflow("dispatchCd", workflow, args, log5);
 }
 
 // src/domain/issue-links.ts
@@ -18899,17 +19010,19 @@ function asPr(node) {
 }
 function issueLinks(repo, number4) {
   const [owner, name] = repo.split("/");
-  if (!owner || !name)
-    return { children: [], pullRequests: [] };
+  if (!owner || !name) {
+    return { children: [], pullRequests: [], unavailable: `"${repo}" is not an owner/name repository` };
+  }
   let issue2 = null;
   try {
     issue2 = ghGraphql(QUERY, { owner, name, number: number4, limit: LINK_LIMIT }).repository?.issue ?? null;
   } catch (error2) {
-    console.error(`[atoma-github] WARN could not read links for #${number4}: ${error2.message}`);
-    return { children: [], pullRequests: [] };
+    const why = error2.message;
+    console.error(`[atoma-github] WARN could not read links for #${number4}: ${why}`);
+    return { children: [], pullRequests: [], unavailable: `GitHub could not be reached: ${why}` };
   }
   if (!issue2)
-    return { children: [], pullRequests: [] };
+    return { children: [], pullRequests: [], unavailable: `issue #${number4} was not found` };
   const declared = issue2.closedByPullRequestsReferences.nodes.map(asPr);
   const referenced = issue2.timelineItems.nodes.map((node) => node.source).filter((source) => Boolean(source?.number) && claimsToClose(source?.body ?? "", number4)).map(asPr);
   return {
@@ -18938,7 +19051,7 @@ function readRequiredChecks(repo, baseRef) {
 }
 
 // src/lib/merge-signals.ts
-function log5(message) {
+function log6(message) {
   console.error(`[atoma-merge-signals] ${message}`);
 }
 function governedPathProblems() {
@@ -18956,7 +19069,7 @@ var NOT_A_CHANGE = new Set(["unchanged"]);
 function readChangedFiles(repo, num) {
   const { code, stdout } = gh("api", `repos/${repo}/pulls/${num}/files?per_page=100`, "--paginate", "--jq", '.[] | [.status, .filename, (.previous_filename // "")] | @json');
   if (code) {
-    log5(`WARN could not read changed files for #${num}; treating the merge as a person's`);
+    log6(`WARN could not read changed files for #${num}; treating the merge as a person's`);
     return { files: [], problem: `the changed files of #${num} could not be read` };
   }
   const files = [];
@@ -19001,7 +19114,7 @@ function gatherMergeSignals(repo, num, throwOnFailure) {
   const baseRefName = pr?.baseRefName ?? "";
   const required2 = readRequiredChecks(repo, baseRefName);
   if (!required2.known)
-    log5(`WARN ${required2.why}; blockers will be less specific`);
+    log6(`WARN ${required2.why}; blockers will be less specific`);
   const changed = readChangedFiles(repo, num);
   const gates = getMergeGates();
   const gateProblems = [...gates.problems, ...governedPathProblems()];
@@ -19064,7 +19177,7 @@ function selectCommentRange(total, from, to) {
 }
 
 // src/atoma/tools/scripts/mcp/github.ts
-function log6(msg) {
+function log7(msg) {
   console.error(`[atoma-github] ${msg}`);
 }
 var REPO = process.env.GITHUB_REPOSITORY ?? "";
@@ -19213,13 +19326,21 @@ ${body}`;
       const pid = await resolveIssueId(Number(parentNum));
       const sid = await resolveIssueId(num);
       ghGraphql("mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}", { parent: pid, sub: sid });
-      log6(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
+      log7(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
     } catch (e) {
-      log6(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
+      log7(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
     }
   }
   logOp("create_issue", { number: num, title, sub_issue: sub });
-  return JSON.stringify({ number: num, url: stdout.trim() });
+  const parent = sub && parentNum ? Number(parentNum) : null;
+  return JSON.stringify({
+    number: num,
+    url: stdout.trim(),
+    parent,
+    ...sub && !parent ? {
+      note: "Labelled as a sub-issue, but this run has no current issue, so no parent was recorded. " + "Nothing will aggregate it. Create it from a run that is working on the parent, or treat it " + "as a root issue."
+    } : {}
+  });
 }
 function getIssue(a) {
   const number4 = issueContextNumber(a);
@@ -19231,7 +19352,8 @@ function getIssue(a) {
     total_comments: comments?.length ?? 0,
     parent: links.parent,
     children: links.children,
-    pull_requests: links.pullRequests
+    pull_requests: links.pullRequests,
+    ...links.unavailable ? { links_unavailable: links.unavailable } : {}
   });
 }
 function listIssues(a) {
@@ -19257,7 +19379,8 @@ function getIssueComments(a) {
       state: issue2?.state,
       total_comments: all.length,
       parent: links.parent,
-      pull_requests: links.pullRequests
+      pull_requests: links.pullRequests,
+      ...links.unavailable ? { links_unavailable: links.unavailable } : {}
     },
     showing: range.showing,
     comments: selected
@@ -19265,10 +19388,10 @@ function getIssueComments(a) {
 }
 function closeIssue(a) {
   const num = a.number;
-  log6(`closeIssue: #${num}`);
+  log7(`closeIssue: #${num}`);
   const d = ghJsonOrThrow("issue", "view", String(num), "--repo", REPO, "--json", "author");
   const isBot = Boolean(d?.author?.is_bot);
-  log6(`closeIssue: author.is_bot=${isBot}`);
+  log7(`closeIssue: author.is_bot=${isBot}`);
   if (!isBot)
     mcpFail(`Refusing to close issue #${num}: opened by a human, not a bot`);
   const { code, stdout, stderr } = gh("issue", "close", String(num), "--repo", REPO);
@@ -19278,14 +19401,22 @@ function closeIssue(a) {
   return JSON.stringify({ ok: true });
 }
 async function closeIssueAndDispatch(a) {
-  const result = closeIssue(a);
+  closeIssue(a);
   const num = a.number;
+  let aggregation;
   try {
-    await dispatchOrchestratorIfSubIssueReady(REPO, num);
+    aggregation = await dispatchOrchestratorIfSubIssueReady(REPO, num);
   } catch (e) {
-    log6(`closeIssueAndDispatch: dispatchOrchestratorIfSubIssueReady failed for #${num}: ${e}`);
+    const why = e.message ?? String(e);
+    log7(`closeIssueAndDispatch: aggregation check failed for #${num}: ${why}`);
+    aggregation = { kind: "undetermined", why };
   }
-  return result;
+  return JSON.stringify({
+    ok: true,
+    closed: num,
+    aggregation: aggregation.kind,
+    ...needsAttention(aggregation) ? { note: describeGateResult(aggregation, num) } : {}
+  });
 }
 function injectParentIssue(body) {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
@@ -19313,9 +19444,9 @@ function createPr(a) {
   let body = a.body ?? "";
   const base = a.base ?? stackedPrBase(REPO) ?? getBaseBranch();
   body = injectParentIssue(body);
-  log6(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
+  log7(`createPr: title=${JSON.stringify(title)}, base=${JSON.stringify(base)}, REPO=${JSON.stringify(REPO)}`);
   const branch = resolveBranch();
-  log6(`createPr: resolved branch=${JSON.stringify(branch)}`);
+  log7(`createPr: resolved branch=${JSON.stringify(branch)}`);
   const worktree = gitRun("status", "--porcelain");
   if (worktree.code)
     mcpFail(worktree.stderr || worktree.stdout);
@@ -19340,9 +19471,9 @@ function createPr(a) {
     cmd.push("--body", body);
   if (base)
     cmd.push("--base", base);
-  log6(`createPr: running gh ${cmd.join(" ")}`);
+  log7(`createPr: running gh ${cmd.join(" ")}`);
   const { code, stdout, stderr } = gh(...cmd);
-  log6(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log7(`createPr: gh pr create rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr create failed (rc=${code}): ${stderr || stdout}`);
   const num = Number(stdout.trim().split("/").pop());
@@ -19394,7 +19525,7 @@ function commitAndPush(a) {
       if (pr)
         dispatchPrValidation(REPO, pr.number, branch);
     } catch {
-      log6("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+      log7("commitAndPush: could not read the open pull request list; skipping validation dispatch");
     }
   }
   return JSON.stringify({ ok: true });
@@ -19515,10 +19646,10 @@ function deleteMergedBranch(branch) {
     return;
   const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
   if (code) {
-    log6(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    log7(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
     return;
   }
-  log6(`mergePr: deleted merged branch ${branch}`);
+  log7(`mergePr: deleted merged branch ${branch}`);
 }
 async function mergePr(a) {
   const num = a.number;
@@ -19526,7 +19657,7 @@ async function mergePr(a) {
   const { headRefName, baseRefName } = refs;
   const readiness = decideMergeReadiness(signals);
   if (!readiness.ready) {
-    log6(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
+    log7(`mergePr: refusing PR #${num} \u2014 ${readiness.blockers.map((b) => b.kind).join(", ")}`);
     const dispatched = readiness.needsCiDispatch && headRefName ? dispatchCi(headRefName) : false;
     return JSON.stringify({
       merged: false,
@@ -19537,7 +19668,7 @@ ${formatBlockers(readiness.blockers)}`
     });
   }
   const { code, stdout, stderr } = gh("pr", "merge", String(num), "--repo", REPO, "--squash");
-  log6(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
+  log7(`mergePr: gh pr merge rc=${code}, out=${JSON.stringify(stdout)}, err=${JSON.stringify(stderr)}`);
   if (code)
     mcpFail(`gh pr merge failed (rc=${code}): ${stderr || stdout}`);
   logOp("merge_pr", { number: num });
@@ -19555,7 +19686,7 @@ ${formatBlockers(readiness.blockers)}`
     case "no-parent":
       return JSON.stringify({ merged: true, closed_issue: null, parent_outcome: "no-parent" });
     case "already-closed":
-      log6(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
+      log7(`mergePr: parent issue #${handoff.parentIssue} already closed -- skipping post-merge re-invocation`);
       return JSON.stringify({
         merged: true,
         closed_issue: null,
@@ -19589,7 +19720,7 @@ async function closeParentAndReport(parentIssue) {
     });
   } catch (e) {
     const why = e.message ?? String(e);
-    log6(`mergePr: could not close parent issue #${parentIssue}: ${why}`);
+    log7(`mergePr: could not close parent issue #${parentIssue}: ${why}`);
     return JSON.stringify({
       merged: true,
       closed_issue: null,
@@ -19651,8 +19782,12 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
   })
 ]);
 async function main() {
-  log6(`Starting for ${REPO}`);
-  await serveMcpServer({ name: "atoma-github-mcp", version: "1.0.0", tools: TOOLS, dispatch, log: log6 });
+  if (!REPO) {
+    log7("GITHUB_REPOSITORY is unset and no GitHub remote could be read, so there is no repository to act on. " + "Set GITHUB_REPOSITORY, or run where `git remote get-url origin` resolves to a github.com URL.");
+    process.exit(1);
+  }
+  log7(`Starting for ${REPO}`);
+  await serveMcpServer({ name: "atoma-github-mcp", version: "1.0.0", tools: TOOLS, dispatch, log: log7 });
 }
 if (import.meta.main)
   main();

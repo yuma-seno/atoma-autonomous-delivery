@@ -36,6 +36,14 @@ var CI_WOULD_BE_WASTED = new Set([
 ]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
+// src/domain/auto-triggers.ts
+var TRIGGER_CONDITIONS = {
+  changes_requested: "runtime",
+  non_draft: "runtime",
+  "atoma:dispatch": "elsewhere"
+};
+var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
+
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();

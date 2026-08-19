@@ -36,14 +36,6 @@ function ghGraphql(query, variables = {}) {
   return result.data;
 }
 
-// src/scripts/lib/script-ref.ts
-import { basename } from "path";
-import { fileURLToPath } from "url";
-var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
-function defineScript(importMetaUrl) {
-  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
-}
-
 // src/lib/agent-name.ts
 var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
 var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
@@ -77,6 +69,42 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
+// src/lib/parent-issue.ts
+function log(message) {
+  console.error(`[atoma-parent] ${message}`);
+}
+function nativeParent(repo, issue) {
+  const [owner, name] = repo.split("/", 2);
+  if (!owner || !name)
+    return;
+  try {
+    const data = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}", { owner, repo: name, num: issue });
+    return data.repository.issue.parent?.number;
+  } catch {
+    return;
+  }
+}
+function parentIssueOf(repo, issue) {
+  const native = nativeParent(repo, issue);
+  if (native)
+    return { known: true, parent: native };
+  const { code, stderr, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
+  if (code) {
+    const why = `could not read issue #${issue}: ${stderr.trim() || `gh exited ${code}`}`;
+    log(`WARN ${why}`);
+    return { known: false, why };
+  }
+  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
+}
+
+// src/scripts/lib/script-ref.ts
+import { basename } from "path";
+import { fileURLToPath } from "url";
+var SCRIPTS_RUNTIME_ROOT = ".github/scripts";
+function defineScript(importMetaUrl) {
+  return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
+}
+
 // src/scripts/resolve_orchestrator_parent.ts
 var ref = defineScript(import.meta.url);
 function main() {
@@ -91,22 +119,14 @@ function main() {
     console.error("usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N");
     process.exit(2);
   }
-  const [owner, repoName] = values.repo.split("/", 2);
-  try {
-    const data = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}", { owner, repo: repoName, num: Number(values.sub) });
-    const parent2 = data.repository.issue.parent?.number;
-    if (parent2) {
-      console.error(`Resolved via GraphQL parent: sub-issue #${values.sub} \u2192 parent #${parent2}`);
-      console.log(parent2);
-      return;
-    }
-  } catch {}
-  const { code, stdout } = gh("issue", "view", String(values.sub), "--repo", values.repo, "--json", "body", "--jq", ".body");
-  const body = code === 0 ? stdout : "";
-  const parent = PARENT_TAG.read(body);
-  if (parent)
-    console.error(`Resolved via fallback: sub-issue #${values.sub} \u2192 parent #${parent}`);
-  console.log(parent ?? "");
+  const found = parentIssueOf(values.repo, Number(values.sub));
+  if (!found.known) {
+    console.error(`::error::${found.why}`);
+    process.exit(1);
+  }
+  if (found.parent)
+    console.error(`sub-issue #${values.sub} -> parent #${found.parent}`);
+  console.log(found.parent || "");
 }
 if (import.meta.main)
   main();

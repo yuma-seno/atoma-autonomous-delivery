@@ -17919,7 +17919,7 @@ async function serveMcpServer(options) {
   await server.connect(new StdioServerTransport);
 }
 
-// src/lib/html-to-markdown.ts
+// src/domain/html-to-markdown.ts
 var ENTITIES = {
   amp: "&",
   lt: "<",
@@ -18004,8 +18004,15 @@ function sniffMimeType(bytes) {
 var MAX_TEXT_CHARS = 60000;
 var MAX_IMAGE_BYTES = 4000000;
 var REQUEST_TIMEOUT_MS = 30000;
+var FETCHABLE_SCHEMES = new Set(["http:", "https:"]);
 var FETCH_SCHEMA = exports_external.object({
-  url: exports_external.string().url().describe("Absolute http(s) URL to fetch."),
+  url: exports_external.string().url().refine((value) => {
+    try {
+      return FETCHABLE_SCHEMES.has(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  }, { message: "must be an http:// or https:// URL; this tool fetches the web, not the local filesystem" }).describe("Absolute http:// or https:// URL to fetch. Other schemes, including file://, are refused."),
   raw: exports_external.boolean().optional().default(false).describe("Return the response body unchanged instead of converting HTML to Markdown."),
   method: exports_external.enum(["GET", "POST"]).optional().default("GET").describe("HTTP method. Use POST only when a page requires it."),
   body: exports_external.string().optional().describe("Request body for POST, e.g. `q=search+terms` for a form endpoint.")
