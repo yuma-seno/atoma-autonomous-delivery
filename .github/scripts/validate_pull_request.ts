@@ -2,7 +2,7 @@
 // @bun
 
 // src/scripts/validate_pull_request.ts
-import { appendFileSync } from "fs";
+import { appendFileSync, existsSync, readFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/domain/pr-validation.ts
@@ -10,6 +10,25 @@ var PASSING = new Set(["success", "skipped", "neutral"]);
 var CI_RETRY_LIMIT = 3;
 function decideValidationOutcome(input) {
   const { conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0 } = input;
+  const failing = requiredContexts.map((name) => ({ name, conclusion: "failure" }));
+  const deliverableProblems = input.deliverableProblems ?? [];
+  if (deliverableProblems.length > 0) {
+    const count = `${deliverableProblems.length} problem${deliverableProblems.length === 1 ? "" : "s"}`;
+    if (priorRetries >= CI_RETRY_LIMIT) {
+      return {
+        verdict: "retries-exhausted",
+        checks: failing,
+        nextAgent: "",
+        summary: `The deliverable is still not internally consistent (${count}) after ${priorRetries} attempts. ` + `Stopping rather than dispatching the engineer again; a human should look.`
+      };
+    }
+    return {
+      verdict: "deliverable-invalid",
+      checks: failing,
+      nextAgent: engineerAgent,
+      summary: `.github/atoma/ is not internally consistent (${count}), so CI was not run.`
+    };
+  }
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
   const checks = requiredContexts.map((name) => ({
@@ -140,11 +159,12 @@ function countPriorRetries(repo, number) {
     return 0;
   }
 }
-function reportFailure(repo, number, attempt, runUrl, summary) {
+function reportFailure(repo, number, attempt, runUrl, summary, details = []) {
   const body = [
     LLM_CONTEXT_TAG.write("include"),
     CI_RETRY_TAG.write(attempt),
     `Atoma: ${summary}`,
+    ...details.length > 0 ? ["", ...details.map((detail) => `- ${detail}`)] : [],
     "",
     runUrl ? `Failing run: ${runUrl}` : ""
   ].filter(Boolean).join(`
@@ -152,6 +172,30 @@ function reportFailure(repo, number, attempt, runUrl, summary) {
   const posted = gh("issue", "comment", number, "--repo", repo, "--body", body);
   if (posted.code)
     log(`WARN could not post the failure comment: ${posted.stderr}`);
+}
+function runCiAndWait(repo, workflow, branch, headSha, timeoutSeconds) {
+  const since = new Date().toISOString();
+  const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
+  if (dispatch.code) {
+    log(`could not dispatch ${workflow} against ${branch}: ${dispatch.stderr}`);
+    process.exit(1);
+  }
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() < deadline) {
+    Bun.sleepSync(1e4);
+    const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
+    const { workflow_runs = [] } = JSON.parse(listed || "{}");
+    const run2 = pickDispatchedRun(workflow_runs, headSha, since);
+    if (!run2)
+      continue;
+    if (run2.status !== "completed")
+      continue;
+    const conclusion = run2.conclusion ?? "";
+    log(`dispatched run ${run2.id} concluded ${conclusion}`);
+    return { conclusion, runUrl: `https://github.com/${repo}/actions/runs/${run2.id}` };
+  }
+  log(`no conclusion within ${timeoutSeconds}s`);
+  return { conclusion: "", runUrl: "" };
 }
 function main() {
   const { values } = parseArgs({
@@ -163,6 +207,7 @@ function main() {
       workflow: { type: "string" },
       reviewer: { type: "string" },
       engineer: { type: "string" },
+      "deliverable-report": { type: "string" },
       "timeout-seconds": { type: "string" }
     }
   });
@@ -172,6 +217,19 @@ function main() {
   if (!repo || !branch || !workflow) {
     console.error("usage: validate_pull_request.ts --repo owner/name --number N --branch B --workflow W");
     process.exit(1);
+  }
+  const reportPath = values["deliverable-report"] ?? "";
+  if (!reportPath) {
+    console.error("usage: validate_pull_request.ts ... --deliverable-report FILE");
+    process.exit(1);
+  }
+  if (!existsSync(reportPath)) {
+    log(`cannot validate: no deliverable report at ${reportPath}`);
+    process.exit(1);
+  }
+  const deliverableProblems = readFileSync(reportPath, "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (deliverableProblems.length > 0) {
+    log(`the deliverable is inconsistent (${deliverableProblems.length} problem(s)); CI will not be dispatched`);
   }
   const githubOutput = process.env.GITHUB_OUTPUT;
   const write = (line) => {
@@ -197,39 +255,15 @@ function main() {
   if (requiredContexts.length === 0) {
     log(`::warning::${baseRef} requires no status checks, so CI results gate nothing here. ` + "Import .github/atoma/rulesets/main.json if that was not intended.");
   }
-  const since = new Date().toISOString();
-  const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
-  if (dispatch.code) {
-    log(`could not dispatch ${workflow} against ${branch}: ${dispatch.stderr}`);
-    process.exit(1);
-  }
-  const timeoutSeconds = Number(values["timeout-seconds"] ?? "1800");
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  let conclusion = "";
-  let runUrl = "";
-  while (Date.now() < deadline) {
-    Bun.sleepSync(1e4);
-    const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
-    const { workflow_runs = [] } = JSON.parse(listed || "{}");
-    const run2 = pickDispatchedRun(workflow_runs, headSha, since);
-    if (!run2)
-      continue;
-    if (run2.status !== "completed")
-      continue;
-    conclusion = run2.conclusion ?? "";
-    runUrl = `https://github.com/${repo}/actions/runs/${run2.id}`;
-    log(`dispatched run ${run2.id} concluded ${conclusion}`);
-    break;
-  }
-  if (!conclusion)
-    log(`no conclusion within ${timeoutSeconds}s`);
+  const { conclusion, runUrl } = deliverableProblems.length > 0 ? { conclusion: "", runUrl: "" } : runCiAndWait(repo, workflow, branch, headSha, Number(values["timeout-seconds"] ?? "1800"));
   const priorRetries = countPriorRetries(repo, values.number ?? "");
   const outcome = decideValidationOutcome({
     conclusion,
     requiredContexts,
     reviewerAgent: values.reviewer ?? "",
     engineerAgent: values.engineer ?? "",
-    priorRetries
+    priorRetries,
+    deliverableProblems
   });
   for (const check of outcome.checks) {
     const created = gh("api", "--method", "POST", `repos/${repo}/check-runs`, "-f", `name=${check.name}`, "-f", `head_sha=${headSha}`, "-f", "status=completed", "-f", `conclusion=${check.conclusion}`);
@@ -239,7 +273,7 @@ function main() {
       log(`wrote check "${check.name}" as ${check.conclusion}`);
   }
   if (outcome.verdict !== "passed") {
-    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
+    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary, deliverableProblems);
   }
   write(`next_agent=${outcome.nextAgent}`);
   write(`conclusion=${conclusion}`);

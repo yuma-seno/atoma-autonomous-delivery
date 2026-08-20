@@ -18012,8 +18012,11 @@ function sniffMimeType(bytes) {
   return "";
 }
 
+// src/domain/tool-output.ts
+var TOOL_OUTPUT_BUDGET = 50000;
+
 // src/atoma/tools/scripts/mcp/web.ts
-var MAX_TEXT_CHARS = 60000;
+var MAX_TEXT_CHARS = TOOL_OUTPUT_BUDGET;
 var REQUEST_TIMEOUT_MS = 30000;
 var FETCHABLE_SCHEMES = new Set(["http:", "https:"]);
 var FETCH_SCHEMA = exports_external.object({
