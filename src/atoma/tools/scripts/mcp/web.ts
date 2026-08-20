@@ -19,9 +19,13 @@
 import { buildMcpTools, defineMcpTool, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { htmlToMarkdown } from "../../../../domain/html-to-markdown.ts";
 import { MAX_IMAGE_BYTES, sniffMimeType } from "../../../../lib/issue-images.ts";
+import { TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
 
 /** Longest text returned from one fetch. */
-const MAX_TEXT_CHARS = 60_000;
+// One budget for every tool, from `domain/tool-output.ts`. This was 60,000 here, 50,000
+// in two github tools and 1,000,000 bytes in the shell -- four numbers in three
+// units, none of them related to the context window they all spend from.
+const MAX_TEXT_CHARS = TOOL_OUTPUT_BUDGET;
 
 /** Largest image inlined, as base64 characters. */
 

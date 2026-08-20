@@ -38,6 +38,7 @@ Task-oriented recipes:
 | [Change merge behavior](#change-merge-behavior) | require a human to merge |
 | [Customize prompt template](#customize-prompt-template) | change what every agent is told |
 | [Customize skills and tools](#customize-skills-and-tools) | add a skill or an MCP server |
+| [Adding a tool without flooding the context](#adding-a-tool-without-flooding-the-context) | keep a new tool from filling the model's context window |
 | [Recurring work](#recurring-work) | have something happen every week without a schedule setting |
 
 ## Source vs deliverable
@@ -920,6 +921,19 @@ unprotected: GitHub Actions substitutes `***` for registered secrets in the
 workflow log, and does nothing for the issue comment a run posts or for the
 session JSON on the `atoma-data` branch.
 
+**How much it may print** is a separate limit, and it is not configurable. A long
+stdout or stderr keeps its beginning and its **end**, with a marker naming how
+much went from the middle and `output_truncated` set on the result. Both ends,
+because command output is both kinds of text at once: a header or a command echo
+worth seeing, and a failure at the bottom.
+
+That end used to be the part that was dropped — the cap was a million bytes and it
+kept the head, so a build log that overran returned its banner rather than its
+error. A million bytes is also about 250k tokens, more than a context window, from
+one call. See [Adding a tool without flooding the
+context](#adding-a-tool-without-flooding-the-context) for why that matters beyond
+the one run.
+
 ### Rename labels
 
 Set `labels.in_progress`, `labels.sub_issue`, and `labels.launched` in `config.json`.
@@ -948,6 +962,85 @@ Dynamic skill behavior:
 
 - Skill metadata is listed in prompt context.
 - Full skill body is loaded only when agent calls `atoma_builtin__load_skill`.
+
+### Adding a tool without flooding the context
+
+If you add an MCP server, this is the part that goes wrong quietly.
+
+**A tool result is not a return value.** It joins the agent's session on the
+`atoma-data` branch and is **resent on every later inference in that session,
+across runs**. One large result is not a one-off cost — it is rent charged for the
+rest of that issue's life. And when the session outgrows the model's context
+window, the run fails with a provider error that has nothing to do with the tool
+that caused it.
+
+This is measured, in this repository. The largest single tool result in its stored
+sessions was about **206k tokens** — more than a 200k context window, from one
+call. One session reached ~672k tokens, of which the actual conversation was 9k;
+the other 663k was tool output.
+
+Five rules, in the order they pay off.
+
+**1. Never return an API response whole. Project it.**
+
+This is worth more than any cap, because a projection loses nothing. Measured on
+this repository's own tools, before they were fixed:
+
+| tool | raw | projected | |
+| --- | --- | --- | --- |
+| `get_branch` | 11,614 B | 81 B | **143×** |
+| `get_check_runs` | 24,954 B | 1,363 B | **18×** |
+| `get_pr_reviews` | 905 B | ~400 B | 2× |
+
+`get_check_runs` asked GitHub for eight check runs and returned sixteen fields
+each, of which the `app` object was **2,244 bytes per run** — the same GitHub App
+description, eight times. What an agent can act on is four fields.
+
+There is a pattern in those numbers: the tools built on `gh --json` were already
+light, and the ones built on `gh api` were heavy. `--json` makes you name what you
+want. Prefer whatever forces that choice.
+
+**2. Cap every output, and say when the cap fired.**
+
+Silence is the worst failure here. A truncated result that looks complete is how
+an agent concludes something is absent when it was merely not shown — and then
+acts on that. Put the marker **in the text**, not only in a sibling field: the
+sibling field is what a caller forgets to read.
+
+**3. Think about which end you keep.**
+
+`shell_execute` kept the first million bytes of its output. A build log that
+overran therefore returned its banner and dropped the compiler error — the only
+part worth returning. A log is truncated from the front; a listing, a document or
+a diff from the back; command output from the middle, keeping both ends.
+
+**4. A count limit is not a volume limit.**
+
+`get_issue_comments` bounds how *many* comments it returns and said nothing about
+how big one may be, so a single comment with a log pasted into it filled the
+window while the tool reported having shown three of forty. Cap each item *and*
+the whole.
+
+**5. Say the shape in the tool's description.**
+
+The description is where a model reads a constraint — measured to work better
+than the same sentence in the system prompt. A description promising "a JSON
+branch object" while the tool returns three fields sends the model looking for
+something that is not there. Say what you return, say that it can be truncated,
+and say what to do about it.
+
+Atoma's own tools share one budget, `TOOL_OUTPUT_BUDGET` in
+`src/domain/tool-output.ts`: 50,000 characters, about 12.5k tokens, a tenth of the
+smallest context window worth designing for. It was four numbers in three units
+before — 1,000,000 **bytes** in the shell, 60,000 characters in `web_fetch`, 50,000
+in two GitHub tools, and nothing anywhere else.
+
+**What is not covered.** `filesystem*` is a third-party server
+(`@modelcontextprotocol/server-filesystem`), and `tools.yaml`'s hooks can allow or
+deny a tool but not touch its output — so `read_file` on a large file has no cap
+this project can impose. Two of that server's heaviest tools, `directory_tree` and
+`search_files`, are on its denylist for that reason. For a large file, have the
+agent read a range with `shell_execute` (`sed -n`, `head`) instead.
 
 ### Recurring work
 
