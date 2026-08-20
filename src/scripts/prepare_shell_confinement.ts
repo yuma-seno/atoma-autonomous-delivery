@@ -64,6 +64,18 @@ export const ref = defineScript<PrepareShellConfinementArgs>(import.meta.url);
 const OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
 
 /**
+ * The directory this script writes its generated mount sources into.
+ *
+ * Named here because `tools.yaml` binds every one of them by path, and the workflow step
+ * passes this as `--out`. It was a constant in the workflow and five paths in the tools
+ * file with nothing tying them together: change it in the file that creates them and
+ * `/etc/passwd`, `/etc/subuid`, `containers.conf` and `storage.conf` all bind sources that
+ * do not exist -- and a nested runtime then falls back to a single mapping, which #374
+ * records as having surfaced only as a warning inside a tool call nobody was reading.
+ */
+const SANDBOX_DIR = "${RUNNER_TEMP}/atoma-shell-sandbox";
+
+/**
  * The user the container runs as, and the one the nested container runtime runs
  * as.
  *
@@ -274,6 +286,7 @@ function readHostPasswd(): string {
 
 export {
   assertIdentityIsFree,
+  SANDBOX_DIR,
   CONTAINER_GID,
   CONTAINER_UID,
   CONTAINER_USER_NAME,
