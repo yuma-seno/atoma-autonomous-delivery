@@ -17956,6 +17956,28 @@ function redact(text, literals = []) {
   return out;
 }
 
+// src/domain/tool-output.ts
+var TOOL_OUTPUT_BUDGET = 50000;
+function capText(text, budget = TOOL_OUTPUT_BUDGET, keep = "head") {
+  if (text.length <= budget)
+    return { text, dropped: 0 };
+  const dropped = text.length - budget;
+  const note = (where) => `
+
+[${dropped} characters ${where}; ${budget} shown]
+
+`;
+  if (keep === "tail") {
+    return { text: note("dropped from the start").trimStart() + text.slice(-budget), dropped };
+  }
+  if (keep === "head") {
+    return { text: text.slice(0, budget) + note("dropped from the end").trimEnd(), dropped };
+  }
+  const head = Math.floor(budget / 4);
+  const tail = budget - head;
+  return { text: text.slice(0, head) + note("dropped from the middle") + text.slice(-tail), dropped };
+}
+
 // src/domain/declared-secrets.ts
 var RUN_CREDENTIALS = [
   "OPENAI_API_KEY",
@@ -18004,7 +18026,6 @@ var DEPLOY_SECRETS = {
 function log(message) {
   console.error(`[atoma-shell] ${message}`);
 }
-var MAX_OUTPUT_BYTES = 1e6;
 var SECRET_ENV_NAMES = [
   ...RUN_CREDENTIALS,
   "GITHUB_TOKEN",
@@ -18051,13 +18072,12 @@ async function executeShell(args) {
     new Response(child.stdout).text(),
     new Response(child.stderr).text()
   ]).finally(() => clearTimeout(timer));
-  const truncate = (raw) => {
-    const value = redact(raw, SECRET_LITERALS);
-    const bytes = Buffer.from(value);
-    return bytes.length <= MAX_OUTPUT_BYTES ? { text: value, truncated: false } : { text: bytes.subarray(0, MAX_OUTPUT_BYTES).toString("utf8"), truncated: true };
+  const truncate = (raw, budget) => {
+    const capped = capText(redact(raw, SECRET_LITERALS), budget, "both");
+    return { text: capped.text, truncated: capped.dropped > 0 };
   };
-  const out = truncate(stdout);
-  const err = truncate(stderr);
+  const out = truncate(stdout, Math.floor(TOOL_OUTPUT_BUDGET * 0.75));
+  const err = truncate(stderr, Math.floor(TOOL_OUTPUT_BUDGET * 0.25));
   const elapsedMs = Date.now() - startedAt;
   log(`exit=${exitCode} ${elapsedMs}ms ` + `stdout=${Buffer.from(out.text).length}B stderr=${Buffer.from(err.text).length}B` + (out.truncated || err.truncated ? " (truncated)" : ""));
   return JSON.stringify({
@@ -18072,7 +18092,7 @@ async function executeShell(args) {
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "shell_execute",
-    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run in a container that shares the repository with the other tools but nothing else: writes inside the repository are real and permanent, and writes ANYWHERE ELSE -- including $HOME, installed packages, and global configuration -- last only for this run and are invisible to github__*, search__* and the rest. They will look like they worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. System packages cannot be installed at all: the host filesystem is read-only here. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally.",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run in a container that shares the repository with the other tools but nothing else: writes inside the repository are real and permanent, and writes ANYWHERE ELSE -- including $HOME, installed packages, and global configuration -- last only for this run and are invisible to github__*, search__* and the rest. They will look like they worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. System packages cannot be installed at all: the host filesystem is read-only here. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
     schema: SHELL_EXECUTE_SCHEMA,
     handler: executeShell
   })

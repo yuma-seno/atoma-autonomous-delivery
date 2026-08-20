@@ -54,10 +54,43 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Checkout the pull request's own tree, as data
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          path: pr-head
       - name: Setup Bun
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
+      - name: Install Atoma CLI
+        shell: bash
+        run: |
+          VERSION="v0.1.16"
+          if [ "$VERSION" = "source" ]; then
+            echo "Building Atoma from source (atoma-src/) ..."
+            cargo install --path atoma-src --force --locked
+          elif [ "$VERSION" = "latest" ]; then
+            URL="https://github.com/yuma-seno/atoma/releases/latest/download/atoma-linux-x86_64"
+            echo "Downloading Atoma ${VERSION} ..."
+            curl -fsSL "$URL" -o /usr/local/bin/atoma
+            chmod +x /usr/local/bin/atoma
+          else
+            URL="https://github.com/yuma-seno/atoma/releases/download/${VERSION}/atoma-linux-x86_64"
+            echo "Downloading Atoma ${VERSION} ..."
+            curl -fsSL "$URL" -o /usr/local/bin/atoma
+            chmod +x /usr/local/bin/atoma
+          fi
+          atoma --version
+      - name: Validate the deliverable this pull request would merge
+        shell: bash
+        run: |
+          STATUS=0
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/validate_deliverable.ts" --root "pr-head" --report "${RUNNER_TEMP}/atoma-deliverable-problems.txt" || STATUS=$?
+          if [ "$STATUS" -gt 1 ]; then
+            echo "::error::the deliverable could not be validated; see the log above"
+            exit 1
+          fi
       - name: Read the CI workflow name from config
         id: cfg
         shell: bash
@@ -70,7 +103,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/validate_pull_request.ts" --repo "${{ github.repository }}" --number "${{ inputs.number }}" --branch "${{ inputs.branch }}" --workflow "${{ steps.cfg.outputs.workflow }}" --reviewer "${{ inputs.reviewer }}" --engineer "${{ inputs.engineer }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/validate_pull_request.ts" --repo "${{ github.repository }}" --number "${{ inputs.number }}" --branch "${{ inputs.branch }}" --workflow "${{ steps.cfg.outputs.workflow }}" --reviewer "${{ inputs.reviewer }}" --engineer "${{ inputs.engineer }}" --deliverable-report "${RUNNER_TEMP}/atoma-deliverable-problems.txt"
       - name: Dispatch the agent the result calls for
         if: steps.validate.outputs.next_agent != ''
         shell: bash
