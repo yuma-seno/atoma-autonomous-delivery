@@ -39,9 +39,18 @@ var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 
@@ -57,8 +66,13 @@ function loadConfig() {
   }
   return cached;
 }
-function getLabel(key, fallback) {
-  return loadConfig().labels?.[key] ?? fallback;
+var DEFAULT_LABELS = {
+  sub_issue: "atoma/sub-issue",
+  launched: "atoma/launched",
+  in_progress: "atoma/in-progress"
+};
+function getLabel(key) {
+  return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
 }
 
 // src/scripts/lib/script-ref.ts
@@ -85,7 +99,7 @@ function main() {
     process.exit(2);
   }
   const repo = process.env.GITHUB_REPOSITORY ?? "";
-  const label = getLabel("in_progress", "atoma/in-progress");
+  const label = getLabel("in_progress");
   const githubOutput = process.env.GITHUB_OUTPUT;
   const { code, stdout } = gh("issue", "view", String(values.number), "--repo", repo, "--json", "labels", "--jq", `([.labels[].name] | index("${label}")) != null`);
   if (code !== 0) {

@@ -7085,9 +7085,18 @@ function matchMergeGates(gates, facts) {
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 function readTrigger(raw, where, problems) {
@@ -7149,8 +7158,13 @@ function loadConfig() {
   }
   return cached;
 }
-function getLabel(key, fallback) {
-  return loadConfig().labels?.[key] ?? fallback;
+var DEFAULT_LABELS = {
+  sub_issue: "atoma/sub-issue",
+  launched: "atoma/launched",
+  in_progress: "atoma/in-progress"
+};
+function getLabel(key) {
+  return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
 }
 function getMergePolicy(fallback = "manual") {
   return loadConfig().merge_policy ?? fallback;
@@ -7188,8 +7202,8 @@ function getWorkflowName(kind, fallback = "") {
 
 // src/lib/sibling-check.ts
 function countOpenSiblings(opts) {
-  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
+  const label = opts.label || getLabel("sub_issue");
+  const launchedLabel = opts.launchedLabel || getLabel("launched");
   const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
   if (code !== 0) {
     throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
@@ -19314,7 +19328,7 @@ async function createIssue(a) {
     if (parentNum)
       body = `${PARENT_TAG.write(Number(parentNum))}
 ${body}`;
-    const subIssueLabel = getLabel("sub_issue", "atoma/sub-issue");
+    const subIssueLabel = getLabel("sub_issue");
     const ensured = gh("label", "create", subIssueLabel, "--repo", REPO, "--force", "--color", "8250df", "--description", "Child delivery task managed by Atoma");
     if (ensured.code)
       mcpFail(`Failed to ensure sub-issue label '${subIssueLabel}': ${ensured.stderr || ensured.stdout}`);

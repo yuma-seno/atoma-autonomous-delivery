@@ -18036,9 +18036,18 @@ var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 

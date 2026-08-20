@@ -17997,6 +17997,7 @@ ${code.replace(/<[^>]+>/g, "")}
 }
 
 // src/lib/issue-images.ts
+var MAX_IMAGE_BYTES = 4000000;
 function sniffMimeType(bytes) {
   const starts = (...sig) => sig.every((b, i) => bytes[i] === b);
   if (starts(137, 80, 78, 71))
@@ -18013,7 +18014,6 @@ function sniffMimeType(bytes) {
 
 // src/atoma/tools/scripts/mcp/web.ts
 var MAX_TEXT_CHARS = 60000;
-var MAX_IMAGE_BYTES = 4000000;
 var REQUEST_TIMEOUT_MS = 30000;
 var FETCHABLE_SCHEMES = new Set(["http:", "https:"]);
 var FETCH_SCHEMA = exports_external.object({

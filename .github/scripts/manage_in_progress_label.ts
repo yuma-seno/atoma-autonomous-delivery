@@ -38,9 +38,18 @@ var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 
@@ -56,8 +65,13 @@ function loadConfig() {
   }
   return cached;
 }
-function getLabel(key, fallback) {
-  return loadConfig().labels?.[key] ?? fallback;
+var DEFAULT_LABELS = {
+  sub_issue: "atoma/sub-issue",
+  launched: "atoma/launched",
+  in_progress: "atoma/in-progress"
+};
+function getLabel(key) {
+  return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
 }
 
 // src/scripts/lib/script-ref.ts
@@ -86,7 +100,7 @@ function main() {
     console.error("usage: manage_in_progress_label.ts --action add|remove --number N");
     process.exit(2);
   }
-  const label = getLabel("in_progress", "atoma/in-progress");
+  const label = getLabel("in_progress");
   if (values.action === "add") {
     gh("label", "create", label, "--force", "-c", "0366d6", "-d", "Issue is being worked on by an Atoma agent");
     const { code } = gh("issue", "edit", values.number, "--add-label", label);
