@@ -58,9 +58,18 @@ var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 
@@ -76,14 +85,19 @@ function loadConfig() {
   }
   return cached;
 }
-function getLabel(key, fallback) {
-  return loadConfig().labels?.[key] ?? fallback;
+var DEFAULT_LABELS = {
+  sub_issue: "atoma/sub-issue",
+  launched: "atoma/launched",
+  in_progress: "atoma/in-progress"
+};
+function getLabel(key) {
+  return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
 }
 
 // src/lib/sibling-check.ts
 function countOpenSiblings(opts) {
-  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
+  const label = opts.label || getLabel("sub_issue");
+  const launchedLabel = opts.launchedLabel || getLabel("launched");
   const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
   if (code !== 0) {
     throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);

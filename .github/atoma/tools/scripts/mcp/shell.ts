@@ -17956,17 +17956,57 @@ function redact(text, literals = []) {
   return out;
 }
 
+// src/domain/declared-secrets.ts
+var RUN_CREDENTIALS = [
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "ORCAROUTER_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "ATOMA_COPILOT_TOKEN",
+  "GH_TOKEN"
+];
+var TOOL_SECRETS = {
+  field: "tools.secrets",
+  reserved: new Set([
+    ...RUN_CREDENTIALS,
+    "AGENT",
+    "ATOMA_OPS_LOG",
+    "ATOMA_PROVIDER",
+    "ATOMA_RUN_TYPE",
+    "GITHUB_RUN_ID",
+    "ISSUE_NOTIFY",
+    "ISSUE_NUMBER",
+    "OPENAI_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "ORCAROUTER_BASE_URL",
+    "ANTHROPIC_BASE_URL",
+    "COPILOT_BASE_URL",
+    "ATOMA_PROVIDER_IN",
+    "OPENAI_BASE_URL_IN"
+  ])
+};
+var CHECK_SECRETS = {
+  field: "checks.secrets",
+  reserved: new Set(["GH_TOKEN"])
+};
+var DEPLOY_SECRETS = {
+  field: "deploy.secrets",
+  reserved: new Set([
+    "ATOMA_DEPLOY_REF",
+    "ATOMA_DEPLOY_TARGET",
+    "ATOMA_DEPLOY_TARGET_INPUT",
+    "ATOMA_DEPLOY_TRIGGER",
+    "GH_TOKEN"
+  ])
+};
+
 // src/atoma/tools/scripts/mcp/shell.ts
 function log(message) {
   console.error(`[atoma-shell] ${message}`);
 }
 var MAX_OUTPUT_BYTES = 1e6;
 var SECRET_ENV_NAMES = [
-  "OPENAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "ORCAROUTER_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GH_TOKEN",
+  ...RUN_CREDENTIALS,
   "GITHUB_TOKEN",
   "GITHUB_PERSONAL_ACCESS_TOKEN"
 ];

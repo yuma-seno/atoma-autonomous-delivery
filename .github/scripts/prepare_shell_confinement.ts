@@ -17,6 +17,7 @@ function defineScript(importMetaUrl) {
 // src/scripts/prepare_shell_confinement.ts
 var ref = defineScript(import.meta.url);
 var OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
+var SANDBOX_DIR = "${RUNNER_TEMP}/atoma-shell-sandbox";
 var CONTAINER_UID = 1234;
 var CONTAINER_GID = 0;
 var CONTAINER_USER_NAME = "atoma-builder";
@@ -106,6 +107,7 @@ export {
   ref,
   assertIdentityIsFree,
   SUBID_RANGES,
+  SANDBOX_DIR,
   OVERLAY_ROOT,
   ID_MAP_SHIM,
   IDS_IN_THIS_CONTAINER,

@@ -66,5 +66,6 @@ if (import.meta.main)
   main();
 export {
   ref,
-  manageDispatchLoop
+  manageDispatchLoop,
+  LOOP_LIMIT
 };

@@ -4,6 +4,13 @@
 // src/scripts/parse_pr_metadata.ts
 import { appendFileSync } from "fs";
 
+// src/domain/issue-links.ts
+var CLOSING_KEYWORDS = "close[sd]?|fix(?:e[sd])?|resolve[sd]?";
+function closedIssueNumber(body) {
+  const match = new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s*:?\\s+#(\\d+)\\b`, "i").exec(body);
+  return match ? Number(match[1]) : undefined;
+}
+
 // src/lib/agent-name.ts
 var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
 var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
@@ -57,7 +64,8 @@ function main() {
     console.error(`PR #${prNumber} is linked to parent issue #${parent}`);
   else
     console.error(`PR #${prNumber} has no parent-issue metadata`);
-  const sub = /Closes #(\d+)/.exec(body)?.[1] ?? "";
+  const closed = closedIssueNumber(body);
+  const sub = closed === undefined ? "" : String(closed);
   if (sub)
     console.error(`PR closes sub-issue #${sub}`);
   if (githubOutput) {

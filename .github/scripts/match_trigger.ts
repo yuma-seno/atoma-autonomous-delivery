@@ -18,9 +18,18 @@ var PASSING = new Set(["success", "neutral", "skipped"]);
 
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere"
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested"
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    matches: () => false
+  }
 };
 var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
 function readTrigger(raw, where, problems) {
@@ -84,16 +93,7 @@ function selectTriggerAgent(triggers, context) {
 function applies(condition, context) {
   if (condition === undefined)
     return true;
-  switch (condition) {
-    case "changes_requested":
-      return context.reviewState === "changes_requested";
-    case "non_draft":
-      return context.isDraft !== true;
-    case "atoma:dispatch":
-      return false;
-    default:
-      return false;
-  }
+  return TRIGGER_CONDITIONS[condition]?.matches(context) ?? false;
 }
 
 // src/lib/config.ts
