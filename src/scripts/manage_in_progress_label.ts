@@ -38,7 +38,7 @@ function main(): void {
     process.exit(2);
   }
 
-  const label = getLabel("in_progress", "atoma/in-progress");
+  const label = getLabel("in_progress");
 
   if (values.action === "add") {
     // Create the label if it does not exist yet.

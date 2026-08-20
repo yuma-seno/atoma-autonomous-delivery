@@ -45,9 +45,33 @@ export function loadConfig(): AtomaConfig {
   return cached;
 }
 
-/** Look up a label from the top-level `labels` section of config.json. */
-export function getLabel(key: string, fallback: string): string {
-  return loadConfig().labels?.[key] ?? fallback;
+/**
+ * The label each key means when `config.json` does not say.
+ *
+ * One place, because a default written at the call site is written at every call site: the
+ * sub-issue label's fallback appeared in `sibling-check.ts` and in `mcp/github.ts`, the
+ * launched one in `sibling-check.ts` and `dispatch_sub_agent.ts`, the in-progress one in
+ * two scripts. Change the writer's and not the reader's and `countOpenSiblings` filters on
+ * a label nothing applies, so the sibling count never reaches zero and the parent is never
+ * dispatched — with every run green.
+ */
+export const DEFAULT_LABELS = {
+  sub_issue: "atoma/sub-issue",
+  launched: "atoma/launched",
+  in_progress: "atoma/in-progress",
+} as const;
+
+/** A label key that has a default. */
+export type LabelKey = keyof typeof DEFAULT_LABELS;
+
+/**
+ * Look up a label from the top-level `labels` section of config.json.
+ *
+ * The fallback comes from [`DEFAULT_LABELS`] rather than from the caller, so two callers
+ * asking for the same label cannot disagree about what it is called.
+ */
+export function getLabel(key: LabelKey): string {
+  return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
 }
 
 /** Look up the top-level `merge_policy` from config.json. */

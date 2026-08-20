@@ -276,7 +276,7 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   body = notifyTagPrefix() + body;
   if (sub) {
     if (parentNum) body = `${PARENT_TAG.write(Number(parentNum))}\n${body}`;
-    const subIssueLabel = getLabel("sub_issue", "atoma/sub-issue");
+    const subIssueLabel = getLabel("sub_issue");
     const ensured = gh(
       "label", "create", subIssueLabel,
       "--repo", REPO,

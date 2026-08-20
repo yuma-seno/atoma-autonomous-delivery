@@ -26,7 +26,7 @@ export function dispatchSubAgent(issue: number, agent: string, notify = ""): Dis
     "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: Agent \`${agent}\` dispatched to work on this sub-task.`,
   );
 
-  const launchedLabel = getLabel("launched", "atoma/launched");
+  const launchedLabel = getLabel("launched");
   // Create it first, as the in-progress and sub-issue labels already do. Adding a
   // label that does not exist fails, and the failure below is only a warning — but
   // `sibling-check.ts` reads this label to decide whether a sub-issue has already

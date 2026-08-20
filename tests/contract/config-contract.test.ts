@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CONDITION_KEYS } from "../../src/domain/merge-gates.ts";
 import { readFileSync } from "node:fs";
 import { resolveMergeGates } from "../../src/domain/merge-gates.ts";
 
@@ -25,7 +26,9 @@ describe("config.json", () => {
 // docs is unfindable; one documented and never implemented is worse, because
 // someone writes it, it is rejected as unknown, and the docs said it existed.
 describe("merge_gates documentation", () => {
-  const CONDITIONS = ["files_added", "files_removed", "files_modified", "files_changed", "labels", "title_matches"];
+  // The resolver's own list, not a copy of it. A copy meant adding a condition and
+  // forgetting this array left it undocumented while both tests below still passed.
+  const CONDITIONS = CONDITION_KEYS;
 
   test("every condition the code accepts appears in the customization guide", () => {
     const docs = readFileSync("docs/customization.md", "utf8");

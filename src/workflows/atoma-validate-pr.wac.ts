@@ -2,6 +2,7 @@ import { Workflow, type GeneratedWorkflowTypes as GWT } from "@github-actions-wo
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
+import { DEFAULT_CI_WORKFLOW } from "../lib/dispatch-targets.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { ref as validatePullRequestRef } from "../scripts/validate_pull_request.ts";
@@ -28,10 +29,10 @@ const configStep = new TypedOutputsStep(
     name: "Read the CI workflow name from config",
     id: "cfg",
     shell: "bash",
-    // Falls back to the shipped check, matching `DEFAULT_CI_WORKFLOW` on the
-    // tool side, so a repository that never set `workflows.ci` still validates
-    // against a workflow that certainly exists.
-    run: `WORKFLOW=$(${scriptCommand(getConfigValueRef, configValueArgv("workflows.ci", "atoma-check.yml"))})
+    // The same fallback as the tool side, by importing it rather than by matching it:
+    // a repository that never set `workflows.ci` validates against the workflow that
+    // certainly exists, and there is one name to change if that ever moves.
+    run: `WORKFLOW=$(${scriptCommand(getConfigValueRef, configValueArgv("workflows.ci", DEFAULT_CI_WORKFLOW))})
 echo "workflow=\${WORKFLOW}" >> "$GITHUB_OUTPUT"
 `,
   },

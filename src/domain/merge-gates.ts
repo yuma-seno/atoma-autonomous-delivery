@@ -106,7 +106,15 @@ export interface MergeGateMatch {
   readonly evidence: readonly string[];
 }
 
-const CONDITION_KEYS = [
+/**
+ * Every condition a gate may name.
+ *
+ * Exported because a contract test used to keep its own copy to compare against the
+ * documentation — so adding one here and forgetting the test's array left the condition
+ * undocumented with both doc tests still green, which is the gap that test exists to
+ * close.
+ */
+export const CONDITION_KEYS = [
   "files_added",
   "files_removed",
   "files_modified",
