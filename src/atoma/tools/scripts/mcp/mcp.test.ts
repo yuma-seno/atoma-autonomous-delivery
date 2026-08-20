@@ -226,6 +226,157 @@ describe("mcp/github.ts", () => {
     }
   });
 
+  /**
+   * The readers built on `gh api` returned the response whole.
+   *
+   * That is not a small waste. A tool result joins the session on the
+   * `atoma-data` branch and is resent on every later inference in it, so an
+   * unread field is rent charged for the rest of the issue's life. Measured on
+   * this repository before these projections existed: `get_check_runs` returned
+   * 24,954 bytes for eight check runs, of which the `app` object was 2,244 bytes
+   * PER RUN -- the same GitHub App description eight times -- and `get_branch`
+   * returned 11,614 bytes to say a branch exists, 11,164 of it the head commit
+   * object nobody asked for.
+   *
+   * The fixtures below carry the real field names from those payloads, so a
+   * rename upstream shows up here rather than as a projection that silently
+   * returns nothing.
+   */
+  describe("projections", () => {
+    const call = (name: string, args: Record<string, unknown>, responses: unknown[]) =>
+      sendRequest(
+        "github.ts",
+        { jsonrpc: "2.0", id: 40, method: "tools/call", params: { name, arguments: args } },
+        {
+          PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+          FAKE_GH_RESPONSES: JSON.stringify(responses),
+        },
+      );
+
+    test("get_check_runs keeps what a reader acts on and drops the rest", async () => {
+      const payload = {
+        check_runs: [
+          {
+            id: 1,
+            name: "atoma-check",
+            node_id: "CR_x",
+            head_sha: "abc",
+            external_id: "e",
+            url: "https://api.github.com/x",
+            html_url: "https://github.com/owner/repo/actions/runs/1/job/2",
+            details_url: "https://github.com/owner/repo/actions/runs/1/job/2",
+            status: "completed",
+            conclusion: "success",
+            started_at: "2026-01-01T00:00:00Z",
+            completed_at: "2026-01-01T00:01:00Z",
+            output: { title: null, summary: null, text: null },
+            check_suite: { id: 9 },
+            app: { id: 15368, slug: "github-actions", description: "x".repeat(2000) },
+            pull_requests: [{ id: 7 }],
+          },
+        ],
+      };
+      const r = await call("get_check_runs", { ref: "abc" }, [
+        { match: ["check-runs"], stdout: JSON.stringify(payload) },
+      ]);
+      const runs = JSON.parse(r.result.content[0].text);
+      expect(runs).toEqual([
+        {
+          name: "atoma-check",
+          status: "completed",
+          conclusion: "success",
+          html_url: "https://github.com/owner/repo/actions/runs/1/job/2",
+        },
+      ]);
+      // The 2KB App description is the whole point of the projection.
+      expect(r.result.content[0].text).not.toContain("xxxx");
+    });
+
+    test("get_branch answers the question without the head commit object", async () => {
+      const payload = {
+        name: "main",
+        commit: { sha: "deadbeef", commit: { message: "m".repeat(4000) }, author: { login: "a" } },
+        _links: { self: "u" },
+        protected: true,
+        protection: { enabled: true },
+        protection_url: "u",
+      };
+      const r = await call("get_branch", { name: "main" }, [
+        { match: ["branches/main"], stdout: JSON.stringify(payload) },
+      ]);
+      expect(JSON.parse(r.result.content[0].text)).toEqual({ name: "main", sha: "deadbeef", protected: true });
+      expect(r.result.content[0].text).not.toContain("mmmm");
+    });
+
+    test("get_pr_reviews drops the fields nothing decides on", async () => {
+      const payload = {
+        reviews: [
+          {
+            id: "PRR_1",
+            author: { login: "reviewer" },
+            authorAssociation: "COLLABORATOR",
+            body: "looks good",
+            submittedAt: "2026-01-01T00:00:00Z",
+            includesCreatedEdit: false,
+            reactionGroups: [],
+            state: "APPROVED",
+            commit: { oid: "abc" },
+          },
+        ],
+      };
+      const r = await call("get_pr_reviews", { number: 1 }, [
+        { match: ["--json", "reviews"], stdout: JSON.stringify(payload) },
+      ]);
+      expect(JSON.parse(r.result.content[0].text)).toEqual({
+        total: 1,
+        omitted: 0,
+        reviews: [
+          { author: { login: "reviewer" }, state: "APPROVED", submittedAt: "2026-01-01T00:00:00Z", body: "looks good" },
+        ],
+      });
+    });
+
+    test("list_pr_review_comments keeps where it is and what it says", async () => {
+      const payload = [
+        {
+          id: 1,
+          user: { login: "reviewer", avatar_url: "u", url: "u", html_url: "u", followers_url: "u" },
+          path: "src/x.ts",
+          line: 42,
+          original_line: 40,
+          in_reply_to_id: 99,
+          diff_hunk: "@@ -1 +1 @@\n-old\n+new",
+          body: "rename this",
+          author_association: "COLLABORATOR",
+        },
+      ];
+      const r = await call("list_pr_review_comments", { number: 1 }, [
+        { match: ["pulls/1/comments"], stdout: JSON.stringify(payload) },
+      ]);
+      expect(JSON.parse(r.result.content[0].text)).toEqual({
+        total: 1,
+        omitted: 0,
+        comments: [{ author: "reviewer", path: "src/x.ts", line: 42, in_reply_to: 99, body: "rename this" }],
+      });
+    });
+
+    // A count limit is not a volume limit: the range bounds how MANY comments come
+    // back and said nothing about how big one is.
+    test("get_issue_comments caps one oversized comment", async () => {
+      const body = "y".repeat(40_000);
+      const payload = { title: "t", state: "OPEN", comments: [{ author: { login: "a" }, body }] };
+      const r = await call("get_issue_comments", { number: 1, from: 1, to: 1 }, [
+        { match: ["--json", "comments"], stdout: JSON.stringify(payload) },
+      ]);
+      const parsed = JSON.parse(r.result.content[0].text);
+      expect(parsed.comments[0].body.length).toBeLessThan(body.length);
+      expect(parsed.comments[0].body).toContain("characters");
+      // And it still says how many there were, which is what stops "not shown"
+      // being read as "not there".
+      expect(parsed.showing).toBeDefined();
+    });
+  });
+
   // The advertised JSON Schema is what teaches the model the correct shape, and
   // zod-to-json-schema is known to degrade silently to `{}` for schemas built
   // the wrong way (see lib/mcp-tool.ts). These assertions pin the emitted schema

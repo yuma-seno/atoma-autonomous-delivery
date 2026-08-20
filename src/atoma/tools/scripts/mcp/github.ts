@@ -27,6 +27,7 @@ import { logOp } from "../../../../lib/ops-log.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { capText, fitItems, TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
 import { branchForCommit, resolveBranch, stackedPrBase } from "../../../../lib/branch-placement.ts";
 import { dispatchCd, dispatchCi, dispatchPostMergeAgent, dispatchPrValidation } from "../../../../lib/dispatch-targets.ts";
@@ -348,14 +349,18 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
  */
 function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
   const number = issueContextNumber(a);
-  const issue = ghJsonOrThrow<{ comments?: unknown[] }>(
+  const issue = ghJsonOrThrow<{ comments?: unknown[]; body?: unknown }>(
     "issue", "view", String(number), "--repo", REPO,
     "--json", "number,title,body,state,labels,createdAt,closedAt,comments",
   );
-  const { comments, ...rest } = issue ?? {};
+  const { comments, body, ...rest } = issue ?? {};
   const links = issueLinks(REPO, number);
   return JSON.stringify({
     ...rest,
+    // An issue body is text a person wrote and has no bound. Most are short; the
+    // ones that are not tend to be the ones with a log or a table pasted in, and
+    // that arrives once per lookup and then stays in the session forever.
+    body: typeof body === "string" ? capText(body).text : body,
     total_comments: comments?.length ?? 0,
     parent: links.parent,
     children: links.children,
@@ -405,7 +410,13 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
   // The four interacting defaults live in `domain/comment-range.ts`, where the
   // truth table is testable without a `gh` in the loop.
   const range = selectCommentRange(all.length, a.from, a.to);
-  const selected = range.count > 0 ? all.slice(range.from - 1, range.to) : [];
+  // Capped per comment AND as a whole. The range bounds how MANY comments come
+  // back and says nothing about how big one is, so a single comment with a log
+  // pasted into it filled the window while `showing` reported three of forty.
+  const selected = (range.count > 0 ? all.slice(range.from - 1, range.to) : []).map((comment) => {
+    const body = (comment as { body?: unknown }).body;
+    return typeof body === "string" ? { ...comment, body: capText(body, PER_ITEM_BUDGET).text } : comment;
+  });
 
   const links = issueLinks(REPO, number);
   return JSON.stringify({
@@ -700,14 +711,63 @@ function syncBranch(a: z.infer<typeof SYNC_BRANCH_SCHEMA>): string {
   return JSON.stringify({ branch, status, ahead, behind });
 }
 
+/**
+ * The most one item of a list may contribute.
+ *
+ * A fifth of the whole, so five long comments fill the budget rather than the
+ * first one doing it alone. A count limit is not a volume limit: `get_issue_comments`
+ * bounds how MANY comments it returns and said nothing about how big one may be, so
+ * a single comment with a pasted log in it filled the window while the tool
+ * reported having shown three of forty.
+ */
+const PER_ITEM_BUDGET = Math.floor(TOOL_OUTPUT_BUDGET / 5);
+
+/**
+ * Fields of one REST object, and nothing else.
+ *
+ * Every tool below that reached `gh api` returned the response whole. That is not
+ * a small waste: a tool result joins the session and is resent on every later
+ * inference in it, so an unread field is rent charged for the rest of the issue's
+ * life. Measured on this repository:
+ *
+ *   get_check_runs   24,954 -> 1,363 bytes   (18x; `app` is 2,244 bytes PER RUN,
+ *                                             the same App description eight times)
+ *   get_branch       11,614 ->    81 bytes   (143x; `commit` is 11,164 of it)
+ *   get_pr_reviews      905 ->   ~400 bytes  (2x; already trimmed by `gh --json`)
+ *
+ * A projection is strictly better than a cap: the cap loses information and this
+ * loses none. Note the pattern in those numbers -- the tools using `gh --json`
+ * were already light and the ones using `gh api` were heavy, because `gh --json`
+ * makes you name what you want.
+ *
+ * `unknown` in, typed out: these come from `ghJsonOrThrow`, and asserting a shape
+ * that GitHub might change would be a lie the compiler believes.
+ */
+function pick<K extends string>(source: unknown, keys: readonly K[]): Partial<Record<K, unknown>> {
+  if (typeof source !== "object" || source === null) return {};
+  const record = source as Record<string, unknown>;
+  const out: Partial<Record<K, unknown>> = {};
+  for (const key of keys) if (record[key] !== undefined) out[key] = record[key];
+  return out;
+}
+
 function getPr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
-  return JSON.stringify(ghJsonOrThrow("pr", "view", String(a.number), "--repo", REPO, "--json", "number,title,body,state,baseRefName,headRefName,createdAt"));
+  const pr = ghJsonOrThrow<{ body?: unknown }>(
+    "pr", "view", String(a.number), "--repo", REPO,
+    "--json", "number,title,body,state,baseRefName,headRefName,createdAt",
+  );
+  const { body, ...rest } = pr ?? {};
+  // Same as `get_issue`: the description is the one unbounded field here.
+  return JSON.stringify({ ...rest, body: typeof body === "string" ? capText(body).text : body });
 }
 
 function getPrDiff(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
   const { code, stdout, stderr } = gh("pr", "diff", String(a.number), "--repo", REPO);
   if (code) mcpFail(stderr || stdout);
-  return stdout.slice(0, 50000);
+  // `head`: a diff's first files are the subject of the change. And the cut is now
+  // announced in the text rather than being a silent `slice` -- a truncated read
+  // that looks complete is how a reviewer concludes a file was not touched.
+  return capText(stdout).text;
 }
 
 function listPrs(a: z.infer<typeof LIST_PRS_SCHEMA>): string {
@@ -719,25 +779,65 @@ function listPrs(a: z.infer<typeof LIST_PRS_SCHEMA>): string {
 function searchCode(a: z.infer<typeof SEARCH_CODE_SCHEMA>): string {
   const { code, stdout, stderr } = gh("search", "code", a.query, "--repo", REPO, "--limit", "30");
   if (code) mcpFail(stderr || stdout);
-  return stdout.slice(0, 50000);
+  return capText(stdout).text;
 }
 
 function getBranch(a: z.infer<typeof GET_BRANCH_SCHEMA>): string {
-  return JSON.stringify(ghJsonOrThrow("api", `repos/${REPO}/branches/${a.name}`));
+  const branch = ghJsonOrThrow<{ name?: string; commit?: { sha?: string }; protected?: boolean }>(
+    "api",
+    `repos/${REPO}/branches/${a.name}`,
+  );
+  // 11,614 bytes to 81. The whole `commit` object -- author, committer, tree,
+  // parents, verification and the message -- was 11,164 of it, for a caller asking
+  // whether a branch exists and what its head is.
+  return JSON.stringify({ name: branch?.name, sha: branch?.commit?.sha, protected: branch?.protected });
 }
 
 function getCheckRuns(a: z.infer<typeof GET_CHECK_RUNS_SCHEMA>): string {
   const d = ghJsonOrThrow<{ check_runs?: unknown[] }>("api", `repos/${REPO}/commits/${a.ref}/check-runs`);
-  return JSON.stringify(d?.check_runs ?? []);
+  // `html_url` and not `output`: the summary GitHub puts in `output` is usually
+  // empty and never the failure, and the URL is what a reader follows to the log.
+  // `details_url` is dropped as a near-duplicate of it.
+  return JSON.stringify((d?.check_runs ?? []).map((run) => pick(run, ["name", "status", "conclusion", "html_url"])));
 }
 
 function getPrReviews(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
   const d = ghJsonOrThrow<{ reviews?: unknown[] }>("pr", "view", String(a.number), "--repo", REPO, "--json", "reviews");
-  return JSON.stringify(d?.reviews ?? []);
+  // `reactionGroups`, `includesCreatedEdit` and `authorAssociation` are dropped:
+  // nothing an agent does with a review depends on them. Each body is capped on its
+  // own, because a count of reviews says nothing about the size of one.
+  const reviews = (d?.reviews ?? []).map((review) => {
+    const kept = pick(review, ["author", "state", "submittedAt"]);
+    const body = (review as { body?: unknown }).body;
+    return { ...kept, body: typeof body === "string" ? capText(body, PER_ITEM_BUDGET).text : body };
+  });
+  // Whole reviews go, not a slice of the JSON: cutting the array mid-string
+  // returns text that no longer parses. `omitted` is what stops "not shown" being
+  // read as "not there".
+  const { kept, omitted } = fitItems(reviews);
+  return JSON.stringify({ total: reviews.length, omitted, reviews: kept });
 }
 
 function listPrReviewComments(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
-  return JSON.stringify(ghJsonOrThrow(`api`, `repos/${REPO}/pulls/${a.number}/comments`) ?? []);
+  const comments = ghJsonOrThrow<unknown[]>(`api`, `repos/${REPO}/pulls/${a.number}/comments`) ?? [];
+  // The raw REST review comment carries about thirty fields, including a `user`
+  // object of roughly a kilobyte to convey one login and a `diff_hunk` repeating
+  // code the caller can read from the diff. What acting on a review comment needs
+  // is where it is and what it says.
+  const projected = comments.map((comment) => {
+    const record = (typeof comment === "object" && comment !== null ? comment : {}) as Record<string, unknown>;
+    const user = record.user as { login?: unknown } | undefined;
+    const body = record.body;
+    return {
+      author: user?.login,
+      path: record.path,
+      line: record.line ?? record.original_line,
+      in_reply_to: record.in_reply_to_id,
+      body: typeof body === "string" ? capText(body, PER_ITEM_BUDGET).text : body,
+    };
+  });
+  const { kept, omitted } = fitItems(projected);
+  return JSON.stringify({ total: projected.length, omitted, comments: kept });
 }
 
 function submitPrReview(a: z.infer<typeof SUBMIT_PR_REVIEW_SCHEMA>): string {
@@ -928,17 +1028,17 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({ name: "close_issue", description: "Close a bot-created issue and trigger Atoma parent-task aggregation when applicable. Use only after the issue's work is complete; the tool refuses to close human-created issues. Returns JSON success status and mutates GitHub.", schema: NUMBER_ARG_SCHEMA, handler: closeIssueAndDispatch }),
   defineMcpTool({ name: "create_pr", description: "Create a pull request from the checked-out Atoma branch and return its number, URL and resolved base. Call commit_and_push first: this tool requires a clean worktree and exact local/remote HEAD equality, and it never pushes for you. On success it dispatches CI validation -- NOT the reviewer directly: validation runs the checks and then dispatches whichever agent the result calls for, the reviewer when they pass and the engineer when they do not. Read `validation_dispatched`: when it is true the session ends here and you are re-invoked later; when it is false nothing is scheduled and the session stays open for you to act.", schema: CREATE_PR_SCHEMA, handler: createPr }),
   defineMcpTool({ name: "get_pr", description: "Retrieve one pull request's metadata, including state and base/head branches. Use this for PR status and identity; use get_pr_diff or review tools for code and review details. Returns a JSON object and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPr }),
-  defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request, truncated to 50,000 characters. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
+  defineMcpTool({ name: "get_pr_diff", description: "Retrieve the unified diff for one pull request. Use this to review code changes; it does not include review conversations. Returns plain diff text and does not mutate GitHub. A large diff is truncated and says so in the text where the cut falls -- if you see that marker, the files after it were NOT shown and you have not seen the whole change.", schema: NUMBER_ARG_SCHEMA, handler: getPrDiff }),
   defineMcpTool({ name: "list_prs", description: "List pull request summaries in the current repository, optionally filtered by state. Use this to discover PRs; use get_pr for full metadata. Returns a JSON array and does not mutate GitHub.", schema: LIST_PRS_SCHEMA, handler: listPrs }),
-  defineMcpTool({ name: "search_code", description: "Search code through GitHub within the current repository. Use this for remote repository text or symbol discovery when local filesystem search is unavailable; do not use it for uncommitted changes. Returns GitHub CLI search text, truncated to 50,000 characters.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
-  defineMcpTool({ name: "get_branch", description: "Retrieve GitHub's branch metadata for an exact branch name. Use this to inspect remote branch identity and protection information, not local worktree state. Returns a JSON branch object and does not mutate GitHub.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
+  defineMcpTool({ name: "search_code", description: "Search code through GitHub within the current repository. Use this for remote repository text or symbol discovery when local filesystem search is unavailable; do not use it for uncommitted changes. Returns GitHub CLI search text; a long result is truncated and says so where the cut falls.", schema: SEARCH_CODE_SCHEMA, handler: searchCode }),
+  defineMcpTool({ name: "get_branch", description: "Retrieve GitHub's branch metadata for an exact branch name. Use this to inspect remote branch identity and protection information, not local worktree state. Returns only `name`, `sha` and `protected` -- the head commit's SHA, not the commit itself; use get_pr_diff or shell_execute git log for commit content. Does not mutate GitHub.", schema: GET_BRANCH_SCHEMA, handler: getBranch }),
   defineMcpTool({
     name: "sync_branch",
     description: "Synchronize the checked-out branch with its remote counterpart and report ahead/behind status. Use this after a non-fast-forward push failure or before retrying branch publication; it fast-forwards only when safe. It never rebases or force-pushes, and reports diverged branches for explicit resolution.",
     schema: SYNC_BRANCH_SCHEMA,
     handler: syncBranch,
   }),
-  defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns a JSON array of check-run objects and does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
+  defineMcpTool({ name: "get_check_runs", description: "Retrieve GitHub Actions and other check runs for a commit, branch, or tag. Use this to verify CI status after pushing or before merge decisions. Returns one object per check with `name`, `status`, `conclusion` and `html_url` -- follow the URL for a failing check's log, which is not included. Does not wait for incomplete checks.", schema: GET_CHECK_RUNS_SCHEMA, handler: getCheckRuns }),
   defineMcpTool({
     name: "check_merge_readiness",
     description:
@@ -946,8 +1046,8 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
     schema: PR_CONTEXT_NUMBER_ARG_SCHEMA,
     handler: checkMergeReadiness,
   }),
-  defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
-  defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns a JSON array and does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
+  defineMcpTool({ name: "get_pr_reviews", description: "Retrieve submitted review summaries for one pull request. Use this to inspect review decisions and bodies; use list_pr_review_comments for line-level code comments. Returns { total, omitted, reviews } where each review has `author`, `state`, `submittedAt` and `body`; a non-zero `omitted` means the rest did not fit and you have not seen them all. Does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: getPrReviews }),
+  defineMcpTool({ name: "list_pr_review_comments", description: "Retrieve line-level review comments for one pull request. Use this to find file- and line-specific feedback; use get_pr_reviews for overall review decisions. Returns { total, omitted, comments } where each comment has `author`, `path`, `line`, `in_reply_to` and `body`; the surrounding code is not included, read it with filesystem or get_pr_diff, and a non-zero `omitted` means the rest did not fit. Does not mutate GitHub.", schema: NUMBER_ARG_SCHEMA, handler: listPrReviewComments }),
   defineMcpTool({
     name: "submit_pr_review",
     description: "Submit a pull request review as either a general COMMENT or REQUEST_CHANGES. Use this after inspecting the diff and checks. There is no APPROVE: every Atoma agent shares the identity that opened the pull request, and GitHub refuses to let an identity approve its own -- so COMMENT is how a review says the change is good, and github__merge_pr is how it merges. This mutates GitHub and returns JSON success status.",

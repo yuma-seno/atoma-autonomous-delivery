@@ -2,6 +2,7 @@
 /** Foreground-only shell MCP server for deterministic agent validation commands. */
 import { buildMcpTools, defineMcpTool, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { literalsFrom, redact } from "../../../../domain/redaction.ts";
+import { capText, TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
 import { RUN_CREDENTIALS } from "../../../../domain/declared-secrets.ts";
 
 /**
@@ -16,7 +17,11 @@ function log(message: string): void {
   console.error(`[atoma-shell] ${message}`);
 }
 
-const MAX_OUTPUT_BYTES = 1_000_000;
+// The cap and the direction of the cut both come from `domain/tool-output.ts`.
+// This server had its own `MAX_OUTPUT_BYTES = 1_000_000`, which was twenty times
+// every other tool's and, on its own, more than a 200k context window -- and it kept
+// the HEAD, so a build log that overran lost the compiler error and returned the
+// banner. See that module for the measurements.
 
 /**
  * Variables holding a credential, if this process was handed any.
@@ -121,15 +126,21 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
   // actually returned, and before anything is returned at all: this value goes
   // into the session on the `atoma-data` branch and can be quoted into an issue
   // comment, neither of which GitHub Actions masks.
-  const truncate = (raw: string): { text: string; truncated: boolean } => {
-    const value = redact(raw, SECRET_LITERALS);
-    const bytes = Buffer.from(value);
-    return bytes.length <= MAX_OUTPUT_BYTES
-      ? { text: value, truncated: false }
-      : { text: bytes.subarray(0, MAX_OUTPUT_BYTES).toString("utf8"), truncated: true };
+  //
+  // `both` ends, because command output is both kinds of text at once: a quarter
+  // at the front for the command's own echo or the first failing test, and the
+  // rest at the end, where a build error is.
+  //
+  // The two streams SHARE one budget rather than each getting one, so a command
+  // that writes heavily to both cannot return twice the intended volume. stdout
+  // takes three quarters: a failing command's message on stderr is short, and the
+  // detail that explains it is on stdout.
+  const truncate = (raw: string, budget: number): { text: string; truncated: boolean } => {
+    const capped = capText(redact(raw, SECRET_LITERALS), budget, "both");
+    return { text: capped.text, truncated: capped.dropped > 0 };
   };
-  const out = truncate(stdout);
-  const err = truncate(stderr);
+  const out = truncate(stdout, Math.floor(TOOL_OUTPUT_BUDGET * 0.75));
+  const err = truncate(stderr, Math.floor(TOOL_OUTPUT_BUDGET * 0.25));
   const elapsedMs = Date.now() - startedAt;
 
   // Size matters as much as count. Every byte returned here enters the session
@@ -154,7 +165,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
 const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "shell_execute",
-    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run in a container that shares the repository with the other tools but nothing else: writes inside the repository are real and permanent, and writes ANYWHERE ELSE -- including $HOME, installed packages, and global configuration -- last only for this run and are invisible to github__*, search__* and the rest. They will look like they worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. System packages cannot be installed at all: the host filesystem is read-only here. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally.",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run in a container that shares the repository with the other tools but nothing else: writes inside the repository are real and permanent, and writes ANYWHERE ELSE -- including $HOME, installed packages, and global configuration -- last only for this run and are invisible to github__*, search__* and the rest. They will look like they worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. System packages cannot be installed at all: the host filesystem is read-only here. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
     schema: SHELL_EXECUTE_SCHEMA,
     handler: executeShell,
   }),
