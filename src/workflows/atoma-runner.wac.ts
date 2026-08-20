@@ -13,7 +13,11 @@ import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scrip
 import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
-import { ref as prepareShellConfinementRef } from "../scripts/prepare_shell_confinement.ts";
+import {
+  OVERLAY_ROOT,
+  SANDBOX_DIR,
+  ref as prepareShellConfinementRef,
+} from "../scripts/prepare_shell_confinement.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
@@ -130,8 +134,12 @@ const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
  * Both are written as shell rather than resolved here, because `tools.yaml`
  * needs the same two paths and expands `${NAME}` from the environment.
  */
-const SHELL_SANDBOX_DIR = "${RUNNER_TEMP}/atoma-shell-sandbox";
-const SHELL_OVERLAY_ROOT = "/mnt/atoma-shell-overlay";
+const SHELL_SANDBOX_DIR = SANDBOX_DIR;
+// The script that creates the overlay names it; this step, which mounts it, and
+// `tools.yaml`, which binds it as the container's $HOME, both have to agree. Two of the
+// three now share a constant, and the contract test holds the third to it -- `tools.yaml`
+// is a static file an adopter receives, so it cannot import anything.
+const SHELL_OVERLAY_ROOT = OVERLAY_ROOT;
 
 const resolveIssueBranchStep = new TypedOutputsStep(
   {

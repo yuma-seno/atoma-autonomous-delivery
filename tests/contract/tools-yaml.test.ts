@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { CONTAINER_GID, CONTAINER_UID } from "../../src/scripts/prepare_shell_confinement.ts";
+import {
+  CONTAINER_GID,
+  CONTAINER_UID,
+  OVERLAY_ROOT,
+  SANDBOX_DIR,
+} from "../../src/scripts/prepare_shell_confinement.ts";
 
 /**
  * `tools.yaml` decides how every tool server is started, and nothing was reading
@@ -106,6 +111,39 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
       expect(user, `${path}: --user disagrees with prepare_shell_confinement.ts`).toBe(
         `${CONTAINER_UID}:${CONTAINER_GID}`,
       );
+    }
+  });
+
+  /**
+   * The two paths the confinement is built at, as `tools.yaml` binds them.
+   *
+   * `tools.yaml` is a static file an adopter receives, so it cannot import a constant --
+   * which is why this is a test rather than a generation. What it holds together is a pair
+   * that fails quietly: change the overlay path in the workflow that creates it and podman
+   * binds a directory nothing made, so `$HOME` inside the container is empty and every
+   * toolchain the agent needs disappears, with the run staying green until a build command
+   * fails for an unrelated-looking reason. Change the sandbox directory and
+   * `/etc/passwd`, `/etc/subuid`, `containers.conf` and `storage.conf` all bind sources
+   * that do not exist.
+   */
+  test("tools.yaml binds the confinement at the paths that build it", () => {
+    for (const path of [SOURCE, DEPLOYED]) {
+      const joined = ((parse(path).shell?.args ?? []) as string[]).join(" ");
+
+      expect(joined, `${path}: the overlay is not mounted from ${OVERLAY_ROOT}`).toContain(
+        `${OVERLAY_ROOT}/merged:/home/runner`,
+      );
+
+      for (const file of ["passwd", "subuid", "subgid"]) {
+        expect(joined, `${path}: ${file} is not read from ${SANDBOX_DIR}`).toContain(
+          `${SANDBOX_DIR}/${file}:`,
+        );
+      }
+      for (const file of ["containers.conf", "storage.conf"]) {
+        expect(joined, `${path}: ${file} is not read from ${SANDBOX_DIR}`).toContain(
+          `${SANDBOX_DIR}/${file}:/etc/containers/${file}:ro`,
+        );
+      }
     }
   });
 
