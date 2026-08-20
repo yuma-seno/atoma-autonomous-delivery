@@ -27,6 +27,7 @@ Task-oriented recipes:
 | [Work with decomposed issues](#work-with-decomposed-issues) | understand how sub-issue branches stack |
 | [Point Atoma at your own workflows](#point-atoma-at-your-own-workflows) | have agents start your CI and deployment |
 | [Set up CI and deployment](#set-up-ci-and-deployment) | give a repository a pipeline an agent can write and maintain |
+| [What a pull request is checked against](#what-a-pull-request-is-checked-against) | understand the check that runs before your CI |
 | [Requiring a check that agents can satisfy](#requiring-a-check-that-agents-can-satisfy) | make required checks work with agent merges |
 | [Changes an agent may not merge](#changes-an-agent-may-not-merge) | keep some paths for human review |
 | [Give a tool a credential](#give-a-tool-a-credential) | let a tool server reach something outside GitHub |
@@ -57,21 +58,36 @@ If you only customize your own repository, edit your copied `.github/atoma/*` fi
 
 Primary file: `.github/atoma/config.json`
 
-Supported top-level fields used by scripts/workflows:
+Every setting Atoma reads, one per line. A key that is not on this list is not
+read by anything — so a typo silently does nothing, which is why the pull request
+that introduces one now fails: see [What a pull request is checked
+against](#what-a-pull-request-is-checked-against).
 
 - `merge_policy`
 - `base_branch`
 - `governed_paths`
-- `merge_gates[]` with `reason` and `when`
+- `merge_gates` — a list, each entry with `reason` and `when`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
-- `labels.in_progress`, `labels.sub_issue`, `labels.launched`
-- `workflows.ci`, `workflows.cd`
+- `labels.in_progress`
+- `labels.sub_issue`
+- `labels.launched`
+- `workflows.ci`
+- `workflows.cd`
 - `search.reranker_model`
-- `checks.commands`, `checks.secrets`
-- `deploy.targets`, `deploy.secrets`
+- `checks.commands`
+- `checks.secrets`
+- `deploy.targets`
+- `deploy.secrets`
 - `tools.secrets`
-- `auto_triggers[]` with `event`, `agent`, optional `condition`
+- `auto_triggers` — a list, each entry with `event`, `agent`, optional `condition`
+
+`labels` also accepts names of your own beyond the three above.
+
+This list is held to the code by `tests/contract/config-contract.test.ts`, which
+compares it against the same schema the validator uses. It was a fourth copy of
+the same fact — the interface in `lib/types.ts`, the runtime schema, the readers
+in `lib/config.ts`, and this — with nothing keeping them in step.
 
 Credentials are declared under the feature that consumes them, not in one list
 for the repository. The nesting is the boundary, so keep it — collapsing these
@@ -510,6 +526,53 @@ gh api repos/{owner}/{repo}/rulesets --input .github/atoma/rulesets/main.json
 Do not rename one side without the other. A ruleset requiring a context no job
 produces does not fail a pull request — it leaves it waiting forever on a check
 that will never report, and re-running nothing fixes it.
+
+### What a pull request is checked against
+
+Every pull request an agent opens is checked for one thing before your CI is asked
+to run at all: whether the `.github/atoma/` it would merge can still start a run.
+
+This is not your pipeline and it is not configurable. It runs whether or not
+`checks.commands` is set, and it reads nothing from `checks` or `deploy` to decide
+what to check — those describe what YOU verify. This one answers a narrower
+question that only has one right answer.
+
+What it checks:
+
+- Every `mcp_servers` name in every agent definition exists in `tools.yaml`, along
+  with `knows_about` targets, `callable_by` values and `extra_body` keys. This part
+  runs `atoma validate`, so it is the same resolution a run performs rather than an
+  imitation of it.
+- `config.json` uses only keys Atoma reads — see [the contract
+  above](#configjson-contract).
+- `auto_triggers`, `merge_gates`, `deploy.targets` and the three `secrets` lists
+  parse. These were already validated, but at merge time, at deploy time, and when
+  a credential was handed out. Nothing new is being judged; it is being judged
+  earlier.
+- Names resolve to files: an agent an `auto_triggers` entry routes to, an agent
+  `agents.<name>` configures, the workflow `workflows.ci` and `workflows.cd` name.
+
+What it does not check is anything that needs a run to find out. Whether your
+commands pass, whether a deployment works, whether a model answers — that is CI's
+job, and this deliberately does not duplicate it.
+
+**Why this exists.** Atoma resolves every `mcp_servers` name against `tools.yaml`
+and aborts before a single tool server starts if one is missing. Nothing objected
+at merge time, so the failure landed on whoever triggered the *next* run — which
+had already happened once here: an agent looked at its own tool surface, concluded
+a server was unused, removed it, and broke a different agent that depended on it.
+
+**What you see when it fails.** The required check goes red, the problems are
+listed in a comment on the pull request, and the engineer is dispatched to fix
+them — the same handling as failing CI, including the retry limit. The agent sent
+to fix it is unaffected by the breakage, because a run reads its machinery from the
+default branch rather than from the pull request.
+
+You can run the same check yourself, against a checkout or a worktree:
+
+```bash
+bun run .github/scripts/validate_deliverable.ts --root .
+```
 
 ### Requiring a check that agents can satisfy
 

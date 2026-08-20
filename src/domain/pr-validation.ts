@@ -23,14 +23,16 @@ const PASSING = new Set(["success", "skipped", "neutral"]);
 export const CI_RETRY_LIMIT = 3;
 
 /**
- * What this validation run concluded, as one of four distinguishable answers.
+ * What this validation run concluded, as one of five distinguishable answers.
  *
- * `passed`             CI is green; the reviewer works next.
- * `failed`             CI is red and the engineer gets another attempt.
- * `no-conclusion`      the run timed out, was cancelled, or could not be found.
- * `retries-exhausted`  red again after `CI_RETRY_LIMIT` attempts; stop.
+ * `passed`                CI is green; the reviewer works next.
+ * `failed`                CI is red and the engineer gets another attempt.
+ * `no-conclusion`         the run timed out, was cancelled, or could not be found.
+ * `retries-exhausted`     red again after `CI_RETRY_LIMIT` attempts; stop.
+ * `deliverable-invalid`   the pull request would merge a `.github/atoma/` that
+ *                        cannot start a run, so CI was never dispatched.
  */
-export type ValidationVerdict = "passed" | "failed" | "no-conclusion" | "retries-exhausted";
+export type ValidationVerdict = "passed" | "failed" | "no-conclusion" | "retries-exhausted" | "deliverable-invalid";
 
 export interface ValidationOutcome {
   /**
@@ -82,6 +84,18 @@ export interface ValidationInput {
   engineerAgent: string;
   /** How many times this pull request has already been handed back. */
   priorRetries?: number;
+  /**
+   * Ways the pull request's own `.github/atoma/` is inconsistent, from
+   * `validate_deliverable.ts`. Empty is the normal case.
+   *
+   * Non-empty means CI was never dispatched, and the `conclusion` field is
+   * therefore empty for a reason that has nothing to do with a run timing out.
+   * That is why this is judged before `conclusion` is looked at: read in the
+   * other order, a broken deliverable would report as `no-conclusion` — a
+   * verdict that deliberately dispatches nobody, because there is no defect to
+   * hand anyone. Here there is one, and its author is the agent that just wrote it.
+   */
+  deliverableProblems?: readonly string[];
 }
 
 /**
@@ -95,6 +109,39 @@ export interface ValidationInput {
  */
 export function decideValidationOutcome(input: ValidationInput): ValidationOutcome {
   const { conclusion, requiredContexts, reviewerAgent, engineerAgent, priorRetries = 0 } = input;
+  const failing = requiredContexts.map((name) => ({ name, conclusion: "failure" as const }));
+
+  // Judged first, and treated exactly as a red CI run: failing checks so the
+  // merge is blocked, a comment so the engineer knows what to fix, and the same
+  // retry bound. Failing the workflow step instead would have written no check at
+  // all, which leaves the required context pending forever and dispatches nobody
+  // — a pull request only a human can rescue, for a mistake an agent makes in the
+  // ordinary course of editing its own tool surface.
+  //
+  // The engineer can act on it because the run that carries it reads its
+  // machinery from the default branch, not from this pull request: a broken
+  // `.github/atoma/` here does not stop the agent sent to fix it.
+  const deliverableProblems = input.deliverableProblems ?? [];
+  if (deliverableProblems.length > 0) {
+    const count = `${deliverableProblems.length} problem${deliverableProblems.length === 1 ? "" : "s"}`;
+    if (priorRetries >= CI_RETRY_LIMIT) {
+      return {
+        verdict: "retries-exhausted",
+        checks: failing,
+        nextAgent: "",
+        summary:
+          `The deliverable is still not internally consistent (${count}) after ${priorRetries} attempts. ` +
+          `Stopping rather than dispatching the engineer again; a human should look.`,
+      };
+    }
+    return {
+      verdict: "deliverable-invalid",
+      checks: failing,
+      nextAgent: engineerAgent,
+      summary: `.github/atoma/ is not internally consistent (${count}), so CI was not run.`,
+    };
+  }
+
   const normalised = conclusion.trim().toLowerCase();
   const passed = PASSING.has(normalised);
 

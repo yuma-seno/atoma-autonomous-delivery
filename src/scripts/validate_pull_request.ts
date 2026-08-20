@@ -68,12 +68,20 @@
  *   mirroring and no human acts — at the cost of an adoption step, and of
  *   attributing the agent's commits to whoever owns the token.
  *
+ * ## The deliverable is checked before CI is asked to run
+ *
+ * `--deliverable-report` names the file `validate_deliverable.ts` wrote for this
+ * pull request. A non-empty one means the pull request would merge a
+ * `.github/atoma/` that cannot start a run, and this script then writes the failing
+ * checks and hands it back WITHOUT dispatching CI — there is nothing to learn from
+ * running a pipeline against a deliverable that cannot be loaded.
+ *
  * Usage:
  *   validate_pull_request.ts --repo owner/name --number N --branch atoma/issue-N
  *     --workflow ci.yml --reviewer reviewer --engineer engineer
- *     [--timeout-seconds 1800]
+ *     --deliverable-report FILE [--timeout-seconds 1800]
  */
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { decideValidationOutcome } from "../domain/pr-validation.ts";
 import { gh } from "../lib/gh.ts";
@@ -88,6 +96,16 @@ export interface ValidatePullRequestArgs {
   workflow: string;
   reviewer: string;
   engineer: string;
+  /**
+   * File `validate_deliverable.ts` wrote, one problem per line and empty when
+   * there are none.
+   *
+   * A path that does not exist stops the run rather than standing in for "no
+   * problems". The step that writes it always writes it, so an absent file means
+   * the step did not run — and a validation that did not happen must not be
+   * reported as one that passed. Same reasoning as `required.known` below.
+   */
+  "deliverable-report": string;
   /** Defaults to 1800. The job's own `timeout-minutes` is deliberately longer,
    *  so a stall is reported as "no conclusion" here rather than killed there
    *  with nothing written. */
@@ -151,11 +169,22 @@ function countPriorRetries(repo: string, number: string): number {
  * from there, and pasting a log costs tokens on every retry whether or not the
  * relevant lines are in the part that fits.
  */
-function reportFailure(repo: string, number: string, attempt: number, runUrl: string, summary: string): void {
+function reportFailure(
+  repo: string,
+  number: string,
+  attempt: number,
+  runUrl: string,
+  summary: string,
+  details: readonly string[] = [],
+): void {
+  // `summary` is also a step output, which is one line by construction, so the list
+  // of problems travels here rather than being folded into it. The engineer needs
+  // all of them at once: one per round trip costs a model run each.
   const body = [
     LLM_CONTEXT_TAG.write("include"),
     CI_RETRY_TAG.write(attempt),
     `Atoma: ${summary}`,
+    ...(details.length > 0 ? ["", ...details.map((detail) => `- ${detail}`)] : []),
     "",
     runUrl ? `Failing run: ${runUrl}` : "",
   ]
@@ -163,6 +192,58 @@ function reportFailure(repo: string, number: string, attempt: number, runUrl: st
     .join("\n");
   const posted = gh("issue", "comment", number, "--repo", repo, "--body", body);
   if (posted.code) log(`WARN could not post the failure comment: ${posted.stderr}`);
+}
+
+/**
+ * Dispatch CI and wait for it, returning what it concluded.
+ *
+ * A function rather than the body of `main`, so the one caller that must NOT run it
+ * — a pull request whose own `.github/atoma/` is broken — can skip it by not
+ * calling it, instead of by an early return that would also skip writing the
+ * checks and the comment.
+ *
+ * An empty `conclusion` means the run timed out, was cancelled, or was never
+ * found. That is deliberately not an error here: `decideValidationOutcome` has a
+ * verdict for it that dispatches nobody.
+ */
+function runCiAndWait(
+  repo: string,
+  workflow: string,
+  branch: string,
+  headSha: string,
+  timeoutSeconds: number,
+): { conclusion: string; runUrl: string } {
+  const since = new Date().toISOString();
+  const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
+  if (dispatch.code) {
+    log(`could not dispatch ${workflow} against ${branch}: ${dispatch.stderr}`);
+    process.exit(1);
+  }
+
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() < deadline) {
+    Bun.sleepSync(10_000);
+    const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
+    const { workflow_runs = [] } = JSON.parse(listed || "{}") as {
+      workflow_runs?: {
+        id: number;
+        status: string;
+        conclusion: string | null;
+        head_sha: string;
+        created_at: string;
+        event: string;
+      }[];
+    };
+    const run = pickDispatchedRun(workflow_runs, headSha, since);
+    if (!run) continue;
+    if (run.status !== "completed") continue;
+    const conclusion = run.conclusion ?? "";
+    log(`dispatched run ${run.id} concluded ${conclusion}`);
+    return { conclusion, runUrl: `https://github.com/${repo}/actions/runs/${run.id}` };
+  }
+
+  log(`no conclusion within ${timeoutSeconds}s`);
+  return { conclusion: "", runUrl: "" };
 }
 
 function main(): void {
@@ -175,6 +256,7 @@ function main(): void {
       workflow: { type: "string" },
       reviewer: { type: "string" },
       engineer: { type: "string" },
+      "deliverable-report": { type: "string" },
       "timeout-seconds": { type: "string" },
     },
   });
@@ -185,6 +267,27 @@ function main(): void {
   if (!repo || !branch || !workflow) {
     console.error("usage: validate_pull_request.ts --repo owner/name --number N --branch B --workflow W");
     process.exit(1);
+  }
+
+  // Read before anything is decided, and an absent file stops the run. The step
+  // that writes it writes it unconditionally, including empty, so absence means the
+  // step did not run — and "we did not check" must never be able to look like
+  // "there was nothing wrong". Same reasoning as `required.known` below.
+  const reportPath = values["deliverable-report"] ?? "";
+  if (!reportPath) {
+    console.error("usage: validate_pull_request.ts ... --deliverable-report FILE");
+    process.exit(1);
+  }
+  if (!existsSync(reportPath)) {
+    log(`cannot validate: no deliverable report at ${reportPath}`);
+    process.exit(1);
+  }
+  const deliverableProblems = readFileSync(reportPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (deliverableProblems.length > 0) {
+    log(`the deliverable is inconsistent (${deliverableProblems.length} problem(s)); CI will not be dispatched`);
   }
 
   const githubOutput = process.env.GITHUB_OUTPUT;
@@ -226,41 +329,14 @@ function main(): void {
     );
   }
 
-  const since = new Date().toISOString();
-  const dispatch = gh("workflow", "run", workflow, "--repo", repo, "--ref", branch);
-  if (dispatch.code) {
-    log(`could not dispatch ${workflow} against ${branch}: ${dispatch.stderr}`);
-    process.exit(1);
-  }
-
-  const timeoutSeconds = Number(values["timeout-seconds"] ?? "1800");
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  let conclusion = "";
-  let runUrl = "";
-
-  while (Date.now() < deadline) {
-    Bun.sleepSync(10_000);
-    const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
-    const { workflow_runs = [] } = JSON.parse(listed || "{}") as {
-      workflow_runs?: {
-        id: number;
-        status: string;
-        conclusion: string | null;
-        head_sha: string;
-        created_at: string;
-        event: string;
-      }[];
-    };
-    const run = pickDispatchedRun(workflow_runs, headSha, since);
-    if (!run) continue;
-    if (run.status !== "completed") continue;
-    conclusion = run.conclusion ?? "";
-    runUrl = `https://github.com/${repo}/actions/runs/${run.id}`;
-    log(`dispatched run ${run.id} concluded ${conclusion}`);
-    break;
-  }
-
-  if (!conclusion) log(`no conclusion within ${timeoutSeconds}s`);
+  // Not dispatched at all when the deliverable itself is inconsistent. CI would
+  // either fail for an unrelated-looking reason or pass and say nothing, and the
+  // verdict is decided either way: `decideValidationOutcome` reads the problems
+  // first and never looks at a conclusion.
+  const { conclusion, runUrl } =
+    deliverableProblems.length > 0
+      ? { conclusion: "", runUrl: "" }
+      : runCiAndWait(repo, workflow, branch, headSha, Number(values["timeout-seconds"] ?? "1800"));
 
   // How many times validation already sent this pull request back. Counted from
   // its own comments rather than held anywhere, so it survives a re-dispatch and
@@ -273,6 +349,7 @@ function main(): void {
     reviewerAgent: values.reviewer ?? "",
     engineerAgent: values.engineer ?? "",
     priorRetries,
+    deliverableProblems,
   });
 
   for (const check of outcome.checks) {
@@ -306,7 +383,7 @@ function main(): void {
   // run posted no comment, the engineer was dispatched with no brief, and the
   // tally that bounds that loop never advanced. See `ValidationOutcome.verdict`.
   if (outcome.verdict !== "passed") {
-    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary);
+    reportFailure(repo, values.number ?? "", priorRetries + 1, runUrl, outcome.summary, deliverableProblems);
   }
 
   write(`next_agent=${outcome.nextAgent}`);
