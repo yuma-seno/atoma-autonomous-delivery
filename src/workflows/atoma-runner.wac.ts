@@ -22,9 +22,9 @@ import { ref as extractDirectiveRef } from "../scripts/extract_directive.ts";
 import { ref as postResultCommentRef } from "../scripts/post_result_comment.ts";
 import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
-import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
+import { LOOP_LIMIT, ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
-import { secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
+import { runCredentialEnv, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
 import { ref as writeCredentialsFileRef } from "../scripts/write_credentials_file.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
@@ -366,17 +366,19 @@ const writeCredentialsStep = new TypedOutputsStep({
   name: "Collect this run's credentials into a file",
   shell: "bash",
   env: {
-    // The credentials atoma needs for itself, and the token the GitHub-facing
-    // tool servers authenticate with. Named here and nowhere else.
-    OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
-    // One name per provider, from atoma v0.1.13. A secret that is not set arrives
-    // as an empty string and `write_credentials_file.ts` drops it, which is what
-    // keeps "more than one credential present" -- now an error rather than a
-    // precedence -- from meaning "more than one name written here".
-    OPENROUTER_API_KEY: "${{ secrets.OPENROUTER_API_KEY }}",
-    ORCAROUTER_API_KEY: "${{ secrets.ORCAROUTER_API_KEY }}",
-    ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}",
-    ATOMA_COPILOT_TOKEN: "${{ secrets.ATOMA_COPILOT_TOKEN }}",
+    // Every credential the run supplies, from the list that decides what that means.
+    // These were written out here as well, six lines against six entries, currently in
+    // sync and with nothing keeping them so: a seventh added to `RUN_CREDENTIALS` would
+    // be looked up by `collect()`, never supplied here, dropped for being empty, and the
+    // run would fail at the first inference with a provider error naming nothing near the
+    // omission. `secretSlotEnv()` below was already generated, which made the
+    // hand-written half look deliberate.
+    //
+    // `GH_TOKEN` is the exception and stays written: its value is the run's own token
+    // rather than a repository secret.
+    ...runCredentialEnv(),
+    // Written here rather than generated: its value is the run's own token, not a
+    // repository secret, so it is not one of the names `RUN_CREDENTIALS` can supply.
     GH_TOKEN: "${{ github.token }}",
     // Plus whatever config.json declared. See `actions/secret-slots.ts`.
     ...secretSlotEnv(),
@@ -762,7 +764,7 @@ const loopLimitCommentStep = new TypedOutputsStep({
     MENTION="@\${NOTIFY} - "
   fi
   BD=$(mktemp)
-  echo "\${MENTION}Auto-dispatch loop limit (5 consecutive runs) reached." > "$BD"
+  echo "\${MENTION}Auto-dispatch loop limit (${LOOP_LIMIT} consecutive runs) reached." > "$BD"
   echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: \${DIRECTIVE}) has been safely suppressed." >> "$BD"
   echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /\${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
   echo "See the workflow run for details: \${RUN_URL}." >> "$BD"

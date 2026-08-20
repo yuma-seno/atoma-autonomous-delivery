@@ -73,3 +73,54 @@ describe("reserved names match the workflows they describe", () => {
     expect(unreserved).toEqual([]);
   });
 });
+
+/**
+ * The step that supplies the run's credentials supplies all of them.
+ *
+ * `RUN_CREDENTIALS` decides what "the run's own credentials" means: `collect()` iterates
+ * it to build the file atoma reads. The step's `env:` is where those values come from, and
+ * the two were hand-kept mirrors — six lines against six entries, in sync with nothing
+ * holding them there.
+ *
+ * Both directions are silent. A name in the list and not the step is looked up, found
+ * empty, dropped, and the run fails at its first inference with a provider error naming
+ * nothing near the omission. A name in the step and not the list is a secret exported into
+ * a step for no reader.
+ *
+ * Written after exactly that: generating the step from the list dropped `GH_TOKEN`,
+ * because its value is the run's own token rather than a repository secret, and nothing
+ * failed until the next run would have found every GitHub tool server unauthenticated.
+ */
+describe("the credentials step and RUN_CREDENTIALS", () => {
+  const CREDENTIALS_STEP = "Collect this run's credentials into a file";
+
+  function stepEnv(): Record<string, string> {
+    const doc = Bun.YAML.parse(
+      readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8"),
+    ) as { jobs?: Record<string, { steps?: { name?: string; env?: Record<string, string> }[] }> };
+    const step = doc.jobs?.run?.steps?.find((candidate) => candidate.name === CREDENTIALS_STEP);
+    expect(step, `atoma-runner.yml has no step named "${CREDENTIALS_STEP}"`).toBeDefined();
+    return step?.env ?? {};
+  }
+
+  test("every credential the run declares is supplied to the step", () => {
+    const env = stepEnv();
+    for (const name of RUN_CREDENTIALS) {
+      expect(
+        Object.keys(env),
+        `${name} is in RUN_CREDENTIALS, so nothing supplies it and collect() drops it`,
+      ).toContain(name);
+      expect(env[name], `${name} is supplied as an empty value`).toBeTruthy();
+    }
+  });
+
+  test("the step supplies nothing that is not a declared credential or a secret slot", () => {
+    const declared = new Set<string>(RUN_CREDENTIALS);
+    for (const name of Object.keys(stepEnv())) {
+      if (name.startsWith(SECRET_SLOT_PREFIX) || name === SECRET_NAMES_VAR) continue;
+      expect(declared.has(name), `${name} is exported into the step and read by nobody`).toBe(
+        true,
+      );
+    }
+  });
+});

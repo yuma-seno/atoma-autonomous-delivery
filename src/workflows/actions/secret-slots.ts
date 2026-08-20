@@ -16,6 +16,7 @@
  * rather than written out three times.
  */
 import {
+  RUN_CREDENTIALS,
   SECRET_NAMES_VAR,
   SECRET_SLOT_PREFIX,
   SECRET_SLOTS,
@@ -108,6 +109,28 @@ ${scriptCommandWithArgs(readSecretNamesRef, { destination, config: trustedConfig
  * declares no secrets at all. That is the common case, so it must not be the
  * fragile one.
  */
+/**
+ * Every credential the run supplies, as `NAME: ${{ secrets.NAME }}` lines.
+ *
+ * Generated from `RUN_CREDENTIALS`, which is the list that decides what "the run's own
+ * credentials" means — `write_credentials_file.ts` iterates the same one. The step used to
+ * carry its own copy of the names, six lines against six entries, in sync with nothing
+ * keeping them so: a seventh entry would be looked up by `collect()`, never supplied, and
+ * dropped for being empty, leaving a run to fail at its first inference with a provider
+ * error that names nothing near the omission.
+ *
+ * `GH_TOKEN` is excluded: its value is `${{ github.token }}`, the run's own token rather
+ * than a repository secret, so the step still writes that one itself.
+ */
+export function runCredentialEnv(): Record<string, string> {
+  return Object.fromEntries(
+    RUN_CREDENTIALS.filter((name) => name !== "GH_TOKEN").map((name) => [
+      name,
+      `\${{ secrets.${name} }}`,
+    ]),
+  );
+}
+
 export function secretSlotEnv(): Record<string, string> {
   const names = `steps.${SECRET_NAMES_STEP_ID}.outputs.names`;
   return {
