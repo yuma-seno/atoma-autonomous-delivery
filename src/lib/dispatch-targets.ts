@@ -17,30 +17,13 @@ import { dispatchRunner } from "./dispatch.ts";
 import { resolveNotify } from "./notify.ts";
 import { isIssueBranch } from "./branch-placement.ts";
 import { targetsForMerge } from "../domain/deploy-targets.ts";
+import { DEFAULT_CD_WORKFLOW, DEFAULT_CI_WORKFLOW } from "../domain/shipped-workflows.ts";
 
-/**
- * The workflows this template ships, used when a project names none of its own.
- *
- * The shipped ones are the default because they are the arrangement this
- * template is for: a pipeline expressed as commands in config.json, which an
- * agent can write and a workflow file is not. A project that has its own
- * workflows says so in `workflows.ci` / `workflows.cd` and neither of these is
- * consulted.
- *
- * Guessing `ci.yml` instead — a name a repository may or may not use — would
- * dispatch a workflow that does not exist and leave every pull request waiting
- * for a check that never reports.
- */
-/**
- * Exported because the other route to this value needs it. `validate_pull_request.ts`
- * reads `workflows.ci` through a workflow step, with its own fallback written out — and a
- * comment saying it matches this one, which is the admission that nothing checked. Rename
- * the shipped check workflow and the tool side would dispatch the new name while the
- * validation side dispatched the old one, `gh workflow run` would fail, and every agent
- * pull request would lose its required check with no agent scheduled after it.
- */
-export const DEFAULT_CI_WORKFLOW = "atoma-check.yml";
-const DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
+// The two shipped workflow names now live in `domain/shipped-workflows.ts`. They were
+// declared here, in a module that runs `gh` and reads config.json, and re-exported from
+// here to a workflow generator and — once `deliverable-integrity.ts` needed them — to a
+// module that must stay pure. The constants are facts about what this template ships, not
+// about dispatching, so they moved to where a pure module can reach them.
 
 function log(message: string): void {
   console.error(`[atoma-github] ${message}`);

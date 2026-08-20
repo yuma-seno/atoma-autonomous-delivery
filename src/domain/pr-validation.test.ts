@@ -114,3 +114,79 @@ describe("decideValidationOutcome", () => {
     });
   });
 });
+
+/**
+ * A pull request whose own `.github/atoma/` cannot start a run.
+ *
+ * Judged before the CI conclusion, and treated as a red CI run rather than as a
+ * broken job: failing checks so the merge is blocked, and the engineer dispatched
+ * to fix what it wrote. The alternative — a failed workflow step — writes no check
+ * at all, which leaves the required context pending forever and dispatches nobody.
+ */
+describe("a deliverable that cannot start a run", () => {
+  const problems = ["engineer.md: mcp_servers 'shell': not found in tools file"];
+
+  const decideWith = (deliverableProblems: string[], conclusion = "", priorRetries = 0) =>
+    decideValidationOutcome({
+      conclusion,
+      requiredContexts: contexts,
+      ...agents,
+      priorRetries,
+      deliverableProblems,
+    });
+
+  test("blocks the merge and returns to the engineer", () => {
+    const outcome = decideWith(problems);
+    expect(outcome.verdict).toBe("deliverable-invalid");
+    expect(outcome.checks).toEqual([{ name: "check", conclusion: "failure" }]);
+    expect(outcome.nextAgent).toBe("engineer");
+  });
+
+  // The count belongs in the summary; the problems themselves travel in the
+  // comment. `summary` is also a step output, which is one line by construction.
+  test("the summary names the count and stays one line", () => {
+    const outcome = decideWith([...problems, "labels.launched must be a non-empty label name."]);
+    expect(outcome.summary).toContain("(2 problems)");
+    expect(outcome.summary).not.toContain("\n");
+  });
+
+  test("one problem is not pluralised", () => {
+    expect(decideWith(problems).summary).toContain("(1 problem)");
+  });
+
+  /**
+   * The ordering that matters. CI was never dispatched, so `conclusion` is empty —
+   * which on its own means `no-conclusion`, a verdict that deliberately dispatches
+   * NOBODY because there is no defect to hand anyone. Here there is one, and its
+   * author is the agent that just wrote it.
+   */
+  test("an empty conclusion is not read as a run that never reported", () => {
+    expect(decideWith(problems, "").verdict).toBe("deliverable-invalid");
+    expect(decideWith([], "").verdict).toBe("no-conclusion");
+  });
+
+  // A green CI run cannot rescue it: what CI checked is the repository's own code,
+  // and what is broken is the machinery the NEXT run loads.
+  test("a passing CI conclusion does not override it", () => {
+    expect(decideWith(problems, "success").verdict).toBe("deliverable-invalid");
+    expect(decideWith(problems, "success").nextAgent).toBe("engineer");
+  });
+
+  // The same bound as failing CI, and for the same reason: the engineer is
+  // dispatched by a workflow, so nothing else stops the loop.
+  test("the retry limit applies", () => {
+    for (const prior of [0, CI_RETRY_LIMIT - 1]) {
+      expect(decideWith(problems, "", prior).nextAgent, `prior=${prior}`).toBe("engineer");
+    }
+    const outcome = decideWith(problems, "", CI_RETRY_LIMIT);
+    expect(outcome.verdict).toBe("retries-exhausted");
+    expect(outcome.nextAgent).toBe("");
+    expect(outcome.summary).toContain("human");
+    expect(outcome.checks).toEqual([{ name: "check", conclusion: "failure" }]);
+  });
+
+  test("an empty list is the normal case and changes nothing", () => {
+    expect(decideWith([], "success").verdict).toBe("passed");
+    expect(decideWith([], "failure").verdict).toBe("failed");
+  });
+});

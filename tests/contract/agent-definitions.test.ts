@@ -11,6 +11,17 @@
  * concluded the non-readonly `filesystem` server was unused, and removed it —
  * while `engineer.md` still depended on it for every write operation. Nothing
  * in the pipeline objected, so it merged and broke the engineer.
+ *
+ * ## This is the dev-time half of a pair
+ *
+ * The authoritative check is `atoma validate --agent-def X.md --tools-file`, which
+ * `atoma-validate-pr.yml` now runs against every agent definition a pull request
+ * would merge — the core's own code, applying the same resolution a run applies.
+ *
+ * This test stays because it runs where that binary is not: `bun test` on a laptop
+ * and in this repository's CI, against `src/` rather than the deployed tree, before
+ * anything is generated. It is an approximation of the real rule — a top-level YAML
+ * key scan, not a parse — and if the two ever disagree, the core is right.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";

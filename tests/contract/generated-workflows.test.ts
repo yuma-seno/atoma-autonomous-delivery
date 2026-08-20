@@ -67,6 +67,49 @@ describe("generated workflows", () => {
     expect(chmod, "hooks must be executable before the agent can call a tool").toBeLessThan(agent);
   });
 
+  /**
+   * The deliverable's own consistency is checked on every validation run.
+   *
+   * Three properties, and each one is a way the check could be present and useless.
+   *
+   * It must be unconditional. #414 asks for a validation that runs independently of
+   * `config.json`'s `checks.commands` — an adopter's `atoma-check.yml` runs nothing
+   * at all until they configure it, and whatever they put there is their pipeline.
+   * An `if:` on this step would put our own integrity check back under their
+   * control.
+   *
+   * It must read the PULL REQUEST's tree. This job runs on the default branch, so
+   * its first checkout is the machinery; a second checkout brings the content being
+   * judged. Validating the first one would pass every time, by construction.
+   *
+   * And `validate_pull_request.ts` must be given the report. Without it that script
+   * refuses to run at all — an absent report is "we did not check", which must never
+   * be able to look like "there was nothing wrong".
+   */
+  test("every validation run checks the deliverable the pull request would merge", () => {
+    type WorkflowStep = { name?: string; run?: string; if?: string; uses?: string; with?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(
+      readFileSync("dist/.github/workflows/atoma-validate-pr.yml", "utf8"),
+    ) as WorkflowDocument;
+    const steps = workflow.jobs?.validate?.steps ?? [];
+
+    const check = steps.find((step) => step.run?.includes("validate_deliverable.ts"));
+    expect(check, "no step runs validate_deliverable.ts").toBeDefined();
+    expect(check?.if, "the deliverable check must not be conditional").toBeUndefined();
+
+    const headCheckout = steps.find(
+      (step) => step.uses?.startsWith("actions/checkout@") && step.with?.ref !== undefined,
+    );
+    expect(headCheckout, "the pull request's own tree is never checked out").toBeDefined();
+    expect(headCheckout?.with?.ref).toContain("inputs.branch");
+    expect(check?.run, "the check must read the pull request's tree").toContain(`--root "${headCheckout?.with?.path}"`);
+
+    const validate = steps.find((step) => step.run?.includes("validate_pull_request.ts"));
+    expect(validate?.run, "the verdict never reaches the script that acts on it").toContain("--deliverable-report");
+  });
+
   test("checkout the repository before running repository scripts", () => {
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };

@@ -2,10 +2,12 @@ import { Workflow, type GeneratedWorkflowTypes as GWT } from "@github-actions-wo
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { startJob, TypedOutputsStep } from "./actions/base.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
-import { DEFAULT_CI_WORKFLOW } from "../lib/dispatch-targets.ts";
+import { DEFAULT_CI_WORKFLOW } from "../domain/shipped-workflows.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
+import { ATOMA_DEFAULT_VERSION, installAtomaCliStep } from "./actions/atoma-cli.ts";
 import { ref as validatePullRequestRef } from "../scripts/validate_pull_request.ts";
+import { ref as validateDeliverableRef } from "../scripts/validate_deliverable.ts";
 import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
 
 // Runs CI against an agent's pull request and decides who works next.
@@ -23,6 +25,67 @@ import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scrip
 //
 // See `scripts/validate_pull_request.ts` for why the check has to be written
 // through the Checks API, and what must not be tidied away.
+//
+// It also checks the deliverable the pull request would merge, before asking CI to
+// run at all. An agent editing its own tool surface is ordinary work, and until now
+// it could merge a `.github/atoma/` that stops the next run from starting: atoma
+// resolves every name in an agent's `mcp_servers` against tools.yaml and aborts
+// before a single server starts, so the failure landed on whoever triggered the
+// next run rather than on this pull request. See `scripts/validate_deliverable.ts`.
+
+/**
+ * Where the pull request's own tree is checked out, beside the default-branch one.
+ *
+ * This job runs on the default branch — `gh workflow run` with no `--ref` — so its
+ * first checkout is the machinery: the scripts, and the atoma binary's version. The
+ * content being judged is the pull request's, and it has to be fetched separately.
+ *
+ * That separation is the whole security story of this step. Everything under here is
+ * DATA: a JSON file parsed, agent definitions and a tools file handed to a binary
+ * downloaded from a release. Nothing in it is executed, nothing in it decides how
+ * the validation behaves, and no script is loaded from it — which matters because
+ * this job holds `checks: write` and could otherwise be made to write its own
+ * passing check.
+ *
+ * The head branch is always in this repository: this workflow is dispatched for
+ * pull requests agents open on `atoma/issue-N` branches. A fork's head would not
+ * resolve here, and does not arrive here.
+ */
+const PR_HEAD_DIR = "pr-head";
+
+/**
+ * The file the two steps below pass between them, one problem per line.
+ *
+ * A file rather than a step output because it is a list, and a step output is one
+ * line: `$GITHUB_OUTPUT` takes a multi-line value only through a delimiter block,
+ * and the engineer needs every problem at once rather than one per round trip.
+ *
+ * Outside the workspace, so neither checkout can have placed it and nothing commits
+ * it.
+ */
+const DELIVERABLE_REPORT = "${RUNNER_TEMP}/atoma-deliverable-problems.txt";
+
+/**
+ * Check the deliverable, and let a red verdict through to the next step.
+ *
+ * The distinction the exit code carries is the point. 1 means the deliverable is
+ * inconsistent, which is a verdict about the pull request and belongs on the check
+ * run `validate_pull_request.ts` writes — failing the job here would leave the
+ * required context pending forever and dispatch nobody, so an ordinary mistake
+ * would need a human every time. Anything above 1 means the check did not happen,
+ * and that must not be able to look like a clean one.
+ */
+const deliverableStep = new TypedOutputsStep({
+  name: "Validate the deliverable this pull request would merge",
+  shell: "bash",
+  run: `STATUS=0
+${scriptCommandWithArgs(validateDeliverableRef, { root: PR_HEAD_DIR, report: DELIVERABLE_REPORT })} || STATUS=\$?
+if [ "\$STATUS" -gt 1 ]; then
+  echo "::error::the deliverable could not be validated; see the log above"
+  exit 1
+fi
+`,
+});
 
 const configStep = new TypedOutputsStep(
   {
@@ -52,6 +115,7 @@ const validateStep = new TypedOutputsStep(
       workflow: configStep.outputs.workflow,
       reviewer: "${{ inputs.reviewer }}",
       engineer: "${{ inputs.engineer }}",
+      "deliverable-report": DELIVERABLE_REPORT,
     })}\n`,
   },
   ["next_agent", "conclusion", "summary"] as const,
@@ -108,7 +172,17 @@ export const atomaValidatePr = new Workflow("atoma-validate-pr", {
     },
     [
       new ActionsCheckoutV4({ name: "Checkout repository" }),
+      new ActionsCheckoutV4({
+        name: "Checkout the pull request's own tree, as data",
+        with: { ref: "${{ inputs.branch }}", path: PR_HEAD_DIR },
+      }),
       new SetupBunAction({ name: "Setup Bun" }),
+      // The version the runner would install by default. A dispatch that overrides
+      // `atoma_version` for a RUN is not reflected here, so the validation reads the
+      // deliverable as the default-version binary does — which is what a repository
+      // that never overrides it gets, and what an adopter's next run will use.
+      installAtomaCliStep(ATOMA_DEFAULT_VERSION),
+      deliverableStep,
       configStep,
       validateStep,
       new TypedOutputsStep({

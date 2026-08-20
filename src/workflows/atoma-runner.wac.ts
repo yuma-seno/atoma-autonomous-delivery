@@ -2,6 +2,12 @@ import { Workflow, NormalJob } from "@github-actions-workflow-ts/lib";
 import type { GeneratedWorkflowTypes as GWT } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
 import { TypedOutputsStep, type DefinedJob } from "./actions/base.ts";
+import {
+  ATOMA_DEFAULT_VERSION,
+  ATOMA_VERSION_DESC,
+  checkoutAtomaSourceStep,
+  installAtomaCliStep,
+} from "./actions/atoma-cli.ts";
 import { ATOMA_WORKFLOW_PERMISSIONS } from "./actions/permissions.ts";
 import { defineCallableWorkflow } from "./actions/reusable-workflow.ts";
 import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
@@ -57,52 +63,15 @@ const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
-// Moves with `tools/tools.yaml`, not independently. From v0.1.11 atoma removes
-// the credentials it knows about from a tool server's environment unless that
-// server names them, and expands `${NAME}` in an `env:` value against the run's
-// credentials. Before v0.1.11 those values were literal, so a tools file carrying
-// `${GH_TOKEN}` would hand `github` those seven characters as its token --
-// overriding the value it had been inheriting and failing every call with a 401.
+// The version this installs, the description of the input that overrides it, and the
+// two steps that install it live in `actions/atoma-cli.ts` -- along with the record of
+// what each raise of the pin was coupled to, which is the part worth not losing.
 //
-// So the two are one change: raising this pin without the declarations strips a
-// token nothing asks for, and shipping the declarations without raising it passes
-// a literal.
-//
-// v0.1.12 adds the same coupling for `args`: it expands `${NAME}` there, from the
-// environment, which is how a tool server is read from the machinery checkout
-// rather than from the pull request under review. To v0.1.11 an `args` entry
-// carrying `${ATOMA_MACHINERY_ROOT:-.}` is a literal path that does not exist, so
-// this pin and `tools/tools.yaml` move together here too.
-//
-// v0.1.13 is a third coupling, and this one is with the repository's SECRETS.
-// Providers became a table there: `openai` means OpenAI rather than defaulting to
-// OpenRouter, the routers have their own names, and each provider reads its own
-// credential -- `OPENROUTER_API_KEY`, `ORCAROUTER_API_KEY` -- with no fallback to
-// `OPENAI_API_KEY`. Two credentials present is an error naming both, so a
-// repository that keeps an OpenRouter key under the old name AND adds it under the
-// new one gets a failed run rather than a guess. Raising this pin means the secret
-// has to have been renamed first.
-//
-// v0.1.14 gives each router a name for each dialect it serves, which is what the
-// agent definitions here needed: they read `provider: openai-responses # openrouter`,
-// a row that in v0.1.13 means OpenAI itself. So this pin moves with
-// `agent-definitions/*.md` as well.
-//
-// v0.1.16 carries two fixes that are about THIS repository's runs specifically.
-//
-// The Responses adapter assembled its own `extra_body` merge and left out the
-// reconciliation that protects the runtime tool definitions -- so an agent carrying
-// `extra_body.tools` replaced them. All three definitions here carry OpenRouter's two
-// server tools, and all three use that adapter, so every request sent those two and no
-// MCP schema at all. The model was inferring argument shapes from the names in the
-// system prompt, which is the shape of the argument failures that have been read as model
-// weakness -- `issue_number` for `number`, `form` for `from`, `label` for `labels`.
-//
-// And a `vision: false` agent had pictures replaced before the message entered the
-// session, so what atoma-data recorded was not what happened: resuming with
-// `vision: true` could never get them back.
-const ATOMA_DEFAULT_VERSION = "v0.1.16";
-const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
+// They were here until `atoma-validate-pr` needed the same binary, to run
+// `atoma validate` against the agent definitions and tools file a pull request would
+// merge. Two workflows installing it from two copies of a download-and-chmod is two
+// places to move the pin, and the pin is coupled to `tools/tools.yaml`, to
+// `agent-definitions/*.md` and to the repository's secrets.
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
 // src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
@@ -339,33 +308,7 @@ echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
  */
 const toolSecretsStep = secretNamesStep("tools");
 
-const checkoutAtomaSourceStep = new ActionsCheckoutV4({
-  name: "Checkout Atoma source (for atoma_version: source)",
-  if: "inputs.atoma_version == 'source'",
-  with: { repository: "yuma-seno/atoma", path: "atoma-src" },
-});
-
-const installAtomaCliStep = new TypedOutputsStep({
-  name: "Install Atoma CLI",
-  shell: "bash",
-  run: `VERSION="\${{ inputs.atoma_version }}"
-if [ "$VERSION" = "source" ]; then
-  echo "Building Atoma from source (atoma-src/) ..."
-  cargo install --path atoma-src --force --locked
-elif [ "$VERSION" = "latest" ]; then
-  URL="https://github.com/yuma-seno/atoma/releases/latest/download/atoma-linux-x86_64"
-  echo "Downloading Atoma \${VERSION} ..."
-  curl -fsSL "$URL" -o /usr/local/bin/atoma
-  chmod +x /usr/local/bin/atoma
-else
-  URL="https://github.com/yuma-seno/atoma/releases/download/\${VERSION}/atoma-linux-x86_64"
-  echo "Downloading Atoma \${VERSION} ..."
-  curl -fsSL "$URL" -o /usr/local/bin/atoma
-  chmod +x /usr/local/bin/atoma
-fi
-atoma --version
-`,
-});
+const installAtomaCli = installAtomaCliStep("${{ inputs.atoma_version }}");
 
 /** Outside the workspace, so the checkout cannot have placed it and nothing commits it. */
 const CREDENTIALS_FILE = "$RUNNER_TEMP/atoma-credentials.json";
@@ -1072,7 +1015,7 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   }),
   reviewerStartCommentStep,
   checkoutAtomaSourceStep,
-  installAtomaCliStep,
+  installAtomaCli,
   // Immediately before the agent, because its output is what keys the secret
   // lookups in that step's own `env:`.
   toolSecretsStep,
