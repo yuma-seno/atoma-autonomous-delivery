@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { resolveAutoTriggers, selectTriggerAgent, type AutoTrigger } from "./auto-triggers.ts";
+import {
+  resolveAutoTriggers,
+  selectTriggerAgent,
+  TRIGGER_CONDITIONS,
+  type AutoTrigger,
+  type TriggerContext,
+} from "./auto-triggers.ts";
 
 const ok = (raw: unknown): AutoTrigger[] => {
   const { triggers, problems } = resolveAutoTriggers(raw);
@@ -117,5 +123,38 @@ describe("selectTriggerAgent", () => {
       { event: "issues.opened", agent: "second" },
     ]);
     expect(selectTriggerAgent(two, { event: "issues.opened" })).toBe("first");
+  });
+});
+
+/**
+ * Each condition's meaning lives in its own entry now, so this asserts the entry rather
+ * than a copy of the rule: the tag and the matcher have to agree, which is what a
+ * separate switch could not be made to guarantee.
+ */
+describe("TRIGGER_CONDITIONS", () => {
+  const event = (extra: Partial<TriggerContext> = {}): TriggerContext => ({
+    event: "pull_request.synchronize",
+    ...extra,
+  });
+
+  test("every condition carries a matcher, and elsewhere means never here", () => {
+    for (const [name, spec] of Object.entries(TRIGGER_CONDITIONS)) {
+      expect(typeof spec.matches, name).toBe("function");
+      if (spec.kind === "elsewhere") {
+        expect(
+          spec.matches(event()),
+          `${name} is answered elsewhere and must never select an agent here`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  test("a runtime condition reads the event it is about", () => {
+    const changesRequested = TRIGGER_CONDITIONS.changes_requested;
+    const nonDraft = TRIGGER_CONDITIONS.non_draft;
+    expect(changesRequested?.matches(event({ reviewState: "changes_requested" }))).toBe(true);
+    expect(changesRequested?.matches(event({ reviewState: "approved" }))).toBe(false);
+    expect(nonDraft?.matches(event({ isDraft: true }))).toBe(false);
+    expect(nonDraft?.matches(event({ isDraft: false }))).toBe(true);
   });
 });

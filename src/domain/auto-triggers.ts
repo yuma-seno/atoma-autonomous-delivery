@@ -53,10 +53,43 @@ export interface AutoTrigger {
  */
 export type ConditionKind = "runtime" | "elsewhere";
 
-export const TRIGGER_CONDITIONS: Readonly<Record<string, ConditionKind>> = {
-  changes_requested: "runtime",
-  non_draft: "runtime",
-  "atoma:dispatch": "elsewhere",
+/**
+ * One entry per condition, carrying what it means.
+ *
+ * The `kind` and the matcher were separate: this record listed the legal names and
+ * tagged them, and a `switch` elsewhere in the file re-listed the same names with the
+ * behaviour. Nothing read the tag at all — so the record documented a distinction the
+ * switch re-implemented by hand as `case "atoma:dispatch": return false`.
+ *
+ * Adding a fourth condition here and forgetting the switch arm was silent in the worst
+ * direction: `resolveAutoTriggers` accepts the config, `applies` falls through to
+ * `default: false`, and the trigger never fires. That is the failure this module's header
+ * says it exists to prevent, pointing the other way from the bug it was written for.
+ *
+ * With the matcher in the entry there is no switch to forget, and a missing one is a type
+ * error.
+ */
+interface ConditionSpec {
+  kind: ConditionKind;
+  /** Whether this condition holds for the event in hand. */
+  matches: (context: TriggerContext) => boolean;
+}
+
+export const TRIGGER_CONDITIONS: Readonly<Record<string, ConditionSpec>> = {
+  changes_requested: {
+    kind: "runtime",
+    matches: (context) => context.reviewState === "changes_requested",
+  },
+  non_draft: {
+    kind: "runtime",
+    matches: (context) => context.isDraft !== true,
+  },
+  "atoma:dispatch": {
+    kind: "elsewhere",
+    // Answered by `atoma-manual-comment.yml`, which reads the marker out of the comment
+    // body. Never selects an agent here — which is what `elsewhere` means, now said once.
+    matches: () => false,
+  },
 };
 
 /** The condition names a config file may use, for messages and for the type. */
@@ -156,18 +189,15 @@ export function selectTriggerAgent(triggers: readonly AutoTrigger[], context: Tr
   return "";
 }
 
+/**
+ * Whether a trigger's condition holds.
+ *
+ * An absent condition applies always — that is what "no condition" means. An unknown one
+ * never does, and cannot arrive here anyway: `resolveAutoTriggers` rejects it with a
+ * problem naming the legal values, which is the whole reason this is not the place that
+ * decides what is legal.
+ */
 function applies(condition: string | undefined, context: TriggerContext): boolean {
   if (condition === undefined) return true;
-  switch (condition) {
-    case "changes_requested":
-      return context.reviewState === "changes_requested";
-    case "non_draft":
-      return context.isDraft !== true;
-    case "atoma:dispatch":
-      // Answered by `atoma-manual-comment.yml`, which reads the marker out of the
-      // comment body. Never selects an agent here.
-      return false;
-    default:
-      return false;
-  }
+  return TRIGGER_CONDITIONS[condition]?.matches(context) ?? false;
 }
