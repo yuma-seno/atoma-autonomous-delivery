@@ -87,7 +87,21 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
 // agent definitions here needed: they read `provider: openai-responses # openrouter`,
 // a row that in v0.1.13 means OpenAI itself. So this pin moves with
 // `agent-definitions/*.md` as well.
-const ATOMA_DEFAULT_VERSION = "v0.1.14";
+//
+// v0.1.16 carries two fixes that are about THIS repository's runs specifically.
+//
+// The Responses adapter assembled its own `extra_body` merge and left out the
+// reconciliation that protects the runtime tool definitions -- so an agent carrying
+// `extra_body.tools` replaced them. All three definitions here carry OpenRouter's two
+// server tools, and all three use that adapter, so every request sent those two and no
+// MCP schema at all. The model was inferring argument shapes from the names in the
+// system prompt, which is the shape of the argument failures that have been read as model
+// weakness -- `issue_number` for `number`, `form` for `from`, `label` for `labels`.
+//
+// And a `vision: false` agent had pictures replaced before the message entered the
+// session, so what atoma-data recorded was not what happened: resuming with
+// `vision: true` could never get them back.
+const ATOMA_DEFAULT_VERSION = "v0.1.16";
 const ATOMA_VERSION_DESC = "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
 
 // Deployed-repo-relative paths into the `.github/atoma/` content tree (see
