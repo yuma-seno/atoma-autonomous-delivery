@@ -40,9 +40,16 @@ Required before first run:
 
 - GitHub Actions enabled in the target repository.
 - In the target repository, open **Settings > Actions > General > Workflow permissions** and enable **Allow GitHub Actions to create and approve pull requests**. Without this repository-level permission, the engineer agent cannot create pull requests.
-- Repository secret for at least one model path:
-  - `OPENAI_API_KEY` (OpenAI-compatible path), or
-  - `ANTHROPIC_API_KEY` (Anthropic path).
+- Repository secret **`OPENROUTER_API_KEY`**. This is the one the shipped
+  configuration needs: all three agent definitions read
+  `provider: openrouter-responses`.
+
+  One provider, one credential, and **no fallback** — a key under a different name
+  does not stand in for this one, and two keys present is an error naming both
+  rather than a precedence that picks for you. To run somewhere else, change
+  `provider` in the agent definitions and add that provider's own secret; the eight
+  values and the credential each reads are in
+  [Choose which API an agent's provider speaks](docs/customization.md#choose-which-api-an-agents-provider-speaks).
 - If a branch ruleset requires a status check, the workflow that produces it must
   be startable with `workflow_dispatch`. Agents run it themselves; a workflow they
   cannot start leaves the check unfilled and the pull request unmergeable
@@ -67,9 +74,13 @@ Required before first run:
   session.json
   ```
 
-- Optional repository variables:
-  - `OPENAI_BASE_URL`
-  - `ATOMA_PROVIDER` (`openai` or `anthropic` with the credentials wired by this template)
+- Optional repository variables, both for reaching a provider somewhere other than
+  its default host:
+  - `ATOMA_PROVIDER` — overrides the `provider` in an agent definition. One of the
+    eight values in the table linked above, not two.
+  - `OPENAI_BASE_URL` — OpenAI's endpoint only. Each provider has its own
+    (`OPENROUTER_BASE_URL`, `ANTHROPIC_BASE_URL`, and so on), for the same reason
+    each has its own credential.
 
 Workflow permissions are already declared in the generated workflows (`actions`, `issues`, `pull-requests`, `contents` set to write where needed), but they do not override the repository-level setting above.
 
@@ -112,7 +123,15 @@ flowchart TD
 
 ## Limits, security, and cost notes
 
-- Auto-dispatch loop is capped at 5 consecutive no-new-event handoffs.
+- What bounds a run: `agents.<name>.max_iterations` in `config.json` (shipped as
+  100 for the orchestrator, 200 for the engineer, 30 for the reviewer) and a
+  60-minute job timeout. Both are per run, and a new run resets them.
+- What bounds a chain of runs: validation hands a pull request back to the engineer
+  at most three times. **There is currently no working cap on agent-to-agent
+  handoffs** — one is written but cannot fire, and there is no token or cost
+  ceiling at all. See
+  [#456](https://github.com/yuma-seno/atoma-autonomous-delivery/issues/456); this
+  line claimed a cap of five until that was measured.
 - Session serialization per issue/PR is guarded by the `atoma/in-progress` label and workflow concurrency group.
 - The shell guard is not a security control. It routes the agent to the MCP tool that does the job properly (`gh` to the GitHub tools, `curl` to `web__fetch`, raw `git` mutations to `github__*`); it is a text match over a command line and does not resist being worked around. What carries that weight is per-tool credential confinement -- a server reaches only the secrets its `tools.yaml` entry declares -- and the governed-paths merge gate.
 - Some workflows use `pull_request_target`, which runs with base-repository privileges. Review your repository policy for third-party PRs.
