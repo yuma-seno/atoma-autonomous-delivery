@@ -23,8 +23,14 @@ export interface ImageBlock {
 
 export type ContentBlock = { type: "text"; text: string } | ImageBlock;
 
-/** Largest image to inline, in bytes of base64. */
-const MAX_IMAGE_BYTES = 4_000_000;
+/**
+ * Largest image to inline, in bytes of base64.
+ *
+ * Exported because `web__fetch` applies the same ceiling and had its own copy of the
+ * number. Diverge and one path inlines an image the other refuses, for a limit that exists
+ * to keep one request under a provider's cap.
+ */
+export const MAX_IMAGE_BYTES = 4_000_000;
 
 /** How many images to take from one body. */
 const MAX_IMAGES = 4;

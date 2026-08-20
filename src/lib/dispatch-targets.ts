@@ -31,7 +31,15 @@ import { targetsForMerge } from "../domain/deploy-targets.ts";
  * dispatch a workflow that does not exist and leave every pull request waiting
  * for a check that never reports.
  */
-const DEFAULT_CI_WORKFLOW = "atoma-check.yml";
+/**
+ * Exported because the other route to this value needs it. `validate_pull_request.ts`
+ * reads `workflows.ci` through a workflow step, with its own fallback written out — and a
+ * comment saying it matches this one, which is the admission that nothing checked. Rename
+ * the shipped check workflow and the tool side would dispatch the new name while the
+ * validation side dispatched the old one, `gh workflow run` would fail, and every agent
+ * pull request would lose its required check with no agent scheduled after it.
+ */
+export const DEFAULT_CI_WORKFLOW = "atoma-check.yml";
 const DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
 
 function log(message: string): void {

@@ -18,13 +18,12 @@
  */
 import { buildMcpTools, defineMcpTool, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { htmlToMarkdown } from "../../../../domain/html-to-markdown.ts";
-import { sniffMimeType } from "../../../../lib/issue-images.ts";
+import { MAX_IMAGE_BYTES, sniffMimeType } from "../../../../lib/issue-images.ts";
 
 /** Longest text returned from one fetch. */
 const MAX_TEXT_CHARS = 60_000;
 
 /** Largest image inlined, as base64 characters. */
-const MAX_IMAGE_BYTES = 4_000_000;
 
 const REQUEST_TIMEOUT_MS = 30_000;
 

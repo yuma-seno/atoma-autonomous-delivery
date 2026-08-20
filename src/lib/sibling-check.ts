@@ -30,8 +30,8 @@ export interface CountOpenSiblingsOptions {
  * orchestrator, otherwise the count can never reach zero.
  */
 export function countOpenSiblings(opts: CountOpenSiblingsOptions): number {
-  const label = opts.label || getLabel("sub_issue", "atoma/sub-issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched", "atoma/launched");
+  const label = opts.label || getLabel("sub_issue");
+  const launchedLabel = opts.launchedLabel || getLabel("launched");
 
   const { code, stdout, stderr } = gh(
     "issue", "list",

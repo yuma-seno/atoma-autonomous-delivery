@@ -42,7 +42,7 @@ function main(): void {
   }
 
   const repo = process.env.GITHUB_REPOSITORY ?? "";
-  const label = getLabel("in_progress", "atoma/in-progress");
+  const label = getLabel("in_progress");
   const githubOutput = process.env.GITHUB_OUTPUT;
 
   const { code, stdout } = gh(
