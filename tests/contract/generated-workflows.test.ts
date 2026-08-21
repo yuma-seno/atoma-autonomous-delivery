@@ -301,6 +301,59 @@ describe("generated workflows", () => {
     expect(shared, "the tool user needs access before it writes the session").toBeLessThan(agent);
   });
 
+  /**
+   * The machinery checkout does not stay in the work tree.
+   *
+   * `actions/checkout` can only write under `GITHUB_WORKSPACE`, so it lands there
+   * and has to be moved out. While it stayed, `git status` was never clean --
+   * `?? atoma-machinery/` -- which meant `git add -A` committing it as a dangling
+   * gitlink with no `.gitmodules`, and `create_pr` refusing for a dirty worktree.
+   *
+   * `.gitignore` in this repository already carries `atoma-src/` with a comment
+   * describing exactly that failure. Same shape, found once, and
+   * `atoma-machinery/` was never added beside it -- and an adopter has neither
+   * line, so it happened to every one of them.
+   *
+   * Found by the verification run for #461, which is the point: the agent was told
+   * the work tree would be clean, found it was not, and spent its whole iteration
+   * budget working out why.
+   */
+  test("the machinery ends up outside the work tree, before anything reads it", () => {
+    type WorkflowStep = { name?: string; run?: string; with?: Record<string, unknown> };
+    type WorkflowDocument = { jobs?: Record<string, { env?: Record<string, string>; steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const job = workflow.jobs?.run;
+    const steps = job?.steps ?? [];
+
+    // One source for the value. A job-level `env:` plus a `$GITHUB_ENV` write means
+    // relying on the env file winning, and a run where it did not would break every
+    // path in every step at once -- looking like a bad release rather than a
+    // precedence question.
+    expect(job?.env?.ATOMA_MACHINERY_ROOT, "must not also be a job-level env").toBeUndefined();
+
+    const setter = steps.findIndex((step) => /ATOMA_MACHINERY_ROOT=[^\n]*>>\s*"?\$GITHUB_ENV/.test(step.run ?? ""));
+    expect(setter, "the step that sets ATOMA_MACHINERY_ROOT").toBeGreaterThanOrEqual(0);
+
+    const assignment = /ATOMA_MACHINERY_ROOT=([^\s"]+)/.exec(steps[setter]?.run ?? "");
+    const value = assignment?.[1] ?? "";
+    expect(value, "an absolute path outside the work tree, not a relative one").toMatch(/^\$\{RUNNER_TEMP\}\//);
+
+    // Nothing may read it before it is set. A step that did would get the empty
+    // string and look in the repository root, which is where the machinery is not.
+    for (const [index, step] of steps.entries()) {
+      if (index >= setter) continue;
+      expect(
+        /\$\{?ATOMA_MACHINERY_ROOT/.test(step.run ?? ""),
+        `"${step.name ?? "?"}" reads ATOMA_MACHINERY_ROOT before step ${setter} sets it`,
+      ).toBe(false);
+    }
+
+    const checkout = steps.findIndex((step) => step.with?.path === "atoma-machinery");
+    expect(checkout, "the machinery checkout").toBeGreaterThanOrEqual(0);
+    expect(checkout, "the move comes straight after the checkout").toBeLessThan(setter);
+  });
+
   test("checkout the repository before running repository scripts", () => {
 
     type WorkflowStep = { uses?: string; run?: string };
@@ -510,14 +563,21 @@ describe("generated workflows", () => {
     const job = workflow.jobs?.run;
     const steps = job?.steps ?? [];
 
-    // The job says where the machinery is, once, and every step inherits it.
-    expect(job?.env?.ATOMA_MACHINERY_ROOT, "the job must name the machinery root").toBeTruthy();
-    const root = job!.env!.ATOMA_MACHINERY_ROOT!;
+    // One step says where the machinery is, and every later step reads it from the
+    // environment. It was a job-level `env:` until the machinery moved out of the
+    // work tree -- see "the machinery ends up outside the work tree" below for why
+    // there is now exactly one source rather than a job default plus an override.
+    const setter = steps.find((step) => /ATOMA_MACHINERY_ROOT=[^\n]*>>\s*"?\$GITHUB_ENV/.test(step.run ?? ""));
+    expect(setter, "one step must set the machinery root").toBeDefined();
+    expect(job?.env?.ATOMA_MACHINERY_ROOT, "and it must not also be a job default").toBeUndefined();
 
-    // And it is a checkout of the default branch, not of the pull request.
-    const machineryCheckout = steps.find((step) => step.with?.path === root);
-    expect(machineryCheckout, `a checkout into ${root}`).toBeDefined();
+    // And what it points at is a checkout of the default branch, not of the pull
+    // request. The checkout still lands in the work tree -- `actions/checkout`
+    // cannot write anywhere else -- and the setter step is what moves it out.
+    const machineryCheckout = steps.find((step) => step.with?.path === "atoma-machinery");
+    expect(machineryCheckout, "a checkout into atoma-machinery").toBeDefined();
     expect(machineryCheckout?.with?.ref).toContain("default_branch");
+    expect(setter?.run, "the setter must be what moves that checkout").toContain("mv \"atoma-machinery\"");
 
     // Nothing runs a script from the workspace. A bare `.github/scripts/` would
     // be the pull request's copy.
