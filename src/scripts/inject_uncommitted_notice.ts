@@ -4,53 +4,43 @@
  * agent's session.json messages array. Used by atoma-runner.wac.ts when the
  * agent's run left uncommitted working-tree changes.
  *
- * Auto-discovers session.json (mirroring the previous inline
- * `find . -maxdepth 3 -name 'session.json'` bash) so the calling workflow
- * step needs no shell logic of its own -- just `bun run
- * inject_uncommitted_notice.ts`. No-ops quietly if no session.json is found.
+ * Usage: inject_uncommitted_notice.ts --session <path>
  *
- * Usage: inject_uncommitted_notice.ts [path-to-session.json]
+ * ## Why the path is required now
+ *
+ * This used to search the work tree for the first file called `session.json`,
+ * three levels deep, and fall back to that when given no argument. That was
+ * harmless while the session lived in the repository root -- the search found the
+ * intended file immediately.
+ *
+ * The session now lives outside the work tree, so the search would find nothing
+ * here and, worse, could find something in an adopter's project. A repository with
+ * a `session.json` fixture of its own would have this notice appended to THAT file,
+ * committed by the same `git add -A` this notice exists to ask for. Searching for a
+ * file by name in someone else's tree is not a fallback, it is a guess.
  */
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
 import type { Session } from "../lib/session.ts";
 
-export const ref = defineScript(import.meta.url);
-
-/** Depth-limited search for the first `session.json`, mirroring `find . -maxdepth 3 -name session.json`. */
-function findSessionFile(dir = ".", depth = 3): string | undefined {
-  if (depth < 0) return undefined;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return undefined;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    if (entry === "session.json") return full;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    let isDir = false;
-    try {
-      isDir = statSync(full).isDirectory();
-    } catch {
-      continue;
-    }
-    if (isDir && entry !== "node_modules" && entry !== ".git") {
-      const found = findSessionFile(full, depth - 1);
-      if (found) return found;
-    }
-  }
-  return undefined;
+export interface InjectUncommittedNoticeArgs {
+  session: string;
 }
 
+export const ref = defineScript<InjectUncommittedNoticeArgs>(import.meta.url);
+
 function main(): void {
-  const path = Bun.argv[2] ?? findSessionFile();
+  const { values } = parseArgs({ args: Bun.argv.slice(2), options: { session: { type: "string" } } });
+  const path = values.session;
   if (!path) {
-    console.error("inject_uncommitted_notice: no session.json found; nothing to do");
+    console.error("usage: inject_uncommitted_notice.ts --session <path>");
+    process.exit(2);
+  }
+  if (!existsSync(path)) {
+    // Not an error. The step that calls this runs after a failed or short run
+    // too, and a session that was never written is a normal outcome there.
+    console.error(`inject_uncommitted_notice: ${path} does not exist; nothing to do`);
     return;
   }
   const session = JSON.parse(readFileSync(path, "utf8")) as Session;
