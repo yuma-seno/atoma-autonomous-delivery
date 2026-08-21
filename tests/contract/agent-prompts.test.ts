@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { WORKSPACE_PATH } from "../../src/domain/workspace.ts";
 
 describe("agent prompt contracts", () => {
   test("uses orchestrator-first delegation with an explicit engineer leaf gate", () => {
@@ -52,5 +53,43 @@ describe("agent prompt contracts", () => {
     // `checks-missing` used to say "call check_merge_readiness again", which no
     // agent can do usefully -- the check it is waiting on outlives the run.
     expect(reviewer).toContain("you cannot wait for it");
+  });
+
+  /**
+   * The scratch workspace's path is stated in three places and has to be one path.
+   *
+   * `domain/workspace.ts` holds it, the runner mounts it there, the prompt template
+   * tells the agent about it, and `shell_execute`'s description repeats it. Both of
+   * the last two, because a tool's own description was measured to carry more weight
+   * than the same words in the system prompt (#325) -- and this sentence has to hold
+   * at the moment the agent is deciding where to put a file, which is when it is
+   * reading the tool.
+   *
+   * A path that drifted in one of them would be an agent writing somewhere real,
+   * being told it persists, and finding it gone -- the exact shape of failure the
+   * workspace exists to remove.
+   */
+  test("the scratch workspace is named identically wherever an agent reads about it", () => {
+    for (const file of ["src/atoma/prompt-template.md", "src/atoma/tools/scripts/mcp/shell.ts"]) {
+      const text = readFileSync(file, "utf8");
+      expect(text, `${file} must name the workspace`).toContain(WORKSPACE_PATH);
+      // Both halves. "This survives" alone invites leaving working files in the
+      // repository as well; "nothing else survives" alone does not say where to
+      // put them.
+      expect(text.toLowerCase(), `${file} must say it survives`).toMatch(/survive/);
+      expect(text, `${file} must say what happens to files left in the repository`).toMatch(/committed/);
+    }
+  });
+
+  /**
+   * And nothing may tell an agent to expand a variable to find it. `ls
+   * $ATOMA_WORKSPACE` with the variable unset returns nothing, which reads exactly
+   * like an empty directory -- so the failure and the ordinary case become
+   * indistinguishable in the one place a model is looking.
+   */
+  test("the workspace is never named through a variable", () => {
+    for (const file of ["src/atoma/prompt-template.md", "src/atoma/tools/scripts/mcp/shell.ts"]) {
+      expect(readFileSync(file, "utf8"), `${file}`).not.toContain("ATOMA_WORKSPACE");
+    }
   });
 });

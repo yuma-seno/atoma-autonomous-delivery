@@ -43,6 +43,7 @@ Task-oriented recipes:
 | [Adding a tool without flooding the context](#adding-a-tool-without-flooding-the-context) | keep a new tool from filling the model's context window |
 | [How long your tool has to answer](#how-long-your-tool-has-to-answer) | let a tool run longer than a minute, or find out why it did not |
 | [If your tool does time out](#if-your-tool-does-time-out) | know what a server must do when a call is abandoned |
+| [Where an agent puts its working files](#where-an-agent-puts-its-working-files) | know where notes and scratch scripts go, and why not the repository |
 | [Recurring work](#recurring-work) | have something happen every week without a schedule setting |
 
 ## Source vs deliverable
@@ -1211,6 +1212,36 @@ things follow for a server you write:
 - **do not assume the client is still there.** Work started before a timeout is
   work whose result is thrown away, so anything with a side effect should be
   idempotent — the agent will call you again.
+
+### Where an agent puts its working files
+
+Notes, a script to check something, an intermediate dump — an agent writes these on
+the way to an implementation, and they do not belong in your repository.
+
+`/tmp/atoma-workspace` is where they go. It is restored at the start of every run
+on an issue and saved at the end, so a file left there is available to the next run
+and to the other agents working on the same issue. Sub-issues and the pull request
+share the root issue's workspace, because that is one piece of work even though it
+is several GitHub objects.
+
+**Nothing to configure and nothing to add to `.gitignore`.** It is outside the
+repository, so `git add -A` never sees it.
+
+The rule an agent is given is one sentence, and it is the reason this is a
+directory rather than a pair of "stash this" / "fetch that" tools:
+
+> Everything in the repository is part of the work. Anything under
+> `/tmp/atoma-workspace` survives; nothing else outside the repository does.
+
+A tool pair would make the agent remember which side each file is on — two verbs
+and a piece of state held in the model's head rather than visible in the path it
+types. A directory puts that state in the string it already writes, and lets it
+read, write and *run* those files with the tools it already has.
+
+It is not durable storage. It lives on the `atoma-data` branch alongside session
+state, is replaced wholesale each run (so a file an agent deletes is gone), and is
+not somewhere to keep anything you would mind losing. If something must persist for
+the project, it belongs in the repository or in `environment.setup_commands`.
 
 ### Recurring work
 
