@@ -6614,7 +6614,7 @@ var require_dist = __commonJS(function(exports, module) {
 });
 
 // src/atoma/tools/scripts/mcp/search.ts
-import { AutoTokenizer, AutoModelForSequenceClassification } from "@huggingface/transformers";
+import { AutoTokenizer, AutoModelForSequenceClassification, env as transformersEnv } from "@huggingface/transformers";
 
 // node_modules/zod/v3/external.js
 var exports_external = {};
@@ -18427,7 +18427,13 @@ function loadReranker() {
   });
   return loading;
 }
+function cacheDirectory() {
+  const base = process.env.XDG_CACHE_HOME?.trim() || "/tmp";
+  return `${base}/atoma-transformers`;
+}
 async function loadRerankerOnce() {
+  transformersEnv.cacheDir = cacheDirectory();
+  log2(`model cache: ${transformersEnv.cacheDir}`);
   const model = getRerankerModel();
   const started = Date.now();
   const tokenizer = await AutoTokenizer.from_pretrained(model);
