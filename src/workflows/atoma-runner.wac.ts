@@ -20,6 +20,9 @@ import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
+import { ref as restoreWorkspaceRef } from "../scripts/restore_workspace.ts";
+import { ref as saveWorkspaceRef } from "../scripts/save_workspace.ts";
+import { WORKSPACE_PATH } from "../domain/workspace.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
 import { ref as reconcileGithubSessionRef } from "../scripts/reconcile_github_session.ts";
@@ -150,6 +153,35 @@ const TOOL_CACHE = "${RUNNER_TEMP}/atoma-tool-cache";
  * before the user is created, and `atoma run` writes the session as that user.
  */
 const RUN_DIR = "${RUNNER_TEMP}/atoma-run";
+
+/**
+ * The agent's scratch workspace: restored before the run, saved after it.
+ *
+ * A literal path rather than `RUNNER_TEMP`, and `domain/workspace.ts` explains why
+ * -- briefly, the agent is told this path in one sentence and a path it has to
+ * expand is a path it can get wrong in a way that looks like an empty directory.
+ *
+ * Owned by the tool user with an ACL back to the runner, the same arrangement as
+ * `RUN_DIR`: the runner unpacks into it before the agent starts and packs it up
+ * afterwards, while everything the agent does in it happens as the tool user.
+ */
+const WORKSPACE_DIR = WORKSPACE_PATH;
+
+const restoreWorkspaceStep = new TypedOutputsStep(
+  {
+    name: "Restore the agent's workspace",
+    id: "workspace",
+    shell: "bash",
+    env: { GH_TOKEN: "${{ github.token }}" },
+    run: `${scriptCommandWithArgs(restoreWorkspaceRef, {
+      type: "${{ inputs.type }}",
+      number: "${{ inputs.number }}",
+      dest: WORKSPACE_DIR,
+      repo: "${{ github.repository }}",
+    })}\n`,
+  },
+  ["root_issue", "restored"] as const,
+);
 
 const resolveIssueBranchStep = new TypedOutputsStep(
   {
@@ -1044,6 +1076,11 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   notifyStep,
   fetchEventsStep,
   restoreSessionStep,
+  // Before the step that creates the tool user, and that is fine: the ACL pass
+  // there is `-R`, so it reaches what this already unpacked. Putting it after would
+  // work too -- what would NOT work is a `-d`-only ACL, which never touches a file
+  // that already exists. See the comment beside those setfacl lines.
+  restoreWorkspaceStep,
   buildContextStep,
   cfgStep,
   new TypedOutputsStep({
@@ -1151,6 +1188,19 @@ sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${RUN_DIR}"
 sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "${RUN_DIR}"
 sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUN_DIR}"
 
+# The agent's scratch workspace, on the same terms. The runner unpacks into it
+# before the agent starts and packs it up afterwards, and everything the agent does
+# in it happens as the tool user -- so both need to read and write what the other
+# creates, including files that do not exist yet.
+#
+# \`/tmp\` is already world-writable, so this is not what makes the directory
+# usable; it is what stops the two identities tripping over each other's file
+# modes inside it.
+mkdir -p "${WORKSPACE_DIR}"
+sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${WORKSPACE_DIR}"
+sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "${WORKSPACE_DIR}"
+sudo setfacl -R -d -m "u:$(id -un):rwX" "${WORKSPACE_DIR}"
+
 # And a directory for the credentials file that the TOOL USER owns, so atoma can
 # unlink it. Owned by them, writable by us: the runner writes the file into it and
 # hands it over, and the delete that keeps the file and the servers from coexisting
@@ -1203,6 +1253,19 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
   postResultCommentStep,
   recordRunMetadataStep,
   saveSessionStep,
+  // Takes the root issue from the restore step rather than resolving the chain
+  // again: two resolutions can disagree if a parent tag changed mid-run, and then
+  // the run reads from one workspace and writes to another with nothing saying so.
+  new TypedOutputsStep({
+    name: "Save the agent's workspace",
+    if: `${runAgentStep.rawOutcome} == 'success'`,
+    shell: "bash",
+    run: `${scriptCommandWithArgs(saveWorkspaceRef, {
+      "root-issue": restoreWorkspaceStep.outputs.root_issue,
+      source: WORKSPACE_DIR,
+      agent: "${{ inputs.agent }}",
+    })}\n`,
+  }),
   reportFailureStep,
   dirtyStep,
   new TypedOutputsStep({
