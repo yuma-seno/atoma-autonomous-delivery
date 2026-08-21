@@ -1,91 +1,115 @@
 #!/usr/bin/env bun
 /**
- * manage_dispatch_loop.ts — Track the auto-dispatch loop counter in
- * session.json to prevent infinite agent handoff loops.
+ * manage_dispatch_loop.ts — decide whether the agent chain has gone on long
+ * enough to stop and ask a person.
+ *
+ * The I/O half. Every decision is in `domain/dispatch-chain.ts`, which explains
+ * why this counts comments instead of keeping a counter -- briefly: the counter it
+ * used to keep could not reach 1, because the reset fired on any new event and
+ * every run posts a result comment.
  *
  * Usage:
- *   manage_dispatch_loop.ts --session session.json
- *     [--new-event-count N] [--directive NAME]
+ *   manage_dispatch_loop.ts --number 123 [--repo owner/name]
+ *
  * Writes `auto_dispatch_count=N` and `loop_limit_reached=true|false` to
- * $GITHUB_OUTPUT.
+ * $GITHUB_OUTPUT. The output names are unchanged so the workflow's guards and
+ * `decide_guard_release`'s input keep working -- what changed is that they now
+ * carry a number that can be greater than zero.
+ *
+ * No longer takes `--session`. Nothing is written back: the tally is derived, so
+ * there is nothing to persist and nothing for a stale session to contradict. Old
+ * sessions still carry `metadata.github_context.auto_dispatch_count`; it is dead
+ * and nothing reads it.
  */
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { handoffLimitReached, handoffsSincePerson, resolveHandoffLimit, type ChainComment } from "../domain/dispatch-chain.ts";
+import { getHandoffLimit } from "../lib/config.ts";
+import { gh } from "../lib/gh.ts";
+import { AGENT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
-import type { Session } from "../lib/session.ts";
 
 export interface ManageDispatchLoopArgs {
-  session: string;
-  "new-event-count"?: string | number;
-  directive?: string;
+  number: string | number;
+  repo?: string;
 }
 
 export const ref = defineScript<ManageDispatchLoopArgs>(import.meta.url);
 
 /**
- * How many consecutive handoffs may happen with nothing new to act on.
+ * The target's comments, oldest first, reduced to what the decision reads.
  *
- * Exported because the comment a person receives when the chain stops names the number.
- * That sentence used to carry its own `5`, so raising this would have told them "loop
- * limit (5 consecutive runs) reached" while the real limit was something else — on the
- * one message they get.
+ * `--paginate` because a long-running issue passes 100 comments, and the tally is
+ * read from the END of the list: a truncated read would silently drop the recent
+ * handoffs, which are the only ones that matter.
+ *
+ * A failed read returns an empty list, which counts zero handoffs and lets the
+ * chain continue. That is the wrong direction for a safety limit, and it is
+ * deliberate: this bounds a loop that wastes model runs, and refusing to hand off
+ * because GitHub was briefly unreachable would stop work that is going fine. The
+ * caller logs it so a run that could not check says so.
  */
-export const LOOP_LIMIT = 5;
-
-export function manageDispatchLoop(
-  session: Session,
-  newEventCount: number,
-  directive: string,
-): { session: Session; autoDispatchCount: number; loopLimitReached: boolean } {
-  const metadata = typeof session.metadata === "object" && session.metadata !== null ? session.metadata : {};
-  const githubContext =
-    typeof metadata.github_context === "object" && metadata.github_context !== null ? metadata.github_context : {};
-
-  let autoDispatchCount: number;
-  if (newEventCount !== 0) {
-    autoDispatchCount = 0;
-  } else {
-    autoDispatchCount = Number(githubContext.auto_dispatch_count ?? 0);
-    if (directive) autoDispatchCount += 1;
+function readComments(repo: string, number: string): { comments: ChainComment[]; read: boolean } {
+  const { code, stdout } = gh(
+    "api",
+    `repos/${repo}/issues/${number}/comments?per_page=100`,
+    "--paginate",
+    "--jq",
+    // One JSON object per line, the same shape `readChangedFiles` uses and for the
+    // same reason: with `--paginate` the pages arrive as separate documents that
+    // `JSON.parse` cannot read as one.
+    '.[] | {authorType: .user.type, body: .body}',
+  );
+  if (code) return { comments: [], read: false };
+  const comments: ChainComment[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      comments.push(JSON.parse(line) as ChainComment);
+    } catch {
+      // One unparseable line is not a reason to lose the rest. It also cannot be
+      // an agent comment as far as this is concerned, so the tally errs low --
+      // the same direction as a failed read.
+      console.error(`  Skipping an unparseable comment line`);
+    }
   }
-
-  const loopLimitReached = autoDispatchCount >= LOOP_LIMIT;
-
-  githubContext.auto_dispatch_count = autoDispatchCount;
-  metadata.github_context = githubContext;
-  session.metadata = metadata;
-
-  return { session, autoDispatchCount, loopLimitReached };
+  return { comments, read: true };
 }
 
 function main(): void {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      session: { type: "string" },
-      "new-event-count": { type: "string" },
-      directive: { type: "string" },
+      number: { type: "string" },
+      repo: { type: "string" },
     },
   });
-  if (!values.session) {
-    console.error("usage: manage_dispatch_loop.ts --session session.json [--new-event-count N] [--directive NAME]");
+
+  const number = values.number ?? "";
+  const repo = values.repo ?? process.env.GITHUB_REPOSITORY ?? "";
+  if (!number || !repo) {
+    console.error("usage: manage_dispatch_loop.ts --number N [--repo owner/name]");
     process.exit(2);
   }
 
-  const session = JSON.parse(readFileSync(values.session, "utf8")) as Session;
-  const {
-    session: updated,
-    autoDispatchCount,
-    loopLimitReached,
-  } = manageDispatchLoop(session, Number(values["new-event-count"] ?? 0), values.directive ?? "");
+  const limit = resolveHandoffLimit(getHandoffLimit());
+  const { comments, read } = readComments(repo, number);
+  if (!read) console.error(`WARN could not read comments on ${repo}#${number}; treating the chain as fresh`);
 
-  writeFileSync(values.session, JSON.stringify(updated, null, 2) + "\n");
+  const handoffs = handoffsSincePerson(comments, (body) => AGENT_TAG.has(body));
+  const reached = handoffLimitReached(handoffs, limit);
 
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
-    appendFileSync(githubOutput, `auto_dispatch_count=${autoDispatchCount}\nloop_limit_reached=${loopLimitReached}\n`);
+    // The limit travels with the count. The escalation comment names both, and
+    // splicing a literal into that comment at synth time is how the old version
+    // could have quoted a number that was not the limit in force.
+    appendFileSync(
+      githubOutput,
+      `auto_dispatch_count=${handoffs}\nloop_limit_reached=${reached}\nhandoff_limit=${limit}\n`,
+    );
   }
-  console.error(`Auto-dispatch loop count: ${autoDispatchCount}/${LOOP_LIMIT} (limit_reached=${loopLimitReached})`);
+  console.error(`Agent handoffs since a person last commented: ${handoffs}/${limit} (limit_reached=${reached})`);
 }
 
 if (import.meta.main) main();

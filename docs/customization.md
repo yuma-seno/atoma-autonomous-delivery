@@ -21,6 +21,7 @@ Task-oriented recipes:
 | [Choose which API an agent's provider speaks](#choose-which-api-an-agents-provider-speaks) | switch between the Chat Completions and Responses APIs |
 | [Pin which OpenRouter endpoint serves a model](#pin-which-openrouter-endpoint-serves-a-model) | prefer particular upstream providers |
 | [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
+| [Limit how far agents hand work to each other](#limit-how-far-agents-hand-work-to-each-other) | stop an engineer/reviewer loop that is going nowhere |
 | [Change event triggers](#change-event-triggers) | decide which GitHub events start which agent |
 | [Add environment setup commands](#add-environment-setup-commands) | install your project's toolchain before an agent runs |
 | [Choose the branch agents work from](#choose-the-branch-agents-work-from) | target something other than the default branch |
@@ -73,6 +74,7 @@ against](#what-a-pull-request-is-checked-against).
 - `merge_gates` — a list, each entry with `reason` and `when`
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
+- `limits.agent_handoffs`
 - `labels.in_progress`
 - `labels.sub_issue`
 - `labels.launched`
@@ -328,6 +330,44 @@ Edit `.github/atoma/config.json`:
   }
 }
 ```
+
+This bounds the tool-call loop **inside one run**, and it resets on every run. So
+every path that starts a run — a handoff to the next agent, an `auto_triggers`
+entry, a CI failure sending a pull request back — gives the work a fresh budget.
+For how far the chain of runs itself may go, see below.
+
+### Limit how far agents hand work to each other
+
+```json
+{
+  "limits": {
+    "agent_handoffs": 5
+  }
+}
+```
+
+An agent finishing its turn can name the next one, and that one can name another.
+Left alone, an engineer and a reviewer will pass a pull request back and forth for
+as long as each keeps finding something. This is where that stops and a person is
+asked.
+
+Counted from the target's own comments: how many agent result comments there are
+since the last comment **a person** wrote. Nothing is stored, so a re-dispatch, a
+new workflow run or a lost session does not reset it.
+
+Five is the default. It is chosen against a repository where a person intervenes
+often — the longest chain measured was three — so **running autonomously you will
+want a larger number**, and wanting closer supervision a smaller one. `0` means the
+default rather than "no handoffs"; to stop automatic work entirely, remove the
+`auto_triggers` entries, which says so plainly.
+
+**An issue and a pull request are counted separately.** A chain that opens a pull
+request starts again from zero, because opening one is progress — the limit is for
+repetition that goes nowhere, not for work that takes a while.
+
+When the limit is hit, the run still finishes and still reports. Only the handoff
+is withheld, and a comment names the count, the limit, and the agent that would
+have run next. Posting `/<agent>` resumes it.
 
 ### Change event triggers
 
