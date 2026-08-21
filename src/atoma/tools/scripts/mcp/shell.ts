@@ -1,5 +1,16 @@
 #!/usr/bin/env bun
-/** Foreground-only shell MCP server for deterministic agent validation commands. */
+/**
+ * Foreground-only shell MCP server for deterministic agent validation commands.
+ *
+ * Runs as the same OS user, on the same filesystem, as every other tool server --
+ * no container, no separate home, nothing for an agent to reason about. That user
+ * has no sudo, which is what makes the rest of the arrangement mean anything: with
+ * sudo, `cat /proc/<pid>/environ` reads any process whatever else is arranged.
+ *
+ * It holds no credentials of its own (`env: {}` in tools.yaml). What it can and
+ * cannot reach is in that file's `shell` entry, including the one exposure that is
+ * accepted rather than closed.
+ */
 import { buildMcpTools, defineMcpTool, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { literalsFrom, redact } from "../../../../domain/redaction.ts";
 import { capText, TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
@@ -26,16 +37,20 @@ function log(message: string): void {
 /**
  * Variables holding a credential, if this process was handed any.
  *
- * On a runner it is handed none, and this list is empty. Three things now say so
- * rather than one: `tools.yaml` gives this server `env: {}`, Atoma strips every
- * credential from a server that does not name one, and since #374 this process
- * runs in a container that cannot see the servers which DO hold them. The
- * literal-value pass below therefore finds nothing to remove, and only the shape
- * patterns do any work.
+ * On a runner it is handed none, and this list is empty. Two things say so:
+ * `tools.yaml` gives this server `env: {}`, and Atoma strips every credential
+ * from a server that does not name one. The literal-value pass below therefore
+ * finds nothing to remove, and only the shape patterns do any work.
+ *
+ * A third reason used to be here — "since #374 this process runs in a container
+ * that cannot see the servers which DO hold them" — and #464 removed the
+ * container. What stands in its place protects the OTHER servers rather than this
+ * one: they make themselves unreadable. It is not a reason this list is empty, so
+ * it does not belong in this comment.
  *
  * `redact_stream.ts` says the same thing about its own situation; this comment
  * used to claim the opposite, describing an environment the server had before
- * per-tool confinement existed.
+ * per-tool credential routing existed.
  *
  * It is kept for the case where the values ARE present: a hand-run `atoma` with
  * the keys exported in the shell. There the literal pass is the stronger of the
@@ -165,7 +180,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
 const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "shell_execute",
-    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run in a container that shares the repository with the other tools but nothing else: writes inside the repository are real and permanent, and writes ANYWHERE ELSE -- including $HOME, installed packages, and global configuration -- last only for this run and are invisible to github__*, search__* and the rest. They will look like they worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. System packages cannot be installed at all: the host filesystem is read-only here. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run on the same machine, as the same user, and with the same filesystem as every other tool: a file you write in the repository is the same file github__* commits and filesystem__* reads, at the same path. Writes OUTSIDE the repository mostly fail rather than silently not persisting: $HOME is read-only and system packages cannot be installed, though /tmp is writable for scratch that does not need to outlive the run. That is a real error you can read, not a write that looks like it worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
     schema: SHELL_EXECUTE_SCHEMA,
     handler: executeShell,
   }),

@@ -23,10 +23,17 @@ import { LLM_CONTEXT_TAG } from "../../../../lib/tags.ts";
 import { concludeIssue, type ConcludeIssueResult } from "../lib/conclude_issue.ts";
 import { describeGateResult, needsAttention } from "../../../../lib/aggregation.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
+import { hardenCredentialHolder } from "../lib/harden.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-mcp] ${msg}`);
 }
+
+// Same OS user as every other tool server, including the one that runs arbitrary
+// commands -- so this process makes itself unreadable to its peers and drops
+// writable directories from its PATH. See `../lib/harden.ts` for what that closes,
+// what it costs, and what it deliberately leaves open.
+hardenCredentialHolder(log);
 
 const LAUNCH_SUB_AGENT_SCHEMA = z.object({
   tasks: z

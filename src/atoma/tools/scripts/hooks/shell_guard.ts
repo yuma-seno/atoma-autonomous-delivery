@@ -69,16 +69,24 @@ const ROUTING_RULES: [RegExp, string][] = [
  * was deliberately not given.
  *
  * **The structural fix has landed, and this is no longer the thing standing
- * between them.** On a runner the `shell` server runs in a rootless container
- * with its own PID namespace, so the other servers are not visible to it at all
- * — measured, along with the four designs that did not work, in #374. The kernel
- * enforces that, without text matching.
+ * between them.** The servers that hold a credential make themselves
+ * non-dumpable, so the kernel refuses the read — measured, and measured with the
+ * credential still sitting in the environment block, which is the point: it locks
+ * the entry rather than the value. See `../lib/harden.ts`.
  *
- * This rule is kept for the case the container does not cover: a hand-run
- * `atoma`, where `tools.yaml`'s `podman` invocation is not in play and every
- * server really is one process among siblings. There it stops an accident and not
- * an intent — `P=/proc; cat $P/1/environ` walks straight past it, exactly as the
- * header says of every rule in this file.
+ * That replaced a rootless container with its own PID namespace (#374). The
+ * container hid the other servers outright, and the reason it went is not that it
+ * failed at this: it gave the shell a different filesystem from every other tool,
+ * and a write to $HOME inside it succeeded and then was not there for anything
+ * else. #464 has the measurements and the three-way trade it comes from.
+ *
+ * This rule is kept for two cases the flag does not cover. A hand-run `atoma`
+ * where a server is an ordinary sibling process. And a THIRD-PARTY server, which
+ * cannot be made to harden itself and whose credential is therefore readable —
+ * documented as such rather than pretended away.
+ *
+ * In both it stops an accident and not an intent: `P=/proc; cat $P/1/environ`
+ * walks straight past it, exactly as the header says of every rule in this file.
  *
  * So: still worth having, no longer load-bearing. Do not restore a dependency on
  * it.

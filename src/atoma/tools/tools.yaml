@@ -74,151 +74,81 @@ filesystem_readonly:
 
 # The one server that runs arbitrary commands, and therefore the one that runs
 # third-party code: a dependency's postinstall, a setup.py, a build.rs. Those run
-# with this server's privileges, and every other server here holds exactly the
-# credentials its own entry declares. So this is the server that must not be able
-# to read the others.
+# with this server's privileges.
 #
-# It runs in a rootless podman container. `env: {}` was never enough on its own:
-# a process running as the same user can read /proc/<pid>/environ of the servers
-# that DO hold credentials, and can drop a fake `gh` into ~/.bun/bin, which is on
-# their PATH. Neither needs an exploit or a misbehaving agent.
+# It used to run in a rootless podman container -- twenty-five lines of argv, an
+# overlay of $HOME, a generated /etc/passwd, subordinate id ranges and a
+# newuidmap shim, all documented across #374's twenty-four measurements. All of
+# that is gone. The reason is worth reading before adding a tool of your own,
+# because it decides what you can expect of one.
 #
-# See #374 for the twenty-four measurements behind each flag, and the four other
-# designs they ruled out. In short:
+# ## Three things cannot all be true
 #
-#   --user 1234:0        NOT uid 0. Rootless podman maps container uid 0 to the
-#                        host user, which would put this container's environment
-#                        back within reach of everything running as that user.
-#                        Any other id maps into the subuid range instead, and
-#                        /proc/<pid>/environ becomes unreadable from the host.
-#                        Group 0 maps to the host user's primary group, which is
-#                        how the container writes a work tree the host owns.
-#                        Not 1000 either: the runner image already carries a
-#                        `packer` account at that id, and the passwd the container
-#                        sees is the host's plus one line, so that name won the
-#                        lookup and the nested runtime found no subuid range for
-#                        it. Keep this in step with CONTAINER_UID in
-#                        prepare_shell_confinement.ts, which now fails the run if
-#                        the host ever takes the id.
+#   (a) every tool sees the same environment
+#   (b) a credential in one tool is hidden from this one
+#   (c) any third-party MCP server works
 #
-#   /usr /opt /etc :ro   The host's whole toolchain, at the same paths, read-only.
-#                        No published image and nothing language-specific: bun,
-#                        node, python, go, cargo, java and dotnet all come from
-#                        the runner. Read-only is also what stops PATH poisoning,
-#                        since /usr/local/bin is world-writable on the host.
+# Pick two. (c) means a server takes its credential the way it was written to,
+# which is an environment variable. (a) means this server shares the filesystem
+# and the OS user with it. Given both, (b) fails -- and not through one hole that
+# can be closed. `/proc/<pid>/environ` is readable between processes of one user;
+# a fake binary on PATH is executed by the server that looks for it; a config file
+# under $HOME tells another tool what to run. Each of those has an answer here --
+# the flag, the PATH narrowing, a read-only $HOME -- and the point is that the LIST
+# is not enumerable, so closing the three that are known is not a guarantee.
 #
-#   the overlay          $HOME has to be readable (rustup, nvm and pyenv keep the
-#                        toolchain there, not just caches), writable (every
-#                        ecosystem caches there), and without effect on the host
-#                        (~/.bun/bin is on the PATH; ~/.gitconfig makes host git
-#                        run what it is told). An overlay is one mechanism that
-#                        gives all three, with no list of blocked filenames.
+# The container bought (b) by giving up (a): $HOME was an overlay, so a write there
+# succeeded and then was not there for anything else. Measured over this
+# repository's stored sessions, the agent crossed that boundary in 18 of 2,118
+# shell calls -- rare, and silent every time, which is the worst combination. A
+# write that reports success and does not persist is a thing an agent cannot
+# reason about.
 #
-#   the work tree        A plain bind at its REAL path, so `pwd` matches the host
-#                        and an error naming a file names the same file on both
-#                        sides.
+# ## What was chosen
 #
-#   unmask=ALL           A nested container cannot mount its own /proc while any
-#                        part of this container's /proc is hidden. The kernel
-#                        refuses it outright, so that an unprivileged user cannot
-#                        mount a fresh procfs to see past a mask -- and podman's
-#                        masks ARE over-mounts, on /proc/kcore, /proc/keys,
-#                        /proc/timer_list and the rest. Unmasking four
-#                        directories was not enough for the same reason it looked
-#                        sufficient: the files still counted. Measured, exactly
-#                        here:
-#                          crun: mount `proc` to `proc`: Operation not permitted
+# (a) and (b) for the tools this project ships. (c) as a documented limit rather
+# than a guarantee.
 #
-#                        ALL rather than the current list of masks, because a
-#                        list has to be right for every podman version and gets
-#                        this same failure when it is not.
+# Every tool server -- this one included -- runs as one dedicated OS user that is
+# NOT in sudoers. One user, so no tool's environment differs from another's. No
+# sudo, because with it nothing else matters: `sudo cat /proc/<pid>/environ` reads
+# anything, whatever else is arranged.
 #
-#                        The earlier note here said Docker's all-or-nothing was
-#                        the thing to avoid, since it leaves /proc/sysrq-trigger
-#                        writable and rebooting the runner is a real thing to be
-#                        able to do. That argument does not transfer: under
-#                        Docker the container is root, and here it is uid 1234
-#                        with the file owned by an unmapped root. /proc/kcore
-#                        needs CAP_SYS_RAWIO, which is not in the list above.
+# What that leaves protected:
 #
-#   XDG_*                A nested container runtime keeps its config, storage and
-#                        runtime state under these. Left unset they resolve under
-#                        HOME, which is the overlay and owned by the host user, so
-#                        podman refused to start at all:
-#                          path "/home/runner/.config" exists and it is not owned
-#                          by the current user
-#                        The entrypoint creates them, because setting the variable
-#                        and not the directory left podman looking at a path that
-#                        was not there.
+#   The provider API key. It is never in a tool server at all -- atoma holds it,
+#   and makes itself non-dumpable, so no tool can read it even as the same user.
 #
-#   /dev/fuse, /dev/net/tun
-#                        Storage and networking for containers the agent starts
-#                        itself. The docker socket is deliberately NOT mounted:
-#                        with it, the container reads a host process's environ
-#                        through `--pid=host`, and the confinement is worth
-#                        nothing.
+#   Credentials in the servers this project ships. They call `prctl(PR_SET_DUMPABLE, 0)`
+#   at startup, which makes their own /proc entries unreadable, and drop
+#   world-writable directories from their PATH so a planted binary is not found.
 #
-#   ~/.local/bin first   Where the confinement step puts ONE generated script under
-#                        both names a nested rootless runtime delegates its id
-#                        mapping to. Deliberately not setuid -- that bit is what
-#                        broke this, not what was missing.
+# What that leaves exposed, deliberately:
 #
-#   --cap-add SETUID     What the mapping actually needs. Measured inside the
-#   --cap-add SETGID     container on #426:
-#                          CapPrm: 00000000000000c0  CapEff: 00000000000000c0
-#                        podman hands a non-root --user its added capabilities as
-#                        AMBIENT ones, and ambient capabilities are effective. The
-#                        same run wrote podman's own two-line mapping by hand and
-#                        it worked. Only the delegation failed: executing a setuid
-#                        binary CLEARS the ambient set, and inside a non-initial
-#                        user namespace a setuid-root file confers nothing to
-#                        replace it, so newuidmap arrived as euid 0 with nothing to
-#                        be root with:
-#                          newuidmap: write to uid_map failed: Operation not
-#                          permitted
+#   GH_TOKEN, to this server. It expires with the job, the agent can already use
+#   it through the github tools, and `actions/checkout` leaves the same value in
+#   `.git/config` inside the work tree -- so the container was not protecting it
+#   either.
 #
-#                        Be clear about what this costs: with CAP_SETUID effective,
-#                        the container CAN reach uid 0 in its own namespace, which
-#                        rootless podman maps to the host runner user. That is not
-#                        the same as the host's root and it reaches nothing new --
-#                        /usr, /opt and /etc are read-only, $HOME is the overlay,
-#                        and the PID namespace is separate, which is what actually
-#                        closes the environ route. The uid was never the part doing
-#                        that work.
+#   A credential routed to a THIRD-PARTY server via config.json's `tools.secrets`.
+#   That server cannot be made to protect itself, and no arrangement here can do
+#   it for it. See docs/customization.md, "What a tool can and cannot be
+#   protected from", before routing a credential to one.
 #
-#   storage.conf         ignore_chown_errors, for the case where the runtime ends
-#                        up in single-mapping mode: one id inside means an image's
-#                        non-root files cannot be restored, and podman would rather
-#                        fail the extraction than approximate it. Here the
-#                        alternative is no nested containers at all.
+# ## What this means when you add a tool
 #
-# What the agent gives up: writes outside the work tree do not outlive the run.
-# `shell_execute`'s description says so, because it is the kind of thing that
-# looks like it worked.
+# Nothing to configure, and nothing to reason about: your server sees the same
+# filesystem, the same $HOME and the same user as every other tool. The one rule
+# is the exposure above -- a credential you give a third-party server is readable
+# by this one.
+#
+# $HOME is the runner's, readable and NOT writable, the same for every tool. A
+# write there fails rather than appearing to work: caches are redirected to a
+# writable directory by the environment the runner sets. That is the one thing an
+# agent has to know, and `shell_execute`'s description says it.
 shell:
-  command: podman
-  args:
-    ["run", "--rm", "-i", "--user", "1234:0",
-     "-v", "/usr:/usr:ro", "-v", "/opt:/opt:ro", "-v", "/etc:/etc:ro",
-     "-v", "/mnt/atoma-shell-overlay/merged:/home/runner",
-     "-v", "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}",
-     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/passwd:/etc/passwd:ro",
-     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subuid:/etc/subuid:ro",
-     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/subgid:/etc/subgid:ro",
-     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/containers.conf:/etc/containers/containers.conf:ro",
-     "-v", "${RUNNER_TEMP}/atoma-shell-sandbox/storage.conf:/etc/containers/storage.conf:ro",
-     "--security-opt", "unmask=ALL",
-     "--security-opt", "seccomp=unconfined",
-     "--cap-add", "SETUID", "--cap-add", "SETGID",
-     "--device", "/dev/fuse", "--device", "/dev/net/tun",
-     "-w", "${GITHUB_WORKSPACE}",
-     "-e", "HOME=/home/runner", "-e", "PATH=/home/runner/.local/bin:${PATH}",
-     "-e", "XDG_RUNTIME_DIR=/tmp/atoma-xdg",
-     "-e", "XDG_CONFIG_HOME=/tmp/atoma-xdg/config",
-     "-e", "XDG_DATA_HOME=/tmp/atoma-xdg/data",
-     "--entrypoint", "/usr/bin/bash",
-     "docker.io/library/ubuntu:24.04",
-     "-c", "mkdir -p \"$XDG_RUNTIME_DIR\" \"$XDG_CONFIG_HOME\" \"$XDG_DATA_HOME\" && exec bun run ${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
+  command: bun
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
   env: {}
   hooks:
     before_tool: ./scripts/hooks/shell_guard.ts

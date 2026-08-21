@@ -35,10 +35,17 @@ import { issueLinks } from "../../../../lib/issue-links.ts";
 import { decideMergeReadiness, formatBlockers } from "../../../../domain/merge-readiness.ts";
 import { gatherMergeSignals } from "../../../../lib/merge-signals.ts";
 import { selectCommentRange } from "../../../../domain/comment-range.ts";
+import { hardenCredentialHolder } from "../lib/harden.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-github] ${msg}`);
 }
+
+// Same OS user as every other tool server, including the one that runs arbitrary
+// commands -- so this process makes itself unreadable to its peers and drops
+// writable directories from its PATH. See `../lib/harden.ts` for what that closes,
+// what it costs, and what it deliberately leaves open.
+hardenCredentialHolder(log);
 
 let REPO = process.env.GITHUB_REPOSITORY ?? "";
 // Fallback: derive REPO from git remote if env var is not set.

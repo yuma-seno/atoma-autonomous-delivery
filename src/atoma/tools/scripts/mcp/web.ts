@@ -20,6 +20,7 @@ import { buildMcpTools, defineMcpTool, serveMcpServer, z, type McpToolResult } f
 import { htmlToMarkdown } from "../../../../domain/html-to-markdown.ts";
 import { MAX_IMAGE_BYTES, sniffMimeType } from "../../../../lib/issue-images.ts";
 import { TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
+import { hardenCredentialHolder } from "../lib/harden.ts";
 
 /** Longest text returned from one fetch. */
 // One budget for every tool, from `domain/tool-output.ts`. This was 60,000 here, 50,000
@@ -77,6 +78,12 @@ const FETCH_SCHEMA = z.object({
 function log(message: string): void {
   console.error(`[atoma-web] ${message}`);
 }
+
+// Same OS user as every other tool server, including the one that runs arbitrary
+// commands -- so this process makes itself unreadable to its peers and drops
+// writable directories from its PATH. See `../lib/harden.ts` for what that closes,
+// what it costs, and what it deliberately leaves open.
+hardenCredentialHolder(log);
 
 /**
  * A browser-shaped User-Agent.

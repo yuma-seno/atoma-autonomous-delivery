@@ -110,6 +110,68 @@ describe("generated workflows", () => {
     expect(validate?.run, "the verdict never reaches the script that acts on it").toContain("--deliverable-report");
   });
 
+  /**
+   * Everything a tool server reads from the environment is passed to it.
+   *
+   * This is the test the review of #464 asked for, because the change it reviewed
+   * had exactly this bug. `sudo` resets the environment, so the agent step now
+   * enumerates what to pass — and the first version of that list was assembled from
+   * the step's own `env:` block rather than from what the servers read.
+   * `GITHUB_REPOSITORY` was missing, which makes every `search__*` call answer
+   * "there is no repository to search" and stops `atoma__request_close_issue`
+   * outright; `GITHUB_RUN_ID` was present while nothing read it. Both mistakes are
+   * invisible until an agent runs.
+   *
+   * The servers inherit atoma's environment, so "passed to atoma" is the same
+   * question as "reachable by a server".
+   */
+  test("every environment variable a tool server reads is passed to the agent", () => {
+    const roots = ["src/atoma/tools/scripts", "src/lib", "src/domain"];
+    const files: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) files.push(path);
+      }
+    };
+    for (const root of roots) walk(root);
+    expect(files.length, "the walk found no sources").toBeGreaterThan(20);
+
+    const read = new Set<string>();
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)) read.add(match[1]!);
+      for (const match of source.matchAll(/process\.env\["([A-Za-z_][A-Za-z0-9_]*)"\]/g)) read.add(match[1]!);
+    }
+    expect(read.size, "no environment reads found, so this test checks nothing").toBeGreaterThan(3);
+
+    /**
+     * Names a server may read that the runner deliberately does not set.
+     *
+     * Each needs a reason, because the default for anything a server reads is that
+     * it must be passed — an entry here is a claim that the code works without it.
+     */
+    const NOT_PASSED = new Map([
+      ["ATOMA_DISPATCH_WORKFLOW", "an override nothing sets; the reader has a default"],
+    ]);
+
+    const runner = readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8");
+    const start = runner.indexOf("AGENT_ENV=(");
+    expect(start, "the agent step no longer builds an environment list").toBeGreaterThan(-1);
+    const list = runner.slice(start, runner.indexOf("atoma run", start));
+
+    for (const name of [...read].sort()) {
+      if (NOT_PASSED.has(name)) continue;
+      expect(
+        list.includes(`${name}=`),
+        `a tool server reads ${name} and the agent step does not pass it. ` +
+          `sudo resets the environment, so it arrives as unset — add it to AGENT_ENV, ` +
+          `or to NOT_PASSED in this test with the reason it is safe to omit.`,
+      ).toBe(true);
+    }
+  });
+
   test("checkout the repository before running repository scripts", () => {
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
