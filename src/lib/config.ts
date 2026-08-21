@@ -225,3 +225,16 @@ export function getDeployTargets(): DeployTargetsResolution {
 export function getWorkflowName(kind: "ci" | "cd", fallback = ""): string {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
 }
+
+/**
+ * How many agent handoffs may happen with nobody else commenting.
+ *
+ * Returned raw for `resolveHandoffLimit` to interpret, rather than defaulted here.
+ * The domain module owns what an absent, zero or nonsense value means, and it owns
+ * the default that the escalation comment quotes back to a person -- two places
+ * deciding that is how the old limit's message came to name a number that was not
+ * the limit.
+ */
+export function getHandoffLimit(): unknown {
+  return loadConfig().limits?.agent_handoffs;
+}

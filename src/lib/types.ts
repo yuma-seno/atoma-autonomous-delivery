@@ -132,6 +132,31 @@ export interface AtomaConfig {
      */
      reranker_model?: string;
   };
+  /**
+   * Bounds on how far a chain of agent runs may go before a person is asked.
+   *
+   * Separate from `agents.<name>.max_iterations`, and the difference is the unit:
+   * that one bounds the tool-call loop inside ONE run and resets on every new run,
+   * so every path that starts a run extends the budget. This bounds the chain of
+   * runs itself.
+   */
+  limits?: {
+    /**
+     * How many times agents may hand work to each other with nobody else
+     * commenting, before the chain stops and a person is asked.
+     *
+     * Counted from the target's comments rather than stored anywhere, so it
+     * survives a re-dispatch — see `domain/dispatch-chain.ts`. Issue and pull
+     * request count separately: opening a pull request is progress.
+     *
+     * Unset takes 5. That is chosen against a history where a person intervenes
+     * often — the longest chain measured is three — so a repository running
+     * autonomously will want a larger number, and one that wants tighter
+     * supervision a smaller one. `0` means the default rather than "no handoffs";
+     * turn `auto_triggers` off to say that.
+     */
+    agent_handoffs?: number;
+  };
   environment?: {
     setup_commands?: string[];
   };

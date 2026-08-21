@@ -27,7 +27,7 @@ import { ref as extractDirectiveRef } from "../scripts/extract_directive.ts";
 import { ref as postResultCommentRef } from "../scripts/post_result_comment.ts";
 import { ref as recordRunMetadataRef } from "../scripts/record_run_metadata.ts";
 import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
-import { LOOP_LIMIT, ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
+import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
 import { runCredentialEnv, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
@@ -702,13 +702,19 @@ const loopControlStep = new TypedOutputsStep(
     id: "loop-control",
     if: `${runAgentStep.rawOutcome} == 'success'`,
     shell: "bash",
+    env: { GH_TOKEN: "${{ github.token }}" },
+    // The target number and nothing else. The tally is counted from that object's
+    // comments rather than carried in the session, so `new_event_count` and the
+    // directive are no longer inputs -- see `domain/dispatch-chain.ts` for why the
+    // stored counter could never reach 1.
+    //
+    // This must stay AFTER `postResultCommentStep`: the tally includes this run's
+    // own result comment, so counting before it is posted is counting one short.
     run: `${scriptCommandWithArgs(manageDispatchLoopRef, {
-      session: "session.json",
-      "new-event-count": buildContextStep.outputs.new_event_count,
-      directive: runAgentStep.outputs.directive,
+      number: "${{ inputs.number }}",
     })}\n`,
   },
-  ["auto_dispatch_count", "loop_limit_reached"] as const,
+  ["auto_dispatch_count", "loop_limit_reached", "handoff_limit"] as const,
 );
 
 // Whether the atoma/in-progress SerializationGuard should be released after
@@ -790,6 +796,12 @@ const loopLimitCommentStep = new TypedOutputsStep({
     DIRECTIVE: runAgentStep.outputs.directive,
     NOTIFY: notifyStep.outputs.notify,
     RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+    // Both read from the step that decided, not written here. The limit is
+    // configurable now, so a literal spliced in at synth time would tell a person
+    // a number that is not the one that stopped their chain -- which is the defect
+    // the old constant's own comment warned about, made reachable.
+    COUNT: loopControlStep.outputs.auto_dispatch_count,
+    LIMIT: loopControlStep.outputs.handoff_limit,
   },
   run: `if [ -n "$NUMBER" ]; then
   MENTION=""
@@ -797,7 +809,7 @@ const loopLimitCommentStep = new TypedOutputsStep({
     MENTION="@\${NOTIFY} - "
   fi
   BD=$(mktemp)
-  echo "\${MENTION}Auto-dispatch loop limit (${LOOP_LIMIT} consecutive runs) reached." > "$BD"
+  echo "\${MENTION}Auto-dispatch loop limit reached: \${COUNT} agent handoffs since anyone else commented (limit \${LIMIT})." > "$BD"
   echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: \${DIRECTIVE}) has been safely suppressed." >> "$BD"
   echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /\${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
   echo "See the workflow run for details: \${RUN_URL}." >> "$BD"
