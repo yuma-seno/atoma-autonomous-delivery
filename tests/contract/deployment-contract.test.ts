@@ -130,12 +130,12 @@ describe("deployment contract", () => {
     // is also the weaker of the two — an image can drop a tool between runner
     // releases and nothing here would notice — so listing them makes adding one
     // a decision instead of an omission.
-    const PROVIDED_BY_THE_RUNNER = new Map([
-      [
-        "podman",
-        "GitHub-hosted images ship it; the shell server runs in a rootless container (#374)",
-      ],
-    ]);
+    // Empty since #464: every server is started with `bun`, so nothing here needs
+    // a binary the runner has to supply. `podman` was the one entry, for the
+    // container the shell server ran in, and this is the place a reader would look
+    // to find out which external programs an adopter's runner must have — so a
+    // stale entry here is worse than none.
+    const PROVIDED_BY_THE_RUNNER = new Map<string, string>([]);
 
     const yaml = readFileSync(join(ATOMA_SRC, "tools/tools.yaml"), "utf8");
     const commands = [...yaml.matchAll(/^\s{2}command:\s*(\S+)\s*$/gm)].map((m) => m[1] as string);

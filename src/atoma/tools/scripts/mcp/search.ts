@@ -54,6 +54,7 @@ import {
 // runs, and the push-retry loop already handles the races that sibling agents
 // cause.
 import { restoreSession as restoreFile, saveSession as saveFile } from "../../../../scripts/lib/atoma-data.ts";
+import { hardenCredentialHolder } from "../lib/harden.ts";
 
 const REPO = process.env.GITHUB_REPOSITORY ?? "";
 
@@ -105,6 +106,12 @@ const SEARCH_SCHEMA = z.object({
 function log(message: string): void {
   console.error(`[atoma-search] ${message}`);
 }
+
+// Same OS user as every other tool server, including the one that runs arbitrary
+// commands -- so this process makes itself unreadable to its peers and drops
+// writable directories from its PATH. See `../lib/harden.ts` for what that closes,
+// what it costs, and what it deliberately leaves open.
+hardenCredentialHolder(log);
 
 /**
  * The issue this run is working on, which is never a useful search result.

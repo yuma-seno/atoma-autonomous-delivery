@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import {
-  CONTAINER_GID,
-  CONTAINER_UID,
-  OVERLAY_ROOT,
-  SANDBOX_DIR,
-} from "../../src/scripts/prepare_shell_confinement.ts";
 
 /**
  * `tools.yaml` decides how every tool server is started, and nothing was reading
@@ -18,8 +12,10 @@ import {
  * repository has no way to run atoma before CI, so the first execution IS
  * production.
  *
- * The `shell` entry is what made this worth writing: its `args` is a
- * twenty-line flow sequence for a container invocation, hand-written.
+ * The `shell` entry is what made this worth writing. Its `args` was a
+ * twenty-line flow sequence for a container invocation, hand-written; #464 reduced
+ * it to a plain `bun run`, and the test that pinned the container is now the test
+ * that keeps one from coming back.
  */
 const SOURCE = "src/atoma/tools/tools.yaml";
 const DEPLOYED = "dist/.github/atoma/tools/tools.yaml";
@@ -52,100 +48,33 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
       }
     });
 
-    // The confinement in #374 is expressed entirely in this file. If any of these
-    // is dropped the server still starts -- and silently stops being confined,
-    // which is the failure mode the whole design exists to avoid.
-    test(`${path}: the shell server is still confined`, () => {
-      const args = (parse(path).shell?.args ?? []) as string[];
-      const joined = args.join(" ");
-      expect(parse(path).shell?.command).toBe("podman");
-
-      // NOT uid 0: rootless podman maps container uid 0 to the host user, which
-      // would put this container's environment back within reach.
-      expect(args).toContain("--user");
-      expect(joined).not.toMatch(/--user 0[: ]/);
-
-      // The host toolchain, read-only. Read-only is what stops PATH poisoning,
-      // since /usr/local/bin is world-writable on a runner.
-      for (const mount of ["/usr:/usr:ro", "/opt:/opt:ro", "/etc:/etc:ro"]) {
-        expect(joined, `missing read-only mount ${mount}`).toContain(mount);
+    /**
+     * The shell server is started plainly, and that is now the property to defend.
+     *
+     * It ran in a rootless podman container until #464: twenty-five lines of argv,
+     * an overlay of $HOME, a generated /etc/passwd and subordinate id ranges. The
+     * container bought secrecy by giving the shell a different filesystem from
+     * every other tool, and a write to $HOME there succeeded and then was not
+     * there for anything else -- silent, and measured in 18 of 2,118 shell calls.
+     *
+     * Isolation now comes from the OS user every server runs as, arranged by the
+     * runner, not from anything in this file. So a container reappearing here
+     * would reintroduce the divergence without saying so, which is what this test
+     * is for.
+     */
+    test(`${path}: the shell server is started plainly, with no container`, () => {
+      const shell = parse(path).shell;
+      expect(shell?.command, "the shell server must be started directly").toBe("bun");
+      const args = (shell?.args ?? []) as string[];
+      expect(args[0]).toBe("run");
+      expect(args.at(-1)).toContain("mcp/shell.ts");
+      // Named individually rather than as "no flags": each one is a mechanism that
+      // would put the shell somewhere the other tools are not.
+      for (const forbidden of ["podman", "docker", "--user", "-v", "unshare", "chroot", "sudo"]) {
+        expect(args, `${path}: shell args must not contain ${forbidden}`).not.toContain(forbidden);
       }
-
-      // The overlay is what makes $HOME readable, writable, and harmless at once.
-      expect(joined).toContain("/home/runner");
-
-      // Exactly two capabilities, and podman makes them AMBIENT for a non-root
-      // --user -- so they are effective, and the container can reach uid 0 in its
-      // own namespace. That is the deal #426 settled: the id mapping a nested
-      // runtime needs cannot happen without them, and what they reach is the host
-      // runner user rather than the host's root, behind read-only mounts and a
-      // separate PID namespace.
-      //
-      // Which is exactly why the list must not grow. ALL, or SYS_ADMIN, would stop
-      // being namespace-local.
-      const caps = args.filter((_, i) => args[i - 1] === "--cap-add");
-      expect([...caps].sort(), "the capability list must stay at what newuidmap needs").toEqual([
-        "SETGID",
-        "SETUID",
-      ]);
-
-      // With the docker socket the container reads a host process's environ
-      // through --pid=host, and the confinement is worth nothing.
-      expect(joined, "the docker socket must never be mounted here").not.toContain("docker.sock");
-      expect(args, "privileged would undo all of it").not.toContain("--privileged");
-      expect(joined, "the host PID namespace would undo all of it").not.toContain("pid=host");
     });
   }
-
-  // The identity is written in two places: `--user` here, and CONTAINER_UID in the
-  // script that generates the container's /etc/passwd. When they drift, podman
-  // resolves the uid against the HOST's passwd -- which that generated file
-  // includes -- finds no subuid range for whatever account holds it, and falls
-  // back to a single mapping. Nested containers then fail, and the only sign is a
-  // warning inside one tool result. uid 1000 did exactly this, to the runner
-  // image's `packer`.
-  test("the shell server's uid matches the passwd entry generated for it", () => {
-    for (const path of [SOURCE, DEPLOYED]) {
-      const args = (parse(path).shell?.args ?? []) as string[];
-      const user = args[args.indexOf("--user") + 1];
-      expect(user, `${path}: --user disagrees with prepare_shell_confinement.ts`).toBe(
-        `${CONTAINER_UID}:${CONTAINER_GID}`,
-      );
-    }
-  });
-
-  /**
-   * The two paths the confinement is built at, as `tools.yaml` binds them.
-   *
-   * `tools.yaml` is a static file an adopter receives, so it cannot import a constant --
-   * which is why this is a test rather than a generation. What it holds together is a pair
-   * that fails quietly: change the overlay path in the workflow that creates it and podman
-   * binds a directory nothing made, so `$HOME` inside the container is empty and every
-   * toolchain the agent needs disappears, with the run staying green until a build command
-   * fails for an unrelated-looking reason. Change the sandbox directory and
-   * `/etc/passwd`, `/etc/subuid`, `containers.conf` and `storage.conf` all bind sources
-   * that do not exist.
-   */
-  test("tools.yaml binds the confinement at the paths that build it", () => {
-    for (const path of [SOURCE, DEPLOYED]) {
-      const joined = ((parse(path).shell?.args ?? []) as string[]).join(" ");
-
-      expect(joined, `${path}: the overlay is not mounted from ${OVERLAY_ROOT}`).toContain(
-        `${OVERLAY_ROOT}/merged:/home/runner`,
-      );
-
-      for (const file of ["passwd", "subuid", "subgid"]) {
-        expect(joined, `${path}: ${file} is not read from ${SANDBOX_DIR}`).toContain(
-          `${SANDBOX_DIR}/${file}:`,
-        );
-      }
-      for (const file of ["containers.conf", "storage.conf"]) {
-        expect(joined, `${path}: ${file} is not read from ${SANDBOX_DIR}`).toContain(
-          `${SANDBOX_DIR}/${file}:/etc/containers/${file}:ro`,
-        );
-      }
-    }
-  });
 
   // Credentials reach a server by being named in its own `env`. The confined
   // server naming one would defeat the point of confining it.

@@ -19,11 +19,6 @@ import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scrip
 import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
-import {
-  OVERLAY_ROOT,
-  SANDBOX_DIR,
-  ref as prepareShellConfinementRef,
-} from "../scripts/prepare_shell_confinement.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
@@ -107,22 +102,29 @@ const SKILLS_DIR = ".github/atoma/skills";
 const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
 
 /**
- * Where the shell server's sandbox is assembled.
+ * The OS user every tool server runs as.
  *
- * The generated `/etc` overlays go under `$RUNNER_TEMP`, which is outside the
- * work tree so nothing commits them. The overlay itself cannot: overlayfs
- * refuses an upperdir nested inside its own lowerdir, and `$RUNNER_TEMP` lives
- * under `$HOME`. `/mnt` is the runner's scratch disk and is outside it.
+ * One user for all of them, so no tool's environment differs from another's --
+ * which is the property the container it replaced could not give. And not in
+ * sudoers, because with sudo nothing else means anything: `sudo cat
+ * /proc/<pid>/environ` reads any process, whatever else is arranged.
  *
- * Both are written as shell rather than resolved here, because `tools.yaml`
- * needs the same two paths and expands `${NAME}` from the environment.
+ * See `tools/tools.yaml`'s `shell` entry for what that leaves protected and what
+ * it leaves exposed. The short version: the provider API key is never in a tool
+ * server, the servers this project ships protect their own credentials, and a
+ * credential routed to a third-party server is readable by the shell.
  */
-const SHELL_SANDBOX_DIR = SANDBOX_DIR;
-// The script that creates the overlay names it; this step, which mounts it, and
-// `tools.yaml`, which binds it as the container's $HOME, both have to agree. Two of the
-// three now share a constant, and the contract test holds the third to it -- `tools.yaml`
-// is a static file an adopter receives, so it cannot import anything.
-const SHELL_OVERLAY_ROOT = OVERLAY_ROOT;
+const TOOL_USER = "atoma-tools";
+
+/**
+ * Where that user's caches go.
+ *
+ * `$HOME` is the runner's, readable and NOT writable, the same for every tool -- so
+ * a write there fails rather than appearing to work and vanishing, which is the
+ * failure the container produced. Package managers need somewhere real, and this
+ * is it: outside the work tree, so nothing commits it.
+ */
+const TOOL_CACHE = "${RUNNER_TEMP}/atoma-tool-cache";
 
 const resolveIssueBranchStep = new TypedOutputsStep(
   {
@@ -310,8 +312,21 @@ const toolSecretsStep = secretNamesStep("tools");
 
 const installAtomaCli = installAtomaCliStep("${{ inputs.atoma_version }}");
 
-/** Outside the workspace, so the checkout cannot have placed it and nothing commits it. */
-const CREDENTIALS_FILE = "$RUNNER_TEMP/atoma-credentials.json";
+/**
+ * Outside the workspace, so the checkout cannot have placed it and nothing commits
+ * it — and inside a directory the TOOL USER owns, so atoma can delete it.
+ *
+ * That second half is load-bearing and was nearly missed. atoma reads this file
+ * and unlinks it before starting any server, which is what keeps the file and the
+ * servers from ever coexisting. Unlinking needs write permission on the containing
+ * DIRECTORY, not on the file — so a file owned by the tool user inside a directory
+ * owned by the runner cannot be deleted by it, and the core's delete is
+ * best-effort: it logs "it stays readable to anything running as this user for the
+ * rest of the run" and carries on. Every credential the run supplies would sit
+ * there, readable by the shell server, for the whole run.
+ */
+const CREDENTIALS_DIR = "$RUNNER_TEMP/atoma-credentials";
+const CREDENTIALS_FILE = `${CREDENTIALS_DIR}/credentials.json`;
 
 /**
  * The one step that holds this run's credentials, and it exits before the agent
@@ -348,7 +363,12 @@ const writeCredentialsStep = new TypedOutputsStep({
     // Plus whatever config.json declared. See `actions/secret-slots.ts`.
     ...secretSlotEnv(),
   },
-  run: `${scriptCommandWithArgs(writeCredentialsFileRef, { out: CREDENTIALS_FILE })}\n`,
+  run: `${scriptCommandWithArgs(writeCredentialsFileRef, { out: CREDENTIALS_FILE })}
+# Handed to the user atoma runs as, which reads it and deletes it before starting
+# any server. Handed over rather than opened up: it holds every credential the run
+# supplies, and this step's own user keeps none of them afterwards.
+sudo chown ${TOOL_USER} "${CREDENTIALS_FILE}"
+`,
 });
 
 const runAgentStep = new TypedOutputsStep(
@@ -393,6 +413,11 @@ const runAgentStep = new TypedOutputsStep(
 # tag artifacts they create (PRs, issues) with their origin agent.
 export AGENT
 
+# Exported because the invocation below passes each one explicitly to \`env\`, and a
+# step's \`env:\` block is present in the shell's environment already -- this makes
+# the dependency visible rather than implicit.
+export GITHUB_RUN_ID ISSUE_NUMBER ISSUE_NOTIFY ATOMA_RUN_TYPE ATOMA_OPS_LOG
+
 TOOLS_ARG=""
 if [ -f "${MACHINERY}/${TOOLS_FILE}" ]; then
   TOOLS_ARG="--tools-file ${MACHINERY}/${TOOLS_FILE}"
@@ -413,8 +438,51 @@ done
 
 # No --prompt-file or stdin is needed: the cached session contains both stable
 # GitHub context and the agent's chronological working history.
+# Run as the user the tool servers will inherit. Every server atoma starts is a
+# child of this process, so one \`sudo -u\` here is what puts all of them on that
+# user -- there is nothing per-server to configure or to forget.
+#
+# \`env\` in front rather than \`--preserve-env\`: the latter needs a sudoers
+# permission that a self-hosted runner may not grant, and both were measured, so
+# the portable one is used. Only what a server actually reads is passed; the
+# credentials are not here at all, they are in the file atoma deletes.
+#
+# HOME stays the runner's so the toolchain resolves. It is not writable by this
+# user, uniformly for every tool, and the caches are redirected below.
+# Built as an array so a setting that is EMPTY is not passed at all. \`env NAME=\`
+# sets the empty string, and atoma reads an empty base URL as a base URL -- which
+# would defeat the guard above and point every request at "/chat/completions".
+AGENT_ENV=(
+  HOME="$HOME"
+  PATH="$PATH"
+  AGENT="$AGENT"
+  ATOMA_MACHINERY_ROOT="$ATOMA_MACHINERY_ROOT"
+  GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
+  BRANCH="\${BRANCH:-}"
+  ISSUE_NUMBER="$ISSUE_NUMBER"
+  ISSUE_NOTIFY="$ISSUE_NOTIFY"
+  ATOMA_RUN_TYPE="$ATOMA_RUN_TYPE"
+  ATOMA_OPS_LOG="$ATOMA_OPS_LOG"
+  # Caches, because $HOME is read-only to this user. CARGO_HOME is not a cache
+  # directory -- redirecting it also hides ~/.cargo/config.toml -- but cargo has no
+  # separate cache variable, and a project needing that config can commit
+  # .cargo/config.toml, which cargo reads from the work tree.
+  XDG_CACHE_HOME="${TOOL_CACHE}"
+  XDG_CONFIG_HOME="${TOOL_CACHE}/config"
+  XDG_DATA_HOME="${TOOL_CACHE}/data"
+  BUN_INSTALL_CACHE_DIR="${TOOL_CACHE}/bun"
+  npm_config_cache="${TOOL_CACHE}/npm"
+  PIP_CACHE_DIR="${TOOL_CACHE}/pip"
+  CARGO_HOME="${TOOL_CACHE}/cargo"
+)
+for name in OPENAI_BASE_URL ATOMA_PROVIDER; do
+  eval "value=\\\${\${name}:-}"
+  if [ -n "$value" ]; then AGENT_ENV+=("\${name}=\${value}"); fi
+done
+
 EXIT_CODE=0
-atoma run \\
+sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
+  atoma run \\
   --agent-def "${MACHINERY}/${AGENT_DEF_DIR}/\${AGENT}.md" \\
   --in-session session.json \\
   --out-session session.json \\
@@ -909,78 +977,111 @@ fi
   // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
   // needs no package.json/node_modules/bun install at all.
   environmentSetupStep(),
-  // Build the sandbox the `shell` tool server runs in. See #374, and
-  // `prepare_shell_confinement.ts` for why this exists at all.
+  // Put every tool server on one OS user that cannot become root.
   //
-  // AFTER environment setup on purpose: the overlay's lower layer is the host's
-  // $HOME as it stands when the overlay is created, so anything setup installed
-  // there -- a rustup toolchain, a pip --user package -- has to already be in
-  // place. Creating the overlay first would hide it.
+  // AFTER environment setup, because that is what installs the toolchain this
+  // user then has to be able to reach.
   //
-  // Two things the container cannot arrange for itself, both needing the host:
+  // This replaced a rootless podman container and the seventy lines that built it
+  // -- an overlay of $HOME, a generated /etc/passwd, subordinate id ranges, a
+  // newuidmap shim. #464 has the measurements; the decision in one paragraph:
   //
-  //   The overlay. `mount -t overlay` needs privilege, and its directories must
-  //   be owned by the runner rather than by root -- rootless podman maps host
-  //   root outside its id range, where it appears as `nobody` and the container
-  //   matches neither owner nor group.
+  // Three things cannot all be true -- every tool sees the same environment, a
+  // credential in one tool is hidden from the shell, and any third-party server
+  // works. The container chose the second by giving up the first, and the cost
+  // was silent: a write to $HOME inside it succeeded and then was not there for
+  // any other tool, in 18 of 2,118 measured shell calls. An agent cannot reason
+  // about a write that reports success and does not persist.
   //
-  //   The work tree's group bit. The container runs as a subordinate uid with the
-  //   runner's primary GROUP, so it writes the tree through group permission.
-  //   `setgid` on directories keeps that true for files created later, by either
-  //   side. Measured at 9ms for 302 files.
+  // So: one user for all of them, so no tool's environment differs from another's.
+  // Not in sudoers, because with sudo nothing else matters -- `sudo cat
+  // /proc/<pid>/environ` reads anything, whatever else is arranged. That single
+  // fact is why the flag atoma sets on itself, the PATH narrowing in the servers,
+  // and everything else here only mean something for a user without sudo.
+  //
+  // Three mechanics, each measured on this runner before being written here:
+  //
+  //   The user. `-M` no home, nologin: it is never logged into, only `sudo -u`'d
+  //   into. `-U` gives it a group of its own -- the probe used `-N`, which falls
+  //   back to the shared `users` group, and a shared group is a way to inherit
+  //   permissions nobody intended. That is the one flag here not measured as
+  //   written; every other property was.
+  //
+  //   Reaching the work tree. It lives under the runner's HOME, which is 750, so
+  //   the user cannot get to it by mode alone. An ACL grants `x` -- traverse
+  //   without listing -- on each directory down to the workspace, and `rwX` inside
+  //   it including as a DEFAULT so files and directories created later inherit it.
+  //   Measured: the user creates a file, the runner then edits it IN PLACE, which
+  //   is what `filesystem__edit_file` does and what a shared group with umask 002
+  //   could not guarantee -- a command can call `umask` and undo that.
+  //
+  //   A writable cache. $HOME stays read-only to this user, uniformly for every
+  //   tool, so a write there fails instead of appearing to work. Package managers
+  //   need somewhere real, so the caches are redirected by the environment the
+  //   agent step passes.
   new TypedOutputsStep({
-    name: "Confine the shell tool server",
+    name: "Put the tool servers on a user without sudo",
     shell: "bash",
-    run: `${scriptCommandWithArgs(prepareShellConfinementRef, { out: SHELL_SANDBOX_DIR })}
-sudo mkdir -p ${SHELL_OVERLAY_ROOT}/upper ${SHELL_OVERLAY_ROOT}/work ${SHELL_OVERLAY_ROOT}/merged
-sudo chown "$(id -un):$(id -gn)" ${SHELL_OVERLAY_ROOT} ${SHELL_OVERLAY_ROOT}/upper ${SHELL_OVERLAY_ROOT}/work ${SHELL_OVERLAY_ROOT}/merged
-sudo mount -t overlay overlay \\
-  -o lowerdir="$HOME",upperdir=${SHELL_OVERLAY_ROOT}/upper,workdir=${SHELL_OVERLAY_ROOT}/work \\
-  ${SHELL_OVERLAY_ROOT}/merged
-chmod g+w ${SHELL_OVERLAY_ROOT}/merged
+    run: `sudo useradd -M -U -s /usr/sbin/nologin "${TOOL_USER}" 2>/dev/null || true
+id "${TOOL_USER}"
 
-# The tree the container shares with the host, reachable through the group it
-# runs as. Failures are tolerated: a path the runner cannot chmod is one the
-# container was never going to write either.
-chmod -R g+w "$GITHUB_WORKSPACE" 2>/dev/null || true
-find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} + 2>/dev/null || true
-
-# podman's signature lookaside is hardcoded to $HOME/.local/share/containers/
-# sigstore and does NOT consult XDG_DATA_HOME, so the XDG redirection tools.yaml
-# does for config, storage and runtime state misses this one. Every nested
-# "podman run" opens a path under it, and on the host that chain is owner-only, so
-# the container -- a different uid, carrying only the host user's group -- got:
-#   open /home/runner/.local/share/containers/sigstore/library/alpine@sha256=...:
-#   permission denied
-# Opening the chain to the group is a write to the overlay's UPPER layer, so the
-# host's own $HOME keeps its modes. This chain only, not $HOME at large: chmod -R
-# there would copy the entire home directory up into the overlay.
-for dir in .local .local/share .local/share/containers .local/share/containers/sigstore; do
-  mkdir -p "${SHELL_OVERLAY_ROOT}/merged/$dir"
-  chmod g+rwxs "${SHELL_OVERLAY_ROOT}/merged/$dir"
+# Traverse-only down to the workspace, walked rather than hardcoded: the path
+# between HOME and the workspace is the runner's business, not ours.
+DIR="$GITHUB_WORKSPACE"
+while [ "$DIR" != "/" ]; do
+  DIR=$(dirname "$DIR")
+  # Stop before "/" itself, and before anything world-traversable already: a
+  # self-hosted runner's workspace is often nowhere near $HOME, and walking to the
+  # root would put an ACL on "/".
+  [ "$DIR" = "/" ] && break
+  sudo setfacl -m "u:${TOOL_USER}:x" "$DIR"
+  [ "$DIR" = "$HOME" ] && break
 done
 
-# The two names a nested rootless runtime delegates its id mapping to, as ONE
-# generated script under both -- and not setuid, which is the whole point.
+# Full access inside the tree, and as a default so later files inherit it. \`X\`
+# rather than \`x\`: execute on directories, not on every file.
+sudo setfacl -R -m "u:${TOOL_USER}:rwX" "$GITHUB_WORKSPACE"
+sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "$GITHUB_WORKSPACE"
+sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
+
+# Somewhere real for the caches, since $HOME is not writable by this user.
+sudo install -d -o "${TOOL_USER}" -m 0700 "${TOOL_CACHE}"
+
+# And a directory for the credentials file that the TOOL USER owns, so atoma can
+# unlink it. Owned by them, writable by us: the runner writes the file into it and
+# hands it over, and the delete that keeps the file and the servers from coexisting
+# then succeeds. Without this the delete fails and every credential stays readable.
+sudo install -d -o "${TOOL_USER}" -m 0700 "${CREDENTIALS_DIR}"
+sudo setfacl -m "u:$(id -un):rwx" "${CREDENTIALS_DIR}"
+
+# Close the world-writable directories on PATH.
 #
-# The container already holds CAP_SETUID and CAP_SETGID effectively: podman hands a
-# non-root --user its added capabilities as AMBIENT ones. #426 measured that, and
-# measured the two-line mapping podman wants succeeding when written by hand. What
-# fails is the delegation, because executing a SETUID binary clears the ambient set
-# and a setuid-root file confers nothing inside a non-initial user namespace -- so
-# both the host's newuidmap and the owned copy v0.1.53 put here arrived as euid 0
-# with no capability left to use:
+# The design rests on the tool user having no sudo. That is worth nothing while it
+# can write a directory the RUNNER's own later steps search: this job goes on to
+# run \`git status\`, \`grep\` and \`gh issue comment\` as the runner, which does have
+# passwordless sudo. Measured on ubuntu-latest: /opt/pipx_bin,
+# /usr/local/.ghcup/bin and /usr/local/bin are all drwxrwxrwx and all precede
+# /usr/bin.
 #
-#   newuidmap: write to uid_map failed: Operation not permitted
-#
-# A plain executable keeps the ambient set and writes the file itself. It grants
-# nothing the calling process did not already have.
-mkdir -p ${SHELL_OVERLAY_ROOT}/merged/.local/bin
-for tool in newuidmap newgidmap; do
-  install -m 0755 "${SHELL_SANDBOX_DIR}/newidmap" "${SHELL_OVERLAY_ROOT}/merged/.local/bin/$tool"
+# Computed from PATH rather than named, so an image that adds a fourth is covered.
+# Safe here and not earlier: every install this job performs -- the MCP packages,
+# the environment setup -- has already run by this step.
+for dir in \${PATH//:/ }; do
+  [ -d "$dir" ] || continue
+  case "$(stat -L -c '%A' "$dir" 2>/dev/null)" in
+    *w?) sudo chmod go-w "$dir" && echo "closed world-writable PATH entry: $dir";;
+  esac
 done
 
-echo "confined shell: overlay at ${SHELL_OVERLAY_ROOT}/merged, mounts from ${SHELL_SANDBOX_DIR}"
+# Git as the tool user, over a checkout the runner owns.
+#
+# \`actions/checkout\` writes this into the runner's own gitconfig, which the tool
+# user can read through the traversal granted above -- but that is a default of a
+# third-party action, and \`github__commit_and_push\` and every \`git\` the agent runs
+# depend on it. Said explicitly, at system level, so it does not.
+sudo git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
 `,
   }),
   new TypedOutputsStep({

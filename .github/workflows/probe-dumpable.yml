@@ -1,0 +1,59 @@
+# Does a child process inherit `PR_SET_DUMPABLE(0)`, and does a different UID help?
+#
+# This decides #464. Atoma makes ITSELF non-dumpable so a tool server cannot read
+# `/proc/<atoma>/environ` -- but the credentials a project declares are handed to
+# the SERVERS, in their own environment blocks, and #374 built a container on the
+# premise that a same-user process can read those. Whether it can depends on one
+# kernel behaviour nobody here has measured: whether the flag survives `execve`.
+#
+# Measured rather than reasoned about, because the answer changes the design. If it
+# is inherited, the environ hole is already closed and #464 is a PATH fix plus a
+# uid. If it is not, a different uid closes it. Either way the container goes -- the
+# difference is how much moves.
+#
+# No atoma, no model call, no tool servers: this is a property of the kernel and
+# the runner image, so it is asked directly.
+#
+# Not part of the deliverable -- this repository's own CI, like ci.yml.
+name: Process and worktree isolation
+
+'on':
+  pull_request:
+    paths:
+      - 'scripts/probe-dumpable.sh'
+      - 'scripts/probe-shared-worktree.sh'
+      - 'scripts/probe-secret-off-env.sh'
+      - 'scripts/probe-secret-holder.ts'
+      - 'scripts/probe-preload.sh'
+      - 'scripts/probe-tool-user.sh'
+      - '.github/workflows/probe-dumpable.yml'
+  push:
+    branches:
+      - 'probe/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # Section 5 of the worktree probe asks whether a different uid can execute
+      # the bun that setup-bun installs into the runner user's HOME, so the probe
+      # has to be in the state a real run is in.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Measure — can a tool server read another server's environment
+        run: bash scripts/probe-dumpable.sh
+      - name: Measure — can a credential be held out of reach without isolation
+        run: bash scripts/probe-secret-off-env.sh
+      - name: Measure — can a process be hardened without changing its code
+        run: bash scripts/probe-preload.sh
+      - name: Measure — the arrangement #464 lands on, end to end
+        run: bash scripts/probe-tool-user.sh
+      - name: Measure — can two users share the work tree
+        run: bash scripts/probe-shared-worktree.sh

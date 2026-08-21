@@ -97,9 +97,16 @@ function main(): void {
   }
 
   const credentials = collect(process.env);
-  // Mode 0600 is a gesture rather than a control: every process here runs as the
-  // same user, so it stops nothing that matters. It costs nothing and states the
-  // intent.
+  // Mode 0600, and since #464 it is not only a gesture. Every tool server runs as
+  // ONE dedicated user and this file is chowned to it, so 0600 is what keeps the
+  // file from the user this step runs as once it has been handed over.
+  //
+  // What actually protects it is that atoma deletes it before starting any server.
+  // That delete needs write permission on the containing DIRECTORY, which is why
+  // the runner creates that directory owned by the tool user — see
+  // `CREDENTIALS_DIR` in atoma-runner.wac.ts. Put this file somewhere the tool user
+  // cannot unlink from and every credential in it stays readable for the whole run,
+  // because the core's delete is best-effort and only warns.
   writeFileSync(values.out, JSON.stringify(credentials), { mode: 0o600 });
 
   // Names only, never values. Which credentials a run carries is already public
