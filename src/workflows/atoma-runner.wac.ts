@@ -95,6 +95,34 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
  */
 const MACHINERY_DIR = "atoma-machinery";
 
+/**
+ * Where the machinery ends up, once it is out of the work tree.
+ *
+ * `actions/checkout` can only write under `GITHUB_WORKSPACE` -- that is its rule,
+ * not a choice here -- so the checkout lands in the work tree and is moved out
+ * immediately afterwards.
+ *
+ * It has to leave, because while it was there `git status` was never clean:
+ *
+ *     ?? atoma-machinery/
+ *
+ * Which meant `git add -A` committing it as a dangling gitlink with no
+ * `.gitmodules`, and `create_pr` refusing for a dirty worktree. `.gitignore` in
+ * this repository already carries `atoma-src/` with a comment describing exactly
+ * that failure -- the same shape, found once, and `atoma-machinery/` was never
+ * added beside it. An adopter has neither, so it happened to all of them.
+ *
+ * The alternative was `.git/info/exclude`, which needs nothing from an adopter and
+ * is two lines. It was rejected: the directory would still be visible to `ls`, so
+ * the invariant #461 exists to state --
+ *
+ *     Everything in the work tree is a deliverable.
+ *
+ * -- would need "except that one" appended, which is the sentence this was all
+ * meant to avoid.
+ */
+const MACHINERY_ABS = "${RUNNER_TEMP}/atoma-machinery";
+
 /** The same directory, as shell -- the job exports it so every step agrees. */
 const MACHINERY = "${ATOMA_MACHINERY_ROOT}";
 
@@ -910,9 +938,15 @@ const runJob = new NormalJob("run", {
     "cancel-in-progress": false,
   },
   permissions: ATOMA_WORKFLOW_PERMISSIONS,
-  // Every step in this job reads its scripts and this project's configuration
-  // from here rather than from the checkout. See MACHINERY_DIR.
-  env: { ATOMA_MACHINERY_ROOT: MACHINERY_DIR },
+  // `ATOMA_MACHINERY_ROOT` is deliberately NOT a job-level `env:` any more. It used
+  // to be, set to the relative `atoma-machinery`, and the step that moves the
+  // machinery out of the work tree then wrote the absolute path to `$GITHUB_ENV`.
+  //
+  // That worked only if the env file wins over a job-level `env:` -- which it does,
+  // but a run where it did not would break every path in every step at once, and
+  // the failure would look like a bad release rather than a precedence question. So
+  // there is one source: the move step writes it, and the three steps before that
+  // one (validate, make the run directory, checkout) do not read it.
 }).addSteps([
   // First, before the checkout: nothing should run at all on an input this job
   // is going to splice into shell text.
@@ -941,6 +975,23 @@ echo "this run's files: ${RUN_DIR}"
   new ActionsCheckoutV4({
     name: "Checkout the delivery machinery from the default branch",
     with: { ref: "${{ github.event.repository.default_branch }}", path: MACHINERY_DIR },
+  }),
+  // Straight out again, before any step reads it. `actions/checkout` cannot write
+  // outside `GITHUB_WORKSPACE`, so this is the only way for the machinery to end up
+  // somewhere `git status` does not see -- and `git status` seeing it was the whole
+  // problem. See MACHINERY_ABS.
+  //
+  // Rewriting the variable rather than the paths that use it: every step reads
+  // `${ATOMA_MACHINERY_ROOT}`, including the agent step, which passes it through to
+  // the tool servers. One assignment moves all of them.
+  new TypedOutputsStep({
+    name: "Move the machinery out of the work tree",
+    shell: "bash",
+    run: `rm -rf "${MACHINERY_ABS}"
+mv "${MACHINERY_DIR}" "${MACHINERY_ABS}"
+echo "ATOMA_MACHINERY_ROOT=${MACHINERY_ABS}" >> "$GITHUB_ENV"
+echo "machinery moved to ${MACHINERY_ABS}; the work tree holds only the repository"
+`,
   }),
   new TypedOutputsStep({
     name: "Set branch env for PR type",
@@ -1196,6 +1247,15 @@ sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUN_DIR}"
 # \`/tmp\` is already world-writable, so this is not what makes the directory
 # usable; it is what stops the two identities tripping over each other's file
 # modes inside it.
+# The machinery, read-only. It left the work tree, which is where it used to pick
+# up the tool user's access as a side effect of the recursive ACL below -- so
+# without this the tool servers cannot read their own scripts and no server starts.
+#
+# \`rX\` rather than \`rwX\`: read everywhere, execute only where execute is already
+# set for somebody. "Make tool hooks executable" ran earlier, so the hooks get it
+# and the ordinary files do not. Nothing here is the agent's to modify.
+sudo setfacl -R -m "u:${TOOL_USER}:rX" "$ATOMA_MACHINERY_ROOT"
+
 mkdir -p "${WORKSPACE_DIR}"
 sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${WORKSPACE_DIR}"
 sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "${WORKSPACE_DIR}"
