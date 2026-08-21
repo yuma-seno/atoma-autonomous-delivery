@@ -676,8 +676,10 @@ jobs:
         id: loop-control
         if: steps.atoma.outcome == 'success'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/manage_dispatch_loop.ts" --session "session.json" --new-event-count "${{ steps.context.outputs.new_event_count }}" --directive "${{ steps.atoma.outputs.directive }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/manage_dispatch_loop.ts" --number "${{ inputs.number }}"
       - name: Decide whether to release the in-progress guard
         id: decide-guard-release
         if: always()
@@ -724,6 +726,8 @@ jobs:
           DIRECTIVE: ${{ steps.atoma.outputs.directive }}
           NOTIFY: ${{ steps.notify.outputs.notify }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COUNT: ${{ steps.loop-control.outputs.auto_dispatch_count }}
+          LIMIT: ${{ steps.loop-control.outputs.handoff_limit }}
         run: |
           if [ -n "$NUMBER" ]; then
             MENTION=""
@@ -731,7 +735,7 @@ jobs:
               MENTION="@${NOTIFY} - "
             fi
             BD=$(mktemp)
-            echo "${MENTION}Auto-dispatch loop limit (5 consecutive runs) reached." > "$BD"
+            echo "${MENTION}Auto-dispatch loop limit reached: ${COUNT} agent handoffs since anyone else commented (limit ${LIMIT})." > "$BD"
             echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: ${DIRECTIVE}) has been safely suppressed." >> "$BD"
             echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
             echo "See the workflow run for details: ${RUN_URL}." >> "$BD"
