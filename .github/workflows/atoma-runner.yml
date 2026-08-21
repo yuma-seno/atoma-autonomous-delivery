@@ -221,69 +221,6 @@ jobs:
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_environment_setup.ts"
-      - name: Put the tool servers on a user without sudo
-        shell: bash
-        run: |
-          sudo useradd -M -U -s /usr/sbin/nologin "atoma-tools" 2>/dev/null || true
-          id "atoma-tools"
-
-          # Traverse-only down to the workspace, walked rather than hardcoded: the path
-          # between HOME and the workspace is the runner's business, not ours.
-          DIR="$GITHUB_WORKSPACE"
-          while [ "$DIR" != "/" ]; do
-            DIR=$(dirname "$DIR")
-            # Stop before "/" itself, and before anything world-traversable already: a
-            # self-hosted runner's workspace is often nowhere near $HOME, and walking to the
-            # root would put an ACL on "/".
-            [ "$DIR" = "/" ] && break
-            sudo setfacl -m "u:atoma-tools:x" "$DIR"
-            [ "$DIR" = "$HOME" ] && break
-          done
-
-          # Full access inside the tree, and as a default so later files inherit it. `X`
-          # rather than `x`: execute on directories, not on every file.
-          sudo setfacl -R -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
-          sudo setfacl -R -d -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
-          sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
-
-          # Somewhere real for the caches, since $HOME is not writable by this user.
-          sudo install -d -o "atoma-tools" -m 0700 "${RUNNER_TEMP}/atoma-tool-cache"
-
-          # And a directory for the credentials file that the TOOL USER owns, so atoma can
-          # unlink it. Owned by them, writable by us: the runner writes the file into it and
-          # hands it over, and the delete that keeps the file and the servers from coexisting
-          # then succeeds. Without this the delete fails and every credential stays readable.
-          sudo install -d -o "atoma-tools" -m 0700 "$RUNNER_TEMP/atoma-credentials"
-          sudo setfacl -m "u:$(id -un):rwx" "$RUNNER_TEMP/atoma-credentials"
-
-          # Close the world-writable directories on PATH.
-          #
-          # The design rests on the tool user having no sudo. That is worth nothing while it
-          # can write a directory the RUNNER's own later steps search: this job goes on to
-          # run `git status`, `grep` and `gh issue comment` as the runner, which does have
-          # passwordless sudo. Measured on ubuntu-latest: /opt/pipx_bin,
-          # /usr/local/.ghcup/bin and /usr/local/bin are all drwxrwxrwx and all precede
-          # /usr/bin.
-          #
-          # Computed from PATH rather than named, so an image that adds a fourth is covered.
-          # Safe here and not earlier: every install this job performs -- the MCP packages,
-          # the environment setup -- has already run by this step.
-          for dir in ${PATH//:/ }; do
-            [ -d "$dir" ] || continue
-            case "$(stat -L -c '%A' "$dir" 2>/dev/null)" in
-              *w?) sudo chmod go-w "$dir" && echo "closed world-writable PATH entry: $dir";;
-            esac
-          done
-
-          # Git as the tool user, over a checkout the runner owns.
-          #
-          # `actions/checkout` writes this into the runner's own gitconfig, which the tool
-          # user can read through the traversal granted above -- but that is a default of a
-          # third-party action, and `github__commit_and_push` and every `git` the agent runs
-          # depend on it. Said explicitly, at system level, so it does not.
-          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
-
-          echo "tool servers will run as atoma-tools (no sudo), caches in ${RUNNER_TEMP}/atoma-tool-cache"
       - name: Configure git identity
         shell: bash
         run: |
@@ -374,6 +311,75 @@ jobs:
             chmod +x /usr/local/bin/atoma
           fi
           atoma --version
+      - name: Put the tool servers on a user without sudo
+        shell: bash
+        run: |
+          sudo useradd -M -U -s /usr/sbin/nologin "atoma-tools" 2>/dev/null || true
+          id "atoma-tools"
+
+          # Traverse-only down to the workspace, walked rather than hardcoded: the path
+          # between HOME and the workspace is the runner's business, not ours.
+          DIR="$GITHUB_WORKSPACE"
+          while [ "$DIR" != "/" ]; do
+            DIR=$(dirname "$DIR")
+            # Stop before "/" itself, and before anything world-traversable already: a
+            # self-hosted runner's workspace is often nowhere near $HOME, and walking to the
+            # root would put an ACL on "/".
+            [ "$DIR" = "/" ] && break
+            sudo setfacl -m "u:atoma-tools:x" "$DIR"
+            [ "$DIR" = "$HOME" ] && break
+          done
+
+          # Full access inside the tree, and as a default so later files inherit it. `X`
+          # rather than `x`: execute on directories, not on every file.
+          sudo setfacl -R -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
+          sudo setfacl -R -d -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
+          sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
+
+          # Somewhere real for the caches, since $HOME is not writable by this user.
+          sudo install -d -o "atoma-tools" -m 0700 "${RUNNER_TEMP}/atoma-tool-cache"
+
+          # And a directory for the credentials file that the TOOL USER owns, so atoma can
+          # unlink it. Owned by them, writable by us: the runner writes the file into it and
+          # hands it over, and the delete that keeps the file and the servers from coexisting
+          # then succeeds. Without this the delete fails and every credential stays readable.
+          sudo install -d -o "atoma-tools" -m 0700 "$RUNNER_TEMP/atoma-credentials"
+          sudo setfacl -m "u:$(id -un):rwx" "$RUNNER_TEMP/atoma-credentials"
+
+          # Close the world-writable directories on PATH.
+          #
+          # The design rests on the tool user having no sudo. That is worth nothing while it
+          # can write a directory the RUNNER's own later steps search: this job goes on to
+          # run `git status`, `grep` and `gh issue comment` as the runner, which does have
+          # passwordless sudo. Measured on ubuntu-latest: /opt/pipx_bin,
+          # /usr/local/.ghcup/bin and /usr/local/bin are all drwxrwxrwx and all precede
+          # /usr/bin.
+          #
+          # Computed from PATH rather than named, so an image that adds a fourth is covered.
+          #
+          # ORDER MATTERS, and this step is placed for it: every install this job performs
+          # has to have happened already. The MCP packages, the environment setup -- and the
+          # atoma CLI itself, which is written to /usr/local/bin. That last one is why this
+          # step sits after "Install Atoma CLI" rather than after the environment setup: it
+          # did not, and the first real run failed with
+          #   curl: (23) Failure writing output to destination
+          # because the directory curl was writing into had just been closed.
+          for dir in ${PATH//:/ }; do
+            [ -d "$dir" ] || continue
+            case "$(stat -L -c '%A' "$dir" 2>/dev/null)" in
+              *w?) sudo chmod go-w "$dir" && echo "closed world-writable PATH entry: $dir";;
+            esac
+          done
+
+          # Git as the tool user, over a checkout the runner owns.
+          #
+          # `actions/checkout` writes this into the runner's own gitconfig, which the tool
+          # user can read through the traversal granted above -- but that is a default of a
+          # third-party action, and `github__commit_and_push` and every `git` the agent runs
+          # depend on it. Said explicitly, at system level, so it does not.
+          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+          echo "tool servers will run as atoma-tools (no sudo), caches in ${RUNNER_TEMP}/atoma-tool-cache"
       - name: Resolve which repository secrets may reach this run
         id: secret-names
         shell: bash
