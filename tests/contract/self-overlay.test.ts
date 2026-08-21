@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /**
- * `.github/` is the release plus `self/`, and nothing else.
+ * `self/` and `.github/` do not drift apart.
  *
  * ## What this replaced
  *
@@ -18,27 +18,43 @@ import { join, relative } from "node:path";
  *   time because it was remembered, not because anything checked.
  *
  * `self/` mirrors `.github/`, so the deploy became `rm -rf .github`, extract, copy
- * `self/` over it. An upstream removal is now ordinary — the file is not recreated
- * — and the preserve list is a directory rather than a habit.
+ * `self/` over it. An upstream removal is now ordinary -- the file is not recreated
+ * -- and the preserve list is a directory rather than a habit.
  *
  * ## What these tests hold
  *
- * **Nothing unaccounted for in `.github/`.** Every file there must come from the
- * deliverable or from `self/`. This is what catches a file that accumulated: added
- * by hand, or left behind by a release that stopped shipping it.
+ * That the two copies of every overlay file agree, in both directions: the file
+ * exists in both places, and holds the same bytes.
  *
- * **`self/` and `.github/` agree.** An overlay entry needs no release to take
- * effect — it is a copy — so a change to `self/X` belongs in the same pull request
- * as the identical change to `.github/X`. Requiring them byte-identical is what
- * turns "remember to change both" into a failing check, and it is the reason an
- * agent improving `config.json` cannot half-apply the change.
+ * An overlay entry needs no release to take effect -- it is a copy, not a build --
+ * so a change to `self/X` belongs in the same pull request as the identical change
+ * to `.github/X`. This is what turns "remember to change both" into a failing
+ * check, and it is why an agent improving `config.json` cannot half-apply it.
  *
- * ## What they do not hold
+ * ## Why there is no "every file in `.github/` is accounted for" test
  *
- * That `.github/` matches the CURRENT `src/`. It deliberately lags: a change to
- * `src/` must not reconfigure the live agents the moment it merges, and two
- * breakages reached the running system exactly that way. So membership is checked
- * against `dist/`, and content is not.
+ * There was one, and it was wrong. It required every file under `.github/` to
+ * exist in `dist/.github/` or `self/`, meaning to catch a file that accumulated.
+ *
+ * Nothing accumulates any more. The deploy runs `rm -rf .github` first, so a file
+ * the release stopped shipping is simply not recreated -- which is the whole reason
+ * `self/` exists. There is nothing left for that test to find.
+ *
+ * Worse, it was a false alarm waiting to happen. `dist/` is built from the CURRENT
+ * `src/`, while `.github/` holds an older release, and the lag between them is
+ * deliberate: a change to `src/` must not reconfigure the live agents the moment it
+ * merges, and two breakages reached the running system exactly that way. So merge a
+ * change that DELETES a file from `src/`, then deploy a release that predates it,
+ * and the test fails on a correct deploy pull request.
+ *
+ * The one case it did cover on its own -- a file added to `.github/` with no
+ * counterpart in `self/`, which the next deploy would silently remove -- is already
+ * in front of a person. `.github/**` is in `governed_paths`, so any pull request
+ * touching it carries the blocker "this pull request changes how agents themselves
+ * run" and cannot be merged by an agent at all.
+ *
+ * These tests likewise do not check that `.github/` matches the current `src/`, for
+ * the same reason: the lag is the design, not a defect to detect.
  */
 const OVERLAY = "self";
 const DEPLOYED = ".github";
@@ -67,29 +83,7 @@ function body(path: string): string {
   return readFileSync(path, "utf8").replaceAll("\r\n", "\n");
 }
 
-describe("`.github/` is the deliverable plus `self/`", () => {
-  test("every file in .github/ comes from the deliverable or from self/", () => {
-    // `dist/` is gitignored and built by `bun run synth`, which runs in checks
-    // before this. Skipping rather than failing when it is absent: a developer
-    // running one test file has not necessarily built, and a false failure here
-    // would teach them to ignore this test.
-    if (!existsSync(BUILT)) {
-      console.warn(`${BUILT} is absent; run \`bun run synth\` for this test to mean anything`);
-      return;
-    }
-
-    const shipped = new Set(filesUnder(BUILT));
-    const owned = new Set(filesUnder(OVERLAY));
-    const unaccounted = filesUnder(DEPLOYED).filter((file) => !shipped.has(file) && !owned.has(file));
-
-    expect(
-      unaccounted,
-      `these exist under ${DEPLOYED}/ but come from neither the deliverable nor ${OVERLAY}/. ` +
-        `Either the build stopped producing them (delete them) or they belong to this repository ` +
-        `(move them to ${OVERLAY}/, which the deploy copies over the release)`,
-    ).toEqual([]);
-  });
-
+describe("`self/` and `.github/` hold the same overlay", () => {
   test("every file in self/ has a counterpart in .github/", () => {
     const missing = filesUnder(OVERLAY).filter((file) => !existsSync(join(DEPLOYED, file)));
     expect(
@@ -122,7 +116,13 @@ describe("`.github/` is the deliverable plus `self/`", () => {
    * adopter.
    */
   test("the overlay does not shadow the deliverable, except config.json", () => {
-    if (!existsSync(BUILT)) return;
+    // Unlike the membership test this replaced, comparing against `dist/` is right
+    // here: the question is whether what `src/` ships TODAY is also overridden in
+    // `self/`, and `dist/` is exactly that. No lag is involved.
+    if (!existsSync(BUILT)) {
+      console.warn(`${BUILT} is absent; run \`bun run synth\` for this test to mean anything`);
+      return;
+    }
     const shadowed = filesUnder(OVERLAY)
       .filter((file) => existsSync(join(BUILT, file)))
       .filter((file) => file !== "atoma/config.json");
