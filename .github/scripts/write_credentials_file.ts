@@ -98,6 +98,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref,
-  collect
+  collect,
+  ref
 };

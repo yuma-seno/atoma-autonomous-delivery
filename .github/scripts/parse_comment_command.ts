@@ -63,6 +63,6 @@ error=${error}
 if (import.meta.main)
   main();
 export {
-  ref,
-  parseCommentCommand
+  parseCommentCommand,
+  ref
 };

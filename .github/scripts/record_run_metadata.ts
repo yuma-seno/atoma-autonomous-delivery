@@ -77,6 +77,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  updateRunMetadata,
-  ref
+  ref,
+  updateRunMetadata
 };

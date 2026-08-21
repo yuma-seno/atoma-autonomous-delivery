@@ -626,6 +626,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  validatorProblems,
-  ref
+  ref,
+  validatorProblems
 };
