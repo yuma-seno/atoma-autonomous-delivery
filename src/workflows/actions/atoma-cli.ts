@@ -62,8 +62,30 @@ import { TypedOutputsStep } from "./base.ts";
  * And a `vision: false` agent had pictures replaced before the message entered the
  * session, so what atoma-data recorded was not what happened: resuming with
  * `vision: true` could never get them back.
+ *
+ * v0.1.17 is a fourth coupling, this one with `tools/tools.yaml` again, and the
+ * first where the OLD version is actively wrong rather than merely unaware.
+ *
+ * It reads `request_timeout_secs` per server. v0.1.16 ignores the key -- serde
+ * drops unknown fields -- so the tools file is accepted either way and nothing
+ * fails. What the old version does instead is cap every `tools/call` at 60
+ * seconds, which is what `shell` and `search` declare that key to escape:
+ *
+ *   - `shell_execute` offers the agent `timeout_seconds` up to 3600. Under v0.1.16
+ *     every value above 60 is a promise that cannot be kept, and a build or a test
+ *     suite running over a minute fails with an error naming the shell server
+ *     rather than the client that gave up.
+ *   - the first search of a run loads a 544MB reranker. Measured at 63.9s against
+ *     the 60s cap, so under v0.1.16 the first search of EVERY run fails.
+ *
+ * v0.1.17 also matches the JSON-RPC id when reading a response. Without that, one
+ * timeout desynchronises that server for the rest of the run: the abandoned call's
+ * answer stays in the pipe and the next call reads it, so every answer belongs to
+ * the previous question and nothing detects it. Which makes lowering this pin back
+ * to v0.1.16 worse than it looks -- the timeouts declared in the tools file stop
+ * applying at the same moment the mispairing starts.
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.16";
+export const ATOMA_DEFAULT_VERSION = "v0.1.17";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
