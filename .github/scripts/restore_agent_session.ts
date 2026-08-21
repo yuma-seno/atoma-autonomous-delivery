@@ -138,6 +138,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref,
-  findAgentSession
+  findAgentSession,
+  ref
 };

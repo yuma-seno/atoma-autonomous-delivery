@@ -334,8 +334,8 @@ context_event_count=${eventCount}
 if (import.meta.main)
   main();
 export {
-  ref,
-  reconcileGithubSession,
+  agentReadsImages,
   mergeGithubContext,
-  agentReadsImages
+  reconcileGithubSession,
+  ref
 };

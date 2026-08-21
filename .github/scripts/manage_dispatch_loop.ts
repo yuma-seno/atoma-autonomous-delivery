@@ -65,7 +65,7 @@ loop_limit_reached=${loopLimitReached}
 if (import.meta.main)
   main();
 export {
-  ref,
+  LOOP_LIMIT,
   manageDispatchLoop,
-  LOOP_LIMIT
+  ref
 };

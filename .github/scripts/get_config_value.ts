@@ -79,6 +79,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref,
-  buildArgv
+  buildArgv,
+  ref
 };

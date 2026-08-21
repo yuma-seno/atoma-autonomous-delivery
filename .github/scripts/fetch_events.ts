@@ -333,6 +333,6 @@ resolved_number=${resolvedNumber}
 if (import.meta.main)
   main();
 export {
-  ref,
-  fetchEvents
+  fetchEvents,
+  ref
 };

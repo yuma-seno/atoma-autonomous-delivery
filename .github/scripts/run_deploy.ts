@@ -232,6 +232,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  selectTargets,
-  ref
+  ref,
+  selectTargets
 };

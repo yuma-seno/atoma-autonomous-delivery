@@ -194,6 +194,6 @@ function main() {
 if (import.meta.main)
   main();
 export {
-  ref,
-  buildCommentBody
+  buildCommentBody,
+  ref
 };

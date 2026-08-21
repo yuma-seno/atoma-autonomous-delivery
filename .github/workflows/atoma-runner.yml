@@ -221,59 +221,69 @@ jobs:
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/run_environment_setup.ts"
-      - name: Confine the shell tool server
+      - name: Put the tool servers on a user without sudo
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/prepare_shell_confinement.ts" --out "${RUNNER_TEMP}/atoma-shell-sandbox"
-          sudo mkdir -p /mnt/atoma-shell-overlay/upper /mnt/atoma-shell-overlay/work /mnt/atoma-shell-overlay/merged
-          sudo chown "$(id -un):$(id -gn)" /mnt/atoma-shell-overlay /mnt/atoma-shell-overlay/upper /mnt/atoma-shell-overlay/work /mnt/atoma-shell-overlay/merged
-          sudo mount -t overlay overlay \
-            -o lowerdir="$HOME",upperdir=/mnt/atoma-shell-overlay/upper,workdir=/mnt/atoma-shell-overlay/work \
-            /mnt/atoma-shell-overlay/merged
-          chmod g+w /mnt/atoma-shell-overlay/merged
+          sudo useradd -M -U -s /usr/sbin/nologin "atoma-tools" 2>/dev/null || true
+          id "atoma-tools"
 
-          # The tree the container shares with the host, reachable through the group it
-          # runs as. Failures are tolerated: a path the runner cannot chmod is one the
-          # container was never going to write either.
-          chmod -R g+w "$GITHUB_WORKSPACE" 2>/dev/null || true
-          find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} + 2>/dev/null || true
-
-          # podman's signature lookaside is hardcoded to $HOME/.local/share/containers/
-          # sigstore and does NOT consult XDG_DATA_HOME, so the XDG redirection tools.yaml
-          # does for config, storage and runtime state misses this one. Every nested
-          # "podman run" opens a path under it, and on the host that chain is owner-only, so
-          # the container -- a different uid, carrying only the host user's group -- got:
-          #   open /home/runner/.local/share/containers/sigstore/library/alpine@sha256=...:
-          #   permission denied
-          # Opening the chain to the group is a write to the overlay's UPPER layer, so the
-          # host's own $HOME keeps its modes. This chain only, not $HOME at large: chmod -R
-          # there would copy the entire home directory up into the overlay.
-          for dir in .local .local/share .local/share/containers .local/share/containers/sigstore; do
-            mkdir -p "/mnt/atoma-shell-overlay/merged/$dir"
-            chmod g+rwxs "/mnt/atoma-shell-overlay/merged/$dir"
+          # Traverse-only down to the workspace, walked rather than hardcoded: the path
+          # between HOME and the workspace is the runner's business, not ours.
+          DIR="$GITHUB_WORKSPACE"
+          while [ "$DIR" != "/" ]; do
+            DIR=$(dirname "$DIR")
+            # Stop before "/" itself, and before anything world-traversable already: a
+            # self-hosted runner's workspace is often nowhere near $HOME, and walking to the
+            # root would put an ACL on "/".
+            [ "$DIR" = "/" ] && break
+            sudo setfacl -m "u:atoma-tools:x" "$DIR"
+            [ "$DIR" = "$HOME" ] && break
           done
 
-          # The two names a nested rootless runtime delegates its id mapping to, as ONE
-          # generated script under both -- and not setuid, which is the whole point.
+          # Full access inside the tree, and as a default so later files inherit it. `X`
+          # rather than `x`: execute on directories, not on every file.
+          sudo setfacl -R -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
+          sudo setfacl -R -d -m "u:atoma-tools:rwX" "$GITHUB_WORKSPACE"
+          sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
+
+          # Somewhere real for the caches, since $HOME is not writable by this user.
+          sudo install -d -o "atoma-tools" -m 0700 "${RUNNER_TEMP}/atoma-tool-cache"
+
+          # And a directory for the credentials file that the TOOL USER owns, so atoma can
+          # unlink it. Owned by them, writable by us: the runner writes the file into it and
+          # hands it over, and the delete that keeps the file and the servers from coexisting
+          # then succeeds. Without this the delete fails and every credential stays readable.
+          sudo install -d -o "atoma-tools" -m 0700 "$RUNNER_TEMP/atoma-credentials"
+          sudo setfacl -m "u:$(id -un):rwx" "$RUNNER_TEMP/atoma-credentials"
+
+          # Close the world-writable directories on PATH.
           #
-          # The container already holds CAP_SETUID and CAP_SETGID effectively: podman hands a
-          # non-root --user its added capabilities as AMBIENT ones. #426 measured that, and
-          # measured the two-line mapping podman wants succeeding when written by hand. What
-          # fails is the delegation, because executing a SETUID binary clears the ambient set
-          # and a setuid-root file confers nothing inside a non-initial user namespace -- so
-          # both the host's newuidmap and the owned copy v0.1.53 put here arrived as euid 0
-          # with no capability left to use:
+          # The design rests on the tool user having no sudo. That is worth nothing while it
+          # can write a directory the RUNNER's own later steps search: this job goes on to
+          # run `git status`, `grep` and `gh issue comment` as the runner, which does have
+          # passwordless sudo. Measured on ubuntu-latest: /opt/pipx_bin,
+          # /usr/local/.ghcup/bin and /usr/local/bin are all drwxrwxrwx and all precede
+          # /usr/bin.
           #
-          #   newuidmap: write to uid_map failed: Operation not permitted
-          #
-          # A plain executable keeps the ambient set and writes the file itself. It grants
-          # nothing the calling process did not already have.
-          mkdir -p /mnt/atoma-shell-overlay/merged/.local/bin
-          for tool in newuidmap newgidmap; do
-            install -m 0755 "${RUNNER_TEMP}/atoma-shell-sandbox/newidmap" "/mnt/atoma-shell-overlay/merged/.local/bin/$tool"
+          # Computed from PATH rather than named, so an image that adds a fourth is covered.
+          # Safe here and not earlier: every install this job performs -- the MCP packages,
+          # the environment setup -- has already run by this step.
+          for dir in ${PATH//:/ }; do
+            [ -d "$dir" ] || continue
+            case "$(stat -L -c '%A' "$dir" 2>/dev/null)" in
+              *w?) sudo chmod go-w "$dir" && echo "closed world-writable PATH entry: $dir";;
+            esac
           done
 
-          echo "confined shell: overlay at /mnt/atoma-shell-overlay/merged, mounts from ${RUNNER_TEMP}/atoma-shell-sandbox"
+          # Git as the tool user, over a checkout the runner owns.
+          #
+          # `actions/checkout` writes this into the runner's own gitconfig, which the tool
+          # user can read through the traversal granted above -- but that is a default of a
+          # third-party action, and `github__commit_and_push` and every `git` the agent runs
+          # depend on it. Said explicitly, at system level, so it does not.
+          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+          echo "tool servers will run as atoma-tools (no sudo), caches in ${RUNNER_TEMP}/atoma-tool-cache"
       - name: Configure git identity
         shell: bash
         run: |
@@ -410,7 +420,11 @@ jobs:
           ATOMA_SECRET_9: ${{ secrets[fromJSON(steps.secret-names.outputs.names || '[]')[9]] }}
           ATOMA_SECRET_NAMES: ${{ steps.secret-names.outputs.names }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/write_credentials_file.ts" --out "$RUNNER_TEMP/atoma-credentials.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/write_credentials_file.ts" --out "$RUNNER_TEMP/atoma-credentials/credentials.json"
+          # Handed to the user atoma runs as, which reads it and deletes it before starting
+          # any server. Handed over rather than opened up: it holds every credential the run
+          # supplies, and this step's own user keeps none of them afterwards.
+          sudo chown atoma-tools "$RUNNER_TEMP/atoma-credentials/credentials.json"
       - name: Run agent
         id: atoma
         if: steps.context.outputs.new_event_count != '0'
@@ -429,6 +443,11 @@ jobs:
           # spawned by `atoma run` below can read the current agent's name, e.g. to
           # tag artifacts they create (PRs, issues) with their origin agent.
           export AGENT
+
+          # Exported because the invocation below passes each one explicitly to `env`, and a
+          # step's `env:` block is present in the shell's environment already -- this makes
+          # the dependency visible rather than implicit.
+          export GITHUB_RUN_ID ISSUE_NUMBER ISSUE_NOTIFY ATOMA_RUN_TYPE ATOMA_OPS_LOG
 
           TOOLS_ARG=""
           if [ -f "${ATOMA_MACHINERY_ROOT}/.github/atoma/tools/tools.yaml" ]; then
@@ -450,15 +469,58 @@ jobs:
 
           # No --prompt-file or stdin is needed: the cached session contains both stable
           # GitHub context and the agent's chronological working history.
+          # Run as the user the tool servers will inherit. Every server atoma starts is a
+          # child of this process, so one `sudo -u` here is what puts all of them on that
+          # user -- there is nothing per-server to configure or to forget.
+          #
+          # `env` in front rather than `--preserve-env`: the latter needs a sudoers
+          # permission that a self-hosted runner may not grant, and both were measured, so
+          # the portable one is used. Only what a server actually reads is passed; the
+          # credentials are not here at all, they are in the file atoma deletes.
+          #
+          # HOME stays the runner's so the toolchain resolves. It is not writable by this
+          # user, uniformly for every tool, and the caches are redirected below.
+          # Built as an array so a setting that is EMPTY is not passed at all. `env NAME=`
+          # sets the empty string, and atoma reads an empty base URL as a base URL -- which
+          # would defeat the guard above and point every request at "/chat/completions".
+          AGENT_ENV=(
+            HOME="$HOME"
+            PATH="$PATH"
+            AGENT="$AGENT"
+            ATOMA_MACHINERY_ROOT="$ATOMA_MACHINERY_ROOT"
+            GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
+            BRANCH="${BRANCH:-}"
+            ISSUE_NUMBER="$ISSUE_NUMBER"
+            ISSUE_NOTIFY="$ISSUE_NOTIFY"
+            ATOMA_RUN_TYPE="$ATOMA_RUN_TYPE"
+            ATOMA_OPS_LOG="$ATOMA_OPS_LOG"
+            # Caches, because $HOME is read-only to this user. CARGO_HOME is not a cache
+            # directory -- redirecting it also hides ~/.cargo/config.toml -- but cargo has no
+            # separate cache variable, and a project needing that config can commit
+            # .cargo/config.toml, which cargo reads from the work tree.
+            XDG_CACHE_HOME="${RUNNER_TEMP}/atoma-tool-cache"
+            XDG_CONFIG_HOME="${RUNNER_TEMP}/atoma-tool-cache/config"
+            XDG_DATA_HOME="${RUNNER_TEMP}/atoma-tool-cache/data"
+            BUN_INSTALL_CACHE_DIR="${RUNNER_TEMP}/atoma-tool-cache/bun"
+            npm_config_cache="${RUNNER_TEMP}/atoma-tool-cache/npm"
+            PIP_CACHE_DIR="${RUNNER_TEMP}/atoma-tool-cache/pip"
+            CARGO_HOME="${RUNNER_TEMP}/atoma-tool-cache/cargo"
+          )
+          for name in OPENAI_BASE_URL ATOMA_PROVIDER; do
+            eval "value=\${${name}:-}"
+            if [ -n "$value" ]; then AGENT_ENV+=("${name}=${value}"); fi
+          done
+
           EXIT_CODE=0
-          atoma run \
+          sudo -n -u "atoma-tools" env "${AGENT_ENV[@]}" \
+            atoma run \
             --agent-def "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions/${AGENT}.md" \
             --in-session session.json \
             --out-session session.json \
             --template "${ATOMA_MACHINERY_ROOT}/.github/atoma/prompt-template.md" \
             --skills-dir "${ATOMA_MACHINERY_ROOT}/.github/atoma/skills" \
             --max-iterations "${{ steps.cfg.outputs.max_iterations }}" \
-            --credentials-file "$RUNNER_TEMP/atoma-credentials.json" \
+            --credentials-file "$RUNNER_TEMP/atoma-credentials/credentials.json" \
             ${TOOLS_ARG} \
             > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
 
