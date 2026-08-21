@@ -123,6 +123,11 @@ jobs:
             reject notify "$NOTIFY" "Expected a GitHub login, or empty."
 
           echo "Inputs validated: ${TYPE} #${NUMBER}, agent=${AGENT}, session_mode=${SESSION_MODE}"
+      - name: Make a place for this run's own files
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/atoma-run"
+          echo "this run's files: ${RUNNER_TEMP}/atoma-run"
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -247,19 +252,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/fetch_events.ts" --type "${{ inputs.type }}" --number "${{ inputs.number }}" --out "events.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/fetch_events.ts" --type "${{ inputs.type }}" --number "${{ inputs.number }}" --out "${RUNNER_TEMP}/atoma-run/events.json"
       - name: Restore agent session from atoma-data
         id: restore-session
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/restore_agent_session.ts" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}" --out "session.json" --session-mode "${{ inputs.session_mode }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/restore_agent_session.ts" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}" --out "${RUNNER_TEMP}/atoma-run/session.json" --session-mode "${{ inputs.session_mode }}"
+      - name: Restore the agent's workspace
+        id: workspace
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/restore_workspace.ts" --type "${{ inputs.type }}" --number "${{ inputs.number }}" --dest "/tmp/atoma-workspace" --repo "${{ github.repository }}"
       - name: Merge GitHub context into session
         id: context
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/reconcile_github_session.ts" --events "events.json" --agent-name "${{ inputs.agent }}" --agent-def "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions/${{ inputs.agent }}.md" --config "${ATOMA_MACHINERY_ROOT}/.github/atoma/config.json" --session "session.json" --out "session.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/reconcile_github_session.ts" --events "${RUNNER_TEMP}/atoma-run/events.json" --agent-name "${{ inputs.agent }}" --agent-def "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions/${{ inputs.agent }}.md" --config "${ATOMA_MACHINERY_ROOT}/.github/atoma/config.json" --session "${RUNNER_TEMP}/atoma-run/session.json" --out "${RUNNER_TEMP}/atoma-run/session.json"
       - name: Read max_iterations from config
         id: cfg
         shell: bash
@@ -338,6 +350,33 @@ jobs:
 
           # Somewhere real for the caches, since $HOME is not writable by this user.
           sudo install -d -o "atoma-tools" -m 0700 "${RUNNER_TEMP}/atoma-tool-cache"
+
+          # The run's own directory, handed to the tool user now that it exists. `atoma run`
+          # writes the session as that user while the runner wrote it moments before, and the
+          # runner reads it back afterwards -- so both need access, to files that do not exist
+          # yet. Hence the default ACLs: whatever either one creates in here, the other can
+          # read and write.
+          # `-R` as well as `-d`, and the difference matters here more than it does for the
+          # work tree. A default ACL applies to files created AFTER it is set, and three
+          # steps have already written into this directory by now -- the session among them,
+          # which `atoma run` is about to open for writing as the tool user. Without the
+          # recursive pass that file keeps the mode `mkdir` gave it and the write fails.
+          sudo setfacl -R -m "u:atoma-tools:rwX" "${RUNNER_TEMP}/atoma-run"
+          sudo setfacl -R -d -m "u:atoma-tools:rwX" "${RUNNER_TEMP}/atoma-run"
+          sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUNNER_TEMP}/atoma-run"
+
+          # The agent's scratch workspace, on the same terms. The runner unpacks into it
+          # before the agent starts and packs it up afterwards, and everything the agent does
+          # in it happens as the tool user -- so both need to read and write what the other
+          # creates, including files that do not exist yet.
+          #
+          # `/tmp` is already world-writable, so this is not what makes the directory
+          # usable; it is what stops the two identities tripping over each other's file
+          # modes inside it.
+          mkdir -p "/tmp/atoma-workspace"
+          sudo setfacl -R -m "u:atoma-tools:rwX" "/tmp/atoma-workspace"
+          sudo setfacl -R -d -m "u:atoma-tools:rwX" "/tmp/atoma-workspace"
+          sudo setfacl -R -d -m "u:$(id -un):rwX" "/tmp/atoma-workspace"
 
           # And a directory for the credentials file that the TOOL USER owns, so atoma can
           # unlink it. Owned by them, writable by us: the runner writes the file into it and
@@ -439,7 +478,7 @@ jobs:
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
           ATOMA_RUN_TYPE: ${{ inputs.type }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
-          ATOMA_OPS_LOG: atoma_ops.log
+          ATOMA_OPS_LOG: ${RUNNER_TEMP}/atoma-run/atoma_ops.log
           OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
           ATOMA_PROVIDER_IN: ${{ vars.ATOMA_PROVIDER }}
         shell: bash
@@ -521,17 +560,17 @@ jobs:
           sudo -n -u "atoma-tools" env "${AGENT_ENV[@]}" \
             atoma run \
             --agent-def "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions/${AGENT}.md" \
-            --in-session session.json \
-            --out-session session.json \
+            --in-session "${RUNNER_TEMP}/atoma-run/session.json" \
+            --out-session "${RUNNER_TEMP}/atoma-run/session.json" \
             --template "${ATOMA_MACHINERY_ROOT}/.github/atoma/prompt-template.md" \
             --skills-dir "${ATOMA_MACHINERY_ROOT}/.github/atoma/skills" \
             --max-iterations "${{ steps.cfg.outputs.max_iterations }}" \
             --credentials-file "$RUNNER_TEMP/atoma-credentials/credentials.json" \
             ${TOOLS_ARG} \
-            > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
+            > "${RUNNER_TEMP}/atoma-run/atoma_output.txt" 2> "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" || EXIT_CODE=$?
 
           echo "=== Atoma Logs ===" >&2
-          cat atoma_logs.txt >&2
+          cat "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" >&2
 
           if [ "$EXIT_CODE" = "2" ]; then
             echo "::notice::Max iterations reached — session saved for next run"
@@ -546,11 +585,11 @@ jobs:
           RESULT_EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           {
             echo "result<<${RESULT_EOF}"
-            cat atoma_output.txt
+            cat "${RUNNER_TEMP}/atoma-run/atoma_output.txt"
             echo "${RESULT_EOF}"
           } >> "$GITHUB_OUTPUT"
 
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/extract_directive.ts" --output-file "atoma_output.txt" --def-dir "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/extract_directive.ts" --output-file "${RUNNER_TEMP}/atoma-run/atoma_output.txt" --def-dir "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions"
 
           # Detect whether a tool call already triggered an automatic follow-up
           # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
@@ -559,20 +598,20 @@ jobs:
           # Every dispatch site writes a structured `{"op":"dispatch",...}` entry to
           # the ops log (see lib/ops-log.ts's logDispatch()) -- checking for that one
           # stable, documented JSON field is far more robust than the previous
-          # approach (grepping atoma_logs.txt's raw stderr TEXT for hand-written
+          # approach (grepping the agent's raw stderr TEXT for hand-written
           # strings like "dispatched: agent=..."), which silently broke once already
           # when a refactor changed a log message's wording without updating the grep
           # pattern to match.
           CHAIN_CONTINUES=false
-          if [ -f atoma_ops.log ] && grep -q '"op":"dispatch"' atoma_ops.log; then
+          if [ -f "${RUNNER_TEMP}/atoma-run/atoma_ops.log" ] && grep -q '"op":"dispatch"' "${RUNNER_TEMP}/atoma-run/atoma_ops.log"; then
             CHAIN_CONTINUES=true
           fi
           echo "chain_continues=${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
       - name: Write token usage summary
-        if: always() && hashFiles('atoma_logs.txt') != ''
+        if: always()
         shell: bash
         run: |
-          USAGE_LINE=$(grep -m1 "ATOMA_TOKEN_USAGE:" atoma_logs.txt 2>/dev/null || true)
+          USAGE_LINE=$(grep -m1 "ATOMA_TOKEN_USAGE:" "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" 2>/dev/null || true)
           if [ -z "$USAGE_LINE" ]; then
             exit 0
           fi
@@ -597,12 +636,17 @@ jobs:
         if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/record_run_metadata.ts" --session "session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ steps.fetch.outputs.resolved_type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/record_run_metadata.ts" --session "${RUNNER_TEMP}/atoma-run/session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ steps.fetch.outputs.resolved_type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
       - name: Save session to atoma-data branch
         if: steps.atoma.outcome == 'success'
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/save_agent_session.ts" --session "session.json" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/save_agent_session.ts" --session "${RUNNER_TEMP}/atoma-run/session.json" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}"
+      - name: Save the agent's workspace
+        if: steps.atoma.outcome == 'success'
+        shell: bash
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/save_workspace.ts" --root-issue "${{ steps.workspace.outputs.root_issue }}" --source "/tmp/atoma-workspace" --agent "${{ inputs.agent }}"
       - name: Report failure
         if: always() && job.status != 'success'
         shell: bash
@@ -619,8 +663,8 @@ jobs:
           fi
           AGENT_LABEL="${AGENT:+${AGENT} }Atoma"
           ERR_MSG=""
-          if [ -f atoma_logs.txt ]; then
-            # Redacted before it becomes a comment. `atoma_logs.txt` holds every MCP
+          if [ -f "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" ]; then
+            # Redacted before it becomes a comment. The agent's stderr log holds every MCP
             # server's stderr, and `unauthorized` -- one of the words grepped for here --
             # is exactly the line a provider or a `gh` call emits WITH the credential in
             # it. GitHub masks registered secrets in the workflow log and does nothing for
@@ -630,7 +674,7 @@ jobs:
             # some so it could match them literally would put them in one more process's
             # environment to protect one comment. A failure to redact yields no excerpt
             # rather than a raw one.
-            ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' atoma_logs.txt | head -n 5 | bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/redact_stream.ts" || true)
+            ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" | head -n 5 | bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/redact_stream.ts" || true)
           fi
           MENTION=""
           if [ -n "$NOTIFY" ]; then
@@ -661,7 +705,7 @@ jobs:
         if: steps.dirty.outputs.has_changes == 'true'
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/inject_uncommitted_notice.ts"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/inject_uncommitted_notice.ts" --session "${RUNNER_TEMP}/atoma-run/session.json"
       - name: Notify on max iterations
         if: steps.atoma.outputs.max_iterations_reached == 'true'
         shell: bash

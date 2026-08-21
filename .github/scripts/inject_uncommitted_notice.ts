@@ -2,8 +2,8 @@
 // @bun
 
 // src/scripts/inject_uncommitted_notice.ts
-import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { parseArgs } from "util";
 
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
@@ -15,40 +15,15 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/inject_uncommitted_notice.ts
 var ref = defineScript(import.meta.url);
-function findSessionFile(dir = ".", depth = 3) {
-  if (depth < 0)
-    return;
-  let entries;
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    if (entry === "session.json")
-      return full;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    let isDir = false;
-    try {
-      isDir = statSync(full).isDirectory();
-    } catch {
-      continue;
-    }
-    if (isDir && entry !== "node_modules" && entry !== ".git") {
-      const found = findSessionFile(full, depth - 1);
-      if (found)
-        return found;
-    }
-  }
-  return;
-}
 function main() {
-  const path = Bun.argv[2] ?? findSessionFile();
+  const { values } = parseArgs({ args: Bun.argv.slice(2), options: { session: { type: "string" } } });
+  const path = values.session;
   if (!path) {
-    console.error("inject_uncommitted_notice: no session.json found; nothing to do");
+    console.error("usage: inject_uncommitted_notice.ts --session <path>");
+    process.exit(2);
+  }
+  if (!existsSync(path)) {
+    console.error(`inject_uncommitted_notice: ${path} does not exist; nothing to do`);
     return;
   }
   const session = JSON.parse(readFileSync(path, "utf8"));
