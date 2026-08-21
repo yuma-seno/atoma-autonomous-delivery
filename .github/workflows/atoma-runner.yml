@@ -88,8 +88,6 @@ jobs:
       issues: write
       pull-requests: write
       contents: write
-    env:
-      ATOMA_MACHINERY_ROOT: atoma-machinery
     steps:
       - name: Validate workflow inputs
         shell: bash
@@ -137,6 +135,13 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: atoma-machinery
+      - name: Move the machinery out of the work tree
+        shell: bash
+        run: |
+          rm -rf "${RUNNER_TEMP}/atoma-machinery"
+          mv "atoma-machinery" "${RUNNER_TEMP}/atoma-machinery"
+          echo "ATOMA_MACHINERY_ROOT=${RUNNER_TEMP}/atoma-machinery" >> "$GITHUB_ENV"
+          echo "machinery moved to ${RUNNER_TEMP}/atoma-machinery; the work tree holds only the repository"
       - name: Set branch env for PR type
         if: inputs.type != 'issue'
         shell: bash
@@ -373,6 +378,15 @@ jobs:
           # `/tmp` is already world-writable, so this is not what makes the directory
           # usable; it is what stops the two identities tripping over each other's file
           # modes inside it.
+          # The machinery, read-only. It left the work tree, which is where it used to pick
+          # up the tool user's access as a side effect of the recursive ACL below -- so
+          # without this the tool servers cannot read their own scripts and no server starts.
+          #
+          # `rX` rather than `rwX`: read everywhere, execute only where execute is already
+          # set for somebody. "Make tool hooks executable" ran earlier, so the hooks get it
+          # and the ordinary files do not. Nothing here is the agent's to modify.
+          sudo setfacl -R -m "u:atoma-tools:rX" "$ATOMA_MACHINERY_ROOT"
+
           mkdir -p "/tmp/atoma-workspace"
           sudo setfacl -R -m "u:atoma-tools:rwX" "/tmp/atoma-workspace"
           sudo setfacl -R -d -m "u:atoma-tools:rwX" "/tmp/atoma-workspace"
