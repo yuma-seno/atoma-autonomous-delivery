@@ -45,24 +45,28 @@
  * from".
  */
 import { statSync } from "node:fs";
-import { pathWithoutWorldWritable, worldWritableEntries } from "../../../../domain/tool-hardening.ts";
+import { classifyPathEntries, pathWithoutWorldWritable } from "../../../../domain/tool-hardening.ts";
 
 const PR_SET_DUMPABLE = 4;
 const PR_GET_DUMPABLE = 3;
 
 /**
- * Whether anyone can write `directory`.
+ * What a PATH entry is, as far as this process can tell.
  *
- * A path that cannot be stat'd is treated as unsafe, which is the safe direction
- * for one entry and the wrong direction for all of them at once — see the guard in
- * `hardenCredentialHolder`, which is what keeps a systemic failure here from
- * emptying PATH entirely.
+ * Three answers rather than two, because the first real run of this reported four
+ * directories as "writable" that it had only failed to stat -- `node_modules/.bin`
+ * paths that do not exist, and `/home/runner/.local/bin`, whose parent this user
+ * cannot traverse. Dropping those is harmless: a directory this process cannot
+ * inspect is one it cannot execute from either. Calling them writable is not.
+ *
+ * The distinction is worth the third case because this produces a security-shaped
+ * log line, and a reader will take it at face value.
  */
-function isWorldWritable(directory: string): boolean {
+function inspect(directory: string): "writable" | "safe" | "unreadable" {
   try {
-    return (statSync(directory).mode & 0o002) !== 0;
+    return (statSync(directory).mode & 0o002) !== 0 ? "writable" : "safe";
   } catch {
-    return true;
+    return "unreadable";
   }
 }
 
@@ -96,10 +100,10 @@ export function hardenCredentialHolder(log: (message: string) => void): void {
   }
 
   const before = process.env.PATH ?? "";
-  const dropped = worldWritableEntries(before, isWorldWritable);
-  if (dropped.length === 0) return;
+  const { writable, unreadable } = classifyPathEntries(before, inspect);
+  if (writable.length === 0 && unreadable.length === 0) return;
 
-  const after = pathWithoutWorldWritable(before, isWorldWritable);
+  const after = pathWithoutWorldWritable(before, (entry) => inspect(entry) !== "safe");
   // Never leave this server without a PATH. `isWorldWritable` answers "yes" for a
   // directory it cannot stat, which is right for one entry and catastrophic for
   // every entry: an empty PATH makes every `gh` and `git` call in this process
@@ -111,5 +115,9 @@ export function hardenCredentialHolder(log: (message: string) => void): void {
   }
 
   process.env.PATH = after;
-  log(`dropped writable directories from PATH: ${dropped.join(", ")}`);
+  // Reported separately. The first list is the one that matters -- a peer could
+  // have put a binary there and this process would have run it. The second is
+  // housekeeping, and saying so keeps the first line meaningful.
+  if (writable.length > 0) log(`removed WRITABLE directories from PATH: ${writable.join(", ")}`);
+  if (unreadable.length > 0) log(`also removed ${unreadable.length} PATH entries this process cannot inspect`);
 }

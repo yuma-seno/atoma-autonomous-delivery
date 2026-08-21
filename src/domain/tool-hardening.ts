@@ -50,12 +50,31 @@ export function pathWithoutWorldWritable(path: string, isWorldWritable: IsWorldW
 }
 
 /**
- * The entries removed, for the log line that says so.
+ * What each PATH entry is, split into the two reasons an entry is dropped.
  *
- * Reported rather than silent: a server whose PATH quietly lost an entry is a
- * server that fails later with "command not found" and nothing connecting the
- * two.
+ * Two lists rather than one, because the first real run of this logged four
+ * directories as "writable" that it had only failed to stat. Both get dropped --
+ * a directory a process cannot inspect is one it cannot execute from -- but only
+ * the first is a security finding, and a log line that conflates them makes the
+ * finding unreadable.
  */
-export function worldWritableEntries(path: string, isWorldWritable: IsWorldWritable): string[] {
-  return path.split(":").filter((entry) => entry !== "" && (entry === "." || isWorldWritable(entry)));
+export function classifyPathEntries(
+  path: string,
+  inspect: (entry: string) => "writable" | "safe" | "unreadable",
+): { writable: string[]; unreadable: string[] } {
+  const writable: string[] = [];
+  const unreadable: string[] = [];
+  for (const entry of path.split(":")) {
+    if (entry === "" || entry === ".") {
+      // An empty element means the current directory, and a tool server sits in
+      // the work tree -- which the agent writes. Counted as writable because that
+      // is what it is.
+      writable.push(entry === "" ? "(empty, meaning the current directory)" : entry);
+      continue;
+    }
+    const verdict = inspect(entry);
+    if (verdict === "writable") writable.push(entry);
+    else if (verdict === "unreadable") unreadable.push(entry);
+  }
+  return { writable, unreadable };
 }
