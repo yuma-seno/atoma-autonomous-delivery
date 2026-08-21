@@ -200,12 +200,18 @@ execution environment — is not crossed: nothing an agent produces reaches it.
 An overlay entry is a copy, not a build, so it needs no release. Change `self/X`
 and `.github/X` in the **same pull request**, identically.
 
-`tests/contract/self-overlay.test.ts` requires them byte-identical, and requires
-every file in `.github/` to come from either `dist/.github/` or `self/`. The first
-rule stops a change from being half-applied; the second stops orphans accumulating.
+`tests/contract/self-overlay.test.ts` requires them byte-identical, in both
+directions, which is what stops a change from being half-applied.
 
 Editing `.github/X` alone is worse than not editing it: the next self-deploy
 overwrites it from `self/` and the change disappears without a diff.
+
+Nothing checks that every file in `.github/` is accounted for, and nothing needs
+to. The deploy runs `rm -rf .github` first, so a file the release stopped shipping
+is not recreated. A file ADDED to `.github/` with no counterpart in `self/` would
+be silently removed by the next deploy — but `.github/**` is in `governed_paths`,
+so any pull request touching it carries the blocker "this pull request changes how
+agents themselves run" and no agent can merge it. A person is already reading it.
 
 ## Setup (Bun)
 

@@ -126,6 +126,11 @@ deliverable, and `atoma-runner.yml` does not mention it.
 An overlay entry is a copy, not a build, so it needs no release. Change
 `self/X` and `.github/X` **in the same pull request**, identically.
 
-`tests/contract/self-overlay.test.ts` requires them byte-identical. Editing
-`.github/X` alone is worse than not editing it at all: the next self-deploy
-overwrites it from `self/` and the change disappears without a diff.
+`tests/contract/self-overlay.test.ts` requires them byte-identical, in both
+directions. Editing `.github/X` alone is worse than not editing it at all: the next
+self-deploy overwrites it from `self/` and the change disappears without a diff.
+
+A file added to `.github/` that is in no release and not in `self/` is not checked
+for, because the next deploy removes it anyway and because `.github/**` is in
+`governed_paths` — no agent can merge a change there, so a person reads it first.
+
