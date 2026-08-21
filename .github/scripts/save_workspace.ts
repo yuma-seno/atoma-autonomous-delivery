@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // @bun
 
-// src/scripts/save_agent_session.ts
-import { existsSync as existsSync2, readFileSync } from "fs";
+// src/scripts/save_workspace.ts
+import { existsSync as existsSync2, readdirSync as readdirSync2 } from "fs";
 import { parseArgs } from "util";
 
 // src/scripts/lib/atoma-data.ts
@@ -28,22 +28,22 @@ function gitRun(...args) {
 }
 
 // src/scripts/lib/atoma-data.ts
-function sessionTargetPath(type, number, agent) {
-  return `sessions/${type}-${number}/${agent}.json`;
-}
 function gitIn(cwd, ...args) {
   const proc = Bun.spawnSync({ cmd: ["git", ...args], cwd, stdout: "pipe", stderr: "pipe" });
   return { code: proc.exitCode ?? 1, stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "" };
 }
-function saveSession(targetPath, content, commitMessage) {
+function workspaceTargetPrefix(rootIssue) {
+  return `workspace/issue-${rootIssue}`;
+}
+function saveWorkspace(prefix, sourceDir, commitMessage) {
+  if (!existsSync(sourceDir))
+    return true;
   if (gitRun("ls-remote", "--exit-code", "origin", "atoma-data").code !== 0) {
-    gitRun("config", "user.email", "action@github.com");
-    gitRun("config", "user.name", "GitHub Actions");
-    const commit = gitRun("commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "init: atoma-data session store").stdout;
-    gitRun("push", "origin", `${commit}:refs/heads/atoma-data`);
+    console.error("[atoma-data] atoma-data does not exist yet; skipping workspace save");
+    return false;
   }
   gitRun("fetch", "origin", "atoma-data");
-  const worktreeDir = mkdtempSync(join(tmpdir(), "atoma-data-wt-"));
+  const worktreeDir = mkdtempSync(join(tmpdir(), "atoma-data-ws-"));
   gitRun("worktree", "add", worktreeDir, "origin/atoma-data");
   let saved = false;
   try {
@@ -52,10 +52,11 @@ function saveSession(targetPath, content, commitMessage) {
     for (let attempt = 1;attempt <= 5; attempt++) {
       gitIn(worktreeDir, "fetch", "origin", "atoma-data");
       gitIn(worktreeDir, "reset", "--hard", "origin/atoma-data");
-      const fullTarget = join(worktreeDir, targetPath);
-      mkdirSync(dirname(fullTarget), { recursive: true });
-      writeFileSync(fullTarget, content);
-      gitIn(worktreeDir, "add", targetPath);
+      const target = join(worktreeDir, prefix);
+      rmSync(target, { recursive: true, force: true });
+      mkdirSync(dirname(target), { recursive: true });
+      cpSync(sourceDir, target, { recursive: true });
+      gitIn(worktreeDir, "add", "--all", prefix);
       if (gitIn(worktreeDir, "diff", "--cached", "--quiet").code === 0) {
         saved = true;
         break;
@@ -65,7 +66,7 @@ function saveSession(targetPath, content, commitMessage) {
         saved = true;
         break;
       }
-      console.error(`Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull...`);
+      console.error(`[atoma-data] workspace push attempt ${attempt} failed (concurrent push) -- retrying`);
       Bun.sleepSync(attempt * 2000);
     }
   } finally {
@@ -83,35 +84,31 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-// src/scripts/save_agent_session.ts
+// src/scripts/save_workspace.ts
 var ref = defineScript(import.meta.url);
 function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      session: { type: "string" },
-      type: { type: "string" },
-      number: { type: "string" },
+      "root-issue": { type: "string" },
+      source: { type: "string" },
       agent: { type: "string" }
     }
   });
-  if (!values.session || !values.type || !values.number || !values.agent) {
-    console.error("usage: save_agent_session.ts --session FILE --type issue|pr --number N --agent NAME");
+  const root = values["root-issue"];
+  const source = values.source;
+  if (!root || !source) {
+    console.error("usage: save_workspace.ts --root-issue N --source PATH [--agent NAME]");
     process.exit(2);
   }
-  if (!existsSync2(values.session)) {
-    console.error("No session.json found, skipping save.");
+  if (!existsSync2(source)) {
+    console.error(`[atoma-workspace] ${source} does not exist; nothing to save`);
     return;
   }
-  const target = sessionTargetPath(values.type, values.number, values.agent);
-  const content = readFileSync(values.session, "utf8");
-  const runId = process.env.GITHUB_RUN_ID ?? "";
-  const saved = saveSession(target, content, `session: ${values.agent} on ${values.type} ${values.number} (run ${runId})`);
-  if (!saved) {
-    console.log(`::warning::Failed to save session to atoma-data:${target} after all retries.`);
-  } else {
-    console.error(`Session saved to atoma-data:${target}`);
-  }
+  const count = readdirSync2(source).length;
+  const prefix = workspaceTargetPrefix(root);
+  const saved = saveWorkspace(prefix, source, `atoma: workspace for issue #${root}${values.agent ? ` (${values.agent})` : ""} \u2014 ${count} entries`);
+  console.error(saved ? `[atoma-workspace] saved ${count} entries to ${prefix}` : `[atoma-workspace] WARN could not save ${prefix}; the next run on this issue starts without these files`);
 }
 if (import.meta.main)
   main();

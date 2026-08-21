@@ -369,7 +369,7 @@ function injectSummary(session, summary) {
 }
 
 // src/scripts/lib/atoma-data.ts
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 function sessionTargetPath(type, number, agent) {
