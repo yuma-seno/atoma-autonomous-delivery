@@ -34,7 +34,7 @@
  * instructions while this repository's issues are Japanese, so this is a live
  * hazard rather than a theoretical one, and the description says so outright.
  */
-import { AutoTokenizer, AutoModelForSequenceClassification } from "@huggingface/transformers";
+import { AutoTokenizer, AutoModelForSequenceClassification, env as transformersEnv } from "@huggingface/transformers";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
@@ -211,7 +211,37 @@ function loadReranker(): Promise<Reranker> {
   return loading;
 }
 
+/**
+ * Where the model weights are cached.
+ *
+ * transformers.js defaults to a `.cache` directory INSIDE its own package, under
+ * `node_modules`. That worked only by accident: `node_modules` happened to sit in
+ * the work tree, which the tool user could write.
+ *
+ * It cannot now, and the failure was quiet -- the load reported
+ *
+ *   EACCES: permission denied, mkdir '.../node_modules/@huggingface/transformers/.cache'
+ *
+ * and fell back to the first-stage BM25 order. Every search still answered, and
+ * answered worse, for as long as nobody read the log.
+ *
+ * Loosening the permission was the wrong fix. A library the servers import is not
+ * theirs to write, and a package directory is not a cache directory -- it is
+ * reinstalled, and on a fresh runner it is empty anyway, so caching there buys
+ * nothing even when it is allowed. `XDG_CACHE_HOME` is where a cache goes, and the
+ * runner already points it somewhere this user owns.
+ *
+ * Falls back to `/tmp` rather than leaving the default in place, because the
+ * default is a path that is now guaranteed to fail.
+ */
+function cacheDirectory(): string {
+  const base = process.env.XDG_CACHE_HOME?.trim() || "/tmp";
+  return `${base}/atoma-transformers`;
+}
+
 async function loadRerankerOnce(): Promise<Reranker> {
+  transformersEnv.cacheDir = cacheDirectory();
+  log(`model cache: ${transformersEnv.cacheDir}`);
   const model = getRerankerModel();
   const started = Date.now();
   const tokenizer = await AutoTokenizer.from_pretrained(model);

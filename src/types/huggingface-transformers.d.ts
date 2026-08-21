@@ -45,4 +45,15 @@ declare module "@huggingface/transformers" {
       options?: PretrainedOptions,
     ): Promise<(inputs: Record<string, unknown>) => Promise<{ logits: Tensor }>>;
   };
+
+  /**
+   * The library's mutable settings. Only `cacheDir` is declared, because it is the
+   * only one this project sets -- and it has to set it: the default is a `.cache`
+   * directory inside the package's own folder under `node_modules`, which the tool
+   * user cannot write. Left alone, the reranker load fails with EACCES and every
+   * search quietly falls back to the first-stage ranking.
+   */
+  export const env: {
+    cacheDir: string;
+  };
 }
