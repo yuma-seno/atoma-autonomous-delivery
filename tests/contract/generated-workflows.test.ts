@@ -229,7 +229,80 @@ describe("generated workflows", () => {
     expect(closer, "the directories must be closed before any tool server starts").toBeLessThan(agent);
   });
 
+  /**
+   * The run's own files stay out of the work tree.
+   *
+   * The session, the fetched events, the ops log and the agent's stdout and stderr
+   * used to be written to the repository root. That cost an adopter five
+   * `.gitignore` lines as a precondition -- skip them and the engineer's
+   * `git add -A` committed the session and logs, then `create_pr` refused for a
+   * dirty worktree, every time, with nothing naming the cause.
+   *
+   * A bare relative path in a step is what puts a file back there. It is a few
+   * characters from the correct form and reads the same, so this asks the GENERATED
+   * workflow rather than trusting the source.
+   */
+  test("the run's own files are written outside the work tree", () => {
+    type WorkflowStep = { name?: string; run?: string; env?: Record<string, string>; if?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+    expect(steps.length, "atoma-runner has steps").toBeGreaterThan(0);
+
+    const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
+    for (const step of steps) {
+      const lines = [step.run ?? "", ...Object.values(step.env ?? {}), step.if ?? ""]
+        .join("\n")
+        .split("\n")
+        // Shell comments are prose, and prose about where a file USED to live is
+        // worth being able to write. Only what the shell executes can put a file
+        // back in the work tree.
+        .filter((line) => !line.trimStart().startsWith("#"));
+      const text = lines.join("\n");
+      for (const name of names) {
+        for (const match of text.matchAll(new RegExp(`(.{0,24})${name.replace(".", "\.")}`, "g"))) {
+          const before = match[1] ?? "";
+          expect(
+            /RUNNER_TEMP|atoma-run\//.test(before),
+            `"${step.name ?? "?"}" mentions ${name} at "...${before}${name}" with no directory before it. ` +
+              `A bare name lands in the repository root, where git add -A commits it and create_pr then ` +
+              `refuses for a dirty worktree`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  /**
+   * The directory has to exist before the first write, and be shared with the tool
+   * user before the agent runs. Those are two different steps and cannot be one:
+   * three steps write into it before that user exists.
+   */
+  test("the run directory is created before anything writes to it, and shared before the agent runs", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    const created = steps.findIndex((step) => /mkdir -p "\$\{RUNNER_TEMP\}\/atoma-run"/.test(step.run ?? ""));
+    expect(created, "the step that creates the run directory").toBeGreaterThanOrEqual(0);
+
+    const firstWriter = steps.findIndex((step) => /atoma-run\/(events|session)\.json/.test(step.run ?? ""));
+    expect(firstWriter, "a step that writes into it").toBeGreaterThanOrEqual(0);
+    expect(created, "the directory must exist before the first write").toBeLessThan(firstWriter);
+
+    const shared = steps.findIndex((step) => /setfacl[^\n]*atoma-run/.test(step.run ?? ""));
+    expect(shared, "the step that gives the tool user access").toBeGreaterThanOrEqual(0);
+
+    const agent = steps.findIndex((step) => step.name === "Run agent");
+    expect(agent, "the agent step").toBeGreaterThanOrEqual(0);
+    expect(shared, "the tool user needs access before it writes the session").toBeLessThan(agent);
+  });
+
   test("checkout the repository before running repository scripts", () => {
+
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
 

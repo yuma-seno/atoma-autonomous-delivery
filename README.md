@@ -61,18 +61,10 @@ Required before first run:
 - Nothing to do for labels. `atoma/in-progress`, `atoma/sub-issue` and
   `atoma/launched` are created on first use. Rename them in `config.json` if your
   taxonomy differs.
-- These entries in your `.gitignore`. A run writes them to the repository root, and
-  without this the engineer's `git add -A` commits its own session and logs into the
-  branch — and `create_pr`, which requires a clean worktree, then refuses every
-  time:
-
-  ```gitignore
-  atoma_logs.txt
-  atoma_output.txt
-  atoma_ops.log
-  events.json
-  session.json
-  ```
+- Nothing to do about `.gitignore`. A run keeps its own files — the session, the
+  logs, the fetched events — outside the work tree, so `git add -A` never sees
+  them. Earlier versions wrote them to the repository root and asked you for five
+  `.gitignore` lines; if you have them, they are harmless and can go.
 
 - Optional repository variables, both for reaching a provider somewhere other than
   its default host:

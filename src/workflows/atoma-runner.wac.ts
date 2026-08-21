@@ -126,6 +126,31 @@ const TOOL_USER = "atoma-tools";
  */
 const TOOL_CACHE = "${RUNNER_TEMP}/atoma-tool-cache";
 
+/**
+ * Where this run's own files go: the session, the fetched events, the ops log, and
+ * the agent's stdout and stderr.
+ *
+ * Outside the work tree, and that is the whole point. All five used to be written
+ * to the repository root, which had two costs:
+ *
+ *   - the engineer's `git add -A` committed them, so an adopter had to add five
+ *     lines to `.gitignore` before anything worked. Skip it and `create_pr` --
+ *     which requires a clean worktree -- refused every time, with nothing naming
+ *     the cause.
+ *   - "everything in the work tree is a deliverable" was not true, so it could not
+ *     be told to an agent as one sentence.
+ *
+ * `RUNNER_TEMP` because a job does not keep it, which is right: none of these
+ * outlives the run. The session is persisted to the `atoma-data` branch instead,
+ * and that is a deliberate save rather than a side effect of where a file happened
+ * to sit.
+ *
+ * Created early (before anything writes into it) and handed to the tool user later
+ * (once that user exists). Both halves are load-bearing: three steps write here
+ * before the user is created, and `atoma run` writes the session as that user.
+ */
+const RUN_DIR = "${RUNNER_TEMP}/atoma-run";
+
 const resolveIssueBranchStep = new TypedOutputsStep(
   {
     name: "Resolve the issue's branch",
@@ -244,7 +269,7 @@ const fetchEventsStep = new TypedOutputsStep(
     run: `${scriptCommandWithArgs(fetchEventsRef, {
       type: "${{ inputs.type }}",
       number: "${{ inputs.number }}",
-      out: "events.json",
+      out: `${RUN_DIR}/events.json`,
     })}\n`,
   },
   ["resolved_type", "resolved_number"] as const,
@@ -258,7 +283,7 @@ const restoreSessionStep = new TypedOutputsStep({
     type: fetchEventsStep.outputs.resolved_type,
     number: fetchEventsStep.outputs.resolved_number,
     agent: "${{ inputs.agent }}",
-    out: "session.json",
+    out: `${RUN_DIR}/session.json`,
     "session-mode": "${{ inputs.session_mode }}",
   })}\n`,
 });
@@ -272,14 +297,14 @@ const buildContextStep = new TypedOutputsStep(
     // an attachment on a private repository is not public.
     env: { GH_TOKEN: "${{ github.token }}" },
     run: `${scriptCommandWithArgs(reconcileGithubSessionRef, {
-      events: "events.json",
+      events: `${RUN_DIR}/events.json`,
       "agent-name": "${{ inputs.agent }}",
       // Read for its `vision` field: an agent whose model cannot see a picture
       // must not be sent one.
       "agent-def": `${MACHINERY}/${AGENT_DEF_DIR}/\${{ inputs.agent }}.md`,
       config: `${MACHINERY}/${ORCHESTRATION_FILE}`,
-      session: "session.json",
-      out: "session.json",
+      session: `${RUN_DIR}/session.json`,
+      out: `${RUN_DIR}/session.json`,
     })}\n`,
   },
   ["new_event_count", "context_snapshot_hash", "context_event_count"] as const,
@@ -398,7 +423,7 @@ const runAgentStep = new TypedOutputsStep(
       // Structured JSON-lines log every MCP tool mutation/dispatch decision
       // is written to (see lib/ops-log.ts) -- read back below to determine
       // chain_continues, and generally useful as a per-run audit trail.
-      ATOMA_OPS_LOG: "atoma_ops.log",
+      ATOMA_OPS_LOG: `${RUN_DIR}/atoma_ops.log`,
       // Repository variables, not secrets: which provider to use and which host
       // to reach. The `_IN` suffix keeps them out of the names Atoma reads until
       // the script has checked they are non-empty, so an unset variable cannot
@@ -484,17 +509,17 @@ EXIT_CODE=0
 sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
   atoma run \\
   --agent-def "${MACHINERY}/${AGENT_DEF_DIR}/\${AGENT}.md" \\
-  --in-session session.json \\
-  --out-session session.json \\
+  --in-session "${RUN_DIR}/session.json" \\
+  --out-session "${RUN_DIR}/session.json" \\
   --template "${MACHINERY}/${PROMPT_TEMPLATE}" \\
   --skills-dir "${MACHINERY}/${SKILLS_DIR}" \\
   --max-iterations "${cfgStep.outputs.max_iterations}" \\
   --credentials-file "${CREDENTIALS_FILE}" \\
   \${TOOLS_ARG} \\
-  > atoma_output.txt 2> atoma_logs.txt || EXIT_CODE=$?
+  > "${RUN_DIR}/atoma_output.txt" 2> "${RUN_DIR}/atoma_logs.txt" || EXIT_CODE=$?
 
 echo "=== Atoma Logs ===" >&2
-cat atoma_logs.txt >&2
+cat "${RUN_DIR}/atoma_logs.txt" >&2
 
 if [ "$EXIT_CODE" = "2" ]; then
   echo "::notice::Max iterations reached — session saved for next run"
@@ -509,11 +534,11 @@ fi
 RESULT_EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
 {
   echo "result<<\${RESULT_EOF}"
-  cat atoma_output.txt
+  cat "${RUN_DIR}/atoma_output.txt"
   echo "\${RESULT_EOF}"
 } >> "$GITHUB_OUTPUT"
 
-${scriptCommandWithArgs(extractDirectiveRef, { "output-file": "atoma_output.txt", "def-dir": `${MACHINERY}/${AGENT_DEF_DIR}` })}
+${scriptCommandWithArgs(extractDirectiveRef, { "output-file": `${RUN_DIR}/atoma_output.txt`, "def-dir": `${MACHINERY}/${AGENT_DEF_DIR}` })}
 
 # Detect whether a tool call already triggered an automatic follow-up
 # dispatch during this run (atoma__launch_sub_agent, github__create_pr ->
@@ -522,12 +547,12 @@ ${scriptCommandWithArgs(extractDirectiveRef, { "output-file": "atoma_output.txt"
 # Every dispatch site writes a structured \`{"op":"dispatch",...}\` entry to
 # the ops log (see lib/ops-log.ts's logDispatch()) -- checking for that one
 # stable, documented JSON field is far more robust than the previous
-# approach (grepping atoma_logs.txt's raw stderr TEXT for hand-written
+# approach (grepping the agent's raw stderr TEXT for hand-written
 # strings like "dispatched: agent=..."), which silently broke once already
 # when a refactor changed a log message's wording without updating the grep
 # pattern to match.
 CHAIN_CONTINUES=false
-if [ -f atoma_ops.log ] && grep -q '"op":"dispatch"' atoma_ops.log; then
+if [ -f "${RUN_DIR}/atoma_ops.log" ] && grep -q '"op":"dispatch"' "${RUN_DIR}/atoma_ops.log"; then
   CHAIN_CONTINUES=true
 fi
 echo "chain_continues=\${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
@@ -538,9 +563,14 @@ echo "chain_continues=\${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
 
 const tokenUsageStep = new TypedOutputsStep({
   name: "Write token usage summary",
-  if: "always() && hashFiles('atoma_logs.txt') != ''",
+  // `hashFiles` resolves relative to GITHUB_WORKSPACE and cannot see outside it,
+  // so it stopped being usable when the log moved out of the work tree. Dropping
+  // it costs nothing: the body already tolerates a missing file -- the `grep`
+  // swallows its own error and the empty check exits 0 -- so the guard was
+  // restating what the script does.
+  if: "always()",
   shell: "bash",
-  run: `USAGE_LINE=$(grep -m1 "ATOMA_TOKEN_USAGE:" atoma_logs.txt 2>/dev/null || true)
+  run: `USAGE_LINE=$(grep -m1 "ATOMA_TOKEN_USAGE:" "${RUN_DIR}/atoma_logs.txt" 2>/dev/null || true)
 if [ -z "$USAGE_LINE" ]; then
   exit 0
 fi
@@ -603,7 +633,7 @@ const recordRunMetadataStep = new TypedOutputsStep({
   if: `${runAgentStep.rawOutcome} == 'success' && ${postResultCommentStep.rawOutputs.comment_id} != ''`,
   shell: "bash",
   run: `${scriptCommandWithArgs(recordRunMetadataRef, {
-    session: "session.json",
+    session: `${RUN_DIR}/session.json`,
     "comment-id": postResultCommentStep.outputs.comment_id,
     agent: "${{ inputs.agent }}",
     "snapshot-hash": buildContextStep.outputs.context_snapshot_hash,
@@ -618,7 +648,7 @@ const saveSessionStep = new TypedOutputsStep({
   if: `${runAgentStep.rawOutcome} == 'success'`,
   shell: "bash",
   run: `${scriptCommandWithArgs(saveAgentSessionRef, {
-    session: "session.json",
+    session: `${RUN_DIR}/session.json`,
     type: fetchEventsStep.outputs.resolved_type,
     number: fetchEventsStep.outputs.resolved_number,
     agent: "${{ inputs.agent }}",
@@ -649,8 +679,8 @@ const reportFailureStep = new TypedOutputsStep({
 fi
 AGENT_LABEL="\${AGENT:+\${AGENT} }Atoma"
 ERR_MSG=""
-if [ -f atoma_logs.txt ]; then
-  # Redacted before it becomes a comment. \`atoma_logs.txt\` holds every MCP
+if [ -f "${RUN_DIR}/atoma_logs.txt" ]; then
+  # Redacted before it becomes a comment. The agent's stderr log holds every MCP
   # server's stderr, and \`unauthorized\` -- one of the words grepped for here --
   # is exactly the line a provider or a \`gh\` call emits WITH the credential in
   # it. GitHub masks registered secrets in the workflow log and does nothing for
@@ -660,7 +690,7 @@ if [ -f atoma_logs.txt ]; then
   # some so it could match them literally would put them in one more process's
   # environment to protect one comment. A failure to redact yields no excerpt
   # rather than a raw one.
-  ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' atoma_logs.txt | head -n 5 | ${scriptCommand(redactStreamRef)} || true)
+  ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' "${RUN_DIR}/atoma_logs.txt" | head -n 5 | ${scriptCommand(redactStreamRef)} || true)
 fi
 MENTION=""
 if [ -n "$NOTIFY" ]; then
@@ -855,6 +885,21 @@ const runJob = new NormalJob("run", {
   // First, before the checkout: nothing should run at all on an input this job
   // is going to splice into shell text.
   validateInputsStep,
+  // Before the checkout, because it has nothing to do with the checkout: this is a
+  // directory in the runner's temp space, and putting it first means no later
+  // reordering can leave a writer ahead of it.
+  //
+  // It has to be here rather than in the step that creates the tool user, which is
+  // where the ACL below is added. Three steps write into this directory before that
+  // user exists -- "Fetch GitHub events", "Restore agent session" and "Merge GitHub
+  // context" -- so creating it there would fail all three.
+  new TypedOutputsStep({
+    name: "Make a place for this run's own files",
+    shell: "bash",
+    run: `mkdir -p "${RUN_DIR}"
+echo "this run's files: ${RUN_DIR}"
+`,
+  }),
   new ActionsCheckoutV4({
     name: "Checkout repository",
     with: {
@@ -1092,6 +1137,20 @@ sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
 # Somewhere real for the caches, since $HOME is not writable by this user.
 sudo install -d -o "${TOOL_USER}" -m 0700 "${TOOL_CACHE}"
 
+# The run's own directory, handed to the tool user now that it exists. \`atoma run\`
+# writes the session as that user while the runner wrote it moments before, and the
+# runner reads it back afterwards -- so both need access, to files that do not exist
+# yet. Hence the default ACLs: whatever either one creates in here, the other can
+# read and write.
+# \`-R\` as well as \`-d\`, and the difference matters here more than it does for the
+# work tree. A default ACL applies to files created AFTER it is set, and three
+# steps have already written into this directory by now -- the session among them,
+# which \`atoma run\` is about to open for writing as the tool user. Without the
+# recursive pass that file keeps the mode \`mkdir\` gave it and the write fails.
+sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${RUN_DIR}"
+sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "${RUN_DIR}"
+sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUN_DIR}"
+
 # And a directory for the credentials file that the TOOL USER owns, so atoma can
 # unlink it. Owned by them, writable by us: the runner writes the file into it and
 # hands it over, and the delete that keeps the file and the servers from coexisting
@@ -1150,7 +1209,12 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
     name: "Inject uncommitted changes into session",
     if: `${dirtyStep.rawOutputs.has_changes} == 'true'`,
     shell: "bash",
-    run: `${scriptCommand(injectUncommittedNoticeRef)}\n`,
+    // The path, explicitly. This used to search the work tree for the first file
+    // called `session.json` -- which was merely redundant while the session sat in
+    // the repository root, and becomes a hazard once it does not: an adopter whose
+    // project has a `session.json` of its own would get this notice appended to
+    // THEIR file.
+    run: `${scriptCommandWithArgs(injectUncommittedNoticeRef, { session: `${RUN_DIR}/session.json` })}\n`,
   }),
   new TypedOutputsStep({
     name: "Notify on max iterations",
