@@ -19,15 +19,15 @@ The deliverable:
 
 This repository's own:
 
-- top-level `.github/`: this repository's adoption of the deliverable, and nothing
-  else — every workflow here is generated. Upgraded deliberately, not on merge:
-  `bun run synth && cp -r dist/.github/. .github/ && git checkout -- .github/atoma/config.json`,
-  then read `git diff .github/` and open a pull request. Restoring `config.json`
-  encodes the rule that generated files are overwritten and configuration is not.
-  This shortcut holds only because this repository authors the template, so its
-  agent definitions and skills have nothing of their own to lose; adopters upgrade
-  as a merge instead — see [docs/customization.md](docs/customization.md).
-  Project-specific agent rules live in `.github/atoma/skills/project/`.
+- `self/`: the four files that are this repository's rather than the template's,
+  laid out to mirror `.github/`. Nothing else in `.github/` is ours. See
+  [Applying a release](#applying-a-release).
+- top-level `.github/`: this repository's adoption of the deliverable. Exactly two
+  sources, and nothing kept alive by remembering: a release archive, with `self/`
+  copied over it. Upgraded deliberately rather than on merge — that lag is what
+  stops a change to `src/` from reconfiguring the live agents the moment it
+  merges. Adopters upgrade as a git-mediated merge instead, since they have tuned
+  files to lose; see [docs/customization.md](docs/customization.md).
 - `tests/`: tests of the build-and-deploy machinery. Tests of *shipped behaviour*
   live beside the shipped code instead.
 - `docs/`: adopter-facing documentation.
@@ -143,6 +143,70 @@ To publish by hand, or to retry a failed run:
 gh workflow run atoma-deploy.yml --ref main -f target=release
 ```
 
+## Applying a release to this repository
+
+A release does not change how this repository's own agents run. `.github/` has to
+be rebuilt from it, which is a second, deliberate step.
+
+```bash
+gh workflow run atoma-self-deploy.yml --ref main -f version=latest
+```
+
+Or press **Run workflow** on **Atoma Self Deploy** in the Actions tab. It opens a
+pull request and merges nothing: `.github/**` is in `governed_paths`, so a person
+reviews it.
+
+What the job does, in three lines:
+
+```bash
+rm -rf .github            # a file the release DELETED is gone, not orphaned
+unzip atoma-delivery.zip  # the deliverable
+cp -r self/. .github/     # this repository's own, at the same paths
+```
+
+The `rm -rf` is the point. `unzip -o` overwrites and never removes, so before
+`self/` existed a file the template had dropped stayed in the tree with no diff to
+notice it by — the old procedure told you to go looking for orphans yourself.
+Deleting first makes an upstream removal ordinary.
+
+### The token, and why it is a PAT
+
+`GITHUB_TOKEN` cannot write `.github/workflows/**`. Not by path rule and not by
+branch: the push is refused on **identity**, measured here. This deploy replaces
+those files, so no arrangement of paths avoids it.
+
+So the workflow needs `ATOMA_SELF_DEPLOY_TOKEN` — a fine-grained or classic PAT
+with the `workflow` scope, set as an Actions secret in this repository:
+
+```bash
+gh secret set ATOMA_SELF_DEPLOY_TOKEN
+```
+
+**No agent can reach it.** It is named in `self/workflows/atoma-self-deploy.yml`
+and nowhere else; `atoma-runner.yml` does not mention it, and `atoma` hands a tool
+server only the credentials that server's own `tools.yaml` entry declares. The
+workflow also refuses a bot as `triggering_actor`, because the agent runner's token
+carries `actions: write` and could therefore dispatch a workflow in principle —
+an agent has no route to it today (`gh` and `curl` are both refused by the shell
+guard, and no MCP tool dispatches anything), but that is a denylist, and this token
+can rewrite workflows.
+
+A PAT is acceptable here and not inside Atoma because what holds it is a person
+pressing a button. The line in #353 — a pull request may not decide its own
+execution environment — is not crossed: nothing an agent produces reaches it.
+
+### Changing something in `self/`
+
+An overlay entry is a copy, not a build, so it needs no release. Change `self/X`
+and `.github/X` in the **same pull request**, identically.
+
+`tests/contract/self-overlay.test.ts` requires them byte-identical, and requires
+every file in `.github/` to come from either `dist/.github/` or `self/`. The first
+rule stops a change from being half-applied; the second stops orphans accumulating.
+
+Editing `.github/X` alone is worse than not editing it: the next self-deploy
+overwrites it from `self/` and the change disappears without a diff.
+
 ## Setup (Bun)
 
 ```bash
@@ -179,13 +243,14 @@ not have until you build it.
   receive. CI runs it on every pull request, before `test`, to prove the
   deliverable still builds.
 - `dist/.github/*` is generated: never hand-edit it.
-- `.github/atoma/*` is *deployed*, not generated on merge. Nothing regenerates it
-  — it is this repository's own adoption of the deliverable, upgraded by the
-  one-liner in the source-of-truth map above and reviewed like any other change.
-  So a change to `src/atoma/` does not reach the live agents until someone runs
-  that upgrade, and CI does not reject a diff that touches it. Two exceptions
-  inside it are genuinely yours to edit: `config.json` (which the upgrade
-  restores) and `skills/project/`, which the deliverable does not contain.
+- `.github/*` is *deployed*, not generated on merge. It is a release plus `self/`
+  copied over it, rebuilt by [Atoma Self Deploy](#applying-a-release-to-this-repository).
+  So a change to `src/atoma/` does not reach the live agents until someone
+  dispatches that, and CI does not reject a diff that touches `.github/`.
+- What is genuinely yours to edit lives in `self/`, not in `.github/`. Edit both,
+  identically, in one pull request — `tests/contract/self-overlay.test.ts` requires
+  it. Editing `.github/` alone is worse than not editing it: the next self-deploy
+  reverts it, silently.
 
 ## PR checklist
 

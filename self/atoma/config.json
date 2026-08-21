@@ -1,0 +1,89 @@
+{
+  "merge_policy": "auto",
+  "environment": {
+    "setup_commands": [
+      "bun install --frozen-lockfile"
+    ]
+  },
+  "checks": {
+    "commands": [
+      "./scripts/scan-secrets.sh",
+      "bun run typecheck",
+      "bun run synth",
+      "bun run test"
+    ],
+    "secrets": []
+  },
+  "deploy": {
+    "targets": [
+      {
+        "name": "release",
+        "on": "merge",
+        "commands": [
+          "./scripts/release.sh"
+        ]
+      }
+    ],
+    "secrets": []
+  },
+  "tools": {
+    "secrets": []
+  },
+  "agents": {
+    "orchestrator": {
+      "max_iterations": 100
+    },
+    "engineer": {
+      "max_iterations": 200
+    },
+    "reviewer": {
+      "max_iterations": 30
+    }
+  },
+  "labels": {
+    "in_progress": "atoma/in-progress",
+    "sub_issue": "atoma/sub-issue",
+    "launched": "atoma/launched"
+  },
+  "auto_triggers": [
+    {
+      "event": "pull_request.opened",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request.synchronize",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request.ready_for_review",
+      "agent": "reviewer"
+    },
+    {
+      "event": "pull_request_review.submitted",
+      "agent": "engineer",
+      "condition": "changes_requested"
+    },
+    {
+      "event": "issue_comment.created",
+      "agent": "$dispatch_agent",
+      "condition": "atoma:dispatch"
+    }
+  ],
+  "governed_paths": [
+    ".github/**",
+    "scripts/**"
+  ],
+  "merge_gates": [
+    {
+      "reason": "This changes the code that decides what an agent may merge. Read it before merging: a weakening here would not be caught anywhere later.",
+      "when": {
+        "files_changed": [
+          "src/domain/merge-readiness.ts",
+          "src/domain/merge-gates.ts",
+          "src/domain/path-patterns.ts",
+          "src/lib/merge-signals.ts"
+        ]
+      }
+    }
+  ]
+}
