@@ -977,6 +977,39 @@ fi
   // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
   // needs no package.json/node_modules/bun install at all.
   environmentSetupStep(),
+  new TypedOutputsStep({
+    name: "Configure git identity",
+    shell: "bash",
+    run: `git config user.name "atoma-\${{ inputs.agent }}"
+git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
+`,
+  }),
+  notifyStep,
+  fetchEventsStep,
+  restoreSessionStep,
+  buildContextStep,
+  cfgStep,
+  new TypedOutputsStep({
+    // Added BEFORE the agent actually runs (not after) so it's visible to a
+    // human for the entire duration of the run, not just flickered on/off
+    // afterwards. Applies to both issues and PRs -- `gh issue edit` works on
+    // PR numbers too since GitHub treats every PR as an issue under the
+    // hood. Gated on the same condition as "Run agent" so the label isn't
+    // added for no-op runs that will be skipped entirely
+    // (new_event_count == '0').
+    name: "Add atoma/in-progress label",
+    if: `${buildContextStep.rawOutputs.new_event_count} != '0'`,
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      NUMBER: "${{ inputs.number }}",
+    },
+    run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
+`,
+  }),
+  reviewerStartCommentStep,
+  checkoutAtomaSourceStep,
+  installAtomaCli,
   // Put every tool server on one OS user that cannot become root.
   //
   // AFTER environment setup, because that is what installs the toolchain this
@@ -1064,8 +1097,14 @@ sudo setfacl -m "u:$(id -un):rwx" "${CREDENTIALS_DIR}"
 # /usr/bin.
 #
 # Computed from PATH rather than named, so an image that adds a fourth is covered.
-# Safe here and not earlier: every install this job performs -- the MCP packages,
-# the environment setup -- has already run by this step.
+#
+# ORDER MATTERS, and this step is placed for it: every install this job performs
+# has to have happened already. The MCP packages, the environment setup -- and the
+# atoma CLI itself, which is written to /usr/local/bin. That last one is why this
+# step sits after "Install Atoma CLI" rather than after the environment setup: it
+# did not, and the first real run failed with
+#   curl: (23) Failure writing output to destination
+# because the directory curl was writing into had just been closed.
 for dir in \${PATH//:/ }; do
   [ -d "$dir" ] || continue
   case "$(stat -L -c '%A' "$dir" 2>/dev/null)" in
@@ -1084,39 +1123,6 @@ sudo git config --system --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null ||
 echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
 `,
   }),
-  new TypedOutputsStep({
-    name: "Configure git identity",
-    shell: "bash",
-    run: `git config user.name "atoma-\${{ inputs.agent }}"
-git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
-`,
-  }),
-  notifyStep,
-  fetchEventsStep,
-  restoreSessionStep,
-  buildContextStep,
-  cfgStep,
-  new TypedOutputsStep({
-    // Added BEFORE the agent actually runs (not after) so it's visible to a
-    // human for the entire duration of the run, not just flickered on/off
-    // afterwards. Applies to both issues and PRs -- `gh issue edit` works on
-    // PR numbers too since GitHub treats every PR as an issue under the
-    // hood. Gated on the same condition as "Run agent" so the label isn't
-    // added for no-op runs that will be skipped entirely
-    // (new_event_count == '0').
-    name: "Add atoma/in-progress label",
-    if: `${buildContextStep.rawOutputs.new_event_count} != '0'`,
-    shell: "bash",
-    env: {
-      GH_TOKEN: "${{ github.token }}",
-      NUMBER: "${{ inputs.number }}",
-    },
-    run: `${scriptCommandWithArgs(manageInProgressLabelRef, { action: "add", number: "\${NUMBER}" })}
-`,
-  }),
-  reviewerStartCommentStep,
-  checkoutAtomaSourceStep,
-  installAtomaCli,
   // Immediately before the agent, because its output is what keys the secret
   // lookups in that step's own `env:`.
   toolSecretsStep,
