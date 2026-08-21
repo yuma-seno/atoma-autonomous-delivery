@@ -30,6 +30,21 @@ export interface PostResultCommentArgs {
   "chain-continues"?: string;
   "max-iterations-reached"?: string;
   "run-url": string;
+  /**
+   * The agent's stdout, and the log it wrote alongside.
+   *
+   * Arguments rather than the bare names this used to open. Those were relative
+   * paths, correct only while the run's files sat in the repository root -- #487
+   * moved them to `$RUNNER_TEMP/atoma-run` and every result comment since was
+   * silently dropped, because `existsSync("atoma_output.txt")` was false and the
+   * skip branch reads exactly like a session that ended via a tool call.
+   *
+   * Two full releases went out that way. The step reported success, the agent wrote
+   * its report -- 3,914 characters in the run that found this -- and nobody received
+   * it.
+   */
+  output: string;
+  "logs-file": string;
 }
 
 export const ref = defineScript<PostResultCommentArgs>(import.meta.url);
@@ -64,9 +79,9 @@ export const ref = defineScript<PostResultCommentArgs>(import.meta.url);
  * than a derivation. Add money here only when it arrives from the provider as
  * money.
  */
-function tokenUsageLines(): string[] {
-  if (!existsSync("atoma_logs.txt")) return [];
-  const usageLine = readFileSync("atoma_logs.txt", "utf8")
+function tokenUsageLines(logsFile: string): string[] {
+  if (!existsSync(logsFile)) return [];
+  const usageLine = readFileSync(logsFile, "utf8")
     .split("\n")
     .find((l) => l.includes("ATOMA_TOKEN_USAGE:"));
   if (!usageLine) return [];
@@ -154,6 +169,8 @@ function main(): void {
       "chain-continues": { type: "string" },
       "max-iterations-reached": { type: "string" },
       "run-url": { type: "string" },
+      output: { type: "string" },
+      "logs-file": { type: "string" },
     },
   });
 
@@ -174,7 +191,16 @@ function main(): void {
   // catch. The reason it is here at all is that this is one of the two sinks that
   // publish unmasked text (the other is the failure excerpt in
   // atoma-runner.wac.ts).
-  const output = redact(existsSync("atoma_output.txt") ? readFileSync("atoma_output.txt", "utf8") : "");
+  // Required, not defaulted. A default would put the old relative path back and
+  // restore the exact silence this is fixing: a caller that forgot the argument
+  // would look in the work tree, find nothing, and report a session that ended via
+  // a tool call.
+  const outputFile = values.output;
+  if (!outputFile) {
+    console.error("post_result_comment.ts: --output is required (the agent's stdout file)");
+    process.exit(2);
+  }
+  const output = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
 
   // `atoma_output.txt` is empty whenever the run ended via a session-ending
   // tool call (launch_sub_agent, request_close_issue, create_pr -- see
@@ -198,7 +224,7 @@ function main(): void {
     maxIterationsReached: values["max-iterations-reached"],
     runUrl: values["run-url"],
     output,
-    usageLines: tokenUsageLines(),
+    usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type),
   });
 
