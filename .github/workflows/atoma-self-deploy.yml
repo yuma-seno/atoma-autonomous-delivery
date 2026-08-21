@@ -1,0 +1,203 @@
+# Atoma Self Deploy — apply a release of this repository's own deliverable to its
+# own `.github/`, as a pull request, on a button press.
+#
+# ## Why this file is hand-written and lives in `self/`
+#
+# Every other workflow under `.github/workflows/` is generated from
+# `src/workflows/` and shipped to adopters in `atoma-delivery.zip`. This one is
+# neither. It is deliberately outside Atoma's machinery:
+#
+#   - it is not in the deliverable, so no adopter receives a workflow naming a
+#     secret they do not have
+#   - no agent triggers it, and no agent step reads its token
+#   - it does one thing a person asks for, by pressing a button
+#
+# ## What `.github/` is now
+#
+# Exactly two things, and nothing else: the release, plus `self/` copied over it.
+#
+#     rm -rf .github && unzip release.zip && cp -r self/. .github/
+#
+# That is the whole reason `self/` exists. Before it, `.github/` was the release
+# plus three files kept alive by remembering to run `git checkout --` on them
+# after every extraction, and a file the upstream release had DELETED stayed in the
+# tree with no diff to notice it by. Deleting the directory first makes an upstream
+# removal ordinary: the file is simply not recreated.
+#
+# ## Why it needs a token that is not `GITHUB_TOKEN`
+#
+# `GITHUB_TOKEN` cannot write `.github/workflows/**`. Not by path rule and not by
+# branch -- the push is refused on identity, measured in this repository. This
+# deploy replaces those files, so no arrangement of paths avoids it.
+#
+# `ATOMA_SELF_DEPLOY_TOKEN` is a PAT with the `workflow` scope, set as a secret in
+# THIS repository only. It never reaches an agent: it appears in this file and
+# nowhere else, and `atoma-runner.yml` does not name it -- `atoma` gives a tool
+# server only the credentials that server's own `tools.yaml` entry declares.
+#
+# A PAT is acceptable here and not inside Atoma because the thing holding it is a
+# person pressing a button, not a model. #353's line -- a pull request may not
+# decide its own execution environment -- is not crossed, because nothing an agent
+# produces reaches this token.
+#
+# ## What it does not do
+#
+# It does not merge. `.github/**` is in `governed_paths`, so the pull request needs
+# a person. That is the intended shape: this removes the tedium of preparing the
+# deploy, not the review of it.
+name: Atoma Self Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to apply, or "latest"'
+        required: false
+        default: latest
+        type: string
+
+# Read-only. Every write in this job goes through the PAT, which keeps the two
+# identities apart: if something here can write, it is because a person's token
+# allowed it.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Prepare the deploy pull request
+    runs-on: ubuntu-latest
+    steps:
+      # A bot must not reach this. The agent runner's token carries `actions:
+      # write`, so dispatching this file is within what that token could
+      # theoretically do. An agent has no route to it today -- `gh` and `curl` are
+      # both refused by the shell guard and no MCP tool dispatches a workflow --
+      # but "no route today" is a denylist, and this is a token that can rewrite
+      # workflows. So the check is also here, where it is a property of the job
+      # rather than of what an agent happens to be offered.
+      - name: Refuse a non-human trigger
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          case "$ACTOR" in
+            *'[bot]'|github-actions)
+              echo "::error::$ACTOR is not a person. This workflow is dispatched by hand, on purpose."
+              exit 1
+              ;;
+          esac
+          echo "dispatched by $ACTOR"
+
+      - name: Check the token is present
+        env:
+          TOKEN: ${{ secrets.ATOMA_SELF_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::ATOMA_SELF_DEPLOY_TOKEN is unset. It needs a PAT with the 'workflow' scope; GITHUB_TOKEN cannot write .github/workflows/**. See CONTRIBUTING.md."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The PAT, so the push later in this job carries an identity allowed to
+          # write workflow files.
+          token: ${{ secrets.ATOMA_SELF_DEPLOY_TOKEN }}
+
+      - name: Resolve the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$REQUESTED" = "latest" ]; then
+            TAG=$(gh release view --json tagName -q .tagName)
+          else
+            TAG="$REQUESTED"
+            # Checked here rather than left to a 404 from the download, so the
+            # error names the tag that does not exist.
+            gh release view "$TAG" --json tagName -q .tagName >/dev/null
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "applying ${TAG}"
+
+      - name: Rebuild .github/ from the release and self/
+        id: apply
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --pattern atoma-delivery.zip --output /tmp/delivery.zip --clobber
+
+          # Deleted, not overwritten. `unzip -o` never removes, so a file the
+          # release dropped would otherwise stay forever with no diff to see it by.
+          # Everything under here is derived from two places, both of which are
+          # about to be reapplied, so there is nothing to preserve.
+          rm -rf .github
+          unzip -q /tmp/delivery.zip -d .
+
+          # `self/` mirrors `.github/`, so this needs no mapping table and no
+          # preserve list: whatever is in there wins, at the same path.
+          cp -r self/. .github/
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::.github/ already matches ${TAG} plus self/; nothing to open a pull request for."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git status --porcelain
+          fi
+
+      - name: Open the pull request
+        if: steps.apply.outputs.changed == 'true'
+        env:
+          # The PAT again, and for the same reason: creating a pull request from a
+          # branch that changes a workflow is refused for `GITHUB_TOKEN`.
+          GH_TOKEN: ${{ secrets.ATOMA_SELF_DEPLOY_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          BRANCH="self-deploy/${TAG}"
+
+          git config user.name "atoma-self-deploy"
+          git config user.email "atoma-self-deploy@users.noreply.github.com"
+          git checkout -q -b "$BRANCH"
+          git add -A .github
+          git commit -q -m "deploy: apply ${TAG} to .github/
+
+Prepared by self/workflows/atoma-self-deploy.yml, dispatched by ${ACTOR}.
+
+.github/ was deleted and rebuilt from ${TAG} with self/ copied over it, so a file
+the release no longer contains is gone rather than orphaned."
+
+          # Force, because everything on this branch is derived: re-running for the
+          # same tag should reproduce it rather than conflict with the previous
+          # attempt. Nothing hand-written belongs here.
+          git push -q --force origin "$BRANCH"
+
+          {
+            echo "Applies [\`${TAG}\`](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}) to this repository's own \`.github/\`."
+            echo
+            echo "Prepared by \`self/workflows/atoma-self-deploy.yml\`, dispatched by @${ACTOR}. No agent was involved, and no agent can reach the token this used."
+            echo
+            echo "\`.github/\` was **deleted and rebuilt** from two sources:"
+            echo
+            echo "1. the release archive"
+            echo "2. \`self/\` copied over it — this repository's own four files"
+            echo
+            echo "So a file the release no longer contains is **gone from the diff**, rather than sitting in the tree with nothing to notice it by. That is what \`self/\` bought."
+            echo
+            echo "\`.github/**\` is in \`governed_paths\`, so this needs a person to merge. That is the point: this removes the tedium of preparing the deploy, not the review of it."
+          } > /tmp/body.md
+
+          EXISTING=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --body-file /tmp/body.md
+            echo "::notice::updated pull request #${EXISTING}"
+          else
+            gh pr create \
+              --title "deploy: apply ${TAG} to .github/" \
+              --body-file /tmp/body.md \
+              --head "$BRANCH"
+          fi
