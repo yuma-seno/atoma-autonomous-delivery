@@ -7,7 +7,7 @@
  * plant a binary go.
  */
 import { describe, expect, test } from "bun:test";
-import { pathWithoutWorldWritable, worldWritableEntries } from "./tool-hardening.ts";
+import { classifyPathEntries, pathWithoutWorldWritable } from "./tool-hardening.ts";
 
 // The three measured on `ubuntu-latest`, all `drwxrwxrwx`.
 const WRITABLE = new Set(["/opt/pipx_bin", "/usr/local/.ghcup/bin", "/usr/local/bin"]);
@@ -40,18 +40,38 @@ describe("pathWithoutWorldWritable", () => {
   });
 });
 
-describe("worldWritableEntries", () => {
-  // What the server logs. A dropped entry nobody was told about is a "command not
-  // found" with nothing connecting it to its cause.
-  test("names what was removed, including the current directory", () => {
-    expect(worldWritableEntries("/usr/local/bin:/usr/bin:.:/opt/pipx_bin", isWorldWritable)).toEqual([
-      "/usr/local/bin",
-      ".",
-      "/opt/pipx_bin",
-    ]);
+/**
+ * The two reasons an entry is dropped, kept apart.
+ *
+ * The first real run of the hardening logged four directories as "writable" that
+ * it had only failed to stat -- `node_modules/.bin` paths that do not exist, and
+ * one whose parent the tool user cannot traverse. Both are dropped, and only one
+ * is a security finding.
+ */
+describe("classifyPathEntries", () => {
+  const inspect = (dir: string): "writable" | "safe" | "unreadable" => {
+    if (WRITABLE.has(dir)) return "writable";
+    if (dir.includes("does-not-exist")) return "unreadable";
+    return "safe";
+  };
+
+  test("separates what a peer could plant in from what cannot be inspected", () => {
+    const { writable, unreadable } = classifyPathEntries(
+      "/usr/local/bin:/usr/bin:/opt/does-not-exist/bin:/opt/pipx_bin",
+      inspect,
+    );
+    expect(writable).toEqual(["/usr/local/bin", "/opt/pipx_bin"]);
+    expect(unreadable).toEqual(["/opt/does-not-exist/bin"]);
   });
 
-  test("is empty when nothing was removed", () => {
-    expect(worldWritableEntries("/usr/bin:/bin", isWorldWritable)).toEqual([]);
+  // An empty element means the current directory, and a tool server's is the work
+  // tree -- which the agent writes. That is writable in fact, not merely unknown.
+  test("counts the current directory as writable, spelled either way", () => {
+    const { writable } = classifyPathEntries("/usr/bin::/bin:.", inspect);
+    expect(writable).toEqual(["(empty, meaning the current directory)", "."]);
+  });
+
+  test("a clean PATH yields neither list", () => {
+    expect(classifyPathEntries("/usr/bin:/bin", inspect)).toEqual({ writable: [], unreadable: [] });
   });
 });
