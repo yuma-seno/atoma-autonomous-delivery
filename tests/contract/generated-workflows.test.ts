@@ -563,14 +563,21 @@ describe("generated workflows", () => {
     const job = workflow.jobs?.run;
     const steps = job?.steps ?? [];
 
-    // The job says where the machinery is, once, and every step inherits it.
-    expect(job?.env?.ATOMA_MACHINERY_ROOT, "the job must name the machinery root").toBeTruthy();
-    const root = job!.env!.ATOMA_MACHINERY_ROOT!;
+    // One step says where the machinery is, and every later step reads it from the
+    // environment. It was a job-level `env:` until the machinery moved out of the
+    // work tree -- see "the machinery ends up outside the work tree" below for why
+    // there is now exactly one source rather than a job default plus an override.
+    const setter = steps.find((step) => /ATOMA_MACHINERY_ROOT=[^\n]*>>\s*"?\$GITHUB_ENV/.test(step.run ?? ""));
+    expect(setter, "one step must set the machinery root").toBeDefined();
+    expect(job?.env?.ATOMA_MACHINERY_ROOT, "and it must not also be a job default").toBeUndefined();
 
-    // And it is a checkout of the default branch, not of the pull request.
-    const machineryCheckout = steps.find((step) => step.with?.path === root);
-    expect(machineryCheckout, `a checkout into ${root}`).toBeDefined();
+    // And what it points at is a checkout of the default branch, not of the pull
+    // request. The checkout still lands in the work tree -- `actions/checkout`
+    // cannot write anywhere else -- and the setter step is what moves it out.
+    const machineryCheckout = steps.find((step) => step.with?.path === "atoma-machinery");
+    expect(machineryCheckout, "a checkout into atoma-machinery").toBeDefined();
     expect(machineryCheckout?.with?.ref).toContain("default_branch");
+    expect(setter?.run, "the setter must be what moves that checkout").toContain("mv \"atoma-machinery\"");
 
     // Nothing runs a script from the workspace. A bare `.github/scripts/` would
     // be the pull request's copy.
