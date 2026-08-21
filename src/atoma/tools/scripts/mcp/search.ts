@@ -175,17 +175,50 @@ function loadIndex(): IssueIndex {
   return index;
 }
 
-let reranker: { score(query: string, documents: string[]): Promise<number[]> } | undefined;
+type Reranker = { score(query: string, documents: string[]): Promise<number[]> };
 
-async function loadReranker(): Promise<typeof reranker> {
-  if (reranker) return reranker;
+/**
+ * The load, started once and awaited by everyone who needs it.
+ *
+ * A promise rather than the resolved value, and this is the whole fix. The
+ * reranker is a 544MB ONNX file, downloaded on every run -- the cache lives under
+ * RUNNER_TEMP, which a job does not keep -- and it took 63.9 seconds, measured.
+ * atoma gave up on the call at 60.0s, so the first search of every run failed,
+ * and the answer arrived fifteen seconds after nobody was waiting for it.
+ *
+ * Holding the resolved value meant the load could only begin when a search asked
+ * for it, and the whole 63.9s landed inside that one request. Holding the promise
+ * means it can begin at startup instead -- see `main` at the bottom of this file.
+ * In the run that measured this there were 47 seconds between the server
+ * connecting and the first search arriving, so most of the load fits in time
+ * nobody was using.
+ *
+ * It also makes two concurrent first searches share one load rather than starting
+ * two, which the resolved-value form did not.
+ */
+let loading: Promise<Reranker> | undefined;
+
+function loadReranker(): Promise<Reranker> {
+  if (loading) return loading;
+  loading = loadRerankerOnce();
+  // A failed load must not be remembered as a failure forever: the next search
+  // should be allowed to try again, since a download can fail for reasons that do
+  // not repeat. Reranking already falls back to the first-stage order, which put
+  // the answer in the top twenty on every one of the 22 measured questions.
+  loading.catch(() => {
+    loading = undefined;
+  });
+  return loading;
+}
+
+async function loadRerankerOnce(): Promise<Reranker> {
   const model = getRerankerModel();
   const started = Date.now();
   const tokenizer = await AutoTokenizer.from_pretrained(model);
   const cross = await AutoModelForSequenceClassification.from_pretrained(model, { dtype: "q8" });
   log(`reranker ${model} loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 
-  reranker = {
+  return {
     async score(query: string, documents: string[]): Promise<number[]> {
       const scores: number[] = [];
       for (let i = 0; i < documents.length; i += 8) {
@@ -202,7 +235,6 @@ async function loadReranker(): Promise<typeof reranker> {
       return scores;
     },
   };
-  return reranker;
 }
 
 /**
@@ -240,7 +272,7 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
 
   let ordered = candidates;
   try {
-    const scores = await (await loadReranker())!.score(a.query, documents);
+    const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates
       .map((match, i) => [match, scores[i] ?? 0] as const)
       .sort((x, y) => y[1] - x[1])
@@ -292,6 +324,22 @@ const { tools, dispatch } = buildMcpTools([
 ]);
 
 async function main(): Promise<void> {
+  // Start the reranker load now, and do not await it. The 63.9 seconds it takes
+  // are the same either way; what changes is whether they are spent inside the
+  // first search_issues call -- where they exceeded atoma's request timeout and
+  // the call failed -- or during the minute the agent spends reading the issue
+  // before it searches for anything.
+  //
+  // Not awaited, so a server whose model cannot be fetched still serves: the
+  // failure surfaces on the first search, which falls back to the first-stage
+  // ranking rather than returning nothing. Awaiting here would instead hold up
+  // the MCP handshake and take the whole run down with it.
+  //
+  // The rejection handler is what keeps a promise nobody has awaited yet from
+  // becoming an unhandled rejection, which is fatal.
+  void loadReranker().catch((error) => {
+    log(`WARN could not preload the reranker (${(error as Error).message}); the first search will try again`);
+  });
   await serveMcpServer({ name: "atoma-search-mcp", version: "1.0.0", tools, dispatch, log });
 }
 if (import.meta.main) void main();
