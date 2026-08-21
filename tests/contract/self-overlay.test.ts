@@ -135,6 +135,46 @@ describe("`self/` and `.github/` hold the same overlay", () => {
   });
 
   /**
+   * Every hand-written workflow in the overlay must parse, and must declare a
+   * trigger.
+   *
+   * This is the test that was missing when it mattered. `atoma-self-deploy.yml`
+   * shipped with a `git commit -m` whose continuation lines started at column 0 --
+   * which leaves the block scalar and makes the file invalid YAML. Everything
+   * passed: typecheck, synth, all four overlay tests, all of CI.
+   *
+   * GitHub's response to an unparseable workflow is not an error. It registers the
+   * file, shows the PATH where the name should be, and registers no triggers. The
+   * only symptom was `gh workflow run` answering
+   * `HTTP 422: Workflow does not have 'workflow_dispatch' trigger` about a file
+   * that plainly has one.
+   *
+   * The generated workflows cannot fail this way -- the synth tool builds them from
+   * TypeScript and would not emit invalid YAML. Only the hand-written ones can, and
+   * they are exactly the ones nothing was checking.
+   */
+  test("every hand-written workflow in the overlay is valid YAML with a trigger", () => {
+    const workflows = filesUnder(join(OVERLAY, "workflows")).filter((file) => /\.ya?ml$/.test(file));
+    expect(workflows.length, "the overlay should hold at least one hand-written workflow").toBeGreaterThan(0);
+
+    for (const file of workflows) {
+      const path = join(OVERLAY, "workflows", file);
+      let document: unknown;
+      expect(() => {
+        document = Bun.YAML.parse(readFileSync(path, "utf8"));
+      }, `${path} is not valid YAML -- GitHub would register it with no triggers and say nothing`).not.toThrow();
+
+      const workflow = document as { name?: string; on?: unknown; true?: unknown; jobs?: Record<string, unknown> };
+      // `on` is the YAML 1.1 boolean, so some parsers hand it back under `true`.
+      // Accepting either keeps this about the workflow rather than the parser.
+      const triggers = workflow.on ?? workflow.true;
+      expect(triggers, `${path} declares no triggers, so nothing can start it`).toBeDefined();
+      expect(typeof workflow.name, `${path} has no name`).toBe("string");
+      expect(Object.keys(workflow.jobs ?? {}).length, `${path} has no jobs`).toBeGreaterThan(0);
+    }
+  });
+
+  /**
    * The self-deploy workflow is the one thing here that cannot be regenerated, and
    * the one holding a token. Pinning both facts: it exists in the overlay, and
    * nothing in the deliverable knows about the secret.
