@@ -121,7 +121,7 @@ const MACHINERY_DIR = "atoma-machinery";
  * -- would need "except that one" appended, which is the sentence this was all
  * meant to avoid.
  */
-const MACHINERY_ABS = "${RUNNER_TEMP}/atoma-machinery";
+const MACHINERY_ABS = "\${RUNNER_TEMP}/atoma-machinery";
 
 /** The same directory, as shell -- the job exports it so every step agrees. */
 const MACHINERY = "${ATOMA_MACHINERY_ROOT}";
@@ -155,7 +155,7 @@ const TOOL_USER = "atoma-tools";
  * failure the container produced. Package managers need somewhere real, and this
  * is it: outside the work tree, so nothing commits it.
  */
-const TOOL_CACHE = "${RUNNER_TEMP}/atoma-tool-cache";
+const TOOL_CACHE = "\${RUNNER_TEMP}/atoma-tool-cache";
 
 /**
  * Where this run's own files go: the session, the fetched events, the ops log, and
@@ -180,7 +180,7 @@ const TOOL_CACHE = "${RUNNER_TEMP}/atoma-tool-cache";
  * (once that user exists). Both halves are load-bearing: three steps write here
  * before the user is created, and `atoma run` writes the session as that user.
  */
-const RUN_DIR = "${RUNNER_TEMP}/atoma-run";
+const RUN_DIR = "\${RUNNER_TEMP}/atoma-run";
 
 /**
  * The agent's scratch workspace: restored before the run, saved after it.
@@ -1070,13 +1070,35 @@ fi
 # Packages a bundled script imports rather than spawns.
 #
 # The npm list above installs executables globally, which is right for a server
-# started by name. This list is for libraries a tool server imports, and those
-# have to be resolvable from the workspace — they are excluded from the bundle
-# because they reach native code a JavaScript bundler cannot carry.
+# started by name. This list is for libraries a tool server imports; they are
+# excluded from the bundle because they reach native code a JavaScript bundler
+# cannot carry, so they have to be resolvable at run time.
+#
+# Installed NEXT TO THE MACHINERY, not in the work tree. Module resolution walks
+# up from the importing file looking for \`node_modules\`, and the servers now live
+# in \`$RUNNER_TEMP/atoma-machinery\` -- so the walk goes to \`$RUNNER_TEMP\` and stops
+# at the root, never reaching the workspace. This was measured, not reasoned about:
+# moving the machinery out (#493) killed the search server with
+#
+#   Failed to initialize MCP server 'search': MCP server closed connection
+#   error: Unexpected while resolving package 'onnxruntime-common'
+#
+# and atoma treats a server that will not initialise as fatal, so one missing
+# library took the whole run down.
+#
+# Separate from the project's own \`node_modules\` is the better arrangement anyway.
+# A project whose \`environment.setup_commands\` install a conflicting version of one
+# of these would otherwise break a tool server, and nothing would connect the two.
 BUN_PKGS=$(jq -r '.bun[]? // empty' "$MCP_PKGS_FILE" 2>/dev/null || true)
 if [ -n "$BUN_PKGS" ]; then
   echo "Installing bun MCP libraries: $BUN_PKGS"
-  bun add --no-save $BUN_PKGS
+  # A manifest of its own, so \`bun add\` has somewhere to work and does not read a
+  # project's. \`--no-save\` still applies; this only gives it a directory to own.
+  if [ ! -f "\${RUNNER_TEMP}/package.json" ]; then
+    echo '{"name":"atoma-mcp-libraries","private":true}' > "\${RUNNER_TEMP}/package.json"
+  fi
+  (cd "\${RUNNER_TEMP}" && bun add --no-save $BUN_PKGS)
+  echo "MCP libraries installed at \${RUNNER_TEMP}/node_modules, beside the machinery"
 fi
 
 # Python packages, for a tool server that ships as one.
@@ -1255,6 +1277,12 @@ sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUN_DIR}"
 # set for somebody. "Make tool hooks executable" ran earlier, so the hooks get it
 # and the ordinary files do not. Nothing here is the agent's to modify.
 sudo setfacl -R -m "u:${TOOL_USER}:rX" "$ATOMA_MACHINERY_ROOT"
+
+# And the libraries the servers import, which sit beside the machinery for module
+# resolution to find. Read-only for the same reason.
+if [ -d "\${RUNNER_TEMP}/node_modules" ]; then
+  sudo setfacl -R -m "u:${TOOL_USER}:rX" "\${RUNNER_TEMP}/node_modules"
+fi
 
 mkdir -p "${WORKSPACE_DIR}"
 sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${WORKSPACE_DIR}"
