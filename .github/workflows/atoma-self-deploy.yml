@@ -164,12 +164,25 @@ jobs:
           git config user.email "atoma-self-deploy@users.noreply.github.com"
           git checkout -q -b "$BRANCH"
           git add -A .github
-          git commit -q -m "deploy: apply ${TAG} to .github/
 
-Prepared by self/workflows/atoma-self-deploy.yml, dispatched by ${ACTOR}.
-
-.github/ was deleted and rebuilt from ${TAG} with self/ copied over it, so a file
-the release no longer contains is gone rather than orphaned."
+          # Through a file, not `-m`. A multi-line message written inline has to
+          # start its continuation lines at column 0 to keep them out of the commit
+          # body's indentation -- and column 0 leaves this block scalar, which makes
+          # the whole workflow unparseable. GitHub's answer to an unparseable
+          # workflow is to register no triggers and show the path where the name
+          # should be, so `workflow_dispatch` simply does not exist and nothing
+          # says why.
+          MSG=$(mktemp)
+          {
+            echo "deploy: apply ${TAG} to .github/"
+            echo
+            echo "Prepared by self/workflows/atoma-self-deploy.yml, dispatched by ${ACTOR}."
+            echo
+            echo ".github/ was deleted and rebuilt from ${TAG} with self/ copied over it,"
+            echo "so a file the release no longer contains is gone rather than orphaned."
+          } > "$MSG"
+          git commit -q -F "$MSG"
+          rm -f "$MSG"
 
           # Force, because everything on this branch is derived: re-running for the
           # same tag should reproduce it rather than conflict with the previous
