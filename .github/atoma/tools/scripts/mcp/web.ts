@@ -18025,18 +18025,31 @@ import { statSync } from "fs";
 function pathWithoutWorldWritable(path, isWorldWritable) {
   return path.split(":").filter((entry) => entry !== "" && entry !== "." && !isWorldWritable(entry)).join(":");
 }
-function worldWritableEntries(path, isWorldWritable) {
-  return path.split(":").filter((entry) => entry !== "" && (entry === "." || isWorldWritable(entry)));
+function classifyPathEntries(path, inspect) {
+  const writable = [];
+  const unreadable = [];
+  for (const entry of path.split(":")) {
+    if (entry === "" || entry === ".") {
+      writable.push(entry === "" ? "(empty, meaning the current directory)" : entry);
+      continue;
+    }
+    const verdict = inspect(entry);
+    if (verdict === "writable")
+      writable.push(entry);
+    else if (verdict === "unreadable")
+      unreadable.push(entry);
+  }
+  return { writable, unreadable };
 }
 
 // src/atoma/tools/scripts/lib/harden.ts
 var PR_SET_DUMPABLE = 4;
 var PR_GET_DUMPABLE = 3;
-function isWorldWritable(directory) {
+function inspect(directory) {
   try {
-    return (statSync(directory).mode & 2) !== 0;
+    return (statSync(directory).mode & 2) !== 0 ? "writable" : "safe";
   } catch {
-    return true;
+    return "unreadable";
   }
 }
 function hardenCredentialHolder(log) {
@@ -18058,16 +18071,19 @@ function hardenCredentialHolder(log) {
     log(`WARN could not become unreadable: ${error2.message}`);
   }
   const before = process.env.PATH ?? "";
-  const dropped = worldWritableEntries(before, isWorldWritable);
-  if (dropped.length === 0)
+  const { writable, unreadable } = classifyPathEntries(before, inspect);
+  if (writable.length === 0 && unreadable.length === 0)
     return;
-  const after = pathWithoutWorldWritable(before, isWorldWritable);
+  const after = pathWithoutWorldWritable(before, (entry) => inspect(entry) !== "safe");
   if (after === "") {
     log(`WARN every PATH entry looked writable, which cannot be right; leaving PATH alone`);
     return;
   }
   process.env.PATH = after;
-  log(`dropped writable directories from PATH: ${dropped.join(", ")}`);
+  if (writable.length > 0)
+    log(`removed WRITABLE directories from PATH: ${writable.join(", ")}`);
+  if (unreadable.length > 0)
+    log(`also removed ${unreadable.length} PATH entries this process cannot inspect`);
 }
 
 // src/atoma/tools/scripts/mcp/web.ts

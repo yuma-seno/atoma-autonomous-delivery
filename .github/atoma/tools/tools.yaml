@@ -150,6 +150,15 @@ shell:
   command: bun
   args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/shell.ts"]
   env: {}
+  # Matches what `shell_execute` already advertises: `timeout_seconds` accepts up
+  # to 3600. Every value above 60 was unreachable before this, because atoma
+  # capped every server at 60 seconds and the resulting error named the shell
+  # server rather than the client that gave up -- so a test suite or a build
+  # running over a minute looked like a broken tool.
+  #
+  # The server enforces its own per-call limit and always answers, so this is a
+  # backstop for the server itself dying rather than a limit on the work.
+  request_timeout_secs: 3600
   hooks:
     before_tool: ./scripts/hooks/shell_guard.ts
 
@@ -181,6 +190,16 @@ search:
   # them, which is what keeps this one out of `shell`.
   env:
     GH_TOKEN: "${GH_TOKEN}"
+  # The first search of a run may have to load the reranker, a 544MB ONNX file:
+  # measured at 63.9s against atoma's 60s default, so the first search of every
+  # run failed and the answer arrived 15 seconds after nobody was waiting for it.
+  #
+  # The server now starts that load when it starts rather than when the first
+  # search arrives, which absorbs most of it -- there were 47 seconds between the
+  # server connecting and the first search in the run that measured this. 300
+  # covers the remainder and a slow network, without being so large that a
+  # genuinely stuck server goes unnoticed for long.
+  request_timeout_secs: 300
   hooks: {}
 
 atoma:
