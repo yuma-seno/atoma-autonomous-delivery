@@ -172,6 +172,63 @@ describe("generated workflows", () => {
     }
   });
 
+  /**
+   * Closing the world-writable PATH directories has to come after everything that
+   * installs into one.
+   *
+   * It did not, and the run failed:
+   *
+   *     curl: (23) Failure writing output to destination
+   *
+   * That was "Install Atoma CLI" writing to `/usr/local/bin`, which this step had
+   * just made unwritable. No agent could start -- v0.1.62 shipped that way and
+   * v0.1.63 existed only to undo it.
+   *
+   * The ordering is load-bearing in both directions and neither is obvious from
+   * reading either step: the chmod must be late enough that the installs are done,
+   * and early enough that the agent has not started. So it is pinned here rather
+   * than left to whoever next reorders the file.
+   */
+  test("world-writable PATH directories are closed after every install, before the agent", () => {
+    type WorkflowStep = { name?: string; run?: string; uses?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    const closer = steps.findIndex((step) => (step.run ?? "").includes("chmod go-w"));
+    expect(closer, "the step that closes world-writable PATH entries").toBeGreaterThanOrEqual(0);
+
+    // Anything that writes a program somewhere on PATH. Matched on what the step
+    // does rather than on its name, so a renamed or newly added installer is still
+    // covered -- the failure this guards against came from a step nobody thought
+    // of as an installer at the time.
+    const installs = steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => {
+        const run = step.run ?? "";
+        return (
+          /\/usr\/local\/bin|\/usr\/bin/.test(run) ||
+          (step.uses ?? "").startsWith("oven-sh/setup-bun") ||
+          /\b(apt-get install|npm install -g|bun add -g|pipx install)\b/.test(run)
+        );
+      })
+      .filter(({ index }) => index !== closer);
+
+    expect(installs.length, "at least one install step should be recognised").toBeGreaterThan(0);
+    for (const { step, index } of installs) {
+      expect(
+        index,
+        `"${step.name ?? step.uses}" writes onto PATH, so it must run BEFORE the directories are closed -- ` +
+          `closing them first is what broke v0.1.62 with "curl: (23) Failure writing output to destination"`,
+      ).toBeLessThan(closer);
+    }
+
+    const agent = steps.findIndex((step) => step.name === "Run agent");
+    expect(agent, "the agent step").toBeGreaterThanOrEqual(0);
+    expect(closer, "the directories must be closed before any tool server starts").toBeLessThan(agent);
+  });
+
   test("checkout the repository before running repository scripts", () => {
     type WorkflowStep = { uses?: string; run?: string };
     type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
