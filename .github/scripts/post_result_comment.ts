@@ -100,10 +100,10 @@ function defineScript(importMetaUrl) {
 
 // src/scripts/post_result_comment.ts
 var ref = defineScript(import.meta.url);
-function tokenUsageLines() {
-  if (!existsSync("atoma_logs.txt"))
+function tokenUsageLines(logsFile) {
+  if (!existsSync(logsFile))
     return [];
-  const usageLine = readFileSync("atoma_logs.txt", "utf8").split(`
+  const usageLine = readFileSync(logsFile, "utf8").split(`
 `).find((l) => l.includes("ATOMA_TOKEN_USAGE:"));
   if (!usageLine)
     return [];
@@ -157,14 +157,21 @@ function main() {
       directive: { type: "string" },
       "chain-continues": { type: "string" },
       "max-iterations-reached": { type: "string" },
-      "run-url": { type: "string" }
+      "run-url": { type: "string" },
+      output: { type: "string" },
+      "logs-file": { type: "string" }
     }
   });
   if (!values.number || !values.agent || !values["run-url"]) {
     console.error("usage: post_result_comment.ts --number N --agent NAME --run-url URL [...]");
     process.exit(2);
   }
-  const output = redact(existsSync("atoma_output.txt") ? readFileSync("atoma_output.txt", "utf8") : "");
+  const outputFile = values.output;
+  if (!outputFile) {
+    console.error("post_result_comment.ts: --output is required (the agent's stdout file)");
+    process.exit(2);
+  }
+  const output = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
   if (!output.trim()) {
     console.error("atoma_output.txt is empty (session ended via a tool call) -- skipping result comment.");
     return;
@@ -177,7 +184,7 @@ function main() {
     maxIterationsReached: values["max-iterations-reached"],
     runUrl: values["run-url"],
     output,
-    usageLines: tokenUsageLines(),
+    usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type)
   });
   const { code, stdout, stderr } = gh("api", `repos/${process.env.GITHUB_REPOSITORY}/issues/${values.number}/comments`, "--method", "POST", "-f", `body=${body}`, "--jq", ".id");
