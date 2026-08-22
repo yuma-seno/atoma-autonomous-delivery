@@ -88,12 +88,42 @@ describe("post_result_comment.ts buildCommentBody", () => {
 });
 
 describe("post_result_comment.ts main", () => {
-  test("skips posting entirely when atoma_output.txt is missing (session ended via a tool call)", () => {
+  /**
+   * The path is required, and this is why.
+   *
+   * It used to open `atoma_output.txt` relative to the working directory. #487
+   * moved the run's files out of the work tree and the read went to a path that no
+   * longer existed -- landing in the "empty output" branch, whose message reads
+   * like a session that ended via a tool call. Two releases shipped where no
+   * agent's report reached anyone, with every step reporting success.
+   *
+   * A default would put that back for any caller that forgot the argument. Exiting
+   * non-zero instead makes a missing argument a failed step, which is the one thing
+   * the original could not be.
+   */
+  test("refuses to run without --output rather than guessing a path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
+    try {
+      // A file the old relative read would have found and posted from.
+      writeFileSync(join(dir, "atoma_output.txt"), "All done.");
+      const r = runWithFakeGh(
+        scriptPath("post_result_comment.ts"),
+        ["--number", "5", "--agent", "engineer", "--run-url", "http://example.com/run/1"],
+        { cwd: dir, rules: [{ match: ["api", "comments"] }] },
+      );
+      expect(r.status, "a missing --output is a failed step, not a silent skip").not.toBe(0);
+      expect(r.ghCalls.length).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("skips posting entirely when the output file is missing (session ended via a tool call)", () => {
     const dir = mkdtempSync(join(tmpdir(), "atoma-post-result-"));
     try {
       const r = runWithFakeGh(
         scriptPath("post_result_comment.ts"),
-        ["--number", "5", "--agent", "orchestrator", "--notify", "octocat", "--run-url", "http://example.com/run/1"],
+        ["--number", "5", "--agent", "orchestrator", "--notify", "octocat", "--run-url", "http://example.com/run/1", "--output", join(dir, "atoma_output.txt")],
         { cwd: dir, rules: [{ match: ["api", "comments"] }] },
       );
       expect(r.status).toBe(0);
@@ -109,7 +139,7 @@ describe("post_result_comment.ts main", () => {
     try {
       const r = runWithFakeGh(
         scriptPath("post_result_comment.ts"),
-        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1"],
+        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1", "--output", join(dir, "atoma_output.txt")],
         { cwd: dir, rules: [{ match: ["api", "comments"] }] },
       );
       expect(r.status).toBe(0);
@@ -125,7 +155,7 @@ describe("post_result_comment.ts main", () => {
     try {
       const r = runWithFakeGh(
         scriptPath("post_result_comment.ts"),
-        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1"],
+        ["--number", "5", "--agent", "orchestrator", "--run-url", "http://example.com/run/1", "--output", join(dir, "atoma_output.txt")],
         { cwd: dir, env: { GITHUB_REPOSITORY: "owner/repo" }, rules: [{ match: ["api", "comments"], stdout: "42" }] },
       );
       expect(r.status).toBe(0);
@@ -142,7 +172,7 @@ describe("post_result_comment.ts main", () => {
       const r = runWithFakeGh(
         scriptPath("post_result_comment.ts"),
         // prettier-ignore
-        ["--number", "5", "--type", "issue", "--agent", "engineer", "--notify", "octocat", "--run-url", "http://example.com/run/1"],
+        ["--number", "5", "--type", "issue", "--agent", "engineer", "--notify", "octocat", "--run-url", "http://example.com/run/1", "--output", join(dir, "atoma_output.txt")],
         {
           cwd: dir,
           env: { GITHUB_REPOSITORY: "owner/repo" },
@@ -168,7 +198,7 @@ describe("post_result_comment.ts main", () => {
     try {
       const r = runWithFakeGh(
         scriptPath("post_result_comment.ts"),
-        ["--number", "7", "--type", "pr", "--agent", "reviewer", "--run-url", "http://example.com/run/1"],
+        ["--number", "7", "--type", "pr", "--agent", "reviewer", "--run-url", "http://example.com/run/1", "--output", join(dir, "atoma_output.txt")],
         { cwd: dir, env: { GITHUB_REPOSITORY: "owner/repo" }, rules: [{ match: ["api", "comments"], stdout: "42" }] },
       );
       expect(r.status).toBe(0);
