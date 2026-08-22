@@ -22,7 +22,7 @@ Task-oriented recipes:
 | [Pin which OpenRouter endpoint serves a model](#pin-which-openrouter-endpoint-serves-a-model) | prefer particular upstream providers |
 | [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
 | [Limit how far agents hand work to each other](#limit-how-far-agents-hand-work-to-each-other) | stop an engineer/reviewer loop that is going nowhere |
-| [Change event triggers](#change-event-triggers) | decide which GitHub events start which agent |
+| [How work starts](#how-work-starts) | know what makes an agent run — and what does not |
 | [Add environment setup commands](#add-environment-setup-commands) | install your project's toolchain before an agent runs |
 | [Choose the branch agents work from](#choose-the-branch-agents-work-from) | target something other than the default branch |
 | [Work with decomposed issues](#work-with-decomposed-issues) | understand how sub-issue branches stack |
@@ -372,20 +372,60 @@ When the limit is hit, the run still finishes and still reports. Only the handof
 is withheld, and a comment names the count, the limit, and the agent that would
 have run next. Posting `/<agent>` resumes it.
 
-### Change event triggers
+### How work starts
 
-Edit `auto_triggers` in `config.json`.
+**Somebody asks.** That is the whole rule, and it is the only one.
 
-Example:
+| who asks | how |
+| --- | --- |
+| a person | comment `/engineer` (or any agent name) on an issue or pull request |
+| an agent | names the next agent as its handoff, or `reviewer=` when it opens a pull request |
+
+Nothing starts from a GitHub event on its own. Opening a pull request starts nobody;
+pushing to one starts nobody; leaving a review starts nobody.
+
+**This changed.** Until #486 there were four `auto_triggers` entries that started a
+reviewer on `pull_request.opened`, `synchronize` and `ready_for_review`, and an
+engineer on a `changes_requested` review. Two rules to learn instead of one — and
+the event-driven half was invisible in a way that mattered: GitHub raises no
+workflow event for anything its own token did, so those triggers fired only for a
+**person's** pull request. An agent's went through a different path entirely. One
+behaviour, two mechanisms, each looking like the whole.
+
+Removing them also closed a hole. `synchronize → reviewer` and
+`changes_requested → engineer` could pass a pull request back and forth without
+limit, because [the handoff limit](#limit-how-far-agents-hand-work-to-each-other)
+only counts the path where an agent asks. Now every path is that path.
+
+#### The cost, and what covers it
+
+Asking explicitly means it can be forgotten. An agent that opens a pull request with
+no `reviewer` and mentions nobody leaves work that nothing is scheduled to look at —
+CI runs, the check goes green, and it waits.
+
+So the machinery checks and says so, on the pull request:
+
+> This pull request was opened by `engineer` with no reviewer named and nobody
+> mentioned, so nothing is scheduled to look at it. CI still runs and its result
+> stands. Comment `/reviewer` to have it reviewed, or take it from here.
+
+Addressed to whoever the run resolves as the person to notify.
+
+#### `auto_triggers`
+
+The one entry left is the slash-command path:
 
 ```json
 {
   "auto_triggers": [
-    { "event": "pull_request.opened", "agent": "reviewer" },
-    { "event": "pull_request_review.submitted", "agent": "engineer", "condition": "changes_requested" }
+    { "event": "issue_comment.created", "agent": "$dispatch_agent", "condition": "atoma:dispatch" }
   ]
 }
 ```
+
+Add an entry if you want an event to start an agent anyway. It is your repository —
+but weigh it against the rule above, because a second way for work to start is a
+second thing every reader has to know.
 
 ### Add environment setup commands
 

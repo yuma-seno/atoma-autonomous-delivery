@@ -12,7 +12,7 @@
  * one that was never created is not.
  */
 import { dispatchWorkflow, gh } from "./gh.ts";
-import { getDeployTargets, getTriggerAgent, getWorkflowName } from "./config.ts";
+import { getDeployTargets, getWorkflowName } from "./config.ts";
 import { dispatchRunner } from "./dispatch.ts";
 import { resolveNotify } from "./notify.ts";
 import { isIssueBranch } from "./branch-placement.ts";
@@ -30,21 +30,36 @@ function log(message: string): void {
 }
 
 /**
- * Hand a new pull request to validation rather than straight to a reviewer.
+ * Run CI on a pull request, and hand it to `reviewer` afterwards if one is named.
  *
- * The reviewer used to be dispatched from here, and arrived before CI had a
- * verdict -- so it either reported that it would wait, with nothing able to wake
- * it, or merged without one. Validation runs CI first and dispatches the agent
- * the result calls for: the reviewer when it passes, the engineer when it does
- * not. See `scripts/validate_pull_request.ts`.
+ * Validation rather than a reviewer directly: the reviewer used to be dispatched
+ * from here and arrived before CI had a verdict, so it either reported that it
+ * would wait -- with nothing able to wake it -- or merged without one. Validation
+ * runs CI first and dispatches what the result calls for: the reviewer when it
+ * passes, the engineer when it does not. See `scripts/validate_pull_request.ts`.
  *
- * Returns whether the dispatch was sent. `create_pr` ends the engineer's
- * session on success, so nothing is left running to notice a failure here: the
- * pull request would sit with no CI, no required check, and no agent scheduled,
- * while the tool reported success. The caller keeps the session open instead.
+ * Returns whether the dispatch was sent. `create_pr` ends the engineer's session
+ * on success, so nothing is left running to notice a failure here: the pull request
+ * would sit with no CI, no required check and no agent scheduled, while the tool
+ * reported success. The caller keeps the session open instead.
+ *
+ * The name is a parameter now. It used to come from
+ * `getTriggerAgent("pull_request.opened", "reviewer")` -- reading which agent an
+ * `auto_triggers` entry routed that event to, and falling back to the literal
+ * `"reviewer"`.
+ *
+ * That coupling was invisible from either end. The trigger fired only for a
+ * HUMAN's pull request, because GitHub starts no workflow run for an event its own
+ * token caused, so an agent's pull request reached its reviewer through THIS call
+ * while a person's reached it through the trigger. Two halves of one behaviour,
+ * each looking like the whole. Removing the trigger (#486) would silently have
+ * moved every adopter who renamed their reviewer onto the literal fallback.
+ *
+ * An empty name means nothing is dispatched after CI, which the validate workflow
+ * already handled: `next_agent` empty, the failing or passing check stands, and a
+ * person picks it up. `create_pr` makes sure they are told.
  */
-export function dispatchPrValidation(repo: string, prNumber: number, branch: string): boolean {
-  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
+export function dispatchPrValidation(repo: string, prNumber: number, branch: string, reviewer: string): boolean {
   return dispatchWorkflow(
     `dispatchPrValidation: validating PR #${prNumber}`,
     "atoma-validate-pr.yml",

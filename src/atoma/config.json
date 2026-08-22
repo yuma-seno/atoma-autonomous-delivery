@@ -32,23 +32,6 @@
   },
   "auto_triggers": [
     {
-      "event": "pull_request.opened",
-      "agent": "reviewer"
-    },
-    {
-      "event": "pull_request.synchronize",
-      "agent": "reviewer"
-    },
-    {
-      "event": "pull_request.ready_for_review",
-      "agent": "reviewer"
-    },
-    {
-      "event": "pull_request_review.submitted",
-      "agent": "engineer",
-      "condition": "changes_requested"
-    },
-    {
       "event": "issue_comment.created",
       "agent": "$dispatch_agent",
       "condition": "atoma:dispatch"

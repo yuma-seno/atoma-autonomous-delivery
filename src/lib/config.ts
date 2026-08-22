@@ -155,28 +155,13 @@ export function getMergeGates(): MergeGatesResolution {
   return resolveMergeGates(loadConfig().merge_gates);
 }
 
-/**
- * Look up the agent configured for an unconditional `auto_triggers` event.
- *
- * Entries with a `condition` need an event's own context to answer — a review
- * state, a draft flag — and this is called from a tool server that has none. So
- * it asks only the question it can answer: which agent an event selects when
- * nothing narrows it. `match_trigger.ts` answers the conditional form, from the
- * workflow, where the context exists.
- *
- * Validation is shared, though. A malformed list resolves to no triggers, so
- * this returns the fallback rather than reading an entry the configuration is
- * not entitled to have.
- */
-export function getTriggerAgent(event: string, fallback = ""): string {
-  const { triggers } = resolveAutoTriggers(loadConfig().auto_triggers);
-  for (const trigger of triggers) {
-    if (trigger.event === event && !trigger.condition && !trigger.agent.startsWith("$")) {
-      return trigger.agent || fallback;
-    }
-  }
-  return fallback;
-}
+// `getTriggerAgent` was here: it read which agent an unconditional `auto_triggers`
+// entry routed an event to, and had exactly one caller -- `dispatchPrValidation`,
+// asking who reviews a pull request.
+//
+// That was the coupling #486 removed. Which agent reviews is now a parameter the
+// caller passes, because opening a pull request no longer starts anyone by itself.
+// Nothing else ever asked this question, so the function went with the trigger.
 
 // No `getDeclaredSecrets()` here on purpose, though every other setting has a
 // reader in this file.

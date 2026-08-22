@@ -29,6 +29,7 @@ import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { capText, fitItems, TOOL_OUTPUT_BUDGET } from "../../../../domain/tool-output.ts";
 import { decidePostMergeHandoff } from "../../../../domain/handoff.ts";
+import { isAttended, unattendedNotice } from "../../../../domain/unattended-pull-request.ts";
 import { branchForCommit, resolveBranch, stackedPrBase } from "../../../../lib/branch-placement.ts";
 import { dispatchCd, dispatchCi, dispatchPostMergeAgent, dispatchPrValidation } from "../../../../lib/dispatch-targets.ts";
 import { issueLinks } from "../../../../lib/issue-links.ts";
@@ -214,6 +215,14 @@ const CREATE_PR_SCHEMA = z.object({
   title: z.string().min(1).describe("Concise pull request title."),
   body: z.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
   base: z.string().optional().describe("Target branch name. Omit and this is resolved in three steps: the parent's branch when this run is a sub-issue whose parent branch exists, so sibling work stacks and integrates once; otherwise the repository's configured base branch; otherwise its default branch. The resolved value is returned as `base`, and it decides whether merging this deploys."),
+  reviewer: z
+    .string()
+    .optional()
+    .describe(
+      "Which agent should review this once CI passes, for example 'reviewer'. Nothing reviews a pull request " +
+        "unless you ask: opening one no longer starts anyone by itself. Omit it only when a review is genuinely " +
+        "not wanted -- a person is then told the pull request is waiting, by name, so it does not sit unnoticed.",
+    ),
 });
 
 const LIST_PRS_SCHEMA = z.object({
@@ -574,7 +583,19 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   if (!Number.isFinite(num)) mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
 
   logOp("create_pr", { number: num, title });
-  const validationDispatched = dispatchPrValidation(REPO, num, branch);
+  // The reviewer is named by the caller now, not by an `auto_triggers` entry.
+  // Opening a pull request used to start one through `pull_request.opened`, which
+  // fired only for a HUMAN's pull request -- GitHub starts no workflow for an
+  // event its own token caused -- so the trigger and this call were two halves of
+  // one behaviour that looked like one half each. #486 removed the trigger and
+  // asking became explicit.
+  //
+  // An empty name is a legitimate answer, and `atoma-validate-pr` already handles
+  // it: CI still runs, and nothing is dispatched afterwards. What it did not
+  // handle is a person finding out, which is what `noticeNobodyIsComing` below is
+  // for.
+  const reviewer = (a.reviewer ?? "").trim();
+  const validationDispatched = dispatchPrValidation(REPO, num, branch, reviewer);
 
   // Traceability: the reviewer dispatch above is fire-and-forget, and (since
   // this call now ends the session immediately, see the returned
@@ -583,10 +604,34 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // dispatchSubAgent always confirms its own dispatch with a comment.
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
+    const next = !validationDispatched
+      ? "CI could NOT be started, so no required check will appear and no agent is scheduled. See the run log."
+      : reviewer
+        ? `Running CI; \`${reviewer}\` follows if it passes.`
+        : "Running CI. No reviewer was named, so nothing is scheduled afterwards.";
     gh(
       "issue", "comment", currentIssue, "--repo", REPO,
-      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). ${validationDispatched ? "Running CI; the reviewer follows if it passes." : "CI could NOT be started, so no required check will appear and no agent is scheduled. See the run log."}`,
+      "--body", `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: PR #${num} created (${stdout.trim()}). ${next}`,
     );
+  }
+
+  // Nobody coming, said out loud on the pull request itself.
+  //
+  // #486 made asking explicit -- an agent names the reviewer, or a person types
+  // `/reviewer` -- which removed a class of unwanted runs and created one silent
+  // failure: a pull request opened with no reviewer and nobody mentioned just sits.
+  // CI passes, the check goes green, and the work waits for someone who was never
+  // told. The old triggers made that impossible; making asking explicit made
+  // forgetting possible.
+  //
+  // Not tagged `llm-context=exclude`, unlike the confirmation above: this one is a
+  // fact about the pull request that a later agent reading the thread should see.
+  // The confirmation is bookkeeping; this is "nobody is coming".
+  if (!isAttended({ reviewer, body: body ?? "" })) {
+    const openedBy = (process.env.AGENT ?? "").trim() || "an agent";
+    const notify = resolveNotify(REPO, num);
+    log(`createPr: PR #${num} has no reviewer and mentions nobody; leaving a notice for ${notify || "(nobody resolved)"}`);
+    gh("pr", "comment", String(num), "--repo", REPO, "--body", unattendedNotice(notify, openedBy));
   }
 
   // From the calling agent's (engineer's) perspective, create_pr should
@@ -665,7 +710,15 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
   if (!open.code) {
     try {
       const [pr] = JSON.parse(open.stdout || "[]") as { number: number }[];
-      if (pr) dispatchPrValidation(REPO, pr.number, branch);
+      // No reviewer. This dispatch exists to refresh the required check on the new
+      // head commit, which is about whether the pull request CAN merge -- a
+      // different question from whether anyone should look at it.
+      //
+      // `pull_request.synchronize` used to start a reviewer here, and only for a
+      // person's push. #486 removed it: nothing starts unless someone asks. An
+      // agent that pushed a fix and wants it reviewed hands off by naming the
+      // reviewer as its directive, which is the path #480 put a limit on.
+      if (pr) dispatchPrValidation(REPO, pr.number, branch, "");
     } catch {
       log("commitAndPush: could not read the open pull request list; skipping validation dispatch");
     }
