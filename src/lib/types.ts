@@ -87,6 +87,22 @@ export interface AtomaConfig {
     commands?: string[];
     /** Repository secrets `atoma-check.yml` may reach. See `tools.secrets`. */
     secrets?: string[];
+    /**
+     * Which machine the checks run on. `"macos-latest"`, or a list of labels a
+     * self-hosted runner must have — `["self-hosted", "linux", "gpu"]`.
+     *
+     * Unset takes `ubuntu-latest`. This was hardcoded and unreachable from here,
+     * which made `atoma-check` unusable for a project that builds on macOS or needs
+     * a licensed toolchain: fixing it meant editing `.github/workflows/**`, the one
+     * place `GITHUB_TOKEN` cannot write, so neither an agent nor a workflow could,
+     * and a hand-edited fork is overwritten by the next upgrade.
+     *
+     * One runner, however many labels — not several runners. Several would change
+     * the check run's NAME (`atoma-check (ubuntu-latest)`), so the context the
+     * ruleset requires would stop existing and every pull request would wait on a
+     * check that never reports. See `domain/runner-label.ts`.
+     */
+    runs_on?: string | string[];
   };
   /**
    * What this project deploys, and which event deploys it.
@@ -98,6 +114,15 @@ export interface AtomaConfig {
     targets?: unknown;
     /** Repository secrets `atoma-deploy.yml` may reach. See `tools.secrets`. */
     secrets?: string[];
+    /**
+     * Which machine the deployment runs on. Same form as `checks.runs_on`.
+     *
+     * One runner for the whole job, because the targets run in declared order and
+     * stop at the first failure — that ordering is the contract, and a runner per
+     * target would end it. A project that genuinely needs different machines for
+     * different targets is asking for something else; see #437.
+     */
+    runs_on?: string | string[];
   };
   /** Settings for the tool servers an agent calls. */
   tools?: {

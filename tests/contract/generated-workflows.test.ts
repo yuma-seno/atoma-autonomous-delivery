@@ -767,6 +767,68 @@ describe("generated workflows", () => {
     for (const context of contexts) {
       expect(jobNames, `ruleset requires "${context}", which no job in atoma-check.yml produces`).toContain(context);
     }
+
+    // No strategy on the job whose name the ruleset requires.
+    //
+    // A matrix renames the check run: `atoma-check` becomes
+    // `atoma-check (ubuntu-latest)`, and the bare name stops existing. Measured on
+    // a throwaway branch for #437 -- `gh api .../check-runs` listed
+    // `probe-check (macos-latest)` and `probe-check (ubuntu-latest)` and no
+    // `probe-check`. So the required context would refer to nothing, and every pull
+    // request would wait forever on a check that never reports.
+    //
+    // `runs_on` is configurable without one: it is a job OUTPUT read through
+    // `fromJSON`, one runner with however many labels. The temptation is to reach
+    // for a matrix the moment somebody wants two runners, and doing that here is
+    // the failure -- it needs a third job to carry this name instead.
+    const jobs = (workflow.jobs ?? {}) as Record<string, { strategy?: unknown }>;
+    for (const context of [...contexts, CHECK_JOB_NAME]) {
+      expect(
+        jobs[context]?.strategy,
+        `"${context}" is the context the ruleset requires, so it must not have a matrix: ` +
+          `a matrix renames its check run to "${context} (label)" and the required context stops existing`,
+      ).toBeUndefined();
+    }
+  });
+
+  /**
+   * The two jobs that run a project's own commands take their runner from
+   * `config.json`, and the job that reads it does not.
+   *
+   * `runs-on` accepts no expression that can read a file, so the value has to be a
+   * job output before the real job starts. That is why there is an extra job, and
+   * why it is pinned to `ubuntu-latest`: it is the job that finds out what the
+   * configured runner is, so it cannot itself be on it.
+   *
+   * Before #437 this was `ubuntu-latest` hardcoded in eleven files, unreachable from
+   * `config.json` -- and unfixable by an agent, because the fix is in
+   * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
+   */
+  test("the jobs that run a project's commands take their runner from configuration", () => {
+    type WorkflowDocument = { jobs?: Record<string, { "runs-on"?: unknown; needs?: unknown }> };
+
+    for (const [file, workJob] of [
+      ["atoma-check", CHECK_JOB_NAME],
+      ["atoma-deploy", "deploy"],
+    ] as const) {
+      const workflow = Bun.YAML.parse(readFileSync(`dist/.github/workflows/${file}.yml`, "utf8")) as WorkflowDocument;
+      const jobs = workflow.jobs ?? {};
+
+      const pick = jobs["pick-runner"];
+      expect(pick, `${file}.yml must have a pick-runner job`).toBeDefined();
+      expect(pick?.["runs-on"], `${file}.yml: pick-runner finds out what the runner is, so it cannot be on it`).toBe(
+        "ubuntu-latest",
+      );
+
+      const work = jobs[workJob];
+      expect(work, `${file}.yml must have a ${workJob} job`).toBeDefined();
+      expect(
+        String(work?.["runs-on"] ?? ""),
+        `${file}.yml: ${workJob} must read its runner from pick-runner, through fromJSON so one label and ` +
+          `a self-hosted runner's several are consumed the same way`,
+      ).toBe("${{ fromJSON(needs.pick-runner.outputs.runs_on) }}");
+      expect(work?.needs, `${file}.yml: ${workJob} must wait for pick-runner`).toEqual(["pick-runner"]);
+    }
   });
 
   test("authenticate the result-comment GitHub CLI call", () => {
