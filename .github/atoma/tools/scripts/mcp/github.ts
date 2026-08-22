@@ -7086,69 +7086,6 @@ function matchMergeGates(gates, facts) {
   return matches;
 }
 
-// src/domain/auto-triggers.ts
-var TRIGGER_CONDITIONS = {
-  changes_requested: {
-    kind: "runtime",
-    matches: (context) => context.reviewState === "changes_requested"
-  },
-  non_draft: {
-    kind: "runtime",
-    matches: (context) => context.isDraft !== true
-  },
-  "atoma:dispatch": {
-    kind: "elsewhere",
-    matches: () => false
-  }
-};
-var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
-function readTrigger(raw, where, problems) {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    problems.push(`${where}: each entry must be an object with \`event\` and \`agent\`.`);
-    return;
-  }
-  const entry = raw;
-  const unknownKeys = Object.keys(entry).filter((key) => !["event", "agent", "condition"].includes(key));
-  if (unknownKeys.length > 0) {
-    problems.push(`${where}: unknown key(s) ${unknownKeys.join(", ")}; expected event, agent, condition.`);
-  }
-  if (typeof entry.event !== "string" || entry.event.trim() === "") {
-    problems.push(`${where}: \`event\` must be a non-empty string, e.g. "pull_request.opened".`);
-  }
-  if (typeof entry.agent !== "string" || entry.agent.trim() === "") {
-    problems.push(`${where}: \`agent\` must be a non-empty string.`);
-  }
-  if (entry.condition !== undefined) {
-    if (typeof entry.condition !== "string") {
-      problems.push(`${where}: \`condition\` must be a string; found ${JSON.stringify(entry.condition)}.`);
-    } else if (!(entry.condition in TRIGGER_CONDITIONS)) {
-      problems.push(`${where}: unknown condition "${entry.condition}". Known conditions are ${KNOWN.join(", ")}. ` + `An unrecognised condition used to be ignored, which made the trigger fire every time instead of never.`);
-    }
-  }
-  if (typeof entry.event !== "string" || typeof entry.agent !== "string")
-    return;
-  return {
-    event: entry.event,
-    agent: entry.agent,
-    ...typeof entry.condition === "string" ? { condition: entry.condition } : {}
-  };
-}
-function resolveAutoTriggers(raw) {
-  if (raw === undefined)
-    return { triggers: [], problems: [] };
-  if (!Array.isArray(raw)) {
-    return { triggers: [], problems: ["`auto_triggers` must be an array of {event, agent, condition?} objects."] };
-  }
-  const problems = [];
-  const triggers = [];
-  raw.forEach((entry, index) => {
-    const trigger = readTrigger(entry, `auto_triggers[${index}]`, problems);
-    if (trigger)
-      triggers.push(trigger);
-  });
-  return problems.length > 0 ? { triggers: [], problems } : { triggers, problems };
-}
-
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -7187,71 +7124,11 @@ function getGovernedPaths() {
 function getMergeGates() {
   return resolveMergeGates(loadConfig().merge_gates);
 }
-function getTriggerAgent(event, fallback = "") {
-  const { triggers } = resolveAutoTriggers(loadConfig().auto_triggers);
-  for (const trigger of triggers) {
-    if (trigger.event === event && !trigger.condition && !trigger.agent.startsWith("$")) {
-      return trigger.agent || fallback;
-    }
-  }
-  return fallback;
-}
 function getDeployTargets() {
   return resolveDeployTargets(loadConfig().deploy?.targets);
 }
 function getWorkflowName(kind, fallback = "") {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;
-}
-
-// src/lib/sibling-check.ts
-function countOpenSiblings(opts) {
-  const label = opts.label || getLabel("sub_issue");
-  const launchedLabel = opts.launchedLabel || getLabel("launched");
-  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
-  if (code !== 0) {
-    throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
-  }
-  const siblings = stdout ? JSON.parse(stdout) : [];
-  const remaining = opts.exclude !== undefined ? siblings.filter((s) => s.number !== opts.exclude) : siblings;
-  return remaining.length;
-}
-
-// src/lib/ops-log.ts
-import { appendFileSync } from "fs";
-var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
-function logOp(op, payload = {}) {
-  const entry = { ts: new Date().toISOString(), op, ...payload };
-  try {
-    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
-`);
-  } catch (e) {
-    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
-  }
-}
-function logDispatch(target, agent, extra = {}) {
-  logOp("dispatch", { target, agent, ...extra });
-}
-
-// src/lib/dispatch.ts
-function runnerWorkflow() {
-  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
-}
-function dispatchRunner(d) {
-  const args = [
-    ...d.repo ? ["--repo", d.repo] : [],
-    "--field",
-    `agent=${d.agent}`,
-    "--field",
-    `number=${d.number}`,
-    "--field",
-    `type=${d.type}`,
-    "--field",
-    `notify=${d.notify ?? ""}`
-  ];
-  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
-    return false;
-  logDispatch(d.type, d.agent, { number: Number(d.number) });
-  return true;
 }
 
 // src/lib/agent-name.ts
@@ -7329,6 +7206,59 @@ function resolveNotify(repo, number) {
     current = parent;
   }
   return "";
+}
+
+// src/lib/sibling-check.ts
+function countOpenSiblings(opts) {
+  const label = opts.label || getLabel("sub_issue");
+  const launchedLabel = opts.launchedLabel || getLabel("launched");
+  const { code, stdout, stderr } = gh("issue", "list", "--repo", opts.repo, "--state", "open", "--label", label, "--label", launchedLabel, "--search", `atoma:parent=${opts.parent} in:body`, "--json", "number");
+  if (code !== 0) {
+    throw new Error(`countOpenSiblings: gh issue list failed: ${stderr}`);
+  }
+  const siblings = stdout ? JSON.parse(stdout) : [];
+  const remaining = opts.exclude !== undefined ? siblings.filter((s) => s.number !== opts.exclude) : siblings;
+  return remaining.length;
+}
+
+// src/lib/ops-log.ts
+import { appendFileSync } from "fs";
+var OPS_LOG_PATH = process.env.ATOMA_OPS_LOG ?? "/tmp/atoma_ops.log";
+function logOp(op, payload = {}) {
+  const entry = { ts: new Date().toISOString(), op, ...payload };
+  try {
+    appendFileSync(OPS_LOG_PATH, JSON.stringify(entry) + `
+`);
+  } catch (e) {
+    console.error(`[ops-log] WARN: failed to write op log: ${e}`);
+  }
+}
+function logDispatch(target, agent, extra = {}) {
+  logOp("dispatch", { target, agent, ...extra });
+}
+
+// src/lib/dispatch.ts
+function runnerWorkflow() {
+  return process.env.ATOMA_DISPATCH_WORKFLOW || "atoma-runner.yml";
+}
+function dispatchRunner(d) {
+  const args = [
+    ...d.repo ? ["--repo", d.repo] : [],
+    "--field",
+    `agent=${d.agent}`,
+    "--field",
+    `number=${d.number}`,
+    "--field",
+    `type=${d.type}`,
+    "--field",
+    `notify=${d.notify ?? ""}`,
+    "--field",
+    `reload_count=${d.reloadCount ?? 0}`
+  ];
+  if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
+    return false;
+  logDispatch(d.type, d.agent, { number: Number(d.number) });
+  return true;
 }
 
 // src/lib/aggregation.ts
@@ -18795,6 +18725,20 @@ function decidePostMergeHandoff(signals) {
   return { kind: "close-directly", parentIssue: signals.parentIssue };
 }
 
+// src/domain/unattended-pull-request.ts
+function isAttended(attendance) {
+  if (attendance.reviewer.trim() !== "")
+    return true;
+  return mentionsSomeone(attendance.body);
+}
+function mentionsSomeone(text) {
+  return /(^|[^\w@/-])@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}\b(?!\/)/.test(text);
+}
+function unattendedNotice(notify, agent) {
+  const mention = notify.trim() ? `@${notify.trim()} ` : "";
+  return `${mention}This pull request was opened by \`${agent}\` with no reviewer named and nobody mentioned, ` + `so nothing is scheduled to look at it. CI still runs and its result stands. ` + `Comment \`/reviewer\` to have it reviewed, or take it from here.`;
+}
+
 // src/lib/parent-issue.ts
 function log2(message) {
   console.error(`[atoma-parent] ${message}`);
@@ -18980,8 +18924,7 @@ var DEFAULT_CD_WORKFLOW = "atoma-deploy.yml";
 function log5(message) {
   console.error(`[atoma-github] ${message}`);
 }
-function dispatchPrValidation(repo, prNumber, branch) {
-  const reviewer = getTriggerAgent("pull_request.opened", "reviewer");
+function dispatchPrValidation(repo, prNumber, branch, reviewer) {
   return dispatchWorkflow(`dispatchPrValidation: validating PR #${prNumber}`, "atoma-validate-pr.yml", [
     "--repo",
     repo,
@@ -19394,7 +19337,8 @@ var LIST_ISSUES_SCHEMA = exports_external.object({
 var CREATE_PR_SCHEMA = exports_external.object({
   title: exports_external.string().min(1).describe("Concise pull request title."),
   body: exports_external.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
-  base: exports_external.string().optional().describe("Target branch name. Omit and this is resolved in three steps: the parent's branch when this run is a sub-issue whose parent branch exists, so sibling work stacks and integrates once; otherwise the repository's configured base branch; otherwise its default branch. The resolved value is returned as `base`, and it decides whether merging this deploys.")
+  base: exports_external.string().optional().describe("Target branch name. Omit and this is resolved in three steps: the parent's branch when this run is a sub-issue whose parent branch exists, so sibling work stacks and integrates once; otherwise the repository's configured base branch; otherwise its default branch. The resolved value is returned as `base`, and it decides whether merging this deploys."),
+  reviewer: exports_external.string().optional().describe("Which agent should review this once CI passes, for example 'reviewer'. Nothing reviews a pull request " + "unless you ask: opening one no longer starts anyone by itself. Omit it only when a review is genuinely " + "not wanted -- a person is then told the pull request is waiting, by name, so it does not sit unnoticed.")
 });
 var LIST_PRS_SCHEMA = exports_external.object({
   state: exports_external.enum(["open", "closed", "merged", "all"]).optional().describe("Pull request state filter. Defaults to 'open'."),
@@ -19617,11 +19561,19 @@ function createPr(a) {
   if (!Number.isFinite(num))
     mcpFail(`gh pr create: unexpected output: ${stdout.slice(0, 300)}`);
   logOp("create_pr", { number: num, title });
-  const validationDispatched = dispatchPrValidation(REPO, num, branch);
+  const reviewer = (a.reviewer ?? "").trim();
+  const validationDispatched = dispatchPrValidation(REPO, num, branch, reviewer);
   const currentIssue = (process.env.ISSUE_NUMBER ?? "").trim();
   if (currentIssue) {
+    const next = !validationDispatched ? "CI could NOT be started, so no required check will appear and no agent is scheduled. See the run log." : reviewer ? `Running CI; \`${reviewer}\` follows if it passes.` : "Running CI. No reviewer was named, so nothing is scheduled afterwards.";
     gh("issue", "comment", currentIssue, "--repo", REPO, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
-Atoma: PR #${num} created (${stdout.trim()}). ${validationDispatched ? "Running CI; the reviewer follows if it passes." : "CI could NOT be started, so no required check will appear and no agent is scheduled. See the run log."}`);
+Atoma: PR #${num} created (${stdout.trim()}). ${next}`);
+  }
+  if (!isAttended({ reviewer, body: body ?? "" })) {
+    const openedBy = (process.env.AGENT ?? "").trim() || "an agent";
+    const notify = resolveNotify(REPO, num);
+    log7(`createPr: PR #${num} has no reviewer and mentions nobody; leaving a notice for ${notify || "(nobody resolved)"}`);
+    gh("pr", "comment", String(num), "--repo", REPO, "--body", unattendedNotice(notify, openedBy));
   }
   return {
     text: JSON.stringify({
@@ -19660,7 +19612,7 @@ function commitAndPush(a) {
     try {
       const [pr] = JSON.parse(open.stdout || "[]");
       if (pr)
-        dispatchPrValidation(REPO, pr.number, branch);
+        dispatchPrValidation(REPO, pr.number, branch, "");
     } catch {
       log7("commitAndPush: could not read the open pull request list; skipping validation dispatch");
     }
