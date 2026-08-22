@@ -8,10 +8,14 @@ Entry workflows:
 
 - `atoma-entry.yml` for `issues.opened`
 - `atoma-manual-comment.yml` for `issue_comment.created`
-- `atoma-auto-trigger.yml` for `pull_request_target` opened/synchronize/ready_for_review
-- `atoma-pr-review.yml` for `pull_request_review.submitted`
 - `atoma-pr-merged.yml` for merged PR aggregation
 - `atoma-sub-issue-closed.yml` for manual sub-issue close fallback
+
+`atoma-auto-trigger.yml` and `atoma-pr-review.yml` are gone (#486). They listened
+for `pull_request_target` and `pull_request_review.submitted` to start a reviewer or
+an engineer, and nothing now starts from a pull request event: work starts when a
+person comments `/agent` or when an agent asks for the next one. See
+[How work starts](customization.md#how-work-starts).
 
 Dispatched, not event-driven:
 
@@ -85,8 +89,8 @@ Recovery archives the previous agent session, does not restore its assistant/too
 
 - Textual handoff is a standalone `/agent-name` line with the request on following lines; the name must have a definition in `agent-definitions/`, otherwise it is ignored and no dispatch happens.
 - `extract_directive.ts` scans the whole output and adopts the first matching directive.
-- Auto-dispatch loop counter is tracked in session metadata and capped at 5.
-- `create_pr` dispatches `atoma-validate-pr.yml`, which runs the configured CI on the branch, writes the result as a check run, then dispatches reviewer on green or engineer on failure.
+- Agent handoffs are counted from the target's own comments, not stored, and capped at `limits.agent_handoffs` (default 5). See `domain/dispatch-chain.ts`.
+- `create_pr` dispatches `atoma-validate-pr.yml`, which runs the configured CI on the branch, writes the result as a check run, then dispatches the agent the result calls for — the reviewer NAMED IN THE CALL on green, the engineer on failure. No reviewer named means CI runs and nothing follows; `create_pr` then leaves a notice on the pull request saying nobody is scheduled.
 - PR merge path is the primary sub-issue aggregation trigger.
 - Manual issue-close path is fallback and skips when closure already came from merged PR.
 - Aggregation is idempotent via marker tags so racing paths do not dispatch orchestrator twice.

@@ -56,7 +56,7 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 4. Run focused validation, then the repository's broader required checks.
 5. Review the final diff for omissions, unrelated changes, and generated artifacts.
 6. Call `github__commit_and_push(message=...)`.
-7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.
+7. Call `github__create_pr(title=..., body=..., reviewer="reviewer")` with the behavior and verification. Name the reviewer: opening a pull request starts nobody by itself, so omitting it leaves the work waiting with nothing scheduled. This ends the session; do nothing afterward.
 
 ## Outcome
 
