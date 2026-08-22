@@ -1,6 +1,7 @@
 import { Workflow, type GeneratedWorkflowTypes as GWT } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { startJob, TypedOutputsStep } from "./actions/base.ts";
+import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { pickRunnerJob, PICK_RUNNER_JOB } from "./actions/pick-runner.ts";
 import { scriptCommand } from "./actions/script-call.ts";
 import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -75,10 +76,20 @@ export const atomaCheck = new Workflow("atoma-check", {
   // holds `checks: write` for that one purpose.
   permissions: { contents: "read" },
 }).addJobs(
-  startJob(
+  pickRunnerJob("checks").then((pick) =>
+    new DefinedJob(
     CHECK_JOB_NAME,
     {
-      "runs-on": "ubuntu-latest",
+      needs: [pick.name],
+      // From `checks.runs_on`, via the job above -- `runs-on` cannot read a file.
+      // `fromJSON` always, so one label and a self-hosted runner's several are
+      // consumed the same way. See `domain/runner-label.ts`.
+      //
+      // The job keeps its NAME. That is load-bearing: the ruleset requires the
+      // context `atoma-check`, and a matrix here would rename it to
+      // `atoma-check (ubuntu-latest)` -- so the required context would stop
+      // existing and every pull request would wait on a check that never reports.
+      "runs-on": `\${{ fromJSON(needs.${PICK_RUNNER_JOB}.outputs.runs_on) }}` as unknown as string,
       // Long enough for a real test suite, short enough that a hung command does
       // not hold a runner all day.
       "timeout-minutes": 30,
@@ -97,5 +108,6 @@ export const atomaCheck = new Workflow("atoma-check", {
       secretNamesStep("checks"),
       runStep,
     ],
+    ),
   ).jobs(),
 );

@@ -1,6 +1,7 @@
 import { Workflow, type GeneratedWorkflowTypes as GWT } from "@github-actions-workflow-ts/lib";
 import { ActionsCheckoutV4 } from "@github-actions-workflow-ts/actions";
-import { startJob, TypedOutputsStep } from "./actions/base.ts";
+import { DefinedJob, TypedOutputsStep } from "./actions/base.ts";
+import { pickRunnerJob, PICK_RUNNER_JOB } from "./actions/pick-runner.ts";
 import { scriptCommandWithArgs } from "./actions/script-call.ts";
 import { renameSecretSlots, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
@@ -115,10 +116,15 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
     "id-token": "write",
   },
 }).addJobs(
-  startJob(
+  pickRunnerJob("deploy").then((pick) =>
+    new DefinedJob(
     "deploy",
     {
-      "runs-on": "ubuntu-latest",
+      needs: [pick.name],
+      // From `deploy.runs_on`, via the job above. One runner for the whole job:
+      // the targets run in declared order and stop at the first failure, and that
+      // ordering is the contract -- a runner per target would end it.
+      "runs-on": `\${{ fromJSON(needs.${PICK_RUNNER_JOB}.outputs.runs_on) }}` as unknown as string,
       // `on:` could not say "the default branch", so this does. A dispatch and a
       // tag push pass through; a branch push has to be the branch the repository
       // actually defaults to, which is what stops a `main` that is not the
@@ -140,5 +146,6 @@ export const atomaDeploy = new Workflow("atoma-deploy", {
       secretNamesStep("deploy"),
       runStep,
     ],
+    ),
   ).jobs(),
 );

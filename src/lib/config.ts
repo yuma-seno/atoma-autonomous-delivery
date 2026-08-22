@@ -235,3 +235,16 @@ export function getHandoffLimit(): unknown {
 export function getReloadLimit(): unknown {
   return loadConfig().limits?.environment_reloads;
 }
+
+/**
+ * The raw `runs_on` a project declared for one of the two jobs that run its own
+ * commands, or undefined.
+ *
+ * Raw for `resolveRunsOn` to interpret, like every other limit and setting here:
+ * the domain module owns what a bad value means and owns the default, so one
+ * fallback exists rather than two that can disagree.
+ */
+export function getRunsOn(field: "checks" | "deploy"): unknown {
+  const config = loadConfig();
+  return field === "checks" ? config.checks?.runs_on : config.deploy?.runs_on;
+}

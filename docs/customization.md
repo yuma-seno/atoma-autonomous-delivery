@@ -23,6 +23,7 @@ Task-oriented recipes:
 | [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
 | [Limit how far agents hand work to each other](#limit-how-far-agents-hand-work-to-each-other) | stop an engineer/reviewer loop that is going nowhere |
 | [How work starts](#how-work-starts) | know what makes an agent run — and what does not |
+| [Run checks or deployment on a different machine](#run-checks-or-deployment-on-a-different-machine) | build on macOS, or use a self-hosted runner |
 | [Add environment setup commands](#add-environment-setup-commands) | install your project's toolchain before an agent runs |
 | [Choose the branch agents work from](#choose-the-branch-agents-work-from) | target something other than the default branch |
 | [Work with decomposed issues](#work-with-decomposed-issues) | understand how sub-issue branches stack |
@@ -86,8 +87,10 @@ against](#what-a-pull-request-is-checked-against).
 - `search.reranker_model`
 - `checks.commands`
 - `checks.secrets`
+- `checks.runs_on`
 - `deploy.targets`
 - `deploy.secrets`
+- `deploy.runs_on`
 - `tools.secrets`
 - `auto_triggers` — a list, each entry with `event`, `agent`, optional `condition`
 
@@ -426,6 +429,39 @@ The one entry left is the slash-command path:
 Add an entry if you want an event to start an agent anyway. It is your repository —
 but weigh it against the rule above, because a second way for work to start is a
 second thing every reader has to know.
+
+### Run checks or deployment on a different machine
+
+```json
+{
+  "checks": { "runs_on": "macos-latest" },
+  "deploy":  { "runs_on": ["self-hosted", "linux", "gpu"] }
+}
+```
+
+A string is one runner label. A list is the set of labels one runner must have —
+which is how a self-hosted runner is addressed. Unset takes `ubuntu-latest`.
+
+**One runner, however many labels. Not several runners.** Several would change the
+check run's *name*: `atoma-check` becomes `atoma-check (ubuntu-latest)`, so the
+context your ruleset requires stops existing and every pull request waits forever on
+a check that will never report.
+
+This applies to the two jobs that run **your** commands. It does not apply to the
+agent's own run, which stays on Linux — what isolates a tool server from the others
+is Linux-only top to bottom (`useradd` for the user with no sudo, `setfacl` for the
+ACLs, `prctl(PR_SET_DUMPABLE)`, `/proc/<pid>/environ` being the thing closed). Making
+that configurable would mean an agent's shell running with every one of those
+protections silently absent.
+
+**An extra job appears.** `runs-on` cannot read a file, so a small `pick-runner` job
+reads `config.json` first and the real job takes its output. It costs a few seconds
+and always runs on `ubuntu-latest` — it is the job that finds out what your runner
+is, so it cannot be on it.
+
+`atoma-check` reads the **pull request's own** `config.json` here, as it does for
+`environment.setup_commands`: an agent can change the runner and prove the change in
+the same pull request rather than waiting for a merge to find out.
 
 ### Add environment setup commands
 
