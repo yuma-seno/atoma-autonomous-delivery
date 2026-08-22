@@ -61,6 +61,20 @@ const AGENT_INPUT_DESC = "Agent name to invoke";
 const NUMBER_INPUT_DESC = "Issue or PR number";
 const NOTIFY_INPUT_DESC = "GitHub login to mention on completion";
 const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recover archives history and rebuilds from GitHub context";
+
+/**
+ * How many environment rebuilds this work has already had.
+ *
+ * An input rather than something the run works out, because there is nothing to
+ * work it out from: `atoma_env__reload_environment` leaves no comment, so unlike the
+ * handoff tally in `domain/dispatch-chain.ts` there is no record on the issue to
+ * count. The number has to be carried by whoever dispatches.
+ *
+ * It bounds a real hole: a reload starts a new run, and `max_iterations` resets
+ * with it, so an unbounded chain of reloads is an unbounded iteration budget. That
+ * is what #456 blocked this tool on.
+ */
+const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)";
 // The version this installs, the description of the input that overrides it, and the
 // two steps that install it live in `actions/atoma-cli.ts` -- along with the record of
 // what each raise of the pin was coupled to, which is the part worth not losing.
@@ -479,6 +493,11 @@ const runAgentStep = new TypedOutputsStep(
       // creates a branch on an issue run and never on a pull request run, where
       // the checkout is already the branch under review.
       ATOMA_RUN_TYPE: "${{ inputs.type }}",
+      // The tally this run arrived with. `atoma_env__reload_environment` reads it to
+      // decide whether it may rebuild again -- and a contract test requires every
+      // `process.env` a tool server reads to appear in AGENT_ENV, because a missing
+      // one reads as zero and silently buys extra reloads.
+      ATOMA_RELOAD_COUNT: "${{ inputs.reload_count }}",
       ISSUE_NOTIFY: notifyStep.outputs.notify,
       // Structured JSON-lines log every MCP tool mutation/dispatch decision
       // is written to (see lib/ops-log.ts) -- read back below to determine
@@ -547,6 +566,7 @@ AGENT_ENV=(
   ISSUE_NUMBER="$ISSUE_NUMBER"
   ISSUE_NOTIFY="$ISSUE_NOTIFY"
   ATOMA_RUN_TYPE="$ATOMA_RUN_TYPE"
+  ATOMA_RELOAD_COUNT="$ATOMA_RELOAD_COUNT"
   ATOMA_OPS_LOG="$ATOMA_OPS_LOG"
   # Caches, because $HOME is read-only to this user. CARGO_HOME is not a cache
   # directory -- redirecting it also hides ~/.cargo/config.toml -- but cargo has no
@@ -1416,6 +1436,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "string", default: "continue" },
         atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: ATOMA_DEFAULT_VERSION },
+        reload_count: { description: RELOAD_COUNT_INPUT_DESC, required: false, type: "string", default: "0" },
       },
     },
     workflow_dispatch: {
@@ -1426,6 +1447,7 @@ export const atomaRunner = new Workflow("atoma-runner", {
         notify: { description: NOTIFY_INPUT_DESC, required: false, type: "string", default: "" },
         session_mode: { description: SESSION_MODE_INPUT_DESC, required: false, type: "choice", options: ["continue", "recover"], default: "continue" },
         atoma_version: { description: ATOMA_VERSION_DESC, required: false, type: "string", default: ATOMA_DEFAULT_VERSION },
+        reload_count: { description: RELOAD_COUNT_INPUT_DESC, required: false, type: "string", default: "0" },
       },
     },
   } as unknown as GWT.Workflow["on"],

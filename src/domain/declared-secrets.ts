@@ -139,6 +139,11 @@ export const TOOL_SECRETS: SecretDestination = {
     "AGENT",
     "ATOMA_OPS_LOG",
     "ATOMA_PROVIDER",
+    // How many times this work has already rebuilt its environment. A declared
+    // secret shadowing it would set the tally the reload tool reads -- and a
+    // smaller number buys extra reloads, each of which resets `max_iterations`.
+    // Shadowing this is a way to remove the iteration limit.
+    "ATOMA_RELOAD_COUNT",
     "ATOMA_RUN_TYPE",
     "GITHUB_RUN_ID",
     "ISSUE_NOTIFY",

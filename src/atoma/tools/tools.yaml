@@ -211,3 +211,28 @@ atoma:
   env:
     GH_TOKEN: "${GH_TOKEN}"
   hooks: {}
+
+# The same server, with everything but `reload_environment` withheld.
+#
+# `reload_environment` is for whoever is doing the work -- the engineer, which is
+# the agent that finds a dependency missing. The other two tools on this server are
+# the orchestrator's: `request_close_issue` calls itself "the ONLY correct way for
+# the orchestrator to finish an issue", and an engineer that could call it could end
+# an issue without a review. So the server cannot simply be handed over.
+#
+# A second entry with an allowlist is how this project already solves that:
+# `filesystem_readonly` above is the same server as `filesystem` with writes
+# withheld, so the reviewer can read the tree without being able to change it. Same
+# mechanism, same reason.
+#
+# The cost is a second process of the same script and a longer tool name the agent
+# reads. Both are visible, which is the point -- the alternative is one server whose
+# tools mean different things depending on who called them.
+atoma_env:
+  command: bun
+  args: ["run", "${ATOMA_MACHINERY_ROOT:-.}/.github/atoma/tools/scripts/mcp/atoma.ts"]
+  env:
+    GH_TOKEN: "${GH_TOKEN}"
+  hooks:
+    tool_allowlist:
+      - "atoma_env__reload_environment"
