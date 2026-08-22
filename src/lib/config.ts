@@ -238,3 +238,15 @@ export function getWorkflowName(kind: "ci" | "cd", fallback = ""): string {
 export function getHandoffLimit(): unknown {
   return loadConfig().limits?.agent_handoffs;
 }
+
+/**
+ * How many times one piece of work may rebuild its environment.
+ *
+ * Raw, for `resolveReloadLimit` to interpret. The domain module owns what absent,
+ * zero and nonsense mean, and it owns the default the refusal message quotes back
+ * to the agent -- two places deciding that is how the old handoff limit came to
+ * name a number that was not the limit.
+ */
+export function getReloadLimit(): unknown {
+  return loadConfig().limits?.environment_reloads;
+}

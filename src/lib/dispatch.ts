@@ -48,6 +48,20 @@ export interface RunnerDispatch {
    * called from an arbitrary job should not assume that.
    */
   repo?: string;
+  /**
+   * How many environment rebuilds this work has already had, for the run being
+   * started to carry forward.
+   *
+   * Passed as a workflow input rather than counted from anywhere, because a reload
+   * leaves nothing behind to count -- unlike a handoff, which leaves a comment
+   * (see `domain/dispatch-chain.ts`). The tally has to travel with the dispatch or
+   * it does not exist.
+   *
+   * Omitted by every other caller, which is correct: dispatching for any other
+   * reason starts the count again, because the new run is not the result of a
+   * rebuild.
+   */
+  reloadCount?: number;
   log?: (message: string) => void;
 }
 
@@ -63,6 +77,9 @@ export function dispatchRunner(d: RunnerDispatch): boolean {
     "--field", `number=${d.number}`,
     "--field", `type=${d.type}`,
     "--field", `notify=${d.notify ?? ""}`,
+    // Always sent, so the input has a value on every path rather than defaulting in
+    // one place and being absent in another.
+    "--field", `reload_count=${d.reloadCount ?? 0}`,
   ];
   if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log)) return false;
   logDispatch(d.type, d.agent, { number: Number(d.number) });

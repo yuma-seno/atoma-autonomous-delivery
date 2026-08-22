@@ -43,6 +43,7 @@ Task-oriented recipes:
 | [Adding a tool without flooding the context](#adding-a-tool-without-flooding-the-context) | keep a new tool from filling the model's context window |
 | [How long your tool has to answer](#how-long-your-tool-has-to-answer) | let a tool run longer than a minute, or find out why it did not |
 | [If your tool does time out](#if-your-tool-does-time-out) | know what a server must do when a call is abandoned |
+| [Let an agent rebuild its own environment](#let-an-agent-rebuild-its-own-environment) | give an agent a way out when a dependency is missing |
 | [Where an agent puts its working files](#where-an-agent-puts-its-working-files) | know where notes and scratch scripts go, and why not the repository |
 | [Recurring work](#recurring-work) | have something happen every week without a schedule setting |
 
@@ -76,6 +77,7 @@ against](#what-a-pull-request-is-checked-against).
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `limits.agent_handoffs`
+- `limits.environment_reloads`
 - `labels.in_progress`
 - `labels.sub_issue`
 - `labels.launched`
@@ -1213,7 +1215,47 @@ things follow for a server you write:
   work whose result is thrown away, so anything with a side effect should be
   idempotent — the agent will call you again.
 
+### Let an agent rebuild its own environment
+
+An agent has no `sudo` and cannot write outside the repository. So when something it
+needs is not installed, it has two ways out and they are different:
+
+| what is missing | what the agent does |
+| --- | --- |
+| a library your project declares | edits the manifest and installs it — ordinary work, committed with the change |
+| a system package, or a global CLI | adds it to `environment.setup_commands`, reports, and **stops**. That file needs your merge |
+| the environment is broken, or needs what it just declared | calls `atoma_env__reload_environment` |
+
+The reload re-runs `environment.setup_commands` as a privileged step against the
+current work tree, then starts a new run. **The commands come from the default
+branch and the data from the work tree** — so a dependency the agent added to a
+manifest gets installed by your own trusted command, and the agent cannot edit that
+command. Letting it edit the setup would be arbitrary code execution as a user with
+`sudo`.
+
+It cannot conjure a system package your setup does not already ask for. Those
+commands come from the default branch, so a line the agent just added to its branch
+is not in them yet.
+
+```json
+{
+  "limits": {
+    "environment_reloads": 3
+  }
+}
+```
+
+There is a limit because **each reload starts a new run, and `max_iterations` resets
+with it** — an unbounded chain of reloads is an unbounded iteration budget. Three by
+default, the same as `CI_RETRY_LIMIT`. When the limit is reached the tool refuses and
+tells the agent to report instead; the refusal is a tool error rather than the end of
+the run, so the agent still has a turn in which to say what it found.
+
+To turn reloading off entirely, remove `atoma_env` from an agent's `mcp_servers` in
+its definition. `0` here means the default, not "never".
+
 ### Where an agent puts its working files
+
 
 Notes, a script to check something, an intermediate dump — an agent writes these on
 the way to an implementation, and they do not belong in your repository.

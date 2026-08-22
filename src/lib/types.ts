@@ -156,6 +156,24 @@ export interface AtomaConfig {
      * turn `auto_triggers` off to say that.
      */
     agent_handoffs?: number;
+    /**
+     * How many times one piece of work may rebuild its environment with
+     * `atoma_env__reload_environment`, before the tool refuses.
+     *
+     * A reload re-runs `environment.setup_commands` as a privileged workflow step
+     * and starts a NEW RUN — so `max_iterations` resets with it. Without a limit,
+     * reloading is an unbounded extension of the iteration budget, which is why
+     * #456 blocked the tool until there was one.
+     *
+     * Carried as a workflow input rather than counted from comments, unlike
+     * `agent_handoffs`: a reload leaves no comment for a later run to count.
+     *
+     * Unset takes 3, borrowed from `CI_RETRY_LIMIT` for the same reason — enough
+     * for a fix that needed another look, few enough that a stuck run reaches a
+     * person quickly. `0` means the default; a project that wants no reloads at all
+     * removes the `atoma_env` server from an agent's `mcp_servers`, which says so.
+     */
+    environment_reloads?: number;
   };
   environment?: {
     setup_commands?: string[];

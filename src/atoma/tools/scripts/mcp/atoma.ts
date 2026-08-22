@@ -8,6 +8,8 @@
  *   - launch_sub_agent: Launch Atoma agents on sub-issues and end the
  *     orchestrator session.
  *   - request_close_issue: Conclude work on the current issue.
+ *   - reload_environment: Re-run the project's setup as a workflow step and start
+ *     a new run, for the things an agent cannot do to its own environment.
  *
  * Both tool responses include `_meta.session_ends: true` so the Atoma core
  * can detect that the session should terminate.
@@ -24,6 +26,14 @@ import { concludeIssue, type ConcludeIssueResult } from "../lib/conclude_issue.t
 import { describeGateResult, needsAttention } from "../../../../lib/aggregation.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
 import { hardenCredentialHolder } from "../lib/harden.ts";
+import { dispatchRunner } from "../../../../lib/dispatch.ts";
+import { getReloadLimit } from "../../../../lib/config.ts";
+import {
+  reloadAccepted,
+  reloadRefusal,
+  reloadsSoFar,
+  resolveReloadLimit,
+} from "../../../../domain/environment-reload.ts";
 
 function log(msg: string): void {
   console.error(`[atoma-mcp] ${msg}`);
@@ -179,6 +189,77 @@ async function handleRequestCloseIssue(args: z.infer<typeof REQUEST_CLOSE_ISSUE_
   };
 }
 
+const RELOAD_ENVIRONMENT_SCHEMA = z.object({
+  reason: z
+    .string()
+    .min(1)
+    .describe(
+      "What you need the environment to have that it does not, in one sentence. Recorded on the issue so a " +
+        "person reading it later can see why the run restarted.",
+    ),
+});
+
+/**
+ * Re-run the project's setup and start a new run.
+ *
+ * The decision half is `domain/environment-reload.ts`. Here is the I/O: read the
+ * tally this run arrived with, refuse or dispatch, and say which on the issue.
+ *
+ * Refusing is a tool ERROR rather than a session end, and that is the point. The
+ * agent keeps its turn and can switch to reporting what it found, which is the
+ * useful thing left to do. A run that died here would take the reason with it.
+ */
+function handleReloadEnvironment(args: z.infer<typeof RELOAD_ENVIRONMENT_SCHEMA>): McpToolResult {
+  const number = (process.env.ISSUE_NUMBER ?? "").trim();
+  const agent = (process.env.AGENT ?? "").trim();
+  if (!number || !agent) {
+    mcpFail("Cannot reload: this run does not know its own issue number or agent name.");
+  }
+
+  const limit = resolveReloadLimit(getReloadLimit());
+  const soFar = reloadsSoFar(process.env.ATOMA_RELOAD_COUNT);
+  const refusal = reloadRefusal(soFar, limit);
+  if (refusal) {
+    log(`reload refused: ${soFar}/${limit}`);
+    // `mcpFail` throws, and the wrapper turns that into `isError: true` -- which is
+    // what keeps the agent's turn. Returning text would read as a successful
+    // reload, and returning `session_ends` would end the run with the reason inside
+    // it. Neither leaves the agent able to report.
+    mcpFail(refusal);
+  }
+
+  const next = soFar + 1;
+  // Posted before the dispatch, and excluded from the model's context: it is a
+  // record for a person reading the issue later, and the agent about to be started
+  // is told the same thing by the tool result.
+  gh(
+    "issue", "comment", number,
+    "--body",
+    `${LLM_CONTEXT_TAG.write("exclude")}\nAtoma: rebuilding the environment and restarting \`${agent}\` ` +
+      `(reload ${next} of ${limit}). Reason: ${args.reason}`,
+  );
+
+  const dispatched = dispatchRunner({
+    context: `reload_environment: restarting ${agent} on #${number} after a rebuild`,
+    agent,
+    type: (process.env.ATOMA_RUN_TYPE ?? "").trim() === "pr" ? "pr" : "issue",
+    number,
+    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
+    reloadCount: next,
+    log,
+  });
+  if (!dispatched) {
+    // The comment above is already posted, so saying nothing here would leave an
+    // issue claiming a restart that never happened. An error keeps the turn.
+    mcpFail(
+      "Could not dispatch the new run; the environment was not rebuilt. See the workflow log. " +
+        "Report what you found rather than retrying.",
+    );
+  }
+
+  return { text: reloadAccepted(next, limit), meta: { session_ends: true } };
+}
+
 const { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "launch_sub_agent",
@@ -205,6 +286,26 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
       "and summary, asking them to review and close it themselves.",
     schema: REQUEST_CLOSE_ISSUE_SCHEMA,
     handler: handleRequestCloseIssue,
+  }),
+  defineMcpTool({
+    name: "reload_environment",
+    description:
+      "Rebuild this project's environment and restart your run. Use it when something you need is missing " +
+      "and you cannot install it yourself: a system package (you have no sudo), a globally installed CLI, or " +
+      "a work tree you broke. YOUR SESSION ENDS IMMEDIATELY and a new run starts, so finish anything you were " +
+      "part-way through first -- commit what is worth keeping and leave notes in /tmp/atoma-workspace, which " +
+      "survives into the next run. " +
+      "What it does: re-runs `environment.setup_commands` as a privileged workflow step, against the CURRENT " +
+      "work tree. So a dependency you added to package.json, Cargo.toml or requirements.txt gets installed by " +
+      "the project's own trusted command -- you do not edit that command, and cannot. " +
+      "What it does NOT do: install a system package the setup does not already ask for. Those commands come " +
+      "from the default branch, so a package you decided you need is not in them yet; add it to " +
+      "`environment.setup_commands` in .github/atoma/config.json, say so in your report, and a person merges " +
+      "it. Reloading first will hand you the same environment back and cost a run. " +
+      "There is a limit on how many times one piece of work may do this, because each reload starts a new run " +
+      "and resets the iteration budget. The tool tells you where you stand.",
+    schema: RELOAD_ENVIRONMENT_SCHEMA,
+    handler: handleReloadEnvironment,
   }),
 ]);
 
