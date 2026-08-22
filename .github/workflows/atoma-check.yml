@@ -21,8 +21,29 @@ name: Atoma Check
 permissions:
   contents: read
 jobs:
-  atoma-check:
+  pick-runner:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      runs_on: ${{ steps.runner.outputs.runs_on }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Read the configured runner
+        id: runner
+        shell: bash
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/resolve_runner.ts" --field "checks"
+  atoma-check:
+    needs:
+      - pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs_on) }}
     timeout-minutes: 30
     concurrency:
       group: atoma-check-${{ github.ref }}

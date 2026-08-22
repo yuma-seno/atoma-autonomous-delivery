@@ -19,6 +19,9 @@ mcp_servers:
   - github
   - web
   - search
+  # `reload_environment` only -- the same server the orchestrator has, with its
+  # other two tools withheld. See tools.yaml for why it is a separate entry.
+  - atoma_env
 extra_body:
   # OpenRouter provider routing; see orchestrator.md for the full rationale.
   # Keep it advisory: `order` prefers the endpoints with the best uptime. Do not
@@ -47,13 +50,13 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 
 ## Execution
 
-1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
+1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `engineering/environment` when something you need is not installed or an install fails, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
 2. Read the issue, current repository state, and the nearest owning code before editing.
 3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.
 4. Run focused validation, then the repository's broader required checks.
 5. Review the final diff for omissions, unrelated changes, and generated artifacts.
 6. Call `github__commit_and_push(message=...)`.
-7. Call `github__create_pr(title=..., body=...)` with the behavior and verification. This ends the session; do nothing afterward.
+7. Call `github__create_pr(title=..., body=..., reviewer="reviewer")` with the behavior and verification. Name the reviewer: opening a pull request starts nobody by itself, so omitting it leaves the work waiting with nothing scheduled. This ends the session; do nothing afterward.
 
 ## Outcome
 

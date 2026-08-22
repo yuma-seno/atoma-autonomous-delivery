@@ -88,6 +88,7 @@ var TOOL_SECRETS = {
     "AGENT",
     "ATOMA_OPS_LOG",
     "ATOMA_PROVIDER",
+    "ATOMA_RELOAD_COUNT",
     "ATOMA_RUN_TYPE",
     "GITHUB_RUN_ID",
     "ISSUE_NOTIFY",
@@ -410,14 +411,14 @@ var CONFIG_SCHEMA = {
     governed_paths: null,
     merge_gates: null,
     auto_triggers: null,
-    checks: { children: { commands: null, secrets: null } },
-    deploy: { children: { targets: null, secrets: null } },
+    checks: { children: { commands: null, secrets: null, runs_on: null } },
+    deploy: { children: { targets: null, secrets: null, runs_on: null } },
     tools: { children: { secrets: null } },
     search: { children: { reranker_model: null } },
     environment: { children: { setup_commands: null } },
     workflows: { children: { ci: null, cd: null } },
     agents: { anyName: { children: { max_iterations: null } } },
-    limits: { children: { agent_handoffs: null } },
+    limits: { children: { agent_handoffs: null, environment_reloads: null } },
     labels: { children: { in_progress: null, sub_issue: null, launched: null }, anyName: null }
   }
 };

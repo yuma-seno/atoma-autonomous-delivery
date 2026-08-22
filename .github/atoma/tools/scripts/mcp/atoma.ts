@@ -6661,23 +6661,6 @@ var CI_WOULD_BE_WASTED = new Set([
 ]);
 var PASSING = new Set(["success", "neutral", "skipped"]);
 
-// src/domain/auto-triggers.ts
-var TRIGGER_CONDITIONS = {
-  changes_requested: {
-    kind: "runtime",
-    matches: (context) => context.reviewState === "changes_requested"
-  },
-  non_draft: {
-    kind: "runtime",
-    matches: (context) => context.isDraft !== true
-  },
-  "atoma:dispatch": {
-    kind: "elsewhere",
-    matches: () => false
-  }
-};
-var KNOWN = Object.keys(TRIGGER_CONDITIONS).sort();
-
 // src/lib/config.ts
 function configPath() {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
@@ -6697,6 +6680,9 @@ var DEFAULT_LABELS = {
 };
 function getLabel(key) {
   return loadConfig().labels?.[key] ?? DEFAULT_LABELS[key];
+}
+function getReloadLimit() {
+  return loadConfig().limits?.environment_reloads;
 }
 
 // src/lib/ops-log.ts
@@ -6729,7 +6715,9 @@ function dispatchRunner(d) {
     "--field",
     `type=${d.type}`,
     "--field",
-    `notify=${d.notify ?? ""}`
+    `notify=${d.notify ?? ""}`,
+    "--field",
+    `reload_count=${d.reloadCount ?? 0}`
   ];
   if (!dispatchWorkflow(d.context, runnerWorkflow(), args, d.log))
     return false;
@@ -18375,6 +18363,25 @@ function hardenCredentialHolder(log2) {
     log2(`also removed ${unreadable.length} PATH entries this process cannot inspect`);
 }
 
+// src/domain/environment-reload.ts
+var DEFAULT_RELOAD_LIMIT = 3;
+function resolveReloadLimit(configured) {
+  const value = typeof configured === "number" ? configured : Number(configured);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_RELOAD_LIMIT;
+}
+function reloadsSoFar(raw) {
+  const value = typeof raw === "number" ? raw : Number(String(raw ?? "").trim());
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+function reloadRefusal(soFar, limit) {
+  if (soFar < limit)
+    return;
+  return `This run has already rebuilt its environment ${soFar} time${soFar === 1 ? "" : "s"}, which is the limit ` + `(${limit}). Reloading again is refused: each one starts a new run and resets the iteration budget, so an ` + `unbounded chain of them is an unbounded chain of runs. ` + `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` + `and a person can decide. If the answer is a system package, it belongs in ` + `\`environment.setup_commands\` in .github/atoma/config.json, which needs a human merge either way.`;
+}
+function reloadAccepted(next, limit) {
+  return `Rebuilding the environment and starting a new run (${next} of ${limit}). ` + `The setup commands come from the default branch and run against the current work tree, so a dependency ` + `you added to a manifest will be installed. A system package the default branch does not already install ` + `will NOT appear -- that needs \`environment.setup_commands\` and a person. This session ends now.`;
+}
+
 // src/atoma/tools/scripts/mcp/atoma.ts
 function log2(msg) {
   console.error(`[atoma-mcp] ${msg}`);
@@ -18464,6 +18471,39 @@ async function handleRequestCloseIssue(args) {
     meta: stalled ? {} : { session_ends: true }
   };
 }
+var RELOAD_ENVIRONMENT_SCHEMA = exports_external.object({
+  reason: exports_external.string().min(1).describe("What you need the environment to have that it does not, in one sentence. Recorded on the issue so a " + "person reading it later can see why the run restarted.")
+});
+function handleReloadEnvironment(args) {
+  const number4 = (process.env.ISSUE_NUMBER ?? "").trim();
+  const agent = (process.env.AGENT ?? "").trim();
+  if (!number4 || !agent) {
+    mcpFail("Cannot reload: this run does not know its own issue number or agent name.");
+  }
+  const limit = resolveReloadLimit(getReloadLimit());
+  const soFar = reloadsSoFar(process.env.ATOMA_RELOAD_COUNT);
+  const refusal = reloadRefusal(soFar, limit);
+  if (refusal) {
+    log2(`reload refused: ${soFar}/${limit}`);
+    mcpFail(refusal);
+  }
+  const next = soFar + 1;
+  gh("issue", "comment", number4, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
+Atoma: rebuilding the environment and restarting \`${agent}\` ` + `(reload ${next} of ${limit}). Reason: ${args.reason}`);
+  const dispatched = dispatchRunner({
+    context: `reload_environment: restarting ${agent} on #${number4} after a rebuild`,
+    agent,
+    type: (process.env.ATOMA_RUN_TYPE ?? "").trim() === "pr" ? "pr" : "issue",
+    number: number4,
+    notify: (process.env.ISSUE_NOTIFY ?? "").trim(),
+    reloadCount: next,
+    log: log2
+  });
+  if (!dispatched) {
+    mcpFail("Could not dispatch the new run; the environment was not rebuilt. See the workflow log. " + "Report what you found rather than retrying.");
+  }
+  return { text: reloadAccepted(next, limit), meta: { session_ends: true } };
+}
 var { tools: TOOLS, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "launch_sub_agent",
@@ -18476,6 +18516,12 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
     description: "Conclude work on YOUR CURRENT issue and end your session. This is the ONLY " + "correct way for the orchestrator to finish an issue -- do NOT call " + "github__close_issue yourself, and do NOT just stop responding without calling " + "this. The tool decides what happens next based on who opened THIS issue: " + "if it was created by another Atoma agent (a sub-issue), it is closed " + "automatically right now and phase-gating/aggregation is triggered for its " + "parent. If it was opened directly by a human (a root issue), it is NOT " + "closed -- instead a comment mentioning that human is posted with your reason " + "and summary, asking them to review and close it themselves.",
     schema: REQUEST_CLOSE_ISSUE_SCHEMA,
     handler: handleRequestCloseIssue
+  }),
+  defineMcpTool({
+    name: "reload_environment",
+    description: "Rebuild this project's environment and restart your run. Use it when something you need is missing " + "and you cannot install it yourself: a system package (you have no sudo), a globally installed CLI, or " + "a work tree you broke. YOUR SESSION ENDS IMMEDIATELY and a new run starts, so finish anything you were " + "part-way through first -- commit what is worth keeping and leave notes in /tmp/atoma-workspace, which " + "survives into the next run. " + "What it does: re-runs `environment.setup_commands` as a privileged workflow step, against the CURRENT " + "work tree. So a dependency you added to package.json, Cargo.toml or requirements.txt gets installed by " + "the project's own trusted command -- you do not edit that command, and cannot. " + "What it does NOT do: install a system package the setup does not already ask for. Those commands come " + "from the default branch, so a package you decided you need is not in them yet; add it to " + "`environment.setup_commands` in .github/atoma/config.json, say so in your report, and a person merges " + "it. Reloading first will hand you the same environment back and cost a run. " + "There is a limit on how many times one piece of work may do this, because each reload starts a new run " + "and resets the iteration budget. The tool tells you where you stand.",
+    schema: RELOAD_ENVIRONMENT_SCHEMA,
+    handler: handleReloadEnvironment
   })
 ]);
 async function main() {

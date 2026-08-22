@@ -41,6 +41,11 @@ name: Atoma Runner
         required: false
         type: string
         default: v0.1.17
+      reload_count:
+        description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
+        required: false
+        type: string
+        default: '0'
   workflow_dispatch:
     inputs:
       agent:
@@ -76,6 +81,11 @@ name: Atoma Runner
         required: false
         type: string
         default: v0.1.17
+      reload_count:
+        description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
+        required: false
+        type: string
+        default: '0'
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -519,6 +529,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           ISSUE_NUMBER: ${{ steps.fetch.outputs.resolved_number }}
           ATOMA_RUN_TYPE: ${{ inputs.type }}
+          ATOMA_RELOAD_COUNT: ${{ inputs.reload_count }}
           ISSUE_NOTIFY: ${{ steps.notify.outputs.notify }}
           ATOMA_OPS_LOG: ${RUNNER_TEMP}/atoma-run/atoma_ops.log
           OPENAI_BASE_URL_IN: ${{ vars.OPENAI_BASE_URL }}
@@ -580,6 +591,7 @@ jobs:
             ISSUE_NUMBER="$ISSUE_NUMBER"
             ISSUE_NOTIFY="$ISSUE_NOTIFY"
             ATOMA_RUN_TYPE="$ATOMA_RUN_TYPE"
+            ATOMA_RELOAD_COUNT="$ATOMA_RELOAD_COUNT"
             ATOMA_OPS_LOG="$ATOMA_OPS_LOG"
             # Caches, because $HOME is read-only to this user. CARGO_HOME is not a cache
             # directory -- redirecting it also hides ~/.cargo/config.toml -- but cargo has no
@@ -723,7 +735,13 @@ jobs:
             MENTION="@${NOTIFY} - "
           fi
           BD=$(mktemp)
-          echo "${MENTION}Warning: ${AGENT_LABEL} encountered an error." > "$BD"
+          # Out of the model's context. This is addressed to a person and the next run can do
+          # nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
+          # server closed connection", "Unexpected while resolving package"), which no agent
+          # can act on. See notify_max_iterations.ts for what carrying these costs.
+          printf '%s
+          ' "<!-- atoma:llm-context=exclude -->" > "$BD"
+          echo "${MENTION}Warning: ${AGENT_LABEL} encountered an error." >> "$BD"
           echo "Please check the reason and retry if necessary." >> "$BD"
           echo "Workflow logs: ${RUN_URL}" >> "$BD"
           if [ -n "$ERR_MSG" ]; then
@@ -821,7 +839,11 @@ jobs:
               MENTION="@${NOTIFY} - "
             fi
             BD=$(mktemp)
-            echo "${MENTION}Auto-dispatch loop limit reached: ${COUNT} agent handoffs since anyone else commented (limit ${LIMIT})." > "$BD"
+            # Out of the model's context, like the other operational notices: it names a
+            # person and tells them how to resume.
+            printf '%s
+          ' "<!-- atoma:llm-context=exclude -->" > "$BD"
+            echo "${MENTION}Auto-dispatch loop limit reached: ${COUNT} agent handoffs since anyone else commented (limit ${LIMIT})." >> "$BD"
             echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: ${DIRECTIVE}) has been safely suppressed." >> "$BD"
             echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
             echo "See the workflow run for details: ${RUN_URL}." >> "$BD"
