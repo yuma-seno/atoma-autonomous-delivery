@@ -677,6 +677,11 @@ const postResultCommentStep = new TypedOutputsStep(
       "chain-continues": runAgentStep.outputs.chain_continues,
       "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
       "run-url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+      // Passed in, because the script used to open these by their bare names --
+      // relative paths that stopped resolving when #487 moved the run's files out
+      // of the work tree, and every result comment since was dropped in silence.
+      output: `${RUN_DIR}/atoma_output.txt`,
+      "logs-file": `${RUN_DIR}/atoma_logs.txt`,
     })}\n`,
   },
   ["comment_id"] as const,

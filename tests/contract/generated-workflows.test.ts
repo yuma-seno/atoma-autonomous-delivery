@@ -302,6 +302,63 @@ describe("generated workflows", () => {
   });
 
   /**
+   * No script opens one of the run's own files by a bare relative name.
+   *
+   * The companion to the test above, and the one that was missing when it counted.
+   * That one reads the generated workflow, so a path hardcoded inside a SCRIPT is
+   * invisible to it -- and `post_result_comment.ts` had three:
+   *
+   *     existsSync("atoma_output.txt")
+   *     readFileSync("atoma_logs.txt", "utf8")
+   *
+   * Correct only while the run's files sat in the repository root. #487 moved them
+   * to `$RUNNER_TEMP/atoma-run`, so `existsSync` went false -- and the branch it
+   * falls into reports "session ended via a tool call", which reads like a normal
+   * outcome. **Two releases went out where no agent's report reached anyone.** The
+   * step said success, the agent wrote 3,914 characters, and nobody received them.
+   *
+   * A relative path is the failure. Whether it is in a workflow or a script is an
+   * implementation detail, so both are checked, and the message says to pass it in
+   * rather than to fix the string.
+   */
+  test("no script opens the run's own files by a bare name", () => {
+    const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
+    const CALLS = ["existsSync", "readFileSync", "writeFileSync", "appendFileSync", "unlinkSync", "statSync"];
+    const scripts = readdirSync("src/scripts", { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+      .map((entry) => join("src/scripts", entry.name));
+    expect(scripts.length, "there should be scripts to check").toBeGreaterThan(5);
+
+    for (const file of scripts) {
+      // Comments stripped first. Prose may name the file freely -- and has to,
+      // since the header of `post_result_comment.ts` explains this very defect by
+      // quoting the call that caused it. A test that could not tell the two apart
+      // would forbid writing down what went wrong.
+      const text = readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+        .join("\n");
+      for (const name of names) {
+        // Built without a regular expression, because a regular expression here has
+        // to survive being written into a template literal -- and it did not: `\s`
+        // and `\(` lost a backslash on the way in, leaving `s*(s*` and an
+        // unbalanced group. The test failed to compile rather than failing to find
+        // anything, which is the better direction, but only by luck.
+        //
+        // `indexOf` on a fixed string cannot be mis-escaped. It costs one loop over
+        // six function names and reads as what it checks.
+        const opened = `("${name}"`;
+        const bare = CALLS.some((call) => text.includes(`${call}${opened}`) || text.includes(`${call} ${opened}`));
+        expect(
+          bare,
+          `${file} opens "${name}" by a bare name. The run's files live outside the ` +
+            `work tree, so a relative path resolves to nothing -- take the path as an argument instead`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  /**
    * The machinery checkout does not stay in the work tree.
    *
    * `actions/checkout` can only write under `GITHUB_WORKSPACE`, so it lands there
