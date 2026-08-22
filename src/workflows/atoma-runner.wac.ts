@@ -762,7 +762,12 @@ if [ -n "$NOTIFY" ]; then
   MENTION="@\${NOTIFY} - "
 fi
 BD=$(mktemp)
-echo "\${MENTION}Warning: \${AGENT_LABEL} encountered an error." > "$BD"
+# Out of the model's context. This is addressed to a person and the next run can do
+# nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
+# server closed connection", "Unexpected while resolving package"), which no agent
+# can act on. See notify_max_iterations.ts for what carrying these costs.
+printf '%s\n' "${LLM_CONTEXT_TAG.write("exclude")}" > "$BD"
+echo "\${MENTION}Warning: \${AGENT_LABEL} encountered an error." >> "$BD"
 echo "Please check the reason and retry if necessary." >> "$BD"
 echo "Workflow logs: \${RUN_URL}" >> "$BD"
 if [ -n "$ERR_MSG" ]; then
@@ -904,7 +909,10 @@ const loopLimitCommentStep = new TypedOutputsStep({
     MENTION="@\${NOTIFY} - "
   fi
   BD=$(mktemp)
-  echo "\${MENTION}Auto-dispatch loop limit reached: \${COUNT} agent handoffs since anyone else commented (limit \${LIMIT})." > "$BD"
+  # Out of the model's context, like the other operational notices: it names a
+  # person and tells them how to resume.
+  printf '%s\n' "${LLM_CONTEXT_TAG.write("exclude")}" > "$BD"
+  echo "\${MENTION}Auto-dispatch loop limit reached: \${COUNT} agent handoffs since anyone else commented (limit \${LIMIT})." >> "$BD"
   echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: \${DIRECTIVE}) has been safely suppressed." >> "$BD"
   echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /\${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
   echo "See the workflow run for details: \${RUN_URL}." >> "$BD"

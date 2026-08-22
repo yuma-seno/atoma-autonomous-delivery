@@ -411,6 +411,61 @@ describe("generated workflows", () => {
     expect(checkout, "the move comes straight after the checkout").toBeLessThan(setter);
   });
 
+  /**
+   * An operational notice does not become the next run's context.
+   *
+   * `reconcile_github_session` drops a comment only when it is bot-authored AND
+   * carries `llm-context=exclude`. Three notices had the first and not the second:
+   * the failure warning, the loop-limit notice and the max-iterations notice. All
+   * three are addressed to a person -- each names one and tells them how to resume
+   * -- and the next run can do nothing with them but carry them.
+   *
+   * Carrying them is not free, and the direction is the wrong one: failing appends
+   * a notice, a longer context fails more, and a failure appends another notice.
+   * Measured on #492 -- three failed runs, a 425-message session, and a fourth run
+   * that spent 348k prompt tokens over four iterations and then abandoned its
+   * instructions. The same instructions on a fresh issue: 61k, completed.
+   *
+   * The failure notice is the worst of the three, because it carries a log excerpt,
+   * and the excerpt is usually about the infrastructure -- "MCP server closed
+   * connection", "Unexpected while resolving package" -- which no agent can act on.
+   */
+  test("operational notices are excluded from the next run's context", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    // Every step that posts a comment, found by what it does rather than by name:
+    // a notice added later under a name nobody predicted still has to carry the tag.
+    //
+    // Shell comments stripped first, for the third time in this file. "Put the tool
+    // servers on a user without sudo" explains itself by mentioning
+    // `gh issue comment`, and matching that made a step that posts nothing look
+    // like one that posts untagged.
+    const executed = (step: WorkflowStep): string =>
+      (step.run ?? "")
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
+
+    const posters = steps.filter((step) => /gh issue comment/.test(executed(step)));
+    expect(posters.length, "steps that post a comment").toBeGreaterThan(2);
+
+    for (const step of posters) {
+      const run = executed(step);
+      // `post_result_comment.ts` is the one comment that IS the agent's own output,
+      // and it is invoked as a script rather than through `gh issue comment`, so it
+      // does not appear here. Everything that does is operational.
+      expect(
+        run.includes("llm-context=exclude"),
+        `"${step.name ?? "?"}" posts a comment with no llm-context=exclude tag, so it becomes ` +
+          `part of the next run's context. Operational notices are for people`,
+      ).toBe(true);
+    }
+  });
+
   test("checkout the repository before running repository scripts", () => {
 
     type WorkflowStep = { uses?: string; run?: string };
