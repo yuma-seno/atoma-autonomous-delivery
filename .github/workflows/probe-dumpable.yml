@@ -28,7 +28,11 @@ name: Process and worktree isolation
       - 'scripts/probe-tool-user.sh'
       - 'scripts/probe-tool-health.sh'
       - 'scripts/probe-tool-health.ts'
+      - 'scripts/probe-tool-servers.ts'
       - 'src/workflows/actions/atoma-cli.ts'
+      - 'src/workflows/atoma-runner.wac.ts'
+      - '.github/atoma/tools/**'
+      - '.github/atoma/mcp-packages.json'
       - '.github/workflows/probe-dumpable.yml'
   push:
     branches:
@@ -66,3 +70,12 @@ jobs:
       # the only place the answer is observable.
       - name: Measure — does a tool's report about itself reach the model
         run: bash scripts/probe-tool-health.sh
+      # atoma-check starts no tool server, so module resolution and file
+      # permissions are first tried by a real run -- #506's open half, and #496 in
+      # particular. One turn with a fake LLM, at the layout the runner builds.
+      #
+      # Reuses the CLI that probe-tool-health.sh downloaded at the pinned version,
+      # so it has to run after it. Everything else it needs it installs itself, the
+      # way the runner does.
+      - name: Measure — do the tool servers start at the layout a run uses
+        run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-tool-servers.ts
