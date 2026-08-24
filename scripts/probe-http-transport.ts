@@ -42,6 +42,14 @@
  */
 
 const STDERR_REPORT = "WARN the stderr channel reached the agent";
+/**
+ * Where the server records that `logging/setLevel` arrived.
+ *
+ * A file, because in case 1 atoma did not start this server and cannot see its
+ * stderr -- that being exactly what case 1 is about. Looking for the line in
+ * atoma's log measured nothing: it is a `debug!`, and the log is at info.
+ */
+const SET_LEVEL_MARK = `${process.env.RUNNER_TEMP ?? "/tmp"}/probe-http-setlevel`;
 const NOTIFICATION_REPORT = "the notification channel reached the agent";
 const SESSION = "probe-session-1";
 
@@ -104,6 +112,7 @@ async function serve(port: number, slow: boolean): Promise<void> {
 
       if (method === "logging/setLevel") {
         process.stderr.write(`[probe-http] setLevel received\n`);
+        await Bun.write(SET_LEVEL_MARK, "received\n");
         return Response.json({ jsonrpc: "2.0", id: message.id, result: {} });
       }
 
@@ -207,8 +216,18 @@ interface RunOutcome {
   captured: Captured;
 }
 
-/** One atoma run against `toolsYaml`, with the fake LLM calling `tool` once. */
-async function runAtoma(label: string, toolsYaml: string, tool: string): Promise<RunOutcome> {
+/**
+ * One atoma run against `toolsYaml`, with the fake LLM calling `tool` once.
+ *
+ * `rustLog` because one of the things worth seeing -- the wait for a port to open --
+ * is a `debug!`. Info would have reported `false` for a mechanism that worked.
+ */
+async function runAtoma(
+  label: string,
+  toolsYaml: string,
+  tool: string,
+  rustLog = "info",
+): Promise<RunOutcome> {
   await Bun.write(`${DIR}/${label}-tools.yaml`, toolsYaml);
   await Bun.write(
     `${DIR}/${label}-agent.md`,
@@ -249,7 +268,7 @@ async function runAtoma(label: string, toolsYaml: string, tool: string): Promise
         OPENAI_API_KEY: "probe-key",
         OPENAI_BASE_URL: `http://127.0.0.1:${llm.port}`,
         ATOMA_PROVIDER: "openai",
-        RUST_LOG: "info",
+        RUST_LOG: rustLog,
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -265,7 +284,7 @@ async function runAtoma(label: string, toolsYaml: string, tool: string): Promise
 }
 
 async function probe(): Promise<number> {
-  await Bun.$`rm -rf ${DIR}`.quiet();
+  await Bun.$`rm -rf ${DIR} ${SET_LEVEL_MARK}`.quiet();
   await Bun.$`mkdir -p ${DIR}`.quiet();
   const self = import.meta.path;
   let held = true;
@@ -290,14 +309,16 @@ async function probe(): Promise<number> {
 
   const remoteText = remote.captured.toolMessages.join("\n");
   result("remote_exit", remote.exit);
-  result("remote_tools_registered", remote.captured.tools.join(" "));
+  result("remote_tools_registered", [...new Set(remote.captured.tools)].join(" "));
   result("remote_tool_answered", remoteText.includes("pong"));
   const remoteAnnotated = remoteText.includes(NOTIFICATION_REPORT);
   result("remote_notification_reached_the_agent", remoteAnnotated);
   // The session is what a real server enforces, and a 404 is what it answers
   // without one. A run that got this far echoed it back on every request.
   result("remote_session_was_echoed", remote.exit === 0 && remote.captured.requests >= 2);
-  result("remote_setLevel_answered", remote.log.includes("setLevel received"));
+  // A plain 200 JSON response to a request that is not `initialize`, which is a
+  // different path through `post` than the SSE one below.
+  result("remote_setLevel_arrived", await Bun.file(SET_LEVEL_MARK).exists());
   if (remote.exit !== 0 || !remoteAnnotated) {
     held = false;
     process.stdout.write(`\n--- atoma (remote) ---\n${remote.log}\n`);
@@ -319,6 +340,7 @@ async function probe(): Promise<number> {
       "",
     ].join("\n"),
     "probe__ping",
+    "info,atoma::infra::mcp=debug",
   );
 
   const localText = local.captured.toolMessages.join("\n");
