@@ -84,8 +84,19 @@ import { TypedOutputsStep } from "./base.ts";
  * the previous question and nothing detects it. Which makes lowering this pin back
  * to v0.1.16 worse than it looks -- the timeouts declared in the tools file stop
  * applying at the same moment the mispairing starts.
+ *
+ * v0.1.18 is why an agent can see a degraded tool at all. A server that reports a
+ * problem about itself -- over `notifications/message`, or on stderr, which is
+ * what the servers here use today -- has that report attached to its next tool
+ * result. Under v0.1.17 the notification was discarded and the stderr line went to
+ * the run log, where a person reads it later if at all. `search.ts` logging
+ * "WARN could not preload the reranker" is the case that made this necessary: two
+ * releases went out with every search answering worse. The instruction that acts on
+ * the report is in `prompt-template.md` and `engineering/environment`, so pinning
+ * back to v0.1.17 leaves those two telling an agent to read something it will never
+ * be shown.
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.17";
+export const ATOMA_DEFAULT_VERSION = "v0.1.18";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";

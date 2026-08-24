@@ -56,6 +56,46 @@ describe("agent prompt contracts", () => {
   });
 
   /**
+   * The sentence #514 turns on, in both places an agent reads it.
+   *
+   * A tool server can now say it answered worse than it should have (atoma#13), and
+   * the same warning produces two very different runs depending on what the agent
+   * concludes: "my query was poor" ends in trying again differently, and "the
+   * reranker is not running" ends in an issue. The second was the truth in #499 and
+   * the first is what an agent asked whether something went badly reaches for, because
+   * its own conduct is what it has been told to examine.
+   *
+   * So the attribution is not a nicety of wording -- it is the whole mechanism. Pinned
+   * the way the reviewer's two rules above are pinned: the failure looks like success,
+   * because a run that files an apology instead of a defect still reads as a run that
+   * noticed something.
+   */
+  test("says a problem a tool reported about itself is not the agent's failure", () => {
+    for (const file of ["src/atoma/prompt-template.md", "src/atoma/skills/engineering/environment.md"]) {
+      const text = readFileSync(file, "utf8");
+      expect(text, `${file} must not let a tool's degradation read as the agent's fault`).toContain(
+        "not a failure of your work",
+      );
+    }
+  });
+
+  /**
+   * And the skill has to close the loop, not just absolve the agent. `docs/edd.md`
+   * names the failure this is against: "Whoever observed the gap cannot propose the
+   * fix, so it waits until someone else notices." The run that saw the warning is the
+   * only one holding it, so filing is part of seeing it.
+   *
+   * `sub_issue: false` because the default is true: a defect in the tools would
+   * otherwise be filed as a child of whatever the agent happened to be working on,
+   * and disappear when that issue closed.
+   */
+  test("the environment skill turns a reported problem into a filed issue", () => {
+    const skill = readFileSync("src/atoma/skills/engineering/environment.md", "utf8");
+    expect(skill).toContain("github__create_issue");
+    expect(skill, "a tool defect is not a child of the current issue").toContain("sub_issue: false");
+  });
+
+  /**
    * The scratch workspace's path is stated in three places and has to be one path.
    *
    * `domain/workspace.ts` holds it, the runner mounts it there, the prompt template
