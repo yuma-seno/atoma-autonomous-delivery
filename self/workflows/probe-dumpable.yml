@@ -29,6 +29,7 @@ name: Process and worktree isolation
       - 'scripts/probe-tool-health.sh'
       - 'scripts/probe-tool-health.ts'
       - 'scripts/probe-tool-servers.ts'
+      - 'scripts/probe-http-transport.ts'
       - 'src/workflows/actions/atoma-cli.ts'
       - 'src/workflows/atoma-runner.wac.ts'
       # .github/** is the deployed machinery -- what a run actually starts. A
@@ -82,3 +83,9 @@ jobs:
       # way the runner does.
       - name: Measure — do the tool servers start at the layout a run uses
         run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-tool-servers.ts
+      # The transport atoma#12 added. Unreachable from a unit test: what is left
+      # once the pure parts are covered is the socket itself -- a session header
+      # echoed back, a notification on a tool call's stream, a server that is not
+      # listening yet when the first POST arrives.
+      - name: Measure — can atoma use a server it did not start
+        run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-http-transport.ts

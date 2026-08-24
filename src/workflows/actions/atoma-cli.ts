@@ -95,8 +95,16 @@ import { TypedOutputsStep } from "./base.ts";
  * the report is in `prompt-template.md` and `engineering/environment`, so pinning
  * back to v0.1.17 leaves those two telling an agent to read something it will never
  * be shown.
+ *
+ * v0.1.19 adds MCP's Streamable HTTP transport, which nothing here uses yet: every
+ * server in `tools.yaml` is still a child process over stdio. The pin moves anyway
+ * because it is what `probe-http-transport.ts` measures, and a repository whose
+ * probes and whose runs are on different builds is one where a green probe means
+ * less than it looks. What it opens up is a server that is already running -- a
+ * shared internal one, or something too expensive to start per run, which is what
+ * `search` is at 55 to 64 seconds of reranker.
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.18";
+export const ATOMA_DEFAULT_VERSION = "v0.1.19";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
