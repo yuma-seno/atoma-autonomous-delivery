@@ -31,8 +31,11 @@ name: Process and worktree isolation
       - 'scripts/probe-tool-servers.ts'
       - 'src/workflows/actions/atoma-cli.ts'
       - 'src/workflows/atoma-runner.wac.ts'
-      - '.github/atoma/tools/**'
-      - '.github/atoma/mcp-packages.json'
+      # .github/** is the deployed machinery -- what a run actually starts. A
+      # change under src/ is not tested here, and should not be: it is tested at
+      # the deploy pull request, which is when what runs changes.
+      - '.github/atoma/**'
+      - '.github/workflows/atoma-runner.yml'
       - '.github/workflows/probe-dumpable.yml'
   push:
     branches:
