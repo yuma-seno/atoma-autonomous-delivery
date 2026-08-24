@@ -26,6 +26,9 @@ name: Process and worktree isolation
       - 'scripts/probe-secret-holder.ts'
       - 'scripts/probe-preload.sh'
       - 'scripts/probe-tool-user.sh'
+      - 'scripts/probe-tool-health.sh'
+      - 'scripts/probe-tool-health.ts'
+      - 'src/workflows/actions/atoma-cli.ts'
       - '.github/workflows/probe-dumpable.yml'
   push:
     branches:
@@ -57,3 +60,9 @@ jobs:
         run: bash scripts/probe-tool-user.sh
       - name: Measure — can two users share the work tree
         run: bash scripts/probe-shared-worktree.sh
+      # The one probe here that runs atoma itself, because what it asks about is
+      # atoma's behaviour: whether a server's report about its own trouble reaches
+      # the model. No provider is called -- the LLM is a local fake, which is also
+      # the only place the answer is observable.
+      - name: Measure — does a tool's report about itself reach the model
+        run: bash scripts/probe-tool-health.sh
