@@ -40,7 +40,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.17
+        default: v0.1.18
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -80,7 +80,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.17
+        default: v0.1.18
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
