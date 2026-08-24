@@ -72,12 +72,157 @@ function result(name: string, value: unknown): void {
  * are shell text inside a generated `run:` block and not values a module exports.
  * If the runner moves either directory, this fails and says which -- the same
  * bargain the contract tests make.
+ *
+ * The needles start after the `${`, which is not fussiness: in that file the shell
+ * text lives inside TypeScript template literals, so a `#!/usr/bin/env bun
+/**
+ * probe-tool-servers.ts — do the tool servers actually start, at the layout a run
+ * uses?
+ *
+ * `atoma-check` is scan-secrets → typecheck → synth → test, and **not one of those
+ * starts a tool server as a process.** #506 records four defects of one shape in a
+ * single day, all green in CI, all found only after deploying: the worst was #496,
+ * where moving the machinery out of the work tree put `node_modules` out of reach
+ * of the module-resolution walk and the search server could not start at all.
+ * Atoma treats a server that will not initialise as fatal, so one unresolvable
+ * import took every run down.
+ *
+ * Nothing in CI would say so, because nothing in CI ran a server.
+ *
+ * ## What this asks, and what it costs
+ *
+ * One turn of a run: every server in `tools.yaml` spawns, answers `initialize`,
+ * and registers its tools. Then the fake LLM says stop. No provider is called and
+ * no tool is called -- the question is whether the servers come up, and the answer
+ * to that is the tool list.
+ *
+ * The tool list is read from the request the model receives, which is where a
+ * server that came up but registered nothing becomes visible. Reading atoma's log
+ * would show a connection; only the request shows what the agent was given.
+ *
+ * ## The layout is the point
+ *
+ * Running the servers from the work tree would prove nothing about #496: that
+ * defect is entirely about WHERE the files are. So this reproduces the two facts
+ * the runner's install step establishes --
+ *
+ *   - the machinery lives at `${RUNNER_TEMP}/atoma-machinery`, out of the work tree
+ *   - the libraries a server imports live at `${RUNNER_TEMP}/node_modules`, beside
+ *     it rather than in the project's own tree
+ *
+ * -- and `assertLayoutStillMatches` fails if `atoma-runner.wac.ts` stops saying
+ * either. A probe that quietly tested a layout the runner no longer uses would be
+ * worse than no probe, which is #506's own argument against fake servers.
+ *
+ * ## What it does not catch
+ *
+ * #499: the reranker's cache turning read-only. The load is deliberately started in
+ * the background and not awaited (#488), so a run initialises fine and the failure
+ * is 60 seconds away. Any warning a server does manage to emit in that window is
+ * printed here, but nothing waits for one. That case is now covered at run time
+ * instead -- atoma v0.1.18 hands the warning to the agent (atoma#13, #514).
+ *
+ * Not part of the deliverable -- this repository's own CI, like probe-dumpable.sh.
+ */
+
+import { existsSync } from "node:fs";
+
+const RUNNER_TEMP = process.env.RUNNER_TEMP ?? "/tmp";
+const MACHINERY = `${RUNNER_TEMP}/atoma-machinery`;
+const TOOLS_FILE = `${MACHINERY}/.github/atoma/tools/tools.yaml`;
+const RUNNER_WAC = "src/workflows/atoma-runner.wac.ts";
+
+function say(what: string): void {
+  process.stdout.write(`\n=== ${what} ===\n`);
+}
+
+function result(name: string, value: unknown): void {
+  process.stdout.write(`RESULT ${name}=${value}\n`);
+}
+
+/**
+ * The coupling this probe cannot verify by running: that the layout below is still
+ * the one the runner builds.
+ *
+ meant for the shell is
+ * written `\#!/usr/bin/env bun
+/**
+ * probe-tool-servers.ts — do the tool servers actually start, at the layout a run
+ * uses?
+ *
+ * `atoma-check` is scan-secrets → typecheck → synth → test, and **not one of those
+ * starts a tool server as a process.** #506 records four defects of one shape in a
+ * single day, all green in CI, all found only after deploying: the worst was #496,
+ * where moving the machinery out of the work tree put `node_modules` out of reach
+ * of the module-resolution walk and the search server could not start at all.
+ * Atoma treats a server that will not initialise as fatal, so one unresolvable
+ * import took every run down.
+ *
+ * Nothing in CI would say so, because nothing in CI ran a server.
+ *
+ * ## What this asks, and what it costs
+ *
+ * One turn of a run: every server in `tools.yaml` spawns, answers `initialize`,
+ * and registers its tools. Then the fake LLM says stop. No provider is called and
+ * no tool is called -- the question is whether the servers come up, and the answer
+ * to that is the tool list.
+ *
+ * The tool list is read from the request the model receives, which is where a
+ * server that came up but registered nothing becomes visible. Reading atoma's log
+ * would show a connection; only the request shows what the agent was given.
+ *
+ * ## The layout is the point
+ *
+ * Running the servers from the work tree would prove nothing about #496: that
+ * defect is entirely about WHERE the files are. So this reproduces the two facts
+ * the runner's install step establishes --
+ *
+ *   - the machinery lives at `${RUNNER_TEMP}/atoma-machinery`, out of the work tree
+ *   - the libraries a server imports live at `${RUNNER_TEMP}/node_modules`, beside
+ *     it rather than in the project's own tree
+ *
+ * -- and `assertLayoutStillMatches` fails if `atoma-runner.wac.ts` stops saying
+ * either. A probe that quietly tested a layout the runner no longer uses would be
+ * worse than no probe, which is #506's own argument against fake servers.
+ *
+ * ## What it does not catch
+ *
+ * #499: the reranker's cache turning read-only. The load is deliberately started in
+ * the background and not awaited (#488), so a run initialises fine and the failure
+ * is 60 seconds away. Any warning a server does manage to emit in that window is
+ * printed here, but nothing waits for one. That case is now covered at run time
+ * instead -- atoma v0.1.18 hands the warning to the agent (atoma#13, #514).
+ *
+ * Not part of the deliverable -- this repository's own CI, like probe-dumpable.sh.
+ */
+
+import { existsSync } from "node:fs";
+
+const RUNNER_TEMP = process.env.RUNNER_TEMP ?? "/tmp";
+const MACHINERY = `${RUNNER_TEMP}/atoma-machinery`;
+const TOOLS_FILE = `${MACHINERY}/.github/atoma/tools/tools.yaml`;
+const RUNNER_WAC = "src/workflows/atoma-runner.wac.ts";
+
+function say(what: string): void {
+  process.stdout.write(`\n=== ${what} ===\n`);
+}
+
+function result(name: string, value: unknown): void {
+  process.stdout.write(`RESULT ${name}=${value}\n`);
+}
+
+/**
+ * The coupling this probe cannot verify by running: that the layout below is still
+ * the one the runner builds.
+ *
+ and a needle spanning it silently never matches. It cost this probe
+ * one red run to find out.
  */
 async function assertLayoutStillMatches(): Promise<boolean> {
   const wac = await Bun.file(RUNNER_WAC).text();
   const expectations: [string, string][] = [
-    ["machinery_out_of_the_work_tree", "${RUNNER_TEMP}/atoma-machinery"],
-    ["libraries_beside_the_machinery", 'cd "${RUNNER_TEMP}" && bun add'],
+    ["machinery_out_of_the_work_tree", "RUNNER_TEMP}/atoma-machinery"],
+    ["libraries_beside_the_machinery", 'RUNNER_TEMP}" && bun add'],
   ];
   let held = true;
   for (const [name, text] of expectations) {
