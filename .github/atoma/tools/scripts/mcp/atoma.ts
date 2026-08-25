@@ -18132,6 +18132,37 @@ class Server extends Protocol {
   }
 }
 
+// src/lib/mcp-report.ts
+var MAX_HELD = 20;
+var sink;
+var held = [];
+function report(level, message) {
+  const text = message.trim();
+  if (!text)
+    return;
+  if (!sink) {
+    if (held.length < MAX_HELD)
+      held.push({ level, message: text });
+    return;
+  }
+  deliver(sink, level, text);
+}
+function deliver(to, level, message) {
+  try {
+    to(level, message);
+  } catch (error2) {
+    process.stderr.write(`WARN ${message} (could not be reported: ${error2.message})
+`);
+  }
+}
+function attachReportChannel(next) {
+  sink = next;
+  const waiting = held;
+  held = [];
+  for (const { level, message } of waiting)
+    deliver(next, level, message);
+}
+
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process2 from "process";
 
@@ -18275,7 +18306,7 @@ function buildMcpTools(specs) {
   };
 }
 async function serveMcpServer(options) {
-  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {}, logging: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
@@ -18292,6 +18323,13 @@ async function serveMcpServer(options) {
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
+  server.oninitialized = () => {
+    attachReportChannel((level, message) => {
+      server.sendLoggingMessage({ level, data: message }).catch((error2) => {
+        options.log(`could not report (${error2.message}): ${message}`);
+      });
+    });
+  };
   await server.connect(new StdioServerTransport);
 }
 
@@ -18343,9 +18381,9 @@ function hardenCredentialHolder(log2) {
     if (dumpable === 0)
       log2("this process is now unreadable to its peers");
     else
-      log2(`WARN could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
+      report("warning", `this process could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
   } catch (error2) {
-    log2(`WARN could not become unreadable: ${error2.message}`);
+    report("warning", `this process could not become unreadable: ${error2.message}`);
   }
   const before = process.env.PATH ?? "";
   const { writable, unreadable } = classifyPathEntries(before, inspect);
@@ -18353,7 +18391,7 @@ function hardenCredentialHolder(log2) {
     return;
   const after = pathWithoutWorldWritable(before, (entry) => inspect(entry) !== "safe");
   if (after === "") {
-    log2(`WARN every PATH entry looked writable, which cannot be right; leaving PATH alone`);
+    report("warning", "every PATH entry looked writable, which cannot be right; PATH was left alone");
     return;
   }
   process.env.PATH = after;

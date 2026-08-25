@@ -17776,6 +17776,37 @@ class Server extends Protocol {
   }
 }
 
+// src/lib/mcp-report.ts
+var MAX_HELD = 20;
+var sink;
+var held = [];
+function report(level, message) {
+  const text = message.trim();
+  if (!text)
+    return;
+  if (!sink) {
+    if (held.length < MAX_HELD)
+      held.push({ level, message: text });
+    return;
+  }
+  deliver(sink, level, text);
+}
+function deliver(to, level, message) {
+  try {
+    to(level, message);
+  } catch (error2) {
+    process.stderr.write(`WARN ${message} (could not be reported: ${error2.message})
+`);
+  }
+}
+function attachReportChannel(next) {
+  sink = next;
+  const waiting = held;
+  held = [];
+  for (const { level, message } of waiting)
+    deliver(next, level, message);
+}
+
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process2 from "process";
 
@@ -17919,7 +17950,7 @@ function buildMcpTools(specs) {
   };
 }
 async function serveMcpServer(options) {
-  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {}, logging: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
@@ -17936,6 +17967,13 @@ async function serveMcpServer(options) {
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
+  server.oninitialized = () => {
+    attachReportChannel((level, message) => {
+      server.sendLoggingMessage({ level, data: message }).catch((error2) => {
+        options.log(`could not report (${error2.message}): ${message}`);
+      });
+    });
+  };
   await server.connect(new StdioServerTransport);
 }
 
@@ -18315,9 +18353,9 @@ function hardenCredentialHolder(log2) {
     if (dumpable === 0)
       log2("this process is now unreadable to its peers");
     else
-      log2(`WARN could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
+      report("warning", `this process could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
   } catch (error2) {
-    log2(`WARN could not become unreadable: ${error2.message}`);
+    report("warning", `this process could not become unreadable: ${error2.message}`);
   }
   const before = process.env.PATH ?? "";
   const { writable, unreadable } = classifyPathEntries(before, inspect);
@@ -18325,7 +18363,7 @@ function hardenCredentialHolder(log2) {
     return;
   const after = pathWithoutWorldWritable(before, (entry) => inspect(entry) !== "safe");
   if (after === "") {
-    log2(`WARN every PATH entry looked writable, which cannot be right; leaving PATH alone`);
+    report("warning", "every PATH entry looked writable, which cannot be right; PATH was left alone");
     return;
   }
   process.env.PATH = after;
@@ -18379,7 +18417,7 @@ function loadIndex() {
       else
         log2(`index format ${parsed.version} is not ${INDEX_VERSION}; rebuilding it`);
     } catch {
-      log2("WARN the stored index was not valid JSON; rebuilding it");
+      log2("the stored index was not valid JSON; rebuilding it");
     }
   }
   const since = previous?.updatedThrough;
@@ -18396,7 +18434,7 @@ function loadIndex() {
     issues
   });
   if (!saveSession(INDEX_PATH, JSON.stringify(index), `atoma: refresh issue search index (${issues.length} issues)`)) {
-    log2("WARN could not save the index; the next search will rebuild it");
+    report("warning", "could not save the search index; every search from here rebuilds it");
   }
   return index;
 }
@@ -18465,7 +18503,7 @@ async function searchIssues(a) {
     const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates.map((match, i) => [match, scores[i] ?? 0]).sort((x, y) => y[1] - x[1]).map(([match]) => match);
   } catch (error2) {
-    log2(`WARN reranking failed (${error2.message}); returning the first-stage order`);
+    report("warning", `reranking failed (${error2.message}); these results are first-stage ordered, not reranked`);
   }
   const limit = a.limit ?? 3;
   const results = ordered.slice(0, limit).map((match) => {
@@ -18499,7 +18537,7 @@ var { tools, dispatch } = buildMcpTools([
 ]);
 async function main() {
   loadReranker().catch((error2) => {
-    log2(`WARN could not preload the reranker (${error2.message}); the first search will try again`);
+    report("warning", `could not preload the reranker (${error2.message}); the first search will try again`);
   });
   await serveMcpServer({ name: "atoma-search-mcp", version: "1.0.0", tools, dispatch, log: log2 });
 }
