@@ -44,6 +44,7 @@ Task-oriented recipes:
 | [Adding a tool without flooding the context](#adding-a-tool-without-flooding-the-context) | keep a new tool from filling the model's context window |
 | [How long your tool has to answer](#how-long-your-tool-has-to-answer) | let a tool run longer than a minute, or find out why it did not |
 | [If your tool does time out](#if-your-tool-does-time-out) | know what a server must do when a call is abandoned |
+| [If your tool answers worse than it should](#if-your-tool-answers-worse-than-it-should) | say so when a tool degrades instead of failing |
 | [Let an agent rebuild its own environment](#let-an-agent-rebuild-its-own-environment) | give an agent a way out when a dependency is missing |
 | [Where an agent puts its working files](#where-an-agent-puts-its-working-files) | know where notes and scratch scripts go, and why not the repository |
 | [Recurring work](#recurring-work) | have something happen every week without a schedule setting |
@@ -1290,6 +1291,57 @@ things follow for a server you write:
 - **do not assume the client is still there.** Work started before a timeout is
   work whose result is thrown away, so anything with a side effect should be
   idempotent — the agent will call you again.
+
+### If your tool answers worse than it should
+
+A tool that fails returns an error and the agent sees it. A tool that **degrades**
+returns an answer that looks like any other, and nothing says otherwise. That
+happened here: the search server's reranker failed to load, every search answered
+with first-stage ordering, and two releases went out before anyone noticed.
+
+So a server says so, and Atoma attaches what it says to that server's next tool
+result:
+
+```
+search__search_issues → [results]
+
+--- 1 problem reported by the 'search' server, not part of the answer above ---
+warning: reranking failed (EACCES); these results are first-stage ordered, not reranked
+```
+
+In a server here, that is one call:
+
+```ts
+import { report } from "../../../../lib/mcp-report.ts";
+
+report("warning", "could not save the search index; every search from here rebuilds it");
+```
+
+It goes out as MCP `notifications/message`, which `serveMcpServer` enables by
+declaring the `logging` capability. A report made before the server has connected —
+during a model load, say — is held and sent once it has.
+
+**What belongs there is what changed about the answer, not that something
+happened.** Either the answer is worse than it should have been, or the same thing
+will happen on the next call. A failure the result already describes is not a
+report: the agent is being told once, and twice in two shapes is noise it has to
+read past.
+
+`log()` is the other channel and it has not changed: it is for a person reading
+the run afterwards. One rule about it, though —
+
+> **A log line must not contain `warn`, `error`, `fatal` or `panic`.**
+
+Atoma reads a spawned server's stderr as a *fallback* for servers that implement no
+logging capability, and guesses severity from exactly those words. A log line
+carrying one is promoted in front of the agent as a problem whether or not it is
+one. `tests/contract/server-reports.test.ts` fails on it.
+
+For a server of your own that is not written against this repository's helpers:
+declare `logging` in your `initialize` result and send
+`notifications/message` with a `level` of `warning` or `error`. If you do
+neither, Atoma falls back to reading your stderr, and the word-matching above is
+what you get.
 
 ### Let an agent rebuild its own environment
 

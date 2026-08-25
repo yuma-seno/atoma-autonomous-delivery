@@ -24,6 +24,7 @@ import {
   type DispatchGateResult,
 } from "../../../../lib/aggregation.ts";
 import { logOp } from "../../../../lib/ops-log.ts";
+import { report } from "../../../../lib/mcp-report.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
@@ -324,7 +325,11 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
       );
       log(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
     } catch (e) {
-      log(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
+      // Not a report: the `atoma:parent` tag is what aggregation reads and it was
+      // written; this call is the cosmetic half, as the comment below says. No
+      // severity word, for the reason `search.ts` gives at its own remaining log
+      // line.
+      log(`the native sub-issue link did not take for #${num} → #${parentNum}: ${e}`);
     }
   }
 
@@ -720,7 +725,13 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
       // reviewer as its directive, which is the path #480 put a limit on.
       if (pr) dispatchPrValidation(REPO, pr.number, branch, "");
     } catch {
-      log("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+      // This call's result is `{ok: true}` and validation was not started. An
+      // agent that pushed and expects CI to run would be waiting for something
+      // that is not coming, so the discrepancy has to reach it, not the log.
+      report(
+        "warning",
+        "could not read the open pull request list, so CI validation was NOT dispatched for this push",
+      );
     }
   }
 
@@ -964,7 +975,10 @@ function deleteMergedBranch(branch: string): void {
   if (!branch) return;
   const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
   if (code) {
-    log(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    // The merge is done and this does not undo it, but a token that cannot delete
+    // a ref is an environment fault -- and this repository accumulated 72 stray
+    // branches once already.
+    report("warning", `merged, but could not delete the branch ${branch}: ${stderr || stdout}`);
     return;
   }
   log(`mergePr: deleted merged branch ${branch}`);

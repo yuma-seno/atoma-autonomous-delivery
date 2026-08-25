@@ -41,6 +41,7 @@
 import { z } from "zod/v3";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { attachReportChannel } from "./mcp-report.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 
@@ -255,6 +256,15 @@ export function buildMcpTools(specs: BuiltMcpTool[]): { tools: Tool[]; dispatch:
  *
  * `log` stays per-server rather than becoming shared: the prefixes are what
  * identify which server a line came from, in a run log that interleaves all five.
+ *
+ * ## The logging capability
+ *
+ * Declaring it is what makes `lib/mcp-report.ts` work, and the SDK then does the
+ * rest of the protocol itself: it registers the `logging/setLevel` handler,
+ * remembers the level the client asked for, and drops anything below it inside
+ * `sendLoggingMessage`. atoma asks for `warning`, which is everything `report`
+ * sends, so nothing is filtered in practice -- but a client that asked for
+ * `error` would get only errors without a line of code here.
  */
 export async function serveMcpServer(options: {
   /** Server name reported in the MCP handshake, e.g. `atoma-web-mcp`. */
@@ -265,7 +275,10 @@ export async function serveMcpServer(options: {
   /** Where this server's diagnostics go. Never stdout: that is the transport. */
   log: (message: string) => void;
 }): Promise<void> {
-  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+  const server = new Server(
+    { name: options.name, version: options.version },
+    { capabilities: { tools: {}, logging: {} } },
+  );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
 
@@ -284,6 +297,23 @@ export async function serveMcpServer(options: {
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
+
+  // When the client says the session is live, not when the socket comes up. A
+  // notification sent before `initialize` has completed is outside what the protocol
+  // allows a server to do, and a client is entitled to drop it -- which would make a
+  // report raised during startup the one report that never arrives, and startup is
+  // exactly when #499 happened. Everything said before this moment was held; it goes
+  // out here, in order.
+  //
+  // No `logger` field: atoma names the server that produced a result when it
+  // attaches the report, so putting the name in as well says it twice.
+  server.oninitialized = () => {
+    attachReportChannel((level, message) => {
+      void server.sendLoggingMessage({ level, data: message }).catch((error) => {
+        options.log(`could not report (${(error as Error).message}): ${message}`);
+      });
+    });
+  };
 
   await server.connect(new StdioServerTransport());
 }

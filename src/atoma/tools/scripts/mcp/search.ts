@@ -36,6 +36,7 @@
  */
 import { AutoTokenizer, AutoModelForSequenceClassification, env as transformersEnv } from "@huggingface/transformers";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
+import { report } from "../../../../lib/mcp-report.ts";
 import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
 import {
@@ -147,7 +148,11 @@ function loadIndex(): IssueIndex {
       if (parsed.version === INDEX_VERSION) previous = parsed;
       else log(`index format ${parsed.version} is not ${INDEX_VERSION}; rebuilding it`);
     } catch {
-      log("WARN the stored index was not valid JSON; rebuilding it");
+      // Not a report: it rebuilds, the answer is correct, and it does not repeat.
+      // The word WARN is gone from the text because atoma's fallback channel reads
+      // severity out of the words -- leaving it would put this in front of an agent
+      // as a problem, which is the false positive #519 exists to remove.
+      log("the stored index was not valid JSON; rebuilding it");
     }
   }
 
@@ -170,7 +175,9 @@ function loadIndex(): IssueIndex {
   // Saving is best-effort. A failure costs the next search a full fetch; it
   // must not cost this one its answer.
   if (!saveFile(INDEX_PATH, JSON.stringify(index), `atoma: refresh issue search index (${issues.length} issues)`)) {
-    log("WARN could not save the index; the next search will rebuild it");
+    // Reported, not just logged: the next search rebuilds, and so does the one
+    // after it. A cost that repeats is one somebody can fix.
+    report("warning", "could not save the search index; every search from here rebuilds it");
   }
   return index;
 }
@@ -310,7 +317,12 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   } catch (error) {
     // The first stage alone still put the answer in the top twenty every time;
     // it just orders them less well. Better a rougher answer than none.
-    log(`WARN reranking failed (${(error as Error).message}); returning the first-stage order`);
+    // The answer is worse than it should be and looks exactly like a good one,
+    // which is the whole of #499. Nothing else says so.
+    report(
+      "warning",
+      `reranking failed (${(error as Error).message}); these results are first-stage ordered, not reranked`,
+    );
   }
 
   const limit = a.limit ?? 3;
@@ -368,7 +380,13 @@ async function main(): Promise<void> {
   // The rejection handler is what keeps a promise nobody has awaited yet from
   // becoming an unhandled rejection, which is fatal.
   void loadReranker().catch((error) => {
-    log(`WARN could not preload the reranker (${(error as Error).message}); the first search will try again`);
+    // The earliest moment #499 could have been noticed. Not yet a worse answer --
+    // the first search retries -- but if that fails too it is, and this is the line
+    // that names the cause.
+    report(
+      "warning",
+      `could not preload the reranker (${(error as Error).message}); the first search will try again`,
+    );
   });
   await serveMcpServer({ name: "atoma-search-mcp", version: "1.0.0", tools, dispatch, log });
 }

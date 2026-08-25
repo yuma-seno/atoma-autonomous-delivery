@@ -30,6 +30,10 @@ name: Process and worktree isolation
       - 'scripts/probe-tool-health.ts'
       - 'scripts/probe-tool-servers.ts'
       - 'scripts/probe-http-transport.ts'
+      - 'scripts/probe-server-reports.ts'
+      - 'src/lib/mcp-report.ts'
+      - 'src/lib/mcp-tool.ts'
+      - 'src/atoma/tools/scripts/**'
       - 'src/workflows/actions/atoma-cli.ts'
       - 'src/workflows/atoma-runner.wac.ts'
       # .github/** is the deployed machinery -- what a run actually starts. A
@@ -89,3 +93,12 @@ jobs:
       # listening yet when the first POST arrives.
       - name: Measure — can atoma use a server it did not start
         run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-http-transport.ts
+      # The other end of the same wire (#519): a server this repository ships,
+      # started as a real process, putting a report on the protocol rather than
+      # writing WARN to stderr and hoping the word-matching catches it.
+      #
+      # `bun install` here rather than at the top of the job, so every probe above
+      # still runs against a work tree with no node_modules in it -- which is the
+      # arrangement probe-tool-servers.ts is asking about.
+      - name: Measure — does a server we ship report over the protocol
+        run: bun install --frozen-lockfile && bun run scripts/probe-server-reports.ts
