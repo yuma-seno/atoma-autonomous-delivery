@@ -7353,6 +7353,37 @@ async function dispatchOrchestratorIfSubIssueReady(repo, subIssueNum) {
   return dispatchOrchestratorIfReady({ repo, parent, closedNum: subIssueNum, retry: true });
 }
 
+// src/lib/mcp-report.ts
+var MAX_HELD = 20;
+var sink;
+var held = [];
+function report(level, message) {
+  const text = message.trim();
+  if (!text)
+    return;
+  if (!sink) {
+    if (held.length < MAX_HELD)
+      held.push({ level, message: text });
+    return;
+  }
+  deliver(sink, level, text);
+}
+function deliver(to, level, message) {
+  try {
+    to(level, message);
+  } catch (error) {
+    process.stderr.write(`WARN ${message} (could not be reported: ${error.message})
+`);
+  }
+}
+function attachReportChannel(next) {
+  sink = next;
+  const waiting = held;
+  held = [];
+  for (const { level, message } of waiting)
+    deliver(next, level, message);
+}
+
 // node_modules/zod/v3/external.js
 var exports_external = {};
 __export(exports_external, {
@@ -18659,7 +18690,7 @@ function buildMcpTools(specs) {
   };
 }
 async function serveMcpServer(options) {
-  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {}, logging: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
@@ -18676,6 +18707,13 @@ async function serveMcpServer(options) {
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
+  server.oninitialized = () => {
+    attachReportChannel((level, message) => {
+      server.sendLoggingMessage({ level, data: message }).catch((error2) => {
+        options.log(`could not report (${error2.message}): ${message}`);
+      });
+    });
+  };
   await server.connect(new StdioServerTransport);
 }
 
@@ -19231,9 +19269,9 @@ function hardenCredentialHolder(log7) {
     if (dumpable === 0)
       log7("this process is now unreadable to its peers");
     else
-      log7(`WARN could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
+      report("warning", `this process could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
   } catch (error2) {
-    log7(`WARN could not become unreadable: ${error2.message}`);
+    report("warning", `this process could not become unreadable: ${error2.message}`);
   }
   const before = process.env.PATH ?? "";
   const { writable, unreadable } = classifyPathEntries(before, inspect);
@@ -19241,7 +19279,7 @@ function hardenCredentialHolder(log7) {
     return;
   const after = pathWithoutWorldWritable(before, (entry) => inspect(entry) !== "safe");
   if (after === "") {
-    log7(`WARN every PATH entry looked writable, which cannot be right; leaving PATH alone`);
+    report("warning", "every PATH entry looked writable, which cannot be right; PATH was left alone");
     return;
   }
   process.env.PATH = after;
@@ -19405,7 +19443,7 @@ ${body}`;
       ghGraphql("mutation($parent:ID!,$sub:ID!){addSubIssue(input:{issueId:$parent,subIssueId:$sub,replaceParent:true}){issue{number}}}", { parent: pid, sub: sid });
       log7(`Linked sub-issue #${num} to parent #${parentNum} via official sub-issues API`);
     } catch (e) {
-      log7(`WARN: Failed to link sub-issue #${num} to parent #${parentNum}: ${e}`);
+      log7(`the native sub-issue link did not take for #${num} \u2192 #${parentNum}: ${e}`);
     }
   }
   logOp("create_issue", { number: num, title, sub_issue: sub });
@@ -19614,7 +19652,7 @@ function commitAndPush(a) {
       if (pr)
         dispatchPrValidation(REPO, pr.number, branch, "");
     } catch {
-      log7("commitAndPush: could not read the open pull request list; skipping validation dispatch");
+      report("warning", "could not read the open pull request list, so CI validation was NOT dispatched for this push");
     }
   }
   return JSON.stringify({ ok: true });
@@ -19769,7 +19807,7 @@ function deleteMergedBranch(branch) {
     return;
   const { code, stderr, stdout } = gh("api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`);
   if (code) {
-    log7(`mergePr: WARN could not delete branch ${branch}: ${stderr || stdout}`);
+    report("warning", `merged, but could not delete the branch ${branch}: ${stderr || stdout}`);
     return;
   }
   log7(`mergePr: deleted merged branch ${branch}`);

@@ -17772,6 +17772,25 @@ class Server extends Protocol {
   }
 }
 
+// src/lib/mcp-report.ts
+var sink;
+var held = [];
+function deliver(to, level, message) {
+  try {
+    to(level, message);
+  } catch (error2) {
+    process.stderr.write(`WARN ${message} (could not be reported: ${error2.message})
+`);
+  }
+}
+function attachReportChannel(next) {
+  sink = next;
+  const waiting = held;
+  held = [];
+  for (const { level, message } of waiting)
+    deliver(next, level, message);
+}
+
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process2 from "process";
 
@@ -17912,7 +17931,7 @@ function buildMcpTools(specs) {
   };
 }
 async function serveMcpServer(options) {
-  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {} } });
+  const server = new Server({ name: options.name, version: options.version }, { capabilities: { tools: {}, logging: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: options.tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
@@ -17929,6 +17948,13 @@ async function serveMcpServer(options) {
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
+  server.oninitialized = () => {
+    attachReportChannel((level, message) => {
+      server.sendLoggingMessage({ level, data: message }).catch((error2) => {
+        options.log(`could not report (${error2.message}): ${message}`);
+      });
+    });
+  };
   await server.connect(new StdioServerTransport);
 }
 
