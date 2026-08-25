@@ -46,6 +46,7 @@
  */
 import { statSync } from "node:fs";
 import { classifyPathEntries, pathWithoutWorldWritable } from "../../../../domain/tool-hardening.ts";
+import { report } from "../../../../lib/mcp-report.ts";
 
 const PR_SET_DUMPABLE = 4;
 const PR_GET_DUMPABLE = 3;
@@ -80,6 +81,11 @@ function inspect(directory: string): "writable" | "safe" | "unreadable" {
  * The log line is what makes the difference visible.
  */
 export function hardenCredentialHolder(log: (message: string) => void): void {
+  // The three failures below are reported rather than logged, and they are the
+  // clearest case of what `lib/mcp-report.ts` is for: each one means the
+  // environment did not give this process a property it was supposed to have, and
+  // nothing else will ever say so. They also all happen before the server has
+  // connected, which is why reports are held until it has.
   try {
     // Imported here rather than at the top: `bun:ffi` is a Bun builtin, and a
     // server bundled for another runtime should fail on this line with a message
@@ -94,9 +100,9 @@ export function hardenCredentialHolder(log: (message: string) => void): void {
     symbols.prctl(PR_SET_DUMPABLE, 0n, 0n, 0n, 0n);
     const dumpable = symbols.prctl(PR_GET_DUMPABLE, 0n, 0n, 0n, 0n);
     if (dumpable === 0) log("this process is now unreadable to its peers");
-    else log(`WARN could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
+    else report("warning", `this process could not become unreadable: PR_GET_DUMPABLE reports ${dumpable}`);
   } catch (error) {
-    log(`WARN could not become unreadable: ${(error as Error).message}`);
+    report("warning", `this process could not become unreadable: ${(error as Error).message}`);
   }
 
   const before = process.env.PATH ?? "";
@@ -110,7 +116,7 @@ export function hardenCredentialHolder(log: (message: string) => void): void {
   // fail with ENOENT, and the only sign would be one line in a log. Dropping
   // everything is not a narrowing, it is a broken stat.
   if (after === "") {
-    log(`WARN every PATH entry looked writable, which cannot be right; leaving PATH alone`);
+    report("warning", "every PATH entry looked writable, which cannot be right; PATH was left alone");
     return;
   }
 
