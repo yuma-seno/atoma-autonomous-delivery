@@ -253,6 +253,19 @@ jobs:
               pip install "$pkg"
             done
           fi
+      - name: Read which reranker to cache
+        id: reranker
+        shell: bash
+        run: |
+          MODEL=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/get_config_value.ts" "search.reranker_model" "onnx-community/bge-reranker-v2-m3-ONNX")
+          echo "reranker: ${MODEL}"
+          echo "cache_key=atoma-reranker-$(echo "${MODEL}" | tr '/:' '--')" >> "$GITHUB_OUTPUT"
+      - name: Cache the reranker model
+        with:
+          path: ${{ runner.temp }}/atoma-tool-cache/atoma-transformers
+          key: ${{ steps.reranker.outputs.cache_key }}
+          restore-keys: atoma-reranker-
+        uses: actions/cache@v4
       - name: Make tool hooks executable
         shell: bash
         run: |
@@ -387,6 +400,22 @@ jobs:
 
           # Somewhere real for the caches, since $HOME is not writable by this user.
           sudo install -d -o "atoma-tools" -m 0700 "${RUNNER_TEMP}/atoma-tool-cache"
+
+          # And both ways round, recursively, for the same reason the run directory below
+          # needs it.
+          #
+          # This directory is no longer only the tool user's: actions/cache restored the
+          # reranker into it as the RUNNER, moments ago, and will read it back as the runner
+          # after the agent has finished. Without these the two users have half of it each --
+          # the restored weights unwritable by the server that loads them, which is #499
+          # exactly, and the downloaded weights unreadable by the save that should keep them.
+          #
+          # -R as well as -d: a default ACL only reaches files created after it is set, and
+          # the restore already wrote several hundred of them.
+          sudo setfacl -R -m "u:atoma-tools:rwX" "${RUNNER_TEMP}/atoma-tool-cache"
+          sudo setfacl -R -d -m "u:atoma-tools:rwX" "${RUNNER_TEMP}/atoma-tool-cache"
+          sudo setfacl -R -m "u:$(id -un):rwX" "${RUNNER_TEMP}/atoma-tool-cache"
+          sudo setfacl -R -d -m "u:$(id -un):rwX" "${RUNNER_TEMP}/atoma-tool-cache"
 
           # The run's own directory, handed to the tool user now that it exists. `atoma run`
           # writes the session as that user while the runner wrote it moments before, and the

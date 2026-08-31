@@ -18092,6 +18092,9 @@ function getRerankerModel() {
   return loadConfig().search?.reranker_model?.trim() || DEFAULT_RERANKER;
 }
 
+// src/domain/model-cache.ts
+var MODEL_CACHE_DIR = "atoma-transformers";
+
 // src/lib/gh.ts
 function run(cmd) {
   const proc = Bun.spawnSync({
@@ -18450,7 +18453,7 @@ function loadReranker() {
 }
 function cacheDirectory() {
   const base = process.env.XDG_CACHE_HOME?.trim() || "/tmp";
-  return `${base}/atoma-transformers`;
+  return `${base}/${MODEL_CACHE_DIR}`;
 }
 async function loadRerankerOnce() {
   transformersEnv.cacheDir = cacheDirectory();
