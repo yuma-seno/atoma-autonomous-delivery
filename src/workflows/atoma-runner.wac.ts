@@ -16,6 +16,8 @@ import { CacheAction } from "./actions/cache.ts";
 import { environmentSetupStep } from "./actions/environment-setup.ts";
 import { ref as resolveNotifyRef } from "../scripts/resolve_notify.ts";
 import { buildArgv as configValueArgv, ref as getConfigValueRef } from "../scripts/get_config_value.ts";
+import { DEFAULT_RERANKER } from "../lib/config.ts";
+import { MODEL_CACHE_DIR } from "../domain/model-cache.ts";
 import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
 import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
@@ -169,7 +171,40 @@ const TOOL_USER = "atoma-tools";
  * failure the container produced. Package managers need somewhere real, and this
  * is it: outside the work tree, so nothing commits it.
  */
-const TOOL_CACHE = "\${RUNNER_TEMP}/atoma-tool-cache";
+const TOOL_CACHE_NAME = "atoma-tool-cache";
+const TOOL_CACHE = `\${RUNNER_TEMP}/${TOOL_CACHE_NAME}`;
+/**
+ * The same directory, spelled for an action input.
+ *
+ * `actions/cache` evaluates its `path` itself and never sees a shell, so
+ * `${RUNNER_TEMP}` would be a literal directory of that name. Both spellings come
+ * from one word, which is the only way they cannot drift apart.
+ */
+const TOOL_CACHE_INPUT = `\${{ runner.temp }}/${TOOL_CACHE_NAME}`;
+
+/**
+ * Which reranker to key the model cache on.
+ *
+ * Read from `config.json` with the server's own default as the fallback, imported
+ * rather than repeated: a fallback of its own would key the cache on one name while
+ * the server loaded another, and the cache would simply never hit. Nothing would
+ * fail, which is the kind of miss nobody finds.
+ *
+ * The name is sanitised because it contains a `/` -- `onnx-community/...` -- and a
+ * cache key is not a path.
+ */
+const rerankerModelStep = new TypedOutputsStep(
+  {
+    name: "Read which reranker to cache",
+    id: "reranker",
+    shell: "bash",
+    run: `MODEL=$(${scriptCommand(getConfigValueRef, configValueArgv("search.reranker_model", DEFAULT_RERANKER))})
+echo "reranker: \${MODEL}"
+echo "cache_key=atoma-reranker-$(echo "\${MODEL}" | tr '/:' '--')" >> "$GITHUB_OUTPUT"
+`,
+  },
+  ["cache_key"] as const,
+);
 
 /**
  * Where this run's own files go: the session, the fetched events, the ops log, and
@@ -1144,6 +1179,37 @@ if [ -n "$PIP_PKGS" ]; then
 fi
 `,
   }),
+  // ── The reranker's weights, kept between runs ──────────────────────────────
+  //
+  // The search server starts loading its reranker the moment it starts, and does
+  // not wait for it: a search that arrives during the load awaits the same
+  // promise, so it costs whatever is left of it (#488). In the run that measured
+  // this there were 47 seconds between the server connecting and the first search,
+  // which absorbed most of a 63.9s load.
+  //
+  // What it did not absorb is bandwidth. The cache lived under `$RUNNER_TEMP`,
+  // which a job does not keep, so **544MB was downloaded on every run** whether or
+  // not anything searched. This keeps it. What remains is the ONNX session
+  // initialisation, which is the part that cannot be cached.
+  //
+  // Keyed on the model name, because that is the only thing that invalidates it.
+  // `hashFiles` would have been the habit and is wrong twice: it resolves relative
+  // to `GITHUB_WORKSPACE` and cannot see this path at all, and keying on
+  // `config.json` would throw the model away every time an unrelated setting
+  // changed.
+  rerankerModelStep,
+  new CacheAction({
+    name: "Cache the reranker model",
+    with: {
+      path: `${TOOL_CACHE_INPUT}/${MODEL_CACHE_DIR}`,
+      key: rerankerModelStep.outputs.cache_key,
+      // A model that changed still starts from the last one's directory rather
+      // than an empty one. transformers.js keys its own files by model name, so
+      // the old weights are inert rather than wrong -- and the next save replaces
+      // the entry.
+      "restore-keys": "atoma-reranker-",
+    },
+  }),
   // Hooks are the one part of the tool tree that has to be directly executable.
   // `tools.yaml` names a `before_tool` hook by path and Atoma spawns it as a
   // program, so it runs via its shebang and needs its exec bit. Everything else
@@ -1279,6 +1345,22 @@ sudo setfacl -R -d -m "u:$(id -un):rwX" "$GITHUB_WORKSPACE"
 
 # Somewhere real for the caches, since $HOME is not writable by this user.
 sudo install -d -o "${TOOL_USER}" -m 0700 "${TOOL_CACHE}"
+
+# And both ways round, recursively, for the same reason the run directory below
+# needs it.
+#
+# This directory is no longer only the tool user's: actions/cache restored the
+# reranker into it as the RUNNER, moments ago, and will read it back as the runner
+# after the agent has finished. Without these the two users have half of it each --
+# the restored weights unwritable by the server that loads them, which is #499
+# exactly, and the downloaded weights unreadable by the save that should keep them.
+#
+# -R as well as -d: a default ACL only reaches files created after it is set, and
+# the restore already wrote several hundred of them.
+sudo setfacl -R -m "u:${TOOL_USER}:rwX" "${TOOL_CACHE}"
+sudo setfacl -R -d -m "u:${TOOL_USER}:rwX" "${TOOL_CACHE}"
+sudo setfacl -R -m "u:$(id -un):rwX" "${TOOL_CACHE}"
+sudo setfacl -R -d -m "u:$(id -un):rwX" "${TOOL_CACHE}"
 
 # The run's own directory, handed to the tool user now that it exists. \`atoma run\`
 # writes the session as that user while the runner wrote it moments before, and the
