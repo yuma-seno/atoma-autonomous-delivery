@@ -8,8 +8,76 @@ import {
   SECRET_SLOTS,
 } from "../../src/domain/declared-secrets.ts";
 import { CHECK_JOB_NAME } from "../../src/workflows/atoma-check.wac.ts";
+import { MODEL_CACHE_DIR } from "../../src/domain/model-cache.ts";
 
 describe("generated workflows", () => {
+  /**
+   * The model cache has to be the same directory in three places that cannot see
+   * each other: the environment the search server reads (`XDG_CACHE_HOME`), the
+   * path `actions/cache` keeps, and the ACLs that decide who may write it.
+   *
+   * A disagreement between any two of them is silent. The weights download again
+   * every run, or fail to and reranking falls back to a first-stage order that
+   * looks exactly like a good answer -- which is #499, and it went unnoticed for
+   * two releases.
+   *
+   * `MODEL_CACHE_DIR` is imported rather than typed out here, so this test cannot
+   * agree with a stale copy of the name.
+   */
+  test("the reranker cache is one directory, reachable by both users", () => {
+    type WorkflowStep = { name?: string; run?: string; with?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(
+      readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8"),
+    ) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+
+    const cache = steps.find((step) => step.name === "Cache the reranker model");
+    expect(cache, "the runner must keep the model between runs").toBeDefined();
+    const cached = cache?.with?.path ?? "";
+    expect(cached, "cached path names the shared directory").toContain(MODEL_CACHE_DIR);
+    // An action input is not a shell: `${RUNNER_TEMP}` there is a directory of that
+    // literal name, and the cache would keep an empty one.
+    expect(cached, "an action input cannot read a shell variable").not.toContain("${RUNNER_TEMP}");
+    expect(cached).toContain("runner.temp");
+
+    // The other end: what the server is told to use. Same base, same name.
+    const agent = steps.find((step) => (step.run ?? "").includes("XDG_CACHE_HOME="));
+    const xdg = /XDG_CACHE_HOME="([^"]+)"/.exec(agent?.run ?? "")?.[1] ?? "";
+    expect(xdg, "the server's cache base").toBeTruthy();
+    const base = xdg.replace("${RUNNER_TEMP}", "").replace(/^\//, "");
+    expect(
+      cached.includes(base),
+      `cache path ${cached} must cover the server's ${xdg}/${MODEL_CACHE_DIR}`,
+    ).toBe(true);
+
+    // And both users, or one of them has half of it: the restore happens as the
+    // runner, the load as the tool user, the save as the runner again.
+    const acl = steps.find(
+      (step) => (step.run ?? "").includes("setfacl") && (step.run ?? "").includes("atoma-tool-cache"),
+    );
+    const run = acl?.run ?? "";
+    // The user is read out of the workspace ACL in the same step rather than typed
+    // in: the name is a synth-time constant, and renaming it must not break this
+    // test into a false failure.
+    const user = /setfacl -R -m "u:([^:]+):rwX" "\$GITHUB_WORKSPACE"/.exec(run)?.[1] ?? "";
+    expect(user, "the tool user, as the workspace ACL names it").toBeTruthy();
+
+    const cacheDir = "${RUNNER_TEMP}/atoma-tool-cache";
+    for (const [who, why] of [
+      [`u:${user}`, "the tool user must be able to write what the runner restored"],
+      ["u:$(id -un)", "the runner must be able to read back what the tool user downloaded"],
+    ]) {
+      expect(run, why).toContain(`setfacl -R -m "${who}:rwX" "${cacheDir}"`);
+      // The default as well as the recursive pass: the weights that matter do not
+      // exist yet when these run.
+      expect(run, `${why} -- including files created later`).toContain(
+        `setfacl -R -d -m "${who}:rwX" "${cacheDir}"`,
+      );
+    }
+  });
+
   test("routes recover mode and reports invalid command syntax", () => {
     type WorkflowStep = { name?: string; run?: string };
     type WorkflowDocument = {

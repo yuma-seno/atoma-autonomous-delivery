@@ -118,7 +118,10 @@ export function getBaseBranch(fallback = ""): string {
  * This is the one model choice that changes the answer. Swapping the first
  * stage's model moved nothing; swapping this one moved top-1 from 27% to 91%.
  */
-const DEFAULT_RERANKER = "onnx-community/bge-reranker-v2-m3-ONNX";
+// Exported because the runner needs it too: it keys the model cache on the model
+// name, and a fallback of its own would key on a different name than the one the
+// server then loads -- so the cache would never hit and nothing would say why.
+export const DEFAULT_RERANKER = "onnx-community/bge-reranker-v2-m3-ONNX";
 
 /**
  * The cross encoder issue search ranks with.

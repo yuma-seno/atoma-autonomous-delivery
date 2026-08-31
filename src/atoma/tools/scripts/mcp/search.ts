@@ -39,6 +39,7 @@ import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z } from "..
 import { report } from "../../../../lib/mcp-report.ts";
 import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
+import { MODEL_CACHE_DIR } from "../../../../domain/model-cache.ts";
 import {
   INDEX_PATH,
   INDEX_VERSION,
@@ -243,7 +244,7 @@ function loadReranker(): Promise<Reranker> {
  */
 function cacheDirectory(): string {
   const base = process.env.XDG_CACHE_HOME?.trim() || "/tmp";
-  return `${base}/atoma-transformers`;
+  return `${base}/${MODEL_CACHE_DIR}`;
 }
 
 async function loadRerankerOnce(): Promise<Reranker> {
