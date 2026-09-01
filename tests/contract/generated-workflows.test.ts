@@ -480,6 +480,39 @@ describe("generated workflows", () => {
   });
 
   /**
+   * The runner decides whether a run changed anything by grepping the ops log for
+   * op names, and the ops log is written somewhere else entirely. That is the exact
+   * shape `lib/ops-log.ts` exists to protect against -- its own comment records the
+   * time a refactor changed a log message's wording and a grep silently stopped
+   * matching.
+   *
+   * Silently is the word. If `commit_and_push` were renamed, every run would report
+   * changing nothing, the no-progress limit would fire on work that was going fine,
+   * and nothing anywhere would fail.
+   */
+  test("every op the runner treats as progress is one something actually writes", () => {
+    type WorkflowStep = { name?: string; run?: string };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(
+      readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8"),
+    ) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+    const grep = steps
+      .map((step) => step.run ?? "")
+      .find((run) => run.includes('"op":"(commit_and_push'));
+    expect(grep, "the runner must read what the run changed out of the ops log").toBeDefined();
+
+    const ops = /"op":"\(([a-z_|]+)\)"/.exec(grep ?? "")?.[1]?.split("|") ?? [];
+    expect(ops.length, "and must name at least one op").toBeGreaterThan(0);
+
+    const github = readFileSync("src/atoma/tools/scripts/mcp/github.ts", "utf8");
+    for (const op of ops) {
+      expect(github, `nothing writes an ops-log entry for "${op}"`).toContain(`logOp("${op}"`);
+    }
+  });
+
+  /**
    * An operational notice does not become the next run's context.
    *
    * `reconcile_github_session` drops a comment only when it is bot-authored AND

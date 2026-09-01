@@ -16,7 +16,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
-import { AGENT_TAG, PARENT_TAG } from "../lib/tags.ts";
+import { AGENT_TAG, CHANGED_TAG, PARENT_TAG } from "../lib/tags.ts";
 import { shouldMentionOnCompletion } from "../domain/completion-mention.ts";
 import { redact } from "../domain/redaction.ts";
 import { escapedMentionNotice, escapeUnknownMentions } from "../domain/mention.ts";
@@ -31,6 +31,8 @@ export interface PostResultCommentArgs {
   directive?: string;
   "chain-continues"?: string;
   "max-iterations-reached"?: string;
+  /** "true" when this run pushed a commit, opened a pull request, or merged one. */
+  changed?: string;
   "run-url": string;
   /**
    * The agent's stdout, and the log it wrote alongside.
@@ -135,8 +137,23 @@ export function buildCommentBody(args: {
   issueClosed?: boolean;
   /** Logins the agent wrote as mentions that were escaped instead. */
   escapedMentions?: readonly string[];
+  /**
+   * Whether this run pushed a commit, opened a pull request or merged one.
+   *
+   * Written into the comment because that is where the next run can read it.
+   * `domain/progress.ts` counts consecutive runs that changed nothing, and it
+   * counts them from the thread rather than from a counter -- so the thread has to
+   * carry the fact.
+   */
+  changed?: boolean;
 }): string {
-  const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
+  const lines = [
+    AGENT_TAG.write(args.agent),
+    CHANGED_TAG.write(args.changed === true ? "yes" : "no"),
+    args.output,
+    "",
+    ...args.usageLines,
+  ];
 
   // Directly under what the agent wrote, because that is what it is about, and
   // above the run footer, which nobody reads for this.
@@ -178,6 +195,7 @@ function main(): void {
       "chain-continues": { type: "string" },
       "max-iterations-reached": { type: "string" },
       "run-url": { type: "string" },
+      changed: { type: "string" },
       output: { type: "string" },
       "logs-file": { type: "string" },
     },
@@ -250,6 +268,7 @@ function main(): void {
     runUrl: values["run-url"],
     output: checked.text,
     escapedMentions: checked.escaped,
+    changed: values.changed === "true",
     usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type),
   });

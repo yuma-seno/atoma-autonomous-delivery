@@ -11,10 +11,15 @@
  * Usage:
  *   manage_dispatch_loop.ts --number 123 [--repo owner/name]
  *
- * Writes `auto_dispatch_count=N` and `loop_limit_reached=true|false` to
- * $GITHUB_OUTPUT. The output names are unchanged so the workflow's guards and
- * `decide_guard_release`'s input keep working -- what changed is that they now
- * carry a number that can be greater than zero.
+ * Writes `auto_dispatch_count=N`, `loop_limit_reached=true|false`,
+ * `handoff_limit=N`, `runs_without_change=N` and `stop_reason=<sentence>` to
+ * $GITHUB_OUTPUT. The first two names are unchanged so the workflow's guards and
+ * `decide_guard_release`'s input keep working.
+ *
+ * `loop_limit_reached` now covers two limits: consecutive handoffs (#480) and
+ * consecutive runs that changed nothing (#481). One guard, because the workflow's
+ * response to both is the same -- withhold the handoff and tell a person -- and
+ * `stop_reason` is what makes the message say which.
  *
  * No longer takes `--session`. Nothing is written back: the tally is derived, so
  * there is nothing to persist and nothing for a stale session to contradict. Old
@@ -23,10 +28,11 @@
  */
 import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { handoffLimitReached, handoffsSincePerson, resolveHandoffLimit, type ChainComment } from "../domain/dispatch-chain.ts";
-import { getHandoffLimit } from "../lib/config.ts";
+import { handoffsSincePerson, resolveHandoffLimit, type ChainComment } from "../domain/dispatch-chain.ts";
+import { resolveNoProgressLimit, runsWithoutChange, stopReason } from "../domain/progress.ts";
+import { getHandoffLimit, getNoProgressLimit } from "../lib/config.ts";
 import { gh } from "../lib/gh.ts";
-import { AGENT_TAG } from "../lib/tags.ts";
+import { AGENT_TAG, CHANGED_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface ManageDispatchLoopArgs {
@@ -93,23 +99,46 @@ function main(): void {
   }
 
   const limit = resolveHandoffLimit(getHandoffLimit());
+  const noProgressLimit = resolveNoProgressLimit(getNoProgressLimit());
   const { comments, read } = readComments(repo, number);
   if (!read) console.error(`WARN could not read comments on ${repo}#${number}; treating the chain as fresh`);
 
   const handoffs = handoffsSincePerson(comments, (body) => AGENT_TAG.has(body));
-  const reached = handoffLimitReached(handoffs, limit);
+  // A result comment that says it changed nothing. Both halves: the agent tag says
+  // it is a result comment at all, and the changed tag says what the run did. A
+  // comment from before this tag existed has no `changed` value and is read as
+  // something else, which ends the walk -- old threads count zero rather than
+  // guessing.
+  const stalled = runsWithoutChange(
+    comments,
+    (body) => AGENT_TAG.has(body) && CHANGED_TAG.read(body) === "no",
+  );
+  const decision = stopReason({
+    handoffs,
+    handoffLimit: limit,
+    runsWithoutChange: stalled,
+    noProgressLimit,
+  });
 
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
-    // The limit travels with the count. The escalation comment names both, and
-    // splicing a literal into that comment at synth time is how the old version
-    // could have quoted a number that was not the limit in force.
+    // The limits travel with the counts, and now so does the sentence. The
+    // escalation comment used to build its own from the handoff count whatever the
+    // reason -- with a second limit beside it, that comment would have told a person
+    // their chain was too long when it was not.
     appendFileSync(
       githubOutput,
-      `auto_dispatch_count=${handoffs}\nloop_limit_reached=${reached}\nhandoff_limit=${limit}\n`,
+      `auto_dispatch_count=${handoffs}\n` +
+        `loop_limit_reached=${decision.stop}\n` +
+        `handoff_limit=${limit}\n` +
+        `runs_without_change=${stalled}\n` +
+        `stop_reason=${decision.reason ?? ""}\n`,
     );
   }
-  console.error(`Agent handoffs since a person last commented: ${handoffs}/${limit} (limit_reached=${reached})`);
+  console.error(
+    `Agent handoffs since a person last commented: ${handoffs}/${limit}; ` +
+      `consecutive runs that changed nothing: ${stalled}/${noProgressLimit} (stop=${decision.stop})`,
+  );
 }
 
 if (import.meta.main) main();

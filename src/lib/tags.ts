@@ -52,6 +52,16 @@ export const ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
 export const DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
 /** Tags a posted result comment with which agent generated it (used by reconcile_github_session.ts to exclude an agent's own past comments from its future shared context). */
 export const AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
+
+/**
+ * Whether the run that posted this comment changed anything.
+ *
+ * `yes` when it pushed a commit, opened a pull request or merged one; `no` when it
+ * ran and left the repository as it found it. Read by `domain/progress.ts`, which
+ * counts consecutive `no`s rather than keeping a counter -- see `dispatch-chain.ts`
+ * for why a counter in the session could not work.
+ */
+export const CHANGED_TAG = stringTag("changed", "yes|no");
 /** Marks a GitHub comment as human-visible operational audit only; excluded from future LLM context reconciliation. */
 export const LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 /** Idempotency marker: orchestrator dispatch was already triggered for a given closed sub-issue's completion (see lib/aggregation.ts). Fresh tag with no pre-existing data, written as plain `N`. */

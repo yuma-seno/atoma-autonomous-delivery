@@ -22,6 +22,7 @@ Task-oriented recipes:
 | [Pin which OpenRouter endpoint serves a model](#pin-which-openrouter-endpoint-serves-a-model) | prefer particular upstream providers |
 | [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
 | [Limit how far agents hand work to each other](#limit-how-far-agents-hand-work-to-each-other) | stop an engineer/reviewer loop that is going nowhere |
+| [Stop a chain that is not getting anywhere](#stop-a-chain-that-is-not-getting-anywhere) | stop on runs that change nothing, rather than on how many there were |
 | [How work starts](#how-work-starts) | know what makes an agent run — and what does not |
 | [Run checks or deployment on a different machine](#run-checks-or-deployment-on-a-different-machine) | build on macOS, or use a self-hosted runner |
 | [Add environment setup commands](#add-environment-setup-commands) | install your project's toolchain before an agent runs |
@@ -79,6 +80,7 @@ against](#what-a-pull-request-is-checked-against).
 - `environment.setup_commands`
 - `agents.<name>.max_iterations`
 - `limits.agent_handoffs`
+- `limits.runs_without_change`
 - `limits.environment_reloads`
 - `labels.in_progress`
 - `labels.sub_issue`
@@ -373,8 +375,42 @@ request starts again from zero, because opening one is progress — the limit is
 repetition that goes nowhere, not for work that takes a while.
 
 When the limit is hit, the run still finishes and still reports. Only the handoff
-is withheld, and a comment names the count, the limit, and the agent that would
-have run next. Posting `/<agent>` resumes it.
+is withheld, and a comment says which limit stopped it and which agent would have
+run next. Posting `/<agent>` resumes it.
+
+### Stop a chain that is not getting anywhere
+
+```json
+{
+  "limits": {
+    "runs_without_change": 2
+  }
+}
+```
+
+The limit above counts runs. This one counts **runs that changed nothing**, which is
+the thing actually worth stopping.
+
+A count of runs is a poor proxy in both directions. One piece of work here spent
+2,299k tokens and finished; a loop going nowhere can spend 30k and finish nothing.
+Cutting on how much happened stops the large legitimate job and lets the small
+useless one run.
+
+So a run that pushed no commit, opened no pull request and merged none is recorded
+as having changed nothing, and two of those in a row stops the chain. It fires
+sooner than `agent_handoffs` on repetition, and never on a long piece of real work,
+because length is not what it measures.
+
+Counted from the comments like the limit above, so nothing is stored: each result
+comment records what its run did. **Anything else in the thread ends the count** — a
+person's comment, a notice from the machinery, or a run that did change something.
+That is deliberate, and it makes this under-fire rather than over-fire: a run that
+ends by opening a pull request posts no result comment of its own, so its progress
+is invisible to this count and the runs either side of it must not read as
+consecutive.
+
+Two is the default. One run that changes nothing is ordinary — an agent asked a
+question, or investigated and reported. `0` means the default.
 
 ### How work starts
 
