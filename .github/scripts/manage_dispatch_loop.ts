@@ -21,12 +21,43 @@ function handoffsSincePerson(comments, isAgentComment) {
   }
   return handoffs;
 }
-function handoffLimitReached(handoffs, limit) {
-  return handoffs >= limit;
-}
 function resolveHandoffLimit(configured) {
   const value = typeof configured === "number" ? configured : Number(configured);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_HANDOFF_LIMIT;
+}
+
+// src/domain/progress.ts
+var DEFAULT_NO_PROGRESS_LIMIT = 2;
+function runsWithoutChange(comments, isNoChangeResult) {
+  let runs = 0;
+  for (let i = comments.length - 1;i >= 0; i--) {
+    if (!isNoChangeResult(comments[i]?.body ?? ""))
+      break;
+    runs++;
+  }
+  return runs;
+}
+function noProgressLimitReached(runs, limit) {
+  return runs >= limit;
+}
+function resolveNoProgressLimit(configured) {
+  const value = Number(configured);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_NO_PROGRESS_LIMIT;
+}
+function stopReason(counts) {
+  if (noProgressLimitReached(counts.runsWithoutChange, counts.noProgressLimit)) {
+    return {
+      stop: true,
+      reason: `The last ${counts.runsWithoutChange} agent runs changed nothing \u2014 no commit was pushed by any of them ` + `(limit ${counts.noProgressLimit}). Repeating a run that changes nothing is unlikely to start changing something, ` + `so the next automatic handoff has been withheld.`
+    };
+  }
+  if (counts.handoffs >= counts.handoffLimit) {
+    return {
+      stop: true,
+      reason: `Auto-dispatch loop limit reached: ${counts.handoffs} agent handoffs since anyone else commented ` + `(limit ${counts.handoffLimit}). To prevent unintended infinite agent loops and excessive API costs, ` + `the next automatic handoff has been withheld.`
+    };
+  }
+  return { stop: false };
 }
 
 // src/lib/config.ts
@@ -58,6 +89,9 @@ function loadConfig() {
 }
 function getHandoffLimit() {
   return loadConfig().limits?.agent_handoffs;
+}
+function getNoProgressLimit() {
+  return loadConfig().limits?.runs_without_change;
 }
 
 // src/lib/gh.ts
@@ -105,6 +139,7 @@ var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
 var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
 var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
+var CHANGED_TAG = stringTag("changed", "yes|no");
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
@@ -152,19 +187,28 @@ function main() {
     process.exit(2);
   }
   const limit = resolveHandoffLimit(getHandoffLimit());
+  const noProgressLimit = resolveNoProgressLimit(getNoProgressLimit());
   const { comments, read } = readComments(repo, number);
   if (!read)
     console.error(`WARN could not read comments on ${repo}#${number}; treating the chain as fresh`);
   const handoffs = handoffsSincePerson(comments, (body) => AGENT_TAG.has(body));
-  const reached = handoffLimitReached(handoffs, limit);
+  const stalled = runsWithoutChange(comments, (body) => AGENT_TAG.has(body) && CHANGED_TAG.read(body) === "no");
+  const decision = stopReason({
+    handoffs,
+    handoffLimit: limit,
+    runsWithoutChange: stalled,
+    noProgressLimit
+  });
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
     appendFileSync(githubOutput, `auto_dispatch_count=${handoffs}
-loop_limit_reached=${reached}
-handoff_limit=${limit}
+` + `loop_limit_reached=${decision.stop}
+` + `handoff_limit=${limit}
+` + `runs_without_change=${stalled}
+` + `stop_reason=${decision.reason ?? ""}
 `);
   }
-  console.error(`Agent handoffs since a person last commented: ${handoffs}/${limit} (limit_reached=${reached})`);
+  console.error(`Agent handoffs since a person last commented: ${handoffs}/${limit}; ` + `consecutive runs that changed nothing: ${stalled}/${noProgressLimit} (stop=${decision.stop})`);
 }
 if (import.meta.main)
   main();

@@ -690,6 +690,20 @@ jobs:
             CHAIN_CONTINUES=true
           fi
           echo "chain_continues=${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
+
+          # Whether this run changed anything, read from the same log and for a related
+          # reason: domain/progress.ts stops a chain that is not getting anywhere, and the
+          # most direct signal of that is a run that pushed nothing.
+          #
+          # Three ops count as progress. A commit is the obvious one; opening a pull request
+          # and merging one both move the work along without necessarily pushing during THIS
+          # run, and reading either as "changed nothing" would stop a chain at the moment it
+          # was working.
+          CHANGED=false
+          if [ -f "${RUNNER_TEMP}/atoma-run/atoma_ops.log" ] && grep -qE '"op":"(commit_and_push|create_pr|merge_pr)"' "${RUNNER_TEMP}/atoma-run/atoma_ops.log"; then
+            CHANGED=true
+          fi
+          echo "changed=${CHANGED}" >> "$GITHUB_OUTPUT"
       - name: Write token usage summary
         if: always()
         shell: bash
@@ -714,7 +728,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/post_result_comment.ts" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --type "${{ inputs.type }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --output "${RUNNER_TEMP}/atoma-run/atoma_output.txt" --logs-file "${RUNNER_TEMP}/atoma-run/atoma_logs.txt"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/post_result_comment.ts" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --type "${{ inputs.type }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --changed "${{ steps.atoma.outputs.changed }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --output "${RUNNER_TEMP}/atoma-run/atoma_output.txt" --logs-file "${RUNNER_TEMP}/atoma-run/atoma_logs.txt"
       - name: Record run metadata
         if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
         shell: bash
@@ -859,8 +873,7 @@ jobs:
           DIRECTIVE: ${{ steps.atoma.outputs.directive }}
           NOTIFY: ${{ steps.notify.outputs.notify }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COUNT: ${{ steps.loop-control.outputs.auto_dispatch_count }}
-          LIMIT: ${{ steps.loop-control.outputs.handoff_limit }}
+          REASON: ${{ steps.loop-control.outputs.stop_reason }}
         run: |
           if [ -n "$NUMBER" ]; then
             MENTION=""
@@ -872,8 +885,8 @@ jobs:
             # person and tells them how to resume.
             printf '%s
           ' "<!-- atoma:llm-context=exclude -->" > "$BD"
-            echo "${MENTION}Auto-dispatch loop limit reached: ${COUNT} agent handoffs since anyone else commented (limit ${LIMIT})." >> "$BD"
-            echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: ${DIRECTIVE}) has been safely suppressed." >> "$BD"
+            echo "${MENTION}${REASON}" >> "$BD"
+            echo "The next agent would have been ${DIRECTIVE}." >> "$BD"
             echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
             echo "See the workflow run for details: ${RUN_URL}." >> "$BD"
             gh issue comment "$NUMBER" --body-file "$BD"

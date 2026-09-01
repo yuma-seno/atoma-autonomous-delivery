@@ -418,7 +418,7 @@ var CONFIG_SCHEMA = {
     environment: { children: { setup_commands: null } },
     workflows: { children: { ci: null, cd: null } },
     agents: { anyName: { children: { max_iterations: null } } },
-    limits: { children: { agent_handoffs: null, environment_reloads: null } },
+    limits: { children: { agent_handoffs: null, environment_reloads: null, runs_without_change: null } },
     labels: { children: { in_progress: null, sub_issue: null, launched: null }, anyName: null }
   }
 };
