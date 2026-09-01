@@ -42,6 +42,7 @@ var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
 var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
 var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
+var CHANGED_TAG = stringTag("changed", "yes|no");
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");

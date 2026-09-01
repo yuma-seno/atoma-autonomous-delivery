@@ -50,6 +50,7 @@ var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
 var ORIGIN_AGENT_TAG = stringTag("origin-agent", AGENT_NAME_PATTERN);
 var DISPATCH_TAG = stringTag("dispatch", AGENT_NAME_PATTERN);
 var AGENT_TAG = stringTag("agent", AGENT_NAME_PATTERN);
+var CHANGED_TAG = stringTag("changed", "yes|no");
 var LLM_CONTEXT_TAG = stringTag("llm-context", "include|exclude");
 var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
@@ -186,7 +187,13 @@ function subIssueState(number, type) {
   }
 }
 function buildCommentBody(args) {
-  const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
+  const lines = [
+    AGENT_TAG.write(args.agent),
+    CHANGED_TAG.write(args.changed === true ? "yes" : "no"),
+    args.output,
+    "",
+    ...args.usageLines
+  ];
   const escapedNotice = escapedMentionNotice(args.escapedMentions ?? []);
   if (escapedNotice !== undefined)
     lines.push("", escapedNotice, "");
@@ -218,6 +225,7 @@ function main() {
       "chain-continues": { type: "string" },
       "max-iterations-reached": { type: "string" },
       "run-url": { type: "string" },
+      changed: { type: "string" },
       output: { type: "string" },
       "logs-file": { type: "string" }
     }
@@ -249,6 +257,7 @@ function main() {
     runUrl: values["run-url"],
     output: checked.text,
     escapedMentions: checked.escaped,
+    changed: values.changed === "true",
     usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type)
   });
