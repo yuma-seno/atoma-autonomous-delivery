@@ -7384,6 +7384,63 @@ function attachReportChannel(next) {
     deliver(next, level, message);
 }
 
+// src/lib/participants.ts
+function knownParticipants(repo, number) {
+  if (!repo || !String(number).trim())
+    return [];
+  const logins = new Set;
+  const collect = (args, read) => {
+    const { code, stdout } = gh(...args);
+    if (code !== 0)
+      return;
+    try {
+      for (const login of read(JSON.parse(stdout))) {
+        if (typeof login === "string" && login)
+          logins.add(login);
+      }
+    } catch {}
+  };
+  collect(["api", `repos/${repo}/issues/${number}`], (json) => [
+    json.user?.login
+  ]);
+  collect(["api", `repos/${repo}/issues/${number}/comments`, "--paginate"], (json) => json.map((comment) => comment.user?.login));
+  collect(["api", `repos/${repo}/collaborators`, "--paginate"], (json) => json.map((person) => person.login));
+  return [...logins];
+}
+
+// src/domain/mention.ts
+var MENTION = /(^|[^\w@/-])@([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})\b(?!\/)/g;
+var CODE = /```[\s\S]*?```|`[^`\n]*`/g;
+function escapeUnknownMentions(text, known) {
+  const allowed = new Set([...known].map((login) => login.trim().toLowerCase()).filter(Boolean));
+  const escaped = [];
+  const transform = (segment) => segment.replace(MENTION, (whole, before, login) => {
+    if (allowed.has(login.toLowerCase()))
+      return whole;
+    if (!escaped.includes(login))
+      escaped.push(login);
+    return `${before}\`@${login}\``;
+  });
+  let out = "";
+  let last = 0;
+  CODE.lastIndex = 0;
+  for (const match of text.matchAll(CODE)) {
+    const at = match.index ?? 0;
+    out += transform(text.slice(last, at));
+    out += match[0];
+    last = at + match[0].length;
+  }
+  out += transform(text.slice(last));
+  return { text: out, escaped };
+}
+function escapedMentionNotice(escaped) {
+  if (escaped.length === 0)
+    return;
+  const names = escaped.map((login) => `\`@${login}\``).join(", ");
+  return `> [!NOTE]
+` + `> ${names} ${escaped.length === 1 ? "was" : "were"} written as ${escaped.length === 1 ? "a mention" : "mentions"} ` + `and had the notification removed: this run could not confirm ${escaped.length === 1 ? "that account" : "those accounts"} ` + `as a participant in this repository or this thread. Nobody was notified. If the mention was meant, mention them yourself.`;
+}
+
 // node_modules/zod/v3/external.js
 var exports_external = {};
 __export(exports_external, {
@@ -19413,7 +19470,7 @@ async function createIssue(a) {
   let labels = a.labels ?? [];
   const sub = a.sub_issue ?? true;
   const parentNum = (process.env.ISSUE_NUMBER ?? "").trim();
-  body = notifyTagPrefix() + body;
+  body = notifyTagPrefix() + withCheckedMentions(body);
   if (sub) {
     if (parentNum)
       body = `${PARENT_TAG.write(Number(parentNum))}
@@ -19537,11 +19594,21 @@ async function closeIssueAndDispatch(a) {
     ...needsAttention(aggregation) ? { note: describeGateResult(aggregation, num) } : {}
   });
 }
+function withCheckedMentions(body) {
+  const checked = escapeUnknownMentions(body, knownParticipants(REPO, (process.env.ISSUE_NUMBER ?? "").trim()));
+  if (checked.escaped.length === 0)
+    return body;
+  log7(`escaped ${checked.escaped.length} unconfirmed mention(s): ${checked.escaped.join(", ")}`);
+  const notice = escapedMentionNotice(checked.escaped);
+  return notice === undefined ? checked.text : `${checked.text}
+
+${notice}`;
+}
 function injectParentIssue(body) {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
   if (NOTIFY_TAG.has(body))
     mcpFail("PR body already contains a notify tag; refusing to add another");
-  body = notifyTagPrefix() + body;
+  body = notifyTagPrefix() + withCheckedMentions(body);
   if (!parent)
     return body;
   if (PARENT_ISSUE_TAG.has(body)) {
