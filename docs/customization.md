@@ -195,12 +195,33 @@ git diff .github/            # every difference is now a decision
 git checkout -- .github/atoma/config.json    # for anything you meant to keep
 ```
 
-Name the version rather than taking `latest`. Recording which release you adopted
-is what lets you read the upstream changes between it and the next one
-(`gh release view`, or compare the two tags) instead of rediscovering them in a
-diff. Extracting also never deletes: a file the template dropped upstream stays in
-your tree, so a disappearance shows up as an upstream change you have to notice
-yourself rather than as a deletion in `git diff`.
+Name the version rather than taking `latest`, and read the upstream changes between
+yours and the next one (`gh release view`, or compare the two tags) rather than
+rediscovering them in a diff.
+
+**Which release do I have?** `.github/atoma-release.json` says. It ships with the
+release and records the version and every path the release contains:
+
+```bash
+jq -r .version .github/atoma-release.json
+```
+
+**What did upstream delete?** Extracting never deletes, so a file the template
+dropped stays in your tree — and that is not cosmetic. Two workflows were removed
+in v0.1.73 because work should start only when somebody asks; keeping them keeps
+the triggers. The manifest is what makes them findable:
+
+```bash
+# Paths you have under .github/ that this release no longer ships.
+# Your own files appear here too, which is why it is a list to read, not to pipe
+# into rm.
+comm -23 \
+  <(git ls-files '.github/*' | sort) \
+  <(jq -r '.files[]' .github/atoma-release.json | sort)
+```
+
+Read it rather than acting on it: your own workflows and your own project skills are
+files the template never shipped, and they are supposed to be there.
 
 Review that diff rather than trusting the copy. The safest habit is to keep your
 customisation where the template will not fight you for it — `config.json` covers
