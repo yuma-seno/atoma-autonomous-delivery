@@ -21,6 +21,34 @@ describe("post_result_comment.ts buildCommentBody", () => {
     expect(body).toContain("_run by [orchestrator](http://example.com/run/1)_");
   });
 
+  /**
+   * The escaped-mention notice belongs with what the agent wrote, and above the
+   * run footer -- somebody scanning the comment for what happened reads the top,
+   * and reads the footer only when they want the run.
+   */
+  test("says so when a mention was defused, between the report and the footer", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      runUrl: "http://example.com/run/1",
+      output: "Following `@torvalds`' approach.",
+      escapedMentions: ["torvalds"],
+      usageLines: [],
+    });
+    expect(body).toContain("Nobody was notified");
+    expect(body.indexOf("Nobody was notified")).toBeGreaterThan(body.indexOf("Following"));
+    expect(body.indexOf("Nobody was notified")).toBeLessThan(body.indexOf("_run by"));
+  });
+
+  test("and says nothing when nothing was defused", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      runUrl: "http://example.com/run/1",
+      output: "All done.",
+      usageLines: [],
+    });
+    expect(body).not.toContain("Nobody was notified");
+  });
+
   test("omits the mention when a directive is present", () => {
     const body = buildCommentBody({
       agent: "orchestrator",

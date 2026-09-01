@@ -19,6 +19,8 @@ import { gh } from "../lib/gh.ts";
 import { AGENT_TAG, PARENT_TAG } from "../lib/tags.ts";
 import { shouldMentionOnCompletion } from "../domain/completion-mention.ts";
 import { redact } from "../domain/redaction.ts";
+import { escapedMentionNotice, escapeUnknownMentions } from "../domain/mention.ts";
+import { knownParticipants } from "../lib/participants.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
@@ -131,8 +133,15 @@ export function buildCommentBody(args: {
   usageLines: string[];
   isSubIssue?: boolean;
   issueClosed?: boolean;
+  /** Logins the agent wrote as mentions that were escaped instead. */
+  escapedMentions?: readonly string[];
 }): string {
   const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
+
+  // Directly under what the agent wrote, because that is what it is about, and
+  // above the run footer, which nobody reads for this.
+  const escapedNotice = escapedMentionNotice(args.escapedMentions ?? []);
+  if (escapedNotice !== undefined) lines.push("", escapedNotice, "");
 
   if (
     shouldMentionOnCompletion({
@@ -216,6 +225,22 @@ function main(): void {
     return;
   }
 
+  // Checked on the way out for the same reason it is redacted on the way out:
+  // this text is whatever the agent decided to write, and a comment is the one
+  // place it reaches people. A `@name` here notifies a real account -- see
+  // `domain/mention.ts` for why a name it read somewhere is enough.
+  //
+  // The mention the RUNNER adds is not part of this. It is put in by
+  // `buildCommentBody` below from a login `resolveNotify` produced, and never
+  // passes through here.
+  const checked = escapeUnknownMentions(
+    output,
+    knownParticipants(process.env.GITHUB_REPOSITORY ?? "", values.number),
+  );
+  if (checked.escaped.length > 0) {
+    console.error(`escaped ${checked.escaped.length} unconfirmed mention(s): ${checked.escaped.join(", ")}`);
+  }
+
   const body = buildCommentBody({
     agent: values.agent,
     notify: values.notify,
@@ -223,7 +248,8 @@ function main(): void {
     chainContinues: values["chain-continues"],
     maxIterationsReached: values["max-iterations-reached"],
     runUrl: values["run-url"],
-    output,
+    output: checked.text,
+    escapedMentions: checked.escaped,
     usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type),
   });
