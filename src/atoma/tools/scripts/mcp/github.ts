@@ -25,6 +25,8 @@ import {
 } from "../../../../lib/aggregation.ts";
 import { logOp } from "../../../../lib/ops-log.ts";
 import { report } from "../../../../lib/mcp-report.ts";
+import { knownParticipants } from "../../../../lib/participants.ts";
+import { escapedMentionNotice, escapeUnknownMentions } from "../../../../domain/mention.ts";
 import { LLM_CONTEXT_TAG, NOTIFY_TAG, ORIGIN_AGENT_TAG, PARENT_ISSUE_TAG, PARENT_TAG } from "../../../../lib/tags.ts";
 import type { GhIssueAuthor } from "../../../../lib/types.ts";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, stringArray, z, type McpToolResult } from "../../../../lib/mcp-tool.ts";
@@ -291,7 +293,7 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   const sub = a.sub_issue ?? true;
   const parentNum = (process.env.ISSUE_NUMBER ?? "").trim();
 
-  body = notifyTagPrefix() + body;
+  body = notifyTagPrefix() + withCheckedMentions(body);
   if (sub) {
     if (parentNum) body = `${PARENT_TAG.write(Number(parentNum))}\n${body}`;
     const subIssueLabel = getLabel("sub_issue");
@@ -517,10 +519,35 @@ async function closeIssueAndDispatch(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Prom
   });
 }
 
+/**
+ * An agent-written body, with mentions it cannot vouch for defused.
+ *
+ * The same check the result comment gets, for the same reason: a `@name` in an
+ * issue or pull request body notifies a real account, and a name an agent read in
+ * a commit log is a name it can repeat. See `domain/mention.ts`.
+ *
+ * The thread it checks against is the issue this run is working on. For a new
+ * issue that is the parent's thread rather than its own, which does not exist yet
+ * -- and is the right set anyway: the people already talking about this work.
+ *
+ * The notice goes in the body rather than being logged, because the body is where
+ * somebody will see it. A run log is read when something has already gone wrong.
+ */
+function withCheckedMentions(body: string): string {
+  const checked = escapeUnknownMentions(
+    body,
+    knownParticipants(REPO, (process.env.ISSUE_NUMBER ?? "").trim()),
+  );
+  if (checked.escaped.length === 0) return body;
+  log(`escaped ${checked.escaped.length} unconfirmed mention(s): ${checked.escaped.join(", ")}`);
+  const notice = escapedMentionNotice(checked.escaped);
+  return notice === undefined ? checked.text : `${checked.text}\n\n${notice}`;
+}
+
 function injectParentIssue(body: string): string {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
   if (NOTIFY_TAG.has(body)) mcpFail("PR body already contains a notify tag; refusing to add another");
-  body = notifyTagPrefix() + body;
+  body = notifyTagPrefix() + withCheckedMentions(body);
   if (!parent) return body;
   if (PARENT_ISSUE_TAG.has(body)) {
     mcpFail("PR body already contains a parent-issue tag; refusing to add another");
