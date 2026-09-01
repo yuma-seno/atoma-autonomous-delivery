@@ -90,6 +90,63 @@ function redact(text, literals = []) {
   return out;
 }
 
+// src/domain/mention.ts
+var MENTION = /(^|[^\w@/-])@([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})\b(?!\/)/g;
+var CODE = /```[\s\S]*?```|`[^`\n]*`/g;
+function escapeUnknownMentions(text, known) {
+  const allowed = new Set([...known].map((login) => login.trim().toLowerCase()).filter(Boolean));
+  const escaped = [];
+  const transform = (segment) => segment.replace(MENTION, (whole, before, login) => {
+    if (allowed.has(login.toLowerCase()))
+      return whole;
+    if (!escaped.includes(login))
+      escaped.push(login);
+    return `${before}\`@${login}\``;
+  });
+  let out = "";
+  let last = 0;
+  CODE.lastIndex = 0;
+  for (const match of text.matchAll(CODE)) {
+    const at = match.index ?? 0;
+    out += transform(text.slice(last, at));
+    out += match[0];
+    last = at + match[0].length;
+  }
+  out += transform(text.slice(last));
+  return { text: out, escaped };
+}
+function escapedMentionNotice(escaped) {
+  if (escaped.length === 0)
+    return;
+  const names = escaped.map((login) => `\`@${login}\``).join(", ");
+  return `> [!NOTE]
+` + `> ${names} ${escaped.length === 1 ? "was" : "were"} written as ${escaped.length === 1 ? "a mention" : "mentions"} ` + `and had the notification removed: this run could not confirm ${escaped.length === 1 ? "that account" : "those accounts"} ` + `as a participant in this repository or this thread. Nobody was notified. If the mention was meant, mention them yourself.`;
+}
+
+// src/lib/participants.ts
+function knownParticipants(repo, number) {
+  if (!repo || !String(number).trim())
+    return [];
+  const logins = new Set;
+  const collect = (args, read) => {
+    const { code, stdout } = gh(...args);
+    if (code !== 0)
+      return;
+    try {
+      for (const login of read(JSON.parse(stdout))) {
+        if (typeof login === "string" && login)
+          logins.add(login);
+      }
+    } catch {}
+  };
+  collect(["api", `repos/${repo}/issues/${number}`], (json) => [
+    json.user?.login
+  ]);
+  collect(["api", `repos/${repo}/issues/${number}/comments`, "--paginate"], (json) => json.map((comment) => comment.user?.login));
+  collect(["api", `repos/${repo}/collaborators`, "--paginate"], (json) => json.map((person) => person.login));
+  return [...logins];
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -130,6 +187,9 @@ function subIssueState(number, type) {
 }
 function buildCommentBody(args) {
   const lines = [AGENT_TAG.write(args.agent), args.output, "", ...args.usageLines];
+  const escapedNotice = escapedMentionNotice(args.escapedMentions ?? []);
+  if (escapedNotice !== undefined)
+    lines.push("", escapedNotice, "");
   if (shouldMentionOnCompletion({
     directive: args.directive,
     chainContinues: args.chainContinues === "true",
@@ -176,6 +236,10 @@ function main() {
     console.error("atoma_output.txt is empty (session ended via a tool call) -- skipping result comment.");
     return;
   }
+  const checked = escapeUnknownMentions(output, knownParticipants(process.env.GITHUB_REPOSITORY ?? "", values.number));
+  if (checked.escaped.length > 0) {
+    console.error(`escaped ${checked.escaped.length} unconfirmed mention(s): ${checked.escaped.join(", ")}`);
+  }
   const body = buildCommentBody({
     agent: values.agent,
     notify: values.notify,
@@ -183,7 +247,8 @@ function main() {
     chainContinues: values["chain-continues"],
     maxIterationsReached: values["max-iterations-reached"],
     runUrl: values["run-url"],
-    output,
+    output: checked.text,
+    escapedMentions: checked.escaped,
     usageLines: tokenUsageLines(values["logs-file"] ?? ""),
     ...subIssueState(values.number, values.type)
   });

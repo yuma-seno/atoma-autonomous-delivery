@@ -95,6 +95,86 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
+// src/domain/session-size.ts
+var SESSION_TOKEN_LIMIT = 1e5;
+var CHARS_PER_TOKEN = 4;
+function estimateTokens(session) {
+  const messages = session.messages ?? [];
+  if (messages.length === 0)
+    return 0;
+  return Math.round(JSON.stringify(messages).length / CHARS_PER_TOKEN);
+}
+function hasText(content) {
+  if (typeof content === "string")
+    return content.trim() !== "";
+  return Array.isArray(content) && content.length > 0;
+}
+function shrinkNotice(removed) {
+  return {
+    role: "user",
+    content: [
+      `[atoma] ${removed} earlier tool results were removed from this session so it fits in the model's context window.`,
+      "",
+      "Your own messages are unchanged, so what you concluded is still here. What is gone is what the tools returned:",
+      "file contents, command output, search results. If you need any of it, call the tool again \u2014 do not answer from",
+      "memory of something you can no longer see."
+    ].join(`
+`),
+    atoma_metadata: { source: "atoma", layer: "session-shrink", removed }
+  };
+}
+function dropToolTraffic(session) {
+  const messages = session.messages ?? [];
+  const tokensBefore = estimateTokens(session);
+  const kept = [];
+  let removed = 0;
+  for (const message of messages) {
+    if (message.role === "tool") {
+      removed += 1;
+      continue;
+    }
+    if (message.tool_calls === undefined) {
+      kept.push(message);
+      continue;
+    }
+    const { tool_calls: _dropped, ...rest } = message;
+    if (hasText(rest.content)) {
+      kept.push(rest);
+    } else {
+      removed += 1;
+    }
+  }
+  if (removed === 0) {
+    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, removed: 0 };
+  }
+  kept.push(shrinkNotice(removed));
+  const shrunkSession = { ...session, messages: kept };
+  return {
+    session: shrunkSession,
+    shrunk: true,
+    tokensBefore,
+    tokensAfter: estimateTokens(shrunkSession),
+    removed
+  };
+}
+function shrinkIfNeeded(session, limit = SESSION_TOKEN_LIMIT) {
+  const tokensBefore = estimateTokens(session);
+  if (tokensBefore <= limit) {
+    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, removed: 0 };
+  }
+  return dropToolTraffic(session);
+}
+function shrinkLogLine(outcome) {
+  if (!outcome.shrunk)
+    return;
+  return `session shrunk: ${outcome.removed} tool messages dropped, ` + `~${Math.round(outcome.tokensBefore / 1000)}k -> ~${Math.round(outcome.tokensAfter / 1000)}k estimated tokens`;
+}
+function stillTooBigLine(outcome, limit = SESSION_TOKEN_LIMIT) {
+  if (outcome.tokensAfter <= limit)
+    return;
+  return `session is still ~${Math.round(outcome.tokensAfter / 1000)}k estimated tokens after shrinking, ` + `over the ~${Math.round(limit / 1000)}k this run allows. What is left is the conversation itself, ` + "which nothing here can shorten. This run will likely be refused by the provider; start the agent " + "again with a recover run (for example `/engineer recover`), which archives the session and begins fresh.";
+}
+
 // src/scripts/restore_agent_session.ts
 var ref = defineScript(import.meta.url);
 function findAgentSession(type, number, agent, load = restoreSession) {
@@ -129,11 +209,30 @@ function main() {
     return;
   }
   if (content !== undefined) {
-    writeFileSync2(values.out, content);
+    writeFileSync2(values.out, sized(content, target));
     console.error(`Restored session: ${target}`);
   } else {
     console.error(`No existing session at ${target}, starting fresh.`);
   }
+}
+function sized(content, target) {
+  let session;
+  try {
+    session = JSON.parse(content);
+  } catch {
+    console.error(`Could not read ${target} as JSON; restoring it unchanged.`);
+    return content;
+  }
+  const result = shrinkIfNeeded(session);
+  const shrank = shrinkLogLine(result);
+  if (shrank !== undefined)
+    console.error(shrank);
+  const stuck = stillTooBigLine(result);
+  if (stuck !== undefined)
+    console.error(stuck);
+  if (shrank === undefined)
+    return content;
+  return JSON.stringify(result.session, null, 2);
 }
 if (import.meta.main)
   main();
