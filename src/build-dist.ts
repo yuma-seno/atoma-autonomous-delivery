@@ -29,9 +29,10 @@
  * own `.github/`. `dist/.github/` is fully generated output: nothing under
  * it should ever be hand-edited directly.
  */
-import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildManifest, MANIFEST_PATH } from "./domain/release-manifest.ts";
 
 /**
  * Packages left out of the bundle and installed on the runner instead.
@@ -123,6 +124,33 @@ function copyStaticAtomaContent(): void {
   console.log(`build-dist: copied static content: ${srcAtomaDir} -> ${distAtomaDir}`);
 }
 
+/**
+ * Write what this release is and what it contains.
+ *
+ * Last, because it lists what the steps above produced -- including the generated
+ * workflows, which `gwf build` wrote before any of this ran. Walking `dist/` rather
+ * than assembling a list by hand is the point: a list written by hand is a list that
+ * disagrees with the zip the first time somebody adds a file.
+ *
+ * See `domain/release-manifest.ts` for the two questions this answers.
+ */
+function writeManifest(): void {
+  const version = `v${(JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as { version: string }).version}`;
+  const files: string[] = [];
+  const walk = (dir: string, prefix: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const here = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(join(dir, entry.name), here);
+      else files.push(here);
+    }
+  };
+  walk(DIST_GITHUB_DIR, ".github");
+
+  const manifest = buildManifest(version, files);
+  writeFileSync(join(REPO_ROOT, "dist", MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`build-dist: wrote ${MANIFEST_PATH} for ${version} (${manifest.files.length} files)`);
+}
+
 async function main(): Promise<void> {
   await bundleTree(join(SRC_DIR, "scripts"), join(DIST_GITHUB_DIR, "scripts"), new Set(["lib", "testing"]));
   await bundleTree(
@@ -131,6 +159,7 @@ async function main(): Promise<void> {
     new Set(["lib"]),
   );
   copyStaticAtomaContent();
+  writeManifest();
 }
 
 void main();
