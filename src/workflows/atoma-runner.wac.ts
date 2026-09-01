@@ -671,9 +671,23 @@ if [ -f "${RUN_DIR}/atoma_ops.log" ] && grep -q '"op":"dispatch"' "${RUN_DIR}/at
   CHAIN_CONTINUES=true
 fi
 echo "chain_continues=\${CHAIN_CONTINUES}" >> "$GITHUB_OUTPUT"
+
+# Whether this run changed anything, read from the same log and for a related
+# reason: domain/progress.ts stops a chain that is not getting anywhere, and the
+# most direct signal of that is a run that pushed nothing.
+#
+# Three ops count as progress. A commit is the obvious one; opening a pull request
+# and merging one both move the work along without necessarily pushing during THIS
+# run, and reading either as "changed nothing" would stop a chain at the moment it
+# was working.
+CHANGED=false
+if [ -f "${RUN_DIR}/atoma_ops.log" ] && grep -qE '"op":"(commit_and_push|create_pr|merge_pr)"' "${RUN_DIR}/atoma_ops.log"; then
+  CHANGED=true
+fi
+echo "changed=\${CHANGED}" >> "$GITHUB_OUTPUT"
 `,
   },
-  ["result", "directive", "max_iterations_reached", "chain_continues"] as const,
+  ["result", "directive", "max_iterations_reached", "chain_continues", "changed"] as const,
 );
 
 const tokenUsageStep = new TypedOutputsStep({
@@ -731,6 +745,10 @@ const postResultCommentStep = new TypedOutputsStep(
       directive: runAgentStep.outputs.directive,
       "chain-continues": runAgentStep.outputs.chain_continues,
       "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
+      // Written into the comment, because that is where the next run reads it:
+      // the no-progress limit counts consecutive runs from the thread rather than
+      // from a counter -- see domain/progress.ts.
+      changed: runAgentStep.outputs.changed,
       "run-url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
       // Passed in, because the script used to open these by their bare names --
       // relative paths that stopped resolving when #487 moved the run's files out
@@ -869,7 +887,7 @@ const loopControlStep = new TypedOutputsStep(
       number: "${{ inputs.number }}",
     })}\n`,
   },
-  ["auto_dispatch_count", "loop_limit_reached", "handoff_limit"] as const,
+  ["auto_dispatch_count", "loop_limit_reached", "handoff_limit", "runs_without_change", "stop_reason"] as const,
 );
 
 // Whether the atoma/in-progress SerializationGuard should be released after
@@ -951,12 +969,13 @@ const loopLimitCommentStep = new TypedOutputsStep({
     DIRECTIVE: runAgentStep.outputs.directive,
     NOTIFY: notifyStep.outputs.notify,
     RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-    // Both read from the step that decided, not written here. The limit is
-    // configurable now, so a literal spliced in at synth time would tell a person
-    // a number that is not the one that stopped their chain -- which is the defect
-    // the old constant's own comment warned about, made reachable.
-    COUNT: loopControlStep.outputs.auto_dispatch_count,
-    LIMIT: loopControlStep.outputs.handoff_limit,
+    // The whole sentence, from the step that decided, rather than assembled here.
+    //
+    // It used to be built from the handoff count whatever the reason, with the
+    // limit spliced in -- and there are two limits now. A chain stopped because its
+    // last two runs changed nothing would have been told it had made too many
+    // handoffs, which is a different thing to go and look at.
+    REASON: loopControlStep.outputs.stop_reason,
   },
   run: `if [ -n "$NUMBER" ]; then
   MENTION=""
@@ -967,8 +986,8 @@ const loopLimitCommentStep = new TypedOutputsStep({
   # Out of the model's context, like the other operational notices: it names a
   # person and tells them how to resume.
   printf '%s\n' "${LLM_CONTEXT_TAG.write("exclude")}" > "$BD"
-  echo "\${MENTION}Auto-dispatch loop limit reached: \${COUNT} agent handoffs since anyone else commented (limit \${LIMIT})." >> "$BD"
-  echo "To prevent unintended infinite agent loops and excessive API costs, further automatic handoff (next agent: \${DIRECTIVE}) has been safely suppressed." >> "$BD"
+  echo "\${MENTION}\${REASON}" >> "$BD"
+  echo "The next agent would have been \${DIRECTIVE}." >> "$BD"
   echo "Please review the progress so far. To resume, post a manual comment on the Issue/PR (e.g. /\${DIRECTIVE}) to trigger the next agent at any time." >> "$BD"
   echo "See the workflow run for details: \${RUN_URL}." >> "$BD"
   gh issue comment "$NUMBER" --body-file "$BD"

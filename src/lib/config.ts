@@ -228,6 +228,17 @@ export function getHandoffLimit(): unknown {
 }
 
 /**
+ * How many consecutive runs may change nothing before a person is asked.
+ *
+ * Raw, like the handoff limit above and for the same reason: `domain/progress.ts`
+ * owns what an absent or nonsense value means, and owns the default the escalation
+ * comment quotes back.
+ */
+export function getNoProgressLimit(): unknown {
+  return loadConfig().limits?.runs_without_change;
+}
+
+/**
  * How many times one piece of work may rebuild its environment.
  *
  * Raw, for `resolveReloadLimit` to interpret. The domain module owns what absent,

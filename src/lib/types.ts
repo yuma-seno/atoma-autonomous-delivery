@@ -182,6 +182,21 @@ export interface AtomaConfig {
      */
     agent_handoffs?: number;
     /**
+     * How many consecutive agent runs may change nothing before the next
+     * automatic handoff is withheld and a person is asked.
+     *
+     * "Changed nothing" means the run pushed no commit, opened no pull request and
+     * merged none — read from what each result comment records about itself, not
+     * from a counter. See `domain/progress.ts`.
+     *
+     * Unset takes 2. One run that changes nothing is ordinary: an agent that
+     * investigated and reported did its job. Two in a row, with nothing else
+     * happening between them, is the shape of an agent going round — and it fires
+     * sooner than `agent_handoffs` while leaving a long piece of real work alone,
+     * because length is not the thing being measured. `0` means the default.
+     */
+    runs_without_change?: number;
+    /**
      * How many times one piece of work may rebuild its environment with
      * `atoma_env__reload_environment`, before the tool refuses.
      *
