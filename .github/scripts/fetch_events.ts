@@ -275,12 +275,12 @@ function appendPrEvents(events, owner, repo, prNumber, maxDiffChars) {
 function fetchEvents(type, number, maxDiffChars) {
   const [owner, repo] = repoParts();
   if (type === "issue") {
-    const events2 = fetchIssueEvents(owner, repo, number, "issue_opened", "issue_comment", "issue");
+    const events = fetchIssueEvents(owner, repo, number, "issue_opened", "issue_comment", "issue");
     for (const prNumber of tryLinkedPrNumbers(owner, repo, number)) {
-      appendPrEvents(events2, owner, repo, prNumber, maxDiffChars);
+      appendPrEvents(events, owner, repo, prNumber, maxDiffChars);
     }
-    events2.sort((a, b) => a.created_at.localeCompare(b.created_at));
-    return { events: events2, resolvedType: "issue", resolvedNumber: number };
+    events.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return { events, resolvedType: "issue", resolvedNumber: number };
   }
   const prResult = fetchPrEvents(owner, repo, number, maxDiffChars);
   let events = [...prResult.events];
