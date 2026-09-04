@@ -230,10 +230,36 @@ export function buildMcpTools(specs: BuiltMcpTool[]): { tools: Tool[]; dispatch:
     tools: specs.map((s) => s.tool),
     async dispatch(name, args) {
       const spec = byName.get(name);
-      if (!spec) throw new Error(`Unknown: ${name}`);
+      if (!spec) throw new Error(unknownToolMessage(name, [...byName.keys()]));
       return spec.call(args);
     },
   };
+}
+
+/**
+ * What to say when a name does not exist here.
+ *
+ * It used to say `Unknown: execute` and stop. Measured (#544): an agent called
+ * `shell__execute` -- the real name is `shell__shell_execute` -- and, told only that
+ * it was unknown, **made the same mistake three times.** The one place that knows the
+ * right answer is the map two lines up, and it was not being asked.
+ *
+ * So the list goes in the message. It is short (one server has between one and
+ * nineteen tools), and this is the same bargain `defineMcpTool`'s argument errors
+ * already make: name the field and the reason, so the next call can be right rather
+ * than merely different.
+ *
+ * The near-miss first, when there is one. A caller that wrote `execute` where
+ * `shell_execute` was meant is not choosing between nineteen options, it is one
+ * token out -- and putting the likely answer in front of the list is what makes the
+ * message readable at a glance.
+ */
+export function unknownToolMessage(name: string, available: readonly string[]): string {
+  const near = available.filter(
+    (candidate) => candidate.includes(name) || name.includes(candidate),
+  );
+  const suggestion = near.length > 0 ? ` Did you mean ${near.map((n) => `'${n}'`).join(" or ")}?` : "";
+  return `Unknown tool '${name}' on this server.${suggestion} Available: ${available.join(", ")}.`;
 }
 
 /**

@@ -50,6 +50,18 @@ If it is not engineer-ready, do not edit. Return `/orchestrator` on the first li
 
 ## Execution
 
+**First, what was asked.** Most issues here ask for a change, and the steps below
+deliver one. Some ask a question instead — an inventory, a measurement, whether
+something is feasible, what the options are. **That is finished by answering it.**
+The answer goes in your closing text, there is nothing to commit, and opening a pull
+request for it delivers nothing. The steps below do not apply.
+
+**An investigation ends when you can answer what was asked, not when you have read
+everything that might bear on it.** If you have most of the answer and are still
+looking for the rest, write what you have and name what you could not establish.
+Searching until the iteration budget runs out produces no answer at all: the run
+stops mid-command and nobody receives anything.
+
 1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `engineering/environment` when something you need is not installed or an install fails, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
 2. Read the issue, current repository state, and the nearest owning code before editing.
 3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.
@@ -66,6 +78,7 @@ describing one instead of making it delivers nothing.
 | Situation | Outcome |
 | --- | --- |
 | The work is implemented and validated | `github__commit_and_push`, then `github__create_pr` |
+| The request is a question rather than a change | the answer, in your closing text. No commit, no pull request |
 | The issue is not engineer-ready | begin the response with `/orchestrator`, then name the unresolved concerns |
 | Validation fails for a reason in the issue's own premise | report the contradiction and what you tried, and end — do not implement around it |
 | You cannot do it with the tools available | name the missing capability and the step it blocks, and end |
