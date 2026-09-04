@@ -2,6 +2,7 @@
 // @bun
 
 // src/scripts/notify_max_iterations.ts
+import { existsSync, readFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/lib/gh.ts
@@ -55,6 +56,32 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
+// src/domain/tool-tally.ts
+var NAMED = 4;
+function toolCallTally(session) {
+  const names = [];
+  for (const message of session?.messages ?? []) {
+    for (const call of message.tool_calls ?? []) {
+      const name = call.function?.name;
+      if (typeof name === "string" && name !== "")
+        names.push(name);
+    }
+  }
+  if (names.length === 0)
+    return;
+  const counts = new Map;
+  for (const name of names)
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const shown = ranked.slice(0, NAMED).map(([name, n]) => `\`${name}\` ${n}`);
+  const rest = ranked.slice(NAMED);
+  if (rest.length > 0) {
+    const restCalls = rest.reduce((sum, [, n]) => sum + n, 0);
+    shown.push(`and ${rest.length} other tool${rest.length === 1 ? "" : "s"} ${restCalls}`);
+  }
+  return `Spent on: ${names.length} tool calls \u2014 ${shown.join(", ")}.`;
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -71,7 +98,8 @@ function main() {
     options: {
       number: { type: "string" },
       agent: { type: "string" },
-      notify: { type: "string" }
+      notify: { type: "string" },
+      session: { type: "string" }
     }
   });
   if (!values.number || !values.agent) {
@@ -79,8 +107,18 @@ function main() {
     process.exit(2);
   }
   const notice = values.notify ? `@${values.notify} Atoma: \`${values.agent}\` reached the max iteration limit. Review the issue and comment \`/${values.agent}\` to retry.` : `Atoma: \`${values.agent}\` reached the max iteration limit. Comment \`/${values.agent}\` to retry.`;
-  gh("issue", "comment", values.number, "--body", `${LLM_CONTEXT_TAG.write("exclude")}
-${notice}`);
+  const spent = toolCallTally(readSession(values.session));
+  gh("issue", "comment", values.number, "--body", [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...spent ? ["", spent] : []].join(`
+`));
+}
+function readSession(path) {
+  if (!path || !existsSync(path))
+    return;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return;
+  }
 }
 if (import.meta.main)
   main();

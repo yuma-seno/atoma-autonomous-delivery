@@ -818,7 +818,7 @@ jobs:
           NOTIFY: ${{ steps.notify.outputs.notify }}
           AGENT: ${{ inputs.agent }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/notify_max_iterations.ts" --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/notify_max_iterations.ts" --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}" --session "${RUNNER_TEMP}/atoma-run/session.json"
       - name: Manage auto-dispatch loop control
         id: loop-control
         if: steps.atoma.outcome == 'success'
