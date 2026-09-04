@@ -5,15 +5,20 @@
  *
  * Usage: notify_max_iterations.ts --number N --agent AGENT [--notify LOGIN]
  */
+import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
+import { toolCallTally } from "../domain/tool-tally.ts";
+import type { Session } from "../lib/session.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface NotifyMaxIterationsArgs {
   number: string | number;
   agent: string;
   notify?: string;
+  /** The session, read to say what the run spent its iterations on. */
+  session?: string;
 }
 
 export const ref = defineScript<NotifyMaxIterationsArgs>(import.meta.url);
@@ -25,6 +30,7 @@ function main(): void {
       number: { type: "string" },
       agent: { type: "string" },
       notify: { type: "string" },
+      session: { type: "string" },
     },
   });
 
@@ -47,7 +53,37 @@ function main(): void {
     ? `@${values.notify} Atoma: \`${values.agent}\` reached the max iteration limit. Review the issue and comment \`/${values.agent}\` to retry.`
     : `Atoma: \`${values.agent}\` reached the max iteration limit. Comment \`/${values.agent}\` to retry.`;
 
-  gh("issue", "comment", values.number, "--body", `${LLM_CONTEXT_TAG.write("exclude")}\n${notice}`);
+  // What it spent them on, so a person can tell a run that was going round from one
+  // that was making progress -- without opening the workflow log or the session.
+  //
+  // No model call and no report. #544 asked for one and the data said no: these
+  // agents write nothing until their final turn, so a run cut off before it has
+  // nothing to say, and the session survives for a retry anyway. What a person
+  // actually needs here is whether to retry or to re-scope, and a tally answers that.
+  const spent = toolCallTally(readSession(values.session));
+
+  gh(
+    "issue",
+    "comment",
+    values.number,
+    "--body",
+    [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...(spent ? ["", spent] : [])].join("\n"),
+  );
+}
+
+/**
+ * The session, or nothing.
+ *
+ * Every failure here is silent on purpose: the notice is the thing that matters and
+ * it must go out. A tally is an improvement to it, not a precondition for it.
+ */
+function readSession(path: string | undefined): Session | undefined {
+  if (!path || !existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Session;
+  } catch {
+    return undefined;
+  }
 }
 
 if (import.meta.main) main();

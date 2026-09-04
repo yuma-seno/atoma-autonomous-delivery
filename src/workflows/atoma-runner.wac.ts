@@ -1515,7 +1515,15 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
       NOTIFY: notifyStep.outputs.notify,
       AGENT: "${{ inputs.agent }}",
     },
-    run: `${scriptCommandWithArgs(notifyMaxIterationsRef, { number: "\${NUMBER}", agent: "\${AGENT}", notify: "\${NOTIFY}" })}
+    run: `${scriptCommandWithArgs(notifyMaxIterationsRef, {
+      number: "\${NUMBER}",
+      agent: "\${AGENT}",
+      notify: "\${NOTIFY}",
+      // Read for the tally: which tools the run spent its iterations on. Its own
+      // notice is what tells a person to retry, and a tally is what tells them
+      // whether retrying is the right move -- see domain/tool-tally.ts.
+      session: `${RUN_DIR}/session.json`,
+    })}
 `,
   }),
   loopControlStep,
