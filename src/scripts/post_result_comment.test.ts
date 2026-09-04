@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildCommentBody } from "./post_result_comment.ts";
+import { buildCommentBody, lastAgentText } from "./post_result_comment.ts";
 import type { Session } from "../lib/session.ts";
 import { runWithFakeGh, scriptPath } from "./testing/harness.ts";
 
@@ -234,5 +234,80 @@ describe("post_result_comment.ts main", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * What a run that ran out of iterations leaves behind.
+ *
+ * Measured (#544): 17 minutes, 154k tokens, 352 tool calls, and the thread received
+ * a one-line notice saying the limit was reached. Everything the run had worked out
+ * was in the session, where nobody looks.
+ */
+describe("salvaging a run that ran out of iterations", () => {
+  const write = (session: unknown): string => {
+    const dir = mkdtempSync(join(tmpdir(), "salvage-"));
+    const path = join(dir, "session.json");
+    writeFileSync(path, JSON.stringify(session));
+    return path;
+  };
+
+  test("the last thing the agent said, not the last message", () => {
+    const path = write({
+      messages: [
+        { role: "assistant", content: "I checked config.json and found 13 keys." },
+        { role: "assistant", content: "", tool_calls: [{ id: "c1" }] },
+        { role: "tool", tool_call_id: "c1", content: "grep output" },
+      ],
+    });
+    expect(lastAgentText(path)).toBe("I checked config.json and found 13 keys.");
+  });
+
+  /**
+   * The common shape: the last turns of a run that ran out are tool calls with no
+   * words, which is exactly why the output file was empty.
+   */
+  test("nothing to salvage is a real answer", () => {
+    const path = write({
+      messages: [
+        { role: "user", content: "do the thing" },
+        { role: "assistant", content: "", tool_calls: [{ id: "c1" }] },
+      ],
+    });
+    expect(lastAgentText(path)).toBeUndefined();
+  });
+
+  test("a missing or unreadable session salvages nothing rather than failing", () => {
+    expect(lastAgentText(undefined)).toBeUndefined();
+    expect(lastAgentText("/definitely/not/here.json")).toBeUndefined();
+    const path = write("not a session at all");
+    expect(lastAgentText(path)).toBeUndefined();
+  });
+
+  /**
+   * Presenting a sentence from the middle of the work as a conclusion is worse than
+   * posting nothing, because a reader would act on it.
+   */
+  test("the comment says it is not a report", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      runUrl: "http://example.com/run/1",
+      output: "Now checking whether auto_triggers is read anywhere.",
+      salvaged: true,
+      usageLines: [],
+    });
+    expect(body).toContain("never wrote a report");
+    expect(body).toContain("not a conclusion");
+    expect(body.indexOf("never wrote a report")).toBeLessThan(body.indexOf("Now checking"));
+  });
+
+  test("an ordinary report carries no such warning", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      runUrl: "http://example.com/run/1",
+      output: "Done.",
+      usageLines: [],
+    });
+    expect(body).not.toContain("never wrote a report");
   });
 });
