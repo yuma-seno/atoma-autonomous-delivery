@@ -135,12 +135,23 @@ function subIssueState(number: string, type?: string): { isSubIssue: boolean; is
  * The last thing the agent actually said, out of the session.
  *
  * For the iteration-limit case only. Walks backwards for an assistant message with
- * text: the last few turns of a run that ran out are usually tool calls with no
- * words, which is why the output file was empty in the first place.
+ * text, because the last few turns of a run that ran out are tool calls with no
+ * words -- which is why the output file was empty in the first place.
  *
- * `undefined` when there is nothing to salvage, which is a real outcome -- a run
- * that made 324 tool calls and never wrote a sentence has nothing to report, and
- * saying so is better than posting an empty comment.
+ * **And for the models this repository runs today, it finds nothing.** Measured over
+ * 244 stored sessions after this was written: these agents write prose exactly once,
+ * in their final turn (450 assistant turns, 1 with text; 204 turns, 1; 200 turns, 0).
+ * When the loop ends the turn before that, there is nothing earlier to recover. The
+ * only place that can produce the report is the inference loop itself, which is
+ * atoma#15.
+ *
+ * Kept rather than removed: it costs nothing when there is nothing, and it works for
+ * a model that narrates as it goes. But it is not the fix, and reading it as one
+ * would leave the real gap open.
+ *
+ * `undefined` when there is nothing to salvage, which is a real outcome -- a run that
+ * made 324 tool calls and never wrote a sentence has nothing to report, and saying so
+ * is better than posting an empty comment.
  */
 export function lastAgentText(sessionPath: string | undefined): string | undefined {
   if (!sessionPath || !existsSync(sessionPath)) return undefined;
