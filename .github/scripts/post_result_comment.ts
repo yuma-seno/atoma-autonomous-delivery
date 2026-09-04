@@ -186,14 +186,35 @@ function subIssueState(number, type) {
     return { isSubIssue: false, issueClosed: false };
   }
 }
+function lastAgentText(sessionPath) {
+  if (!sessionPath || !existsSync(sessionPath))
+    return;
+  let session;
+  try {
+    session = JSON.parse(readFileSync(sessionPath, "utf8"));
+  } catch {
+    return;
+  }
+  const messages = session.messages ?? [];
+  for (let i = messages.length - 1;i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== "assistant")
+      continue;
+    const content = message.content;
+    if (typeof content === "string" && content.trim() !== "")
+      return content;
+  }
+  return;
+}
 function buildCommentBody(args) {
   const lines = [
     AGENT_TAG.write(args.agent),
-    CHANGED_TAG.write(args.changed === true ? "yes" : "no"),
-    args.output,
-    "",
-    ...args.usageLines
+    CHANGED_TAG.write(args.changed === true ? "yes" : "no")
   ];
+  if (args.salvaged === true) {
+    lines.push("> [!WARNING]", "> This run hit its iteration limit and never wrote a report. Below is the last thing it said,", "> from the middle of the work \u2014 not a conclusion, and not a summary of what it found.", "");
+  }
+  lines.push(args.output, "", ...args.usageLines);
   const escapedNotice = escapedMentionNotice(args.escapedMentions ?? []);
   if (escapedNotice !== undefined)
     lines.push("", escapedNotice, "");
@@ -226,6 +247,7 @@ function main() {
       "max-iterations-reached": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
+      session: { type: "string" },
       output: { type: "string" },
       "logs-file": { type: "string" }
     }
@@ -239,7 +261,17 @@ function main() {
     console.error("post_result_comment.ts: --output is required (the agent's stdout file)");
     process.exit(2);
   }
-  const output = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
+  const redacted = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
+  let output = redacted;
+  let salvaged = false;
+  if (!output.trim() && values["max-iterations-reached"] === "true") {
+    const last = lastAgentText(values.session);
+    if (last !== undefined) {
+      output = redact(last);
+      salvaged = true;
+      console.error("salvaged the agent's last message from the session (iteration limit)");
+    }
+  }
   if (!output.trim()) {
     console.error("atoma_output.txt is empty (session ended via a tool call) -- skipping result comment.");
     return;
@@ -250,6 +282,7 @@ function main() {
   }
   const body = buildCommentBody({
     agent: values.agent,
+    salvaged,
     notify: values.notify,
     directive: values.directive,
     chainContinues: values["chain-continues"],
@@ -276,5 +309,6 @@ if (import.meta.main)
   main();
 export {
   buildCommentBody,
+  lastAgentText,
   ref
 };
