@@ -21,6 +21,7 @@ import { shouldMentionOnCompletion } from "../domain/completion-mention.ts";
 import { redact } from "../domain/redaction.ts";
 import { escapedMentionNotice, escapeUnknownMentions } from "../domain/mention.ts";
 import { knownParticipants } from "../lib/participants.ts";
+import type { Session } from "../lib/session.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface PostResultCommentArgs {
@@ -33,6 +34,12 @@ export interface PostResultCommentArgs {
   "max-iterations-reached"?: string;
   /** "true" when this run pushed a commit, opened a pull request, or merged one. */
   changed?: string;
+  /**
+   * The session, read only to salvage something when the run ran out of iterations.
+   *
+   * Optional: a run that ends normally never opens it.
+   */
+  session?: string;
   "run-url": string;
   /**
    * The agent's stdout, and the log it wrote alongside.
@@ -124,6 +131,35 @@ function subIssueState(number: string, type?: string): { isSubIssue: boolean; is
   }
 }
 
+/**
+ * The last thing the agent actually said, out of the session.
+ *
+ * For the iteration-limit case only. Walks backwards for an assistant message with
+ * text: the last few turns of a run that ran out are usually tool calls with no
+ * words, which is why the output file was empty in the first place.
+ *
+ * `undefined` when there is nothing to salvage, which is a real outcome -- a run
+ * that made 324 tool calls and never wrote a sentence has nothing to report, and
+ * saying so is better than posting an empty comment.
+ */
+export function lastAgentText(sessionPath: string | undefined): string | undefined {
+  if (!sessionPath || !existsSync(sessionPath)) return undefined;
+  let session: Session;
+  try {
+    session = JSON.parse(readFileSync(sessionPath, "utf8")) as Session;
+  } catch {
+    return undefined;
+  }
+  const messages = session.messages ?? [];
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.role !== "assistant") continue;
+    const content = message.content;
+    if (typeof content === "string" && content.trim() !== "") return content;
+  }
+  return undefined;
+}
+
 export function buildCommentBody(args: {
   agent: string;
   notify?: string;
@@ -138,6 +174,13 @@ export function buildCommentBody(args: {
   /** Logins the agent wrote as mentions that were escaped instead. */
   escapedMentions?: readonly string[];
   /**
+   * Whether `output` is the agent's last message rather than its report.
+   *
+   * Said in the comment, because presenting a sentence from the middle of the work
+   * as a conclusion is worse than posting nothing: a reader would act on it.
+   */
+  salvaged?: boolean;
+  /**
    * Whether this run pushed a commit, opened a pull request or merged one.
    *
    * Written into the comment because that is where the next run can read it.
@@ -150,10 +193,16 @@ export function buildCommentBody(args: {
   const lines = [
     AGENT_TAG.write(args.agent),
     CHANGED_TAG.write(args.changed === true ? "yes" : "no"),
-    args.output,
-    "",
-    ...args.usageLines,
   ];
+  if (args.salvaged === true) {
+    lines.push(
+      "> [!WARNING]",
+      "> This run hit its iteration limit and never wrote a report. Below is the last thing it said,",
+      "> from the middle of the work — not a conclusion, and not a summary of what it found.",
+      "",
+    );
+  }
+  lines.push(args.output, "", ...args.usageLines);
 
   // Directly under what the agent wrote, because that is what it is about, and
   // above the run footer, which nobody reads for this.
@@ -196,6 +245,7 @@ function main(): void {
       "max-iterations-reached": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
+      session: { type: "string" },
       output: { type: "string" },
       "logs-file": { type: "string" },
     },
@@ -227,7 +277,7 @@ function main(): void {
     console.error("post_result_comment.ts: --output is required (the agent's stdout file)");
     process.exit(2);
   }
-  const output = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
+  const redacted = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
 
   // `atoma_output.txt` is empty whenever the run ended via a session-ending
   // tool call (launch_sub_agent, request_close_issue, create_pr -- see
@@ -238,6 +288,28 @@ function main(): void {
   // sub-agent(s): ...", "PR #N created..."), so posting a second, essentially
   // content-free "run by [agent](url)" comment here on top of that would
   // just be noise -- skip entirely rather than post an empty wrapper.
+  // Empty output has two meanings, and they need opposite treatment.
+  //
+  // A session-ending tool call leaves it empty because atoma's loop stops the moment
+  // that tool returns, before the model gets another turn -- and each of those tools
+  // posts its own comment, so a second content-free one would be noise. That is the
+  // skip below, and it is right.
+  //
+  // Running out of iterations leaves it empty too, and there nothing else speaks.
+  // Measured (#544): a run spent 17 minutes and 154k tokens, and the thread received
+  // one notice saying the limit was reached. What it had worked out was in the
+  // session and nowhere a person would look.
+  let output = redacted;
+  let salvaged = false;
+  if (!output.trim() && values["max-iterations-reached"] === "true") {
+    const last = lastAgentText(values.session);
+    if (last !== undefined) {
+      output = redact(last);
+      salvaged = true;
+      console.error("salvaged the agent's last message from the session (iteration limit)");
+    }
+  }
+
   if (!output.trim()) {
     console.error("atoma_output.txt is empty (session ended via a tool call) -- skipping result comment.");
     return;
@@ -261,6 +333,7 @@ function main(): void {
 
   const body = buildCommentBody({
     agent: values.agent,
+    salvaged,
     notify: values.notify,
     directive: values.directive,
     chainContinues: values["chain-continues"],

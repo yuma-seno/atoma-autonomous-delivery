@@ -753,6 +753,10 @@ const postResultCommentStep = new TypedOutputsStep(
       // Passed in, because the script used to open these by their bare names --
       // relative paths that stopped resolving when #487 moved the run's files out
       // of the work tree, and every result comment since was dropped in silence.
+      // Read only when the run ran out of iterations, to salvage the last thing the
+      // agent said -- see post_result_comment.ts. #544 measured what the alternative
+      // costs: 17 minutes of work and a one-line notice.
+      session: `${RUN_DIR}/session.json`,
       output: `${RUN_DIR}/atoma_output.txt`,
       "logs-file": `${RUN_DIR}/atoma_logs.txt`,
     })}\n`,
