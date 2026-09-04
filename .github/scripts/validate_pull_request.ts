@@ -145,9 +145,9 @@ function log(message) {
   console.error(`[atoma-validate-pr] ${message}`);
 }
 function pickDispatchedRun(runs, headSha, since) {
-  const candidates = runs.filter((run3) => run3.event === "workflow_dispatch").filter((run3) => run3.head_sha === headSha).filter((run3) => run3.created_at >= since).sort((a, b) => a.created_at < b.created_at ? 1 : -1);
-  const run2 = candidates[0];
-  return run2 ? { id: run2.id, status: run2.status, conclusion: run2.conclusion } : undefined;
+  const candidates = runs.filter((run) => run.event === "workflow_dispatch").filter((run) => run.head_sha === headSha).filter((run) => run.created_at >= since).sort((a, b) => a.created_at < b.created_at ? 1 : -1);
+  const run = candidates[0];
+  return run ? { id: run.id, status: run.status, conclusion: run.conclusion } : undefined;
 }
 function countPriorRetries(repo, number) {
   const { code, stdout } = gh("api", `repos/${repo}/issues/${number}/comments?per_page=100`);
@@ -186,14 +186,14 @@ function runCiAndWait(repo, workflow, branch, headSha, timeoutSeconds) {
     Bun.sleepSync(1e4);
     const listed = gh("api", `repos/${repo}/actions/runs?per_page=30&event=workflow_dispatch`).stdout;
     const { workflow_runs = [] } = JSON.parse(listed || "{}");
-    const run2 = pickDispatchedRun(workflow_runs, headSha, since);
-    if (!run2)
+    const run = pickDispatchedRun(workflow_runs, headSha, since);
+    if (!run)
       continue;
-    if (run2.status !== "completed")
+    if (run.status !== "completed")
       continue;
-    const conclusion = run2.conclusion ?? "";
-    log(`dispatched run ${run2.id} concluded ${conclusion}`);
-    return { conclusion, runUrl: `https://github.com/${repo}/actions/runs/${run2.id}` };
+    const conclusion = run.conclusion ?? "";
+    log(`dispatched run ${run.id} concluded ${conclusion}`);
+    return { conclusion, runUrl: `https://github.com/${repo}/actions/runs/${run.id}` };
   }
   log(`no conclusion within ${timeoutSeconds}s`);
   return { conclusion: "", runUrl: "" };
