@@ -42,7 +42,8 @@ describe("what a run spent its iterations on", () => {
   /** A long tail would bury the head, which is the only part that answers anything. */
   test("past the first few, the rest become a count", () => {
     const tally = toolCallTally(session("a__a", "b__b", "c__c", "d__d", "e__e", "f__f", "f__f"));
-    expect(tally).toContain("and 2 other tools 3");
+    // d__d and e__e, one call each. `f__f` is named because it has two.
+    expect(tally).toContain("and 2 other tools 2");
     expect(tally).not.toContain("`e__e`");
   });
 
