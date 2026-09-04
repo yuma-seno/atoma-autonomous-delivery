@@ -15,6 +15,7 @@
  * `gh` MUST spawn a fresh subprocess, never call such a function in-process.
  */
 import { describe, expect, test } from "bun:test";
+import { unknownToolMessage } from "./mcp-tool.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -426,5 +427,34 @@ describe("gh.ts looksTransient", () => {
   test("reads a status code and not a longer number that starts with one", () => {
     expect(looksTransient(failure("gh: HTTP 500"))).toBe(true);
     expect(looksTransient(failure("gh: HTTP 5001"))).toBe(false);
+  });
+});
+
+/**
+ * The measured failure this fixes (#544): an agent called `shell__execute`, was told
+ * only `Unknown: execute`, and made the same mistake three times. The one place that
+ * knew the right name was the dispatch map, and nothing asked it.
+ */
+describe("what a server says about a tool it does not have", () => {
+  test("the near miss comes first, because that is what happened", () => {
+    const message = unknownToolMessage("execute", ["shell_execute"]);
+    expect(message).toContain("Did you mean 'shell_execute'?");
+    expect(message.indexOf("Did you mean")).toBeLessThan(message.indexOf("Available"));
+  });
+
+  test("with no near miss, the list is still there", () => {
+    const message = unknownToolMessage("nonsense", ["read_file", "write_file"]);
+    expect(message).not.toContain("Did you mean");
+    expect(message).toContain("Available: read_file, write_file.");
+  });
+
+  test("the name that was asked for is named, so a log says which call failed", () => {
+    expect(unknownToolMessage("execute", ["shell_execute"])).toContain("'execute'");
+  });
+
+  /** Two candidates contain the name; guessing one of them would be worse than both. */
+  test("several near misses are all offered", () => {
+    const message = unknownToolMessage("read", ["read_file", "read_media_file", "write_file"]);
+    expect(message).toContain("'read_file' or 'read_media_file'");
   });
 });

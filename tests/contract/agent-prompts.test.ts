@@ -10,6 +10,29 @@ describe("agent prompt contracts", () => {
     expect(orchestrator).toContain("File count and apparent effort do not determine leaf status");
   });
 
+  /**
+   * The outcome that did not exist, and the run that measured its absence (#544).
+   *
+   * The engineer's `Outcome` table was five rows, all of them "implement and open a
+   * pull request" or "refuse". Asked for an inventory, it spent 200 iterations and
+   * 324 shell calls and posted nothing -- because there was no outcome to arrive at.
+   * The shared template says a run asked to investigate is not blocked on anything;
+   * the engineer's own contract overrode that with a seven-step pipeline to a PR.
+   *
+   * Pinned because the failure is invisible: a run that never arrives looks like a
+   * run that is still working, right up to the iteration limit.
+   */
+  test("an engineer asked a question has somewhere to arrive", () => {
+    const engineer = readFileSync("src/atoma/agent-definitions/engineer.md", "utf8");
+    expect(engineer, "the outcome table must offer answering as an outcome").toContain(
+      "The request is a question rather than a change",
+    );
+    // And a rule for when to stop looking, which is the other half: an outcome you
+    // can reach is no use if nothing says when you have enough to reach it.
+    expect(engineer).toContain("An investigation ends when you can answer what was asked");
+    expect(engineer).toContain("write what you have and name what you could not establish");
+  });
+
   test("prevents engineers from implementing unresolved non-leaf work", () => {
     const engineer = readFileSync("src/atoma/agent-definitions/engineer.md", "utf8");
     expect(engineer).toContain("If it is not engineer-ready, do not edit");
