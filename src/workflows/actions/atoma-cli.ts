@@ -103,8 +103,14 @@ import { TypedOutputsStep } from "./base.ts";
  * less than it looks. What it opens up is a server that is already running -- a
  * shared internal one, or something too expensive to start per run, which is what
  * `search` is at 55 to 64 seconds of reranker.
+ * v0.1.21 caps every tool result at 50,000 characters, per server and overridable
+ * with `max_output_chars`. It is what lets `filesystem__search_files` off the
+ * denylist: what kept it out was that nothing bounded a third-party server, and the
+ * bound is now on the client where it covers all of them. Measured before it: one
+ * `read_text_file` returned 72,141 characters, a seventh of a 128k window in one
+ * message (#544, atoma#14).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.19";
+export const ATOMA_DEFAULT_VERSION = "v0.1.21";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";

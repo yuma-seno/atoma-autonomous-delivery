@@ -53,8 +53,16 @@ filesystem:
   env: {}
   hooks:
     tool_denylist:
+      # `directory_tree` returns the whole tree, always, and there is no question
+      # whose answer is the whole tree. `list_directory` answers the ones there are.
+      #
+      # `search_files` used to be here beside it, and was let back in once atoma
+      # v0.1.21 capped every tool result: what kept it out was unbounded output, not
+      # what it does. Worth being precise about what it does, though -- it matches
+      # PATHS against a glob and never reads a file, so it does not replace a grep.
+      # #544 measured an agent making 324 content searches through the shell; this
+      # tool would have replaced none of them. #555 is the gap that would.
       - "filesystem__directory_tree"
-      - "filesystem__search_files"
 
 filesystem_readonly:
   command: mcp-server-filesystem
