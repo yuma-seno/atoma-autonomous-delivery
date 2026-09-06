@@ -1,17 +1,20 @@
 #!/usr/bin/env bun
 /**
- * parse_comment_command.ts — Parse a GitHub comment and extract a
- * slash-command agent name and optional session mode from any line.
+ * parse_comment_command.ts — Parse a GitHub comment and extract either a
+ * slash-command agent name and optional session mode, or a control command, from
+ * any line.
  *
  * Human commands must occupy their own line: `/engineer` or
  * `/engineer recover`. Instructions belong on following lines. Internal
  * dispatch comments remain accepted for automation.
  *
  * Env: ATOMA_COMMENT_BODY
- * Writes `matched`, `agent`, `session_mode`, and `error` to $GITHUB_OUTPUT.
+ * Writes `matched`, `agent`, `control`, `session_mode`, and `error` to
+ * $GITHUB_OUTPUT.
  */
 import { appendFileSync } from "node:fs";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
+import { isControlCommand, type ControlCommand } from "../domain/control-commands.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export const ref = defineScript(import.meta.url);
@@ -28,40 +31,57 @@ const DISPATCH_RE = new RegExp(`^<!--\\s*atoma:dispatch\\s*=\\s*(${AGENT_NAME_PA
 
 export interface ParsedCommentCommand {
   agent: string;
+  control: ControlCommand;
   sessionMode: "continue" | "recover";
   error: string;
 }
 
+const NOTHING: ParsedCommentCommand = { agent: "", control: "", sessionMode: "continue", error: "" };
+
 export function parseCommentCommand(body: string): ParsedCommentCommand {
-  if (!body) return { agent: "", sessionMode: "continue", error: "" };
+  if (!body) return NOTHING;
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim();
     const commandMatch = COMMAND_RE.exec(line);
     if (commandMatch) {
-      const agent = commandMatch[1]!;
+      const name = commandMatch[1]!;
       const modifier = commandMatch[2]?.trim() ?? "";
-      if (!modifier) return { agent, sessionMode: "continue", error: "" };
-      if (modifier === "recover") return { agent, sessionMode: "recover", error: "" };
+
+      // Before the agent branch, so a control command never reaches it. See
+      // `domain/control-commands.ts`.
+      if (isControlCommand(name)) {
+        if (!modifier) return { ...NOTHING, control: name };
+        // `/resume 直して` is the one mistake worth naming, because the thing the
+        // person wanted exists and is one line away: an ordinary agent command
+        // resumes the same session AND carries the instruction, which is why
+        // `/resume` deliberately takes none.
+        return {
+          ...NOTHING,
+          error: `'/${name}' takes nothing after it. To resume with an instruction, use '/<agent>' and put the instruction on the following lines.`,
+        };
+      }
+
+      if (!modifier) return { ...NOTHING, agent: name };
+      if (modifier === "recover") return { ...NOTHING, agent: name, sessionMode: "recover" };
       return {
-        agent: "",
-        sessionMode: "continue",
-        error: `Unknown command syntax: '/${agent} ${modifier}'. Put instructions on the lines after '/${agent}', or use '/${agent} recover'.`,
+        ...NOTHING,
+        error: `Unknown command syntax: '/${name} ${modifier}'. Put instructions on the lines after '/${name}', or use '/${name} recover'.`,
       };
     }
     const dispatchMatch = DISPATCH_RE.exec(line);
-    if (dispatchMatch) return { agent: dispatchMatch[1]!, sessionMode: "continue", error: "" };
+    if (dispatchMatch) return { ...NOTHING, agent: dispatchMatch[1]! };
   }
-  return { agent: "", sessionMode: "continue", error: "" };
+  return NOTHING;
 }
 
 function main(): void {
   const body = process.env.ATOMA_COMMENT_BODY ?? "";
-  const { agent, sessionMode, error } = parseCommentCommand(body);
+  const { agent, control, sessionMode, error } = parseCommentCommand(body);
   const matched = agent ? "true" : "false";
 
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
-    appendFileSync(githubOutput, `matched=${matched}\nagent=${agent}\n`);
+    appendFileSync(githubOutput, `matched=${matched}\nagent=${agent}\ncontrol=${control}\n`);
     appendFileSync(githubOutput, `session_mode=${sessionMode}\nerror=${error}\n`);
   }
 }

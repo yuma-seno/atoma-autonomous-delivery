@@ -113,6 +113,36 @@ describe("post_result_comment.ts buildCommentBody", () => {
     expect(body).toContain("The run reached its limit");
     expect(body).toContain("`/engineer`");
   });
+  // The line has to say the session survived: that is the entire difference between
+  // a stop and cancelling the workflow run, and the person who asked cannot tell
+  // which one they got from anywhere else.
+  test("a stop says the session is saved and how to continue", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      stopRequested: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Halfway through.",
+      usageLines: [],
+    });
+    expect(body).toContain("Stopped on request");
+    expect(body).toContain("session is saved");
+    expect(body).toContain("`/resume`");
+  });
+
+  // Both arrive as status 2 and the runner can set both wrong. Saying "reached its
+  // limit" to somebody who typed /stop is the confusing half, so the stop wins.
+  test("a stop and a limit together read as a stop", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      stopRequested: "true",
+      limitReached: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Halfway through.",
+      usageLines: [],
+    });
+    expect(body).toContain("Stopped on request");
+    expect(body).not.toContain("reached its limit");
+  });
 });
 
 describe("post_result_comment.ts main", () => {
@@ -244,7 +274,7 @@ describe("post_result_comment.ts main", () => {
  * a one-line notice saying the limit was reached. Everything the run had worked out
  * was in the session, where nobody looks.
  */
-describe("salvaging a run that ran out of iterations", () => {
+describe("salvaging a run that ended before it reported", () => {
   const write = (session: unknown): string => {
     const dir = mkdtempSync(join(tmpdir(), "salvage-"));
     const path = join(dir, "session.json");
@@ -296,9 +326,9 @@ describe("salvaging a run that ran out of iterations", () => {
       salvaged: true,
       usageLines: [],
     });
-    expect(body).toContain("never wrote a report");
+    expect(body).toContain("ended before it wrote a report");
     expect(body).toContain("not a conclusion");
-    expect(body.indexOf("never wrote a report")).toBeLessThan(body.indexOf("Now checking"));
+    expect(body.indexOf("ended before it wrote a report")).toBeLessThan(body.indexOf("Now checking"));
   });
 
   test("an ordinary report carries no such warning", () => {
@@ -308,6 +338,6 @@ describe("salvaging a run that ran out of iterations", () => {
       output: "Done.",
       usageLines: [],
     });
-    expect(body).not.toContain("never wrote a report");
+    expect(body).not.toContain("ended before it wrote a report");
   });
 });

@@ -42,6 +42,13 @@ describe("decide_guard_release.ts", () => {
     expect(out.should_release).toBe("true");
   });
 
+  // A stopped run handed back to the person who stopped it. Holding the guard would
+  // leave them unable to comment on the issue they just took control of.
+  test("releases when a person stopped the run, even mid-chain", () => {
+    const { out } = run(["--outcome", "success", "--stop-requested", "true", "--chain-continues", "true"]);
+    expect(out.should_release).toBe("true");
+  });
+
   test("releases when nothing further is happening", () => {
     const { out } = run(["--outcome", "success"]);
     expect(out.should_release).toBe("true");

@@ -145,6 +145,16 @@ describe("names that have to resolve to a file", () => {
     expect(problems[0]).toContain("`agents`");
   });
 
+  // The inverse of every other rule here: not a name that resolves to nothing, but
+  // one that resolves to two things. `/stop` is read as a control command before the
+  // agent namespace is consulted, so `stop.md` could never be invoked.
+  test("an agent named after a control command is reported", () => {
+    const problems = configProblems({ ...facts(SOUND), agentNames: ["engineer", "reviewer", "stop"] });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("agent-definitions/stop.md");
+    expect(problems[0]).toContain("/stop");
+  });
+
   // Without definitions there is nothing to resolve against, and reporting every
   // name as missing would bury the one problem that matters.
   test("no agent definitions at all is one problem, not one per name", () => {

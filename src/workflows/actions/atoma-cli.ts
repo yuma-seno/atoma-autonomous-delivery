@@ -115,8 +115,14 @@ import { TypedOutputsStep } from "./base.ts";
  * reject it and fail every run before the agent started. What it replaces is a count
  * of turns, which stopped a run measured at 169 distinct searches and 6 repeats --
  * working, and stopped for being long (atoma#16, #544).
+ *
+ * v0.1.23 adds `--stop-file`, which is what makes `/stop` a pause rather than a
+ * discard: the run ends at a turn boundary with its session written, where killing
+ * the job would have left the previous run's session on disk. Pinned rather than
+ * optional for the same reason as above — the runner passes the flag, and a binary
+ * that does not know it refuses the invocation (#560).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.22";
+export const ATOMA_DEFAULT_VERSION = "v0.1.23";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";

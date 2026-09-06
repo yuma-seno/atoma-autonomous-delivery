@@ -10,7 +10,7 @@
  * Usage:
  *   post_result_comment.ts --number N --agent NAME [--notify LOGIN]
  *     [--directive NAME] [--chain-continues true|false]
- *     [--limit-reached true|false] --run-url URL
+ *     [--limit-reached true|false] [--stop-requested true|false] --run-url URL
  * Writes `comment_id=<id>` to $GITHUB_OUTPUT.
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -32,6 +32,7 @@ export interface PostResultCommentArgs {
   directive?: string;
   "chain-continues"?: string;
   "limit-reached"?: string;
+  "stop-requested"?: string;
   /** "true" when this run pushed a commit, opened a pull request, or merged one. */
   changed?: string;
   /**
@@ -177,6 +178,7 @@ export function buildCommentBody(args: {
   directive?: string;
   chainContinues?: string;
   limitReached?: string;
+  stopRequested?: string;
   runUrl: string;
   output: string;
   usageLines: string[];
@@ -208,7 +210,7 @@ export function buildCommentBody(args: {
   if (args.salvaged === true) {
     lines.push(
       "> [!WARNING]",
-      "> This run hit its limit and never wrote a report. Below is the last thing it said,",
+      "> This run ended before it wrote a report. Below is the last thing it said,",
       "> from the middle of the work — not a conclusion, and not a summary of what it found.",
       "",
     );
@@ -236,7 +238,15 @@ export function buildCommentBody(args: {
   }
 
   lines.push("---", `_run by [${args.agent}](${args.runUrl})_`);
-  if (args.limitReached === "true") {
+  if (args.stopRequested === "true") {
+    // Says the session survived, because that is the whole difference between this
+    // and cancelling the job, and the person who stopped it cannot tell from here
+    // which one they got.
+    lines.push(
+      `⏸️ _Stopped on request. **The session is saved.** Comment \`/resume\` to continue ` +
+        `from here, or \`/${args.agent}\` with an instruction on the following lines._`,
+    );
+  } else if (args.limitReached === "true") {
     lines.push(`⚠️ _The run reached its limit. Comment \`/${args.agent}\` to continue._`);
   }
 
@@ -254,6 +264,7 @@ function main(): void {
       directive: { type: "string" },
       "chain-continues": { type: "string" },
       "limit-reached": { type: "string" },
+      "stop-requested": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
       session: { type: "string" },
@@ -312,7 +323,7 @@ function main(): void {
   // session and nowhere a person would look.
   let output = redacted;
   let salvaged = false;
-  if (!output.trim() && values["limit-reached"] === "true") {
+  if (!output.trim() && (values["limit-reached"] === "true" || values["stop-requested"] === "true")) {
     const last = lastAgentText(values.session);
     if (last !== undefined) {
       output = redact(last);
@@ -349,6 +360,7 @@ function main(): void {
     directive: values.directive,
     chainContinues: values["chain-continues"],
     limitReached: values["limit-reached"],
+    stopRequested: values["stop-requested"],
     runUrl: values["run-url"],
     output: checked.text,
     escapedMentions: checked.escaped,

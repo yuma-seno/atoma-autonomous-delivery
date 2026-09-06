@@ -96,6 +96,39 @@ describe("generated workflows", () => {
     expect(restore?.run).toContain('--session-mode "${{ inputs.session_mode }}"');
   });
 
+  /**
+   * A stop has to cross a boundary nothing else does.
+   *
+   * The person deciding is outside the job; atoma is inside it and busy. Three things
+   * have to line up, and any one of them missing makes `/stop` a command that posts a
+   * notice and stops nothing:
+   *
+   *   1. the watcher starts BEFORE the agent -- a stop typed while the agent was
+   *      already running would otherwise never be looked for
+   *   2. atoma is told the same path the watcher writes
+   *   3. the watcher's token is not in the agent step's own environment, which that
+   *      step keeps free of credentials on purpose
+   */
+  test("the stop watcher runs before the agent and writes where atoma is looking", () => {
+    type WorkflowStep = { name?: string; run?: string; env?: Record<string, string> };
+    type WorkflowDocument = { jobs?: Record<string, { steps?: WorkflowStep[] }> };
+
+    const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8")) as WorkflowDocument;
+    const steps = workflow.jobs?.run?.steps ?? [];
+    const watcher = steps.findIndex((s) => s.name === "Watch for a stop request");
+    const agent = steps.findIndex((s) => s.name === "Run agent");
+
+    expect(watcher, "the stop watcher step").toBeGreaterThan(-1);
+    expect(agent, "the agent step").toBeGreaterThan(-1);
+    expect(watcher, "the watcher has to be looking before there is anything to stop").toBeLessThan(agent);
+
+    const stopFile = "${RUNNER_TEMP}/atoma-run/stop-requested";
+    expect(steps[watcher]?.run).toContain(`--stop-file "${stopFile}"`);
+    expect(steps[agent]?.run).toContain(`--stop-file "${stopFile}"`);
+
+    expect(Object.keys(steps[agent]?.env ?? {})).not.toContain("GH_TOKEN");
+  });
+
   // The runner may resume a branch but must never create one: a run that only
   // reports or closes something would otherwise leave a branch behind, which is
   // how the repository accumulated 72 of them. Creation belongs to the first

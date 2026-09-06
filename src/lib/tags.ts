@@ -40,6 +40,20 @@ function stringTag(key: string, valuePattern: string): AtomaTag<string> {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
 
+/**
+ * A human asked the run on this issue/PR to stop.
+ *
+ * Written by `request_stop.ts` on the comment it posts, and polled for by the running
+ * job itself -- which is the whole reason it is a comment and not a label or a file.
+ * Nothing outside a job can reach into that job's filesystem, so the signal has to be
+ * somewhere both sides can see, and a comment is also the record of who asked and
+ * when.
+ *
+ * The reader must ignore requests older than its own run. A stop from last week is
+ * not a stop of this run, and a job that read one would refuse to start work.
+ */
+export const STOP_TAG = stringTag("stop", "requested");
+
 /** Sub-issue -> orchestrator parent ISSUE link (set via `github__create_issue`'s `sub_issue: true`). */
 export const PARENT_TAG = numericTag("parent");
 /** PR -> the issue it closes/was created to address (set via `github__create_pr`). */

@@ -5,6 +5,7 @@ function signals(overrides: Partial<TurnOutcomeSignals> = {}): TurnOutcomeSignal
   return {
     succeeded: true,
     limitReached: false,
+    stopRequested: false,
     loopLimitReached: false,
     chainContinues: false,
     directive: "",
@@ -43,6 +44,10 @@ describe("shouldReleaseGuard", () => {
 
   test("stays held when both chain_continues and a directive are set", () => {
     expect(shouldReleaseGuard(signals({ chainContinues: true, directive: "reviewer" }))).toBe(false);
+  });
+
+  test("releases when a person stopped the run", () => {
+    expect(shouldReleaseGuard(signals({ stopRequested: true }))).toBe(true);
   });
 
   test("limit_reached overrides an in-flight chain continuation", () => {

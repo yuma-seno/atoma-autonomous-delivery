@@ -39,6 +39,7 @@
  * So this module owns exactly one format: config.json, which is delivery's own and
  * which the core has never heard of.
  */
+import { isControlCommand } from "./control-commands.ts";
 import { resolveAutoTriggers } from "./auto-triggers.ts";
 import { resolveDeclaredSecrets, SECRET_DESTINATIONS } from "./declared-secrets.ts";
 import { resolveDeployTargets } from "./deploy-targets.ts";
@@ -210,6 +211,19 @@ export function configProblems(facts: DeliverableFacts): string[] {
   problems.push(...resolveDeclaredSecrets(tools.secrets, SECRET_DESTINATIONS.tools).problems);
   problems.push(...resolveDeclaredSecrets(checks.secrets, SECRET_DESTINATIONS.checks).problems);
   problems.push(...resolveDeclaredSecrets(deploy.secrets, SECRET_DESTINATIONS.deploy).problems);
+
+  // ── a name that resolves to two things ────────────────────────────────────
+  //
+  // The inverse of every other rule here, and worth checking for the same reason:
+  // `/stop` is read as a control command before the agent namespace is consulted, so
+  // an agent definition called `stop.md` can never be invoked. Silently, and only
+  // for that one agent.
+  for (const name of agentNames.filter(isControlCommand).sort()) {
+    problems.push(
+      `agent-definitions/${name}.md is named after the '/${name}' control command, ` +
+        `so '/${name}' will never dispatch it. Rename the agent.`,
+    );
+  }
 
   // ── names that have to resolve to a file ──────────────────────────────────
   //
