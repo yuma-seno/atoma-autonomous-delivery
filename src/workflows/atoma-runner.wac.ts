@@ -35,7 +35,7 @@ import { ref as saveAgentSessionRef } from "../scripts/save_agent_session.ts";
 import { ref as manageDispatchLoopRef } from "../scripts/manage_dispatch_loop.ts";
 import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts";
 import { runCredentialEnv, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
-import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
+import { ref as reportRunFailureRef } from "../scripts/report_run_failure.ts";
 import { ref as writeCredentialsFileRef } from "../scripts/write_credentials_file.ts";
 import { ref as watchForStopRef } from "../scripts/watch_for_stop.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
@@ -891,9 +891,26 @@ const recordRunMetadataStep = new TypedOutputsStep({
   })}\n`,
 });
 
+/**
+ * The session, whatever ended the run.
+ *
+ * Not gated on success any more. Two questions were being answered as one: whether
+ * this was the ending somebody asked for decides the exit status and what gets said,
+ * and whether there is work worth keeping is a different question with a different
+ * answer. A provider that hung up three times used to take the run's whole history
+ * with it, and the next run started from nothing on an issue where the work had
+ * already been done once.
+ *
+ * Safe because atoma v0.1.24 answers any tool call left without a result before it
+ * writes -- a session carrying one is refused by every provider, so saving it would
+ * have traded lost work for an issue nothing can run on. See atoma#18.
+ *
+ * Discarding was never this machinery's decision either: `/<agent> recover` archives
+ * the session and starts fresh, so keeping it leaves a person both options.
+ */
 const saveSessionStep = new TypedOutputsStep({
   name: "Save session to atoma-data branch",
-  if: `${runAgentStep.rawOutcome} == 'success'`,
+  if: `always() && ${runAgentStep.rawOutcome} != 'skipped'`,
   shell: "bash",
   run: `${scriptCommandWithArgs(saveAgentSessionRef, {
     session: `${RUN_DIR}/session.json`,
@@ -903,15 +920,22 @@ const saveSessionStep = new TypedOutputsStep({
   })}\n`,
 });
 
+/**
+ * What a failed run leaves on the issue.
+ *
+ * The text lives in `report_run_failure.ts`, with the other human-facing comments
+ * this repository writes, because it is markdown with slash commands in it and
+ * markdown assembled by `echo` inside a template literal inside YAML inside bash is
+ * markdown nobody can test.
+ *
+ * `always()` is required here, not just the `job.status != 'success'` condition
+ * alone: without an explicit always()/failure()/success() call anywhere in a step's
+ * `if:`, GitHub Actions implicitly ANDs the whole condition with `success()` -- which
+ * is exactly false once a prior step has genuinely failed, so without `always()` the
+ * step whose entire purpose is to report THAT failure would never run.
+ */
 const reportFailureStep = new TypedOutputsStep({
   name: "Report failure",
-  // `always()` is required here, not just the "job.status != 'success'"
-  // condition alone: without an explicit always()/failure()/success() call
-  // anywhere in a step's `if:`, GitHub Actions implicitly ANDs the whole
-  // condition with `success()` -- which is exactly false once a prior step
-  // (e.g. "Run agent" itself) has genuinely failed, so without `always()`
-  // this step -- whose entire purpose is to report THAT failure -- would
-  // never run after the one case it exists for.
   if: "always() && job.status != 'success'",
   shell: "bash",
   env: {
@@ -921,48 +945,13 @@ const reportFailureStep = new TypedOutputsStep({
     NOTIFY: notifyStep.outputs.notify,
     RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
   },
-  run: `if [ -z "$NUMBER" ]; then
-  echo "::error::Cannot post failure comment: issue/PR number unknown."
-  exit 0
-fi
-AGENT_LABEL="\${AGENT:+\${AGENT} }Atoma"
-ERR_MSG=""
-if [ -f "${RUN_DIR}/atoma_logs.txt" ]; then
-  # Redacted before it becomes a comment. The agent's stderr log holds every MCP
-  # server's stderr, and \`unauthorized\` -- one of the words grepped for here --
-  # is exactly the line a provider or a \`gh\` call emits WITH the credential in
-  # it. GitHub masks registered secrets in the workflow log and does nothing for
-  # an issue comment, so this excerpt would arrive in the clear.
-  #
-  # Shape patterns only: this step holds no credential values, and handing it
-  # some so it could match them literally would put them in one more process's
-  # environment to protect one comment. A failure to redact yields no excerpt
-  # rather than a raw one.
-  ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' "${RUN_DIR}/atoma_logs.txt" | head -n 5 | ${scriptCommand(redactStreamRef)} || true)
-fi
-MENTION=""
-if [ -n "$NOTIFY" ]; then
-  MENTION="@\${NOTIFY} - "
-fi
-BD=$(mktemp)
-# Out of the model's context. This is addressed to a person and the next run can do
-# nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
-# server closed connection", "Unexpected while resolving package"), which no agent
-# can act on. See notify_limit_reached.ts for what carrying these costs.
-printf '%s\n' "${LLM_CONTEXT_TAG.write("exclude")}" > "$BD"
-echo "\${MENTION}Warning: \${AGENT_LABEL} encountered an error." >> "$BD"
-echo "Please check the reason and retry if necessary." >> "$BD"
-echo "Workflow logs: \${RUN_URL}" >> "$BD"
-if [ -n "$ERR_MSG" ]; then
-  echo "" >> "$BD"
-  echo "Error messages detected from logs (excerpt):" >> "$BD"
-  printf '\`\`\`\\n' >> "$BD"
-  echo "\${ERR_MSG}" >> "$BD"
-  printf '\`\`\`\\n' >> "$BD"
-fi
-gh issue comment "$NUMBER" --body-file "$BD"
-rm -f "$BD"
-`,
+  run: `${scriptCommandWithArgs(reportRunFailureRef, {
+    number: "\${NUMBER}",
+    agent: "\${AGENT}",
+    notify: "\${NOTIFY}",
+    "run-url": "\${RUN_URL}",
+    "logs-file": `${RUN_DIR}/atoma_logs.txt`,
+  })}\n`,
 });
 
 const dirtyStep = new TypedOutputsStep(
