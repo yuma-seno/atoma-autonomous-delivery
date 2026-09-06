@@ -115,9 +115,10 @@ flowchart TD
 
 ## Limits, security, and cost notes
 
-- What bounds a run: `agents.<name>.max_iterations` in `config.json` (shipped as
-  100 for the orchestrator, 200 for the engineer, 30 for the reviewer) and a
-  60-minute job timeout. Both are per run, and a new run resets them.
+- What bounds a run: the 60-minute job timeout, minus five minutes for saving the
+  session and posting the result. The runner hands the agent whatever is left of
+  that when it starts, so a run that reaches it stops itself and stays resumable.
+  There is no ceiling on turns; a new run gets a fresh budget.
 - What bounds a chain of runs: validation hands a pull request back to the engineer
   at most three times. **There is currently no working cap on agent-to-agent
   handoffs** — one is written but cannot fire, and there is no token or cost

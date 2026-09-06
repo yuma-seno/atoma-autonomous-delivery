@@ -7,7 +7,7 @@
  * A name in configuration that resolves to nothing is the one class of defect
  * this project keeps producing and cannot see. `mcp_servers: [filesystem]` with
  * no `filesystem` in tools.yaml aborts the whole run before a single server
- * starts; `agents.enginer` sets an iteration budget for nobody; an
+ * starts; `labels.in_progres` guards work with a label nobody applies; an
  * `auto_triggers` entry that fails validation resolves the WHOLE list to empty,
  * so every trigger stops firing. Each of those is silent at merge time and
  * surfaces on whoever triggers the next run.
@@ -59,9 +59,8 @@ interface Section {
   /**
    * Present when any name is legal at this level, and the shape each one takes.
    *
-   * `agents` is the case that needs it: the names are the project's agents, which
-   * this file cannot know. `labels` has both — three names with meanings and an
-   * index signature for a project's own.
+   * `labels` is the case that needs it: three names with meanings, and an index
+   * signature for a project's own.
    */
   readonly anyName?: Section | null;
 }
@@ -92,7 +91,6 @@ const CONFIG_SCHEMA: Section = {
     search: { children: { reranker_model: null } },
     environment: { children: { setup_commands: null } },
     workflows: { children: { ci: null, cd: null } },
-    agents: { anyName: { children: { max_iterations: null } } },
     limits: { children: { agent_handoffs: null, environment_reloads: null, runs_without_change: null } },
     labels: { children: { in_progress: null, sub_issue: null, launched: null }, anyName: null },
   },
@@ -230,17 +228,6 @@ export function configProblems(facts: DeliverableFacts): string[] {
             `agent-definitions/${agent}.md. The event would dispatch a run that cannot start. ` +
             `Available: ${available}`,
         );
-      }
-    }
-
-    if (isRecord(config.agents)) {
-      for (const name of Object.keys(config.agents).sort()) {
-        if (!known.has(name)) {
-          problems.push(
-            `\`agents.${name}\` configures an agent with no agent-definitions/${name}.md, ` +
-              `so nothing reads it. Available: ${available}`,
-          );
-        }
       }
     }
   } else {

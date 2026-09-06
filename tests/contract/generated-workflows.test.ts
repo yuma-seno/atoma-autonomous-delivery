@@ -517,7 +517,7 @@ describe("generated workflows", () => {
    *
    * `reconcile_github_session` drops a comment only when it is bot-authored AND
    * carries `llm-context=exclude`. Three notices had the first and not the second:
-   * the failure warning, the loop-limit notice and the max-iterations notice. All
+   * the failure warning, the loop-limit notice and the limit-reached notice. All
    * three are addressed to a person -- each names one and tells them how to resume
    * -- and the next run can do nothing with them but carry them.
    *

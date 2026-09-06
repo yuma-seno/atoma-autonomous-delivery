@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
- * notify_max_iterations.ts — Post a "max iterations reached" comment on an
+ * notify_limit_reached.ts — Post a "the run reached its limit" comment on an
  * issue/PR, mentioning the notify login when known.
  *
- * Usage: notify_max_iterations.ts --number N --agent AGENT [--notify LOGIN]
+ * Usage: notify_limit_reached.ts --number N --agent AGENT [--notify LOGIN]
  */
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -13,15 +13,15 @@ import { toolCallTally } from "../domain/tool-tally.ts";
 import type { Session } from "../lib/session.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
-export interface NotifyMaxIterationsArgs {
+export interface NotifyLimitReachedArgs {
   number: string | number;
   agent: string;
   notify?: string;
-  /** The session, read to say what the run spent its iterations on. */
+  /** The session, read to say what the run spent its budget on. */
   session?: string;
 }
 
-export const ref = defineScript<NotifyMaxIterationsArgs>(import.meta.url);
+export const ref = defineScript<NotifyLimitReachedArgs>(import.meta.url);
 
 function main(): void {
   const { values } = parseArgs({
@@ -35,7 +35,7 @@ function main(): void {
   });
 
   if (!values.number || !values.agent) {
-    console.error("usage: notify_max_iterations.ts --number N --agent AGENT [--notify LOGIN]");
+    console.error("usage: notify_limit_reached.ts --number N --agent AGENT [--notify LOGIN]");
     process.exit(2);
   }
 
@@ -50,10 +50,10 @@ function main(): void {
   // that up, and the direction is the wrong one -- failing makes the context
   // heavier, and a heavier context fails more.
   const notice = values.notify
-    ? `@${values.notify} Atoma: \`${values.agent}\` reached the max iteration limit. Review the issue and comment \`/${values.agent}\` to retry.`
-    : `Atoma: \`${values.agent}\` reached the max iteration limit. Comment \`/${values.agent}\` to retry.`;
+    ? `@${values.notify} Atoma: \`${values.agent}\` ran out of time. Review the issue and comment \`/${values.agent}\` to retry.`
+    : `Atoma: \`${values.agent}\` ran out of time. Comment \`/${values.agent}\` to retry.`;
 
-  // What it spent them on, so a person can tell a run that was going round from one
+  // What it spent it on, so a person can tell a run that was going round from one
   // that was making progress -- without opening the workflow log or the session.
   //
   // No model call and no report. #544 asked for one and the data said no: these

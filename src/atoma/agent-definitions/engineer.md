@@ -59,8 +59,8 @@ request for it delivers nothing. The steps below do not apply.
 **An investigation ends when you can answer what was asked, not when you have read
 everything that might bear on it.** If you have most of the answer and are still
 looking for the rest, write what you have and name what you could not establish.
-Searching until the iteration budget runs out produces no answer at all: the run
-stops mid-command and nobody receives anything.
+Searching until the run's time is gone produces no answer at all: the run stops
+mid-command and nobody receives anything.
 
 1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `engineering/environment` when something you need is not installed or an install fails, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
 2. Read the issue, current repository state, and the nearest owning code before editing.

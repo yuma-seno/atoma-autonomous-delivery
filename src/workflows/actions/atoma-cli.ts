@@ -109,8 +109,14 @@ import { TypedOutputsStep } from "./base.ts";
  * bound is now on the client where it covers all of them. Measured before it: one
  * `read_text_file` returned 72,141 characters, a seventh of a 128k window in one
  * message (#544, atoma#14).
+ *
+ * v0.1.22 removes the default iteration ceiling and adds `--max-runtime-secs`. The
+ * pin is not optional here: the runner passes that flag, and an older binary would
+ * reject it and fail every run before the agent started. What it replaces is a count
+ * of turns, which stopped a run measured at 169 distinct searches and 6 repeats --
+ * working, and stopped for being long (atoma#16, #544).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.21";
+export const ATOMA_DEFAULT_VERSION = "v0.1.22";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";

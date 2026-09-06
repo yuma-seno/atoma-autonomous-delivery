@@ -20,7 +20,7 @@ Task-oriented recipes:
 | [Let an agent read images](#let-an-agent-read-images) | have a screenshot reach the agent as a picture |
 | [Choose which API an agent's provider speaks](#choose-which-api-an-agents-provider-speaks) | switch between the Chat Completions and Responses APIs |
 | [Pin which OpenRouter endpoint serves a model](#pin-which-openrouter-endpoint-serves-a-model) | prefer particular upstream providers |
-| [Change iteration budget](#change-iteration-budget) | let an agent think for longer, or less |
+| [How long one run may take](#how-long-one-run-may-take) | know what stops a run, and why it is not a setting |
 | [Limit how far agents hand work to each other](#limit-how-far-agents-hand-work-to-each-other) | stop an engineer/reviewer loop that is going nowhere |
 | [Stop a chain that is not getting anywhere](#stop-a-chain-that-is-not-getting-anywhere) | stop on runs that change nothing, rather than on how many there were |
 | [How work starts](#how-work-starts) | know what makes an agent run — and what does not |
@@ -78,7 +78,6 @@ against](#what-a-pull-request-is-checked-against).
 - `governed_paths`
 - `merge_gates` — a list, each entry with `reason` and `when`
 - `environment.setup_commands`
-- `agents.<name>.max_iterations`
 - `limits.agent_handoffs`
 - `limits.runs_without_change`
 - `limits.environment_reloads`
@@ -140,11 +139,6 @@ This is not an invention of this template. The agent definition is Atoma's own
 contract and is validated by `atoma validate`; `config.json` is the delivery
 layer's. Keeping them apart means an agent definition stays portable — it describes
 an agent, not a delivery pipeline.
-
-`agents.<name>.max_iterations` is the one entry that looks like an exception. It is
-per-agent yet lives in `config.json`, because it is a budget the runner imposes on
-a run rather than part of what the agent is — Atoma has no such field, it is a CLI
-flag the runner supplies.
 
 Resist moving a setting across this line for operational convenience. Wanting to
 avoid an upgrade conflict is not a reason to describe an agent's model as delivery
@@ -225,7 +219,7 @@ files the template never shipped, and they are supposed to be there.
 
 Review that diff rather than trusting the copy. The safest habit is to keep your
 customisation where the template will not fight you for it — `config.json` covers
-models' iteration budgets, labels, triggers, merge policy, environment setup and
+models, labels, triggers, merge policy, environment setup and
 workflow names, and `skills/project/` is yours outright.
 
 ## Task-oriented recipes
@@ -349,22 +343,23 @@ curl -s https://openrouter.ai/api/v1/models/<author>/<slug>/endpoints
 Adjust `order` whenever you change `model`, since the endpoint names are
 per-model.
 
-### Change iteration budget
+### How long one run may take
 
-Edit `.github/atoma/config.json`:
+Not configurable, on purpose. The runner gives an agent whatever is left of the
+60-minute job it runs inside, minus five minutes for what follows it — saving the
+session, posting the result, dispatching whatever comes next. A run that stops on
+that budget saves its session and can be continued with `/<agent>`; a run killed by
+the job's timeout reaches none of those steps and its work is gone.
 
-```json
-{
-  "agents": {
-    "engineer": { "max_iterations": 120 }
-  }
-}
-```
+A number in `config.json` could not have said that. It would have been a guess about
+how long the checkout, the container build and the environment setup take on the
+day, and a guess that was too large would be silently ignored by the job timeout.
 
-This bounds the tool-call loop **inside one run**, and it resets on every run. So
-every path that starts a run — a handoff to the next agent, an `auto_triggers`
-entry, a CI failure sending a pull request back — gives the work a fresh budget.
-For how far the chain of runs itself may go, see below.
+This replaced a per-agent `max_iterations`, which counted turns. A turn that lists a
+directory and a turn that compiles the project cost that counter the same, and
+measurement said so: one run was stopped at 200 turns having made 169 distinct
+searches and repeated only 6. It was working, and the ceiling stopped it for being
+long. For how far the CHAIN of runs may go, see below.
 
 ### Limit how far agents hand work to each other
 
@@ -1430,8 +1425,8 @@ is not in them yet.
 }
 ```
 
-There is a limit because **each reload starts a new run, and `max_iterations` resets
-with it** — an unbounded chain of reloads is an unbounded iteration budget. Three by
+There is a limit because **each reload starts a new run, with a fresh time budget** —
+an unbounded chain of reloads is an unbounded budget. Three by
 default, the same as `CI_RETRY_LIMIT`. When the limit is reached the tool refuses and
 tells the agent to report instead; the refusal is a tool error rather than the end of
 the run, so the agent still has a turn in which to say what it found.

@@ -271,7 +271,7 @@ describe("reconcile_github_session.ts", () => {
       {
         id: 303,
         event_type: "issue_comment",
-        content: "@alice Atoma reached the iteration limit. Please review and retry.",
+        content: "@alice Atoma ran out of time. Please review and retry.",
         author: "github-actions[bot]",
         created_at: "2026-05-27T12:01:00Z",
       },
@@ -288,7 +288,7 @@ describe("reconcile_github_session.ts", () => {
 
     expect(eventCount).toBe(2);
     expect(mergedSession.messages?.map((message) => message.content)).toEqual([
-      "@alice Atoma reached the iteration limit. Please review and retry.",
+      "@alice Atoma ran out of time. Please review and retry.",
       "<!-- atoma:llm-context=exclude -->\nHuman instruction must still be visible.",
     ]);
   });

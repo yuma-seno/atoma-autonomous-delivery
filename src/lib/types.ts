@@ -160,10 +160,10 @@ export interface AtomaConfig {
   /**
    * Bounds on how far a chain of agent runs may go before a person is asked.
    *
-   * Separate from `agents.<name>.max_iterations`, and the difference is the unit:
-   * that one bounds the tool-call loop inside ONE run and resets on every new run,
-   * so every path that starts a run extends the budget. This bounds the chain of
-   * runs itself.
+   * These bound the CHAIN. What bounds a single run is its time, which is not
+   * configured here at all: the runner gives an agent what is left of the job it is
+   * running inside, so the run stops itself while there is still time to save its
+   * session. A number in a config file could not know that.
    */
   limits?: {
     /**
@@ -201,9 +201,9 @@ export interface AtomaConfig {
      * `atoma_env__reload_environment`, before the tool refuses.
      *
      * A reload re-runs `environment.setup_commands` as a privileged workflow step
-     * and starts a NEW RUN — so `max_iterations` resets with it. Without a limit,
-     * reloading is an unbounded extension of the iteration budget, which is why
-     * #456 blocked the tool until there was one.
+     * and starts a NEW RUN — so the run's own time budget resets with it. Without a
+     * limit, reloading is an unbounded extension of whatever bounds a run, which is
+     * why #456 blocked the tool until there was one.
      *
      * Carried as a workflow input rather than counted from comments, unlike
      * `agent_handoffs`: a reload leaves no comment for a later run to count.
@@ -218,7 +218,6 @@ export interface AtomaConfig {
   environment?: {
     setup_commands?: string[];
   };
-  agents?: Record<string, { max_iterations?: number }>;
   /**
    * Workflows of this project's own that Atoma should dispatch instead of the
    * shipped ones.

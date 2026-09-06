@@ -31,8 +31,8 @@
  *
  * ## Why there is a limit at all
  *
- * A reload starts a NEW RUN, and `max_iterations` resets on every run. Without a
- * limit, reloading is an unbounded extension of the iteration budget -- which is
+ * A reload starts a NEW RUN, and a run's own limits reset with it. Without a limit,
+ * reloading is an unbounded extension of whatever bounds a run -- which is
  * why #456 blocked this: the budget that bounds a run cannot be bounded by
  * something the run can reset at will.
  *
@@ -83,7 +83,7 @@ export function reloadRefusal(soFar: number, limit: number): string | undefined 
   if (soFar < limit) return undefined;
   return (
     `This run has already rebuilt its environment ${soFar} time${soFar === 1 ? "" : "s"}, which is the limit ` +
-    `(${limit}). Reloading again is refused: each one starts a new run and resets the iteration budget, so an ` +
+    `(${limit}). Reloading again is refused: each one starts a new run with a fresh time budget, so an ` +
     `unbounded chain of them is an unbounded chain of runs. ` +
     `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` +
     `and a person can decide. If the answer is a system package, it belongs in ` +

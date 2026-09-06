@@ -10,7 +10,7 @@
  *   bun run get_config_value.ts <dotted.path> [default]
  *
  * Examples:
- *   bun run get_config_value.ts agents.engineer.max_iterations 30
+ *   bun run get_config_value.ts limits.agent_handoffs 5
  *   bun run get_config_value.ts labels.in_progress atoma/in-progress
  */
 import { loadConfig } from "../lib/config.ts";

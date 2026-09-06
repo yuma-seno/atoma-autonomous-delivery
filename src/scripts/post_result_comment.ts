@@ -10,7 +10,7 @@
  * Usage:
  *   post_result_comment.ts --number N --agent NAME [--notify LOGIN]
  *     [--directive NAME] [--chain-continues true|false]
- *     [--max-iterations-reached true|false] --run-url URL
+ *     [--limit-reached true|false] --run-url URL
  * Writes `comment_id=<id>` to $GITHUB_OUTPUT.
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -31,7 +31,7 @@ export interface PostResultCommentArgs {
   notify?: string;
   directive?: string;
   "chain-continues"?: string;
-  "max-iterations-reached"?: string;
+  "limit-reached"?: string;
   /** "true" when this run pushed a commit, opened a pull request, or merged one. */
   changed?: string;
   /**
@@ -176,7 +176,7 @@ export function buildCommentBody(args: {
   notify?: string;
   directive?: string;
   chainContinues?: string;
-  maxIterationsReached?: string;
+  limitReached?: string;
   runUrl: string;
   output: string;
   usageLines: string[];
@@ -208,7 +208,7 @@ export function buildCommentBody(args: {
   if (args.salvaged === true) {
     lines.push(
       "> [!WARNING]",
-      "> This run hit its iteration limit and never wrote a report. Below is the last thing it said,",
+      "> This run hit its limit and never wrote a report. Below is the last thing it said,",
       "> from the middle of the work — not a conclusion, and not a summary of what it found.",
       "",
     );
@@ -236,8 +236,8 @@ export function buildCommentBody(args: {
   }
 
   lines.push("---", `_run by [${args.agent}](${args.runUrl})_`);
-  if (args.maxIterationsReached === "true") {
-    lines.push(`⚠️ _Max iterations reached. Comment \`/${args.agent}\` to continue._`);
+  if (args.limitReached === "true") {
+    lines.push(`⚠️ _The run reached its limit. Comment \`/${args.agent}\` to continue._`);
   }
 
   return lines.join("\n");
@@ -253,7 +253,7 @@ function main(): void {
       notify: { type: "string" },
       directive: { type: "string" },
       "chain-continues": { type: "string" },
-      "max-iterations-reached": { type: "string" },
+      "limit-reached": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
       session: { type: "string" },
@@ -306,18 +306,18 @@ function main(): void {
   // posts its own comment, so a second content-free one would be noise. That is the
   // skip below, and it is right.
   //
-  // Running out of iterations leaves it empty too, and there nothing else speaks.
+  // Reaching a limit leaves it empty too, and there nothing else speaks.
   // Measured (#544): a run spent 17 minutes and 154k tokens, and the thread received
   // one notice saying the limit was reached. What it had worked out was in the
   // session and nowhere a person would look.
   let output = redacted;
   let salvaged = false;
-  if (!output.trim() && values["max-iterations-reached"] === "true") {
+  if (!output.trim() && values["limit-reached"] === "true") {
     const last = lastAgentText(values.session);
     if (last !== undefined) {
       output = redact(last);
       salvaged = true;
-      console.error("salvaged the agent's last message from the session (iteration limit)");
+      console.error("salvaged the agent's last message from the session (limit reached)");
     }
   }
 
@@ -348,7 +348,7 @@ function main(): void {
     notify: values.notify,
     directive: values.directive,
     chainContinues: values["chain-continues"],
-    maxIterationsReached: values["max-iterations-reached"],
+    limitReached: values["limit-reached"],
     runUrl: values["run-url"],
     output: checked.text,
     escapedMentions: checked.escaped,

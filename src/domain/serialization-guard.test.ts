@@ -4,7 +4,7 @@ import { shouldReleaseGuard, type TurnOutcomeSignals } from "./serialization-gua
 function signals(overrides: Partial<TurnOutcomeSignals> = {}): TurnOutcomeSignals {
   return {
     succeeded: true,
-    maxIterationsReached: false,
+    limitReached: false,
     loopLimitReached: false,
     chainContinues: false,
     directive: "",
@@ -21,8 +21,8 @@ describe("shouldReleaseGuard", () => {
     expect(shouldReleaseGuard(signals({ succeeded: false, directive: "engineer" }))).toBe(true);
   });
 
-  test("releases when max_iterations was reached", () => {
-    expect(shouldReleaseGuard(signals({ maxIterationsReached: true }))).toBe(true);
+  test("releases when the run reached its limit", () => {
+    expect(shouldReleaseGuard(signals({ limitReached: true }))).toBe(true);
   });
 
   test("releases when the auto-dispatch loop limit was reached", () => {
@@ -45,8 +45,8 @@ describe("shouldReleaseGuard", () => {
     expect(shouldReleaseGuard(signals({ chainContinues: true, directive: "reviewer" }))).toBe(false);
   });
 
-  test("max_iterations_reached overrides an in-flight chain continuation", () => {
-    expect(shouldReleaseGuard(signals({ maxIterationsReached: true, chainContinues: true }))).toBe(true);
+  test("limit_reached overrides an in-flight chain continuation", () => {
+    expect(shouldReleaseGuard(signals({ limitReached: true, chainContinues: true }))).toBe(true);
   });
 
   test("loop_limit_reached overrides a pending directive", () => {

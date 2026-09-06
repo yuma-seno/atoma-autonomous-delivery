@@ -303,7 +303,7 @@ const { tools: TOOLS, dispatch } = buildMcpTools([
       "`environment.setup_commands` in .github/atoma/config.json, say so in your report, and a person merges " +
       "it. Reloading first will hand you the same environment back and cost a run. " +
       "There is a limit on how many times one piece of work may do this, because each reload starts a new run " +
-      "and resets the iteration budget. The tool tells you where you stand.",
+      "and resets the run's time budget. The tool tells you where you stand.",
     schema: RELOAD_ENVIRONMENT_SCHEMA,
     handler: handleReloadEnvironment,
   }),
