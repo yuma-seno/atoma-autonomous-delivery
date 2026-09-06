@@ -1,5 +1,5 @@
 {
-  "version": "v0.1.83",
+  "version": "v0.1.84",
   "files": [
     ".github/atoma-release.json",
     ".github/atoma/agent-definitions/engineer.md",
@@ -44,6 +44,7 @@
     ".github/scripts/reconcile_github_session.ts",
     ".github/scripts/record_run_metadata.ts",
     ".github/scripts/redact_stream.ts",
+    ".github/scripts/report_run_failure.ts",
     ".github/scripts/request_stop.ts",
     ".github/scripts/resolve_entry_agent.ts",
     ".github/scripts/resolve_issue_branch.ts",

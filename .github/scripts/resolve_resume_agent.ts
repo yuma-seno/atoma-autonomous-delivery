@@ -94,7 +94,11 @@ function main() {
     console.error(`Could not read comments on #${values.number}: ${stderr || stdout}`);
   }
   if (!agent) {
-    gh("issue", "comment", String(values.number), "--repo", repo, "--body", "Atoma: `/resume` found no previous run on this issue to continue. Use `/<agent>` to start one.");
+    gh("issue", "comment", String(values.number), "--repo", repo, "--body", [
+      LLM_CONTEXT_TAG.write("exclude"),
+      "Atoma: `/resume` found no previous run on this issue to continue. Use `/<agent>` to start one."
+    ].join(`
+`));
   }
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput)

@@ -40,7 +40,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.23
+        default: v0.1.24
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -80,7 +80,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.23
+        default: v0.1.24
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -774,7 +774,7 @@ jobs:
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/record_run_metadata.ts" --session "${RUNNER_TEMP}/atoma-run/session.json" --comment-id "${{ steps.post-result.outputs.comment_id }}" --agent "${{ inputs.agent }}" --snapshot-hash "${{ steps.context.outputs.context_snapshot_hash }}" --event-count "${{ steps.context.outputs.context_event_count }}" --type "${{ steps.fetch.outputs.resolved_type }}" --resolved-number "${{ steps.fetch.outputs.resolved_number }}"
       - name: Save session to atoma-data branch
-        if: steps.atoma.outcome == 'success'
+        if: always() && steps.atoma.outcome != 'skipped'
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/save_agent_session.ts" --session "${RUNNER_TEMP}/atoma-run/session.json" --type "${{ steps.fetch.outputs.resolved_type }}" --number "${{ steps.fetch.outputs.resolved_number }}" --agent "${{ inputs.agent }}"
@@ -793,48 +793,7 @@ jobs:
           NOTIFY: ${{ steps.notify.outputs.notify }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -z "$NUMBER" ]; then
-            echo "::error::Cannot post failure comment: issue/PR number unknown."
-            exit 0
-          fi
-          AGENT_LABEL="${AGENT:+${AGENT} }Atoma"
-          ERR_MSG=""
-          if [ -f "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" ]; then
-            # Redacted before it becomes a comment. The agent's stderr log holds every MCP
-            # server's stderr, and `unauthorized` -- one of the words grepped for here --
-            # is exactly the line a provider or a `gh` call emits WITH the credential in
-            # it. GitHub masks registered secrets in the workflow log and does nothing for
-            # an issue comment, so this excerpt would arrive in the clear.
-            #
-            # Shape patterns only: this step holds no credential values, and handing it
-            # some so it could match them literally would put them in one more process's
-            # environment to protect one comment. A failure to redact yields no excerpt
-            # rather than a raw one.
-            ERR_MSG=$(grep -iP 'error|fail|panic|exception|unauthorized' "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" | head -n 5 | bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/redact_stream.ts" || true)
-          fi
-          MENTION=""
-          if [ -n "$NOTIFY" ]; then
-            MENTION="@${NOTIFY} - "
-          fi
-          BD=$(mktemp)
-          # Out of the model's context. This is addressed to a person and the next run can do
-          # nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
-          # server closed connection", "Unexpected while resolving package"), which no agent
-          # can act on. See notify_limit_reached.ts for what carrying these costs.
-          printf '%s
-          ' "<!-- atoma:llm-context=exclude -->" > "$BD"
-          echo "${MENTION}Warning: ${AGENT_LABEL} encountered an error." >> "$BD"
-          echo "Please check the reason and retry if necessary." >> "$BD"
-          echo "Workflow logs: ${RUN_URL}" >> "$BD"
-          if [ -n "$ERR_MSG" ]; then
-            echo "" >> "$BD"
-            echo "Error messages detected from logs (excerpt):" >> "$BD"
-            printf '```\n' >> "$BD"
-            echo "${ERR_MSG}" >> "$BD"
-            printf '```\n' >> "$BD"
-          fi
-          gh issue comment "$NUMBER" --body-file "$BD"
-          rm -f "$BD"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/report_run_failure.ts" --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}" --run-url "${RUN_URL}" --logs-file "${RUNNER_TEMP}/atoma-run/atoma_logs.txt"
       - name: Check for uncommitted changes
         id: dirty
         if: steps.atoma.outcome == 'success'

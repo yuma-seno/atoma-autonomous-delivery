@@ -75,6 +75,74 @@ function saveSession(targetPath, content, commitMessage) {
   return saved;
 }
 
+// src/domain/session-size.ts
+var TOOL_RESULT_CAP = 4000;
+var TOOL_CALL_ARGS_CAP = 20000;
+var CHARS_PER_TOKEN = 4;
+function estimateTokens(session) {
+  const messages = session.messages ?? [];
+  if (messages.length === 0)
+    return 0;
+  return Math.round(JSON.stringify(messages).length / CHARS_PER_TOKEN);
+}
+function contentText(content) {
+  if (typeof content === "string")
+    return content;
+  return;
+}
+function capText(text, limit) {
+  if (text.length <= limit)
+    return text;
+  const head = Math.floor(limit / 4);
+  const tail = limit - head;
+  const dropped = text.length - limit;
+  return text.slice(0, head) + `
+
+[atoma] ${dropped} characters dropped from the middle; ${limit} shown
+
+` + text.slice(text.length - tail);
+}
+function capToolResults(session, limit = TOOL_RESULT_CAP) {
+  const messages = session.messages ?? [];
+  const tokensBefore = estimateTokens(session);
+  let changed = 0;
+  const kept = messages.map((message) => {
+    if (message.role === "tool") {
+      const text = contentText(message.content);
+      if (text === undefined || text.length <= limit)
+        return message;
+      changed += 1;
+      return { ...message, content: capText(text, limit) };
+    }
+    const calls = message.tool_calls;
+    if (!Array.isArray(calls))
+      return message;
+    let touched = false;
+    const capped = calls.map((call) => {
+      const fn = call.function;
+      const args = fn?.arguments;
+      if (typeof args !== "string" || args.length <= TOOL_CALL_ARGS_CAP)
+        return call;
+      touched = true;
+      return { ...call, function: { ...fn, arguments: capText(args, TOOL_CALL_ARGS_CAP) } };
+    });
+    if (!touched)
+      return message;
+    changed += 1;
+    return { ...message, tool_calls: capped };
+  });
+  if (changed === 0) {
+    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
+  }
+  const out = { ...session, messages: kept };
+  return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
+}
+function shrinkLogLine(outcome, what = "tool results replaced") {
+  if (!outcome.shrunk)
+    return;
+  return `session shrunk: ${outcome.changed} ${what}, ` + `~${Math.round(outcome.tokensBefore / 1000)}k -> ~${Math.round(outcome.tokensAfter / 1000)}k estimated tokens`;
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -104,7 +172,7 @@ function main() {
     return;
   }
   const target = sessionTargetPath(values.type, values.number, values.agent);
-  const content = readFileSync(values.session, "utf8");
+  const content = capped(readFileSync(values.session, "utf8"));
   const runId = process.env.GITHUB_RUN_ID ?? "";
   const saved = saveSession(target, content, `session: ${values.agent} on ${values.type} ${values.number} (run ${runId})`);
   if (!saved) {
@@ -112,6 +180,20 @@ function main() {
   } else {
     console.error(`Session saved to atoma-data:${target}`);
   }
+}
+function capped(content) {
+  let session;
+  try {
+    session = JSON.parse(content);
+  } catch {
+    console.error("Could not read the session as JSON; saving it unchanged.");
+    return content;
+  }
+  const result = capToolResults(session);
+  const line = shrinkLogLine(result, "oversized tool results shortened");
+  if (line !== undefined)
+    console.error(line);
+  return result.shrunk ? JSON.stringify(result.session, null, 2) : content;
 }
 if (import.meta.main)
   main();
