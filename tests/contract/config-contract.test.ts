@@ -7,7 +7,11 @@ import { CONDITION_KEYS, resolveMergeGates } from "../../src/domain/merge-gates.
 describe("config.json", () => {
   test("is valid and matches expected shape", async () => {
     const c = await Bun.file("src/atoma/config.json").json();
-    expect(c.agents.orchestrator.max_iterations).toBe(100);
+    // Asserted absent, not merely unused: a run is bounded by its time now, and the
+    // runner reads that from the job it is inside rather than from here. A key that
+    // nothing reads and that the schema no longer recognises would be reported to an
+    // adopter as a typo the moment they touched their config.
+    expect(c.agents).toBeUndefined();
     expect(c.merge_policy).toBe("auto");
     expect(c.labels).toBeDefined();
   });

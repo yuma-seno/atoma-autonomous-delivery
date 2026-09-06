@@ -20,7 +20,7 @@ import { DEFAULT_RERANKER } from "../lib/config.ts";
 import { MODEL_CACHE_DIR } from "../domain/model-cache.ts";
 import { ref as resolveIssueBranchRef } from "../scripts/resolve_issue_branch.ts";
 import { ref as manageInProgressLabelRef } from "../scripts/manage_in_progress_label.ts";
-import { ref as notifyMaxIterationsRef } from "../scripts/notify_max_iterations.ts";
+import { ref as notifyLimitReachedRef } from "../scripts/notify_limit_reached.ts";
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as restoreWorkspaceRef } from "../scripts/restore_workspace.ts";
 import { ref as saveWorkspaceRef } from "../scripts/save_workspace.ts";
@@ -49,11 +49,11 @@ import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 //   1. checkout repo + resolve/create the working branch
 //   2. install runtime deps (atoma CLI, Bun, MCP server deps)
 //   3. run configured environment setup, set git identity
-//   4. resolve `notify` login + this agent's `max_iterations` from config
+//   4. resolve the `notify` login from config
 //   5. add atoma/in-progress label, resolve which repository secrets config.json
 //      lets the agent see, then RUN THE AGENT
 //   6. post the agent's result as a comment
-//   7. handle follow-ups: uncommitted-changes notice, max-iterations notice,
+//   7. handle follow-ups: uncommitted-changes notice, limit-reached notice,
 //      loop control, THEN remove the label (only if this run reached a
 //      genuine stopping point -- see removeLabelStep/REMOVE_LABEL_GUARD --
 //      otherwise it stays on while a sub-agent/PR/next-agent handoff is
@@ -72,8 +72,8 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
  * handoff tally in `domain/dispatch-chain.ts` there is no record on the issue to
  * count. The number has to be carried by whoever dispatches.
  *
- * It bounds a real hole: a reload starts a new run, and `max_iterations` resets
- * with it, so an unbounded chain of reloads is an unbounded iteration budget. That
+ * It bounds a real hole: a reload starts a new run, and its time budget resets
+ * with it, so an unbounded chain of reloads is an unbounded budget. That
  * is what #456 blocked this tool on.
  */
 const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)";
@@ -96,7 +96,7 @@ const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt it
  *
  * A pull request run checks out the pull request, and every script and setting
  * this job reads used to come from there -- so a pull request could decide how
- * the agent reviewing it behaves: which agent, which iteration budget, which
+ * the agent reviewing it behaves: which agent, which
  * commands, which credentials. #337 closed that for the credential declaration
  * alone; this closes it for the rest.
  *
@@ -419,18 +419,49 @@ const buildContextStep = new TypedOutputsStep(
   ["new_event_count", "context_snapshot_hash", "context_event_count"] as const,
 );
 
-const cfgStep = new TypedOutputsStep(
+/**
+ * How long the job may take, and how much of it the agent may not have.
+ *
+ * The reserve is for everything that happens AFTER the agent stops: saving the
+ * session, posting the result comment, releasing the guard, dispatching whatever
+ * comes next. Those are the steps that make a stopped run resumable, and a job
+ * killed by its own timeout reaches none of them -- the session is lost and the
+ * thread says nothing about why.
+ *
+ * So the agent gets the job's time minus that reserve, and stops on its own.
+ */
+const JOB_TIMEOUT_MINUTES = 60;
+const RESERVED_FOR_WHAT_FOLLOWS_SECS = 300;
+
+/**
+ * The floor under the agent's budget, in seconds.
+ *
+ * Never zero, and that is not tidiness: atoma reads `--max-runtime-secs 0` as "no
+ * limit set", the rule every zero-valued limit in that codebase follows. Setup
+ * running long enough to pass the deadline would otherwise hand an unbounded run
+ * to the one job least able to afford one.
+ */
+const MIN_AGENT_BUDGET_SECS = 300;
+
+/**
+ * When the agent has to be finished, as an absolute epoch second.
+ *
+ * Recorded at the top of the job rather than computed at the agent step, because
+ * what the agent can have is what is LEFT: the checkout, the container build and
+ * the environment setup all come first, and how long they take varies by minutes.
+ * A fixed "50 minutes" would be a guess about them. A deadline is not a guess.
+ */
+const deadlineStep = new TypedOutputsStep(
   {
-    name: "Read max_iterations from config",
-    id: "cfg",
+    name: "Record when the agent must be finished",
+    id: "deadline",
     shell: "bash",
-    env: { AGENT_NAME: "${{ inputs.agent }}" },
-    run: `MAX=$(${scriptCommand(getConfigValueRef, configValueArgv("agents.${AGENT_NAME}.max_iterations", "30"))})
-echo "max_iterations=\${MAX}" >> "$GITHUB_OUTPUT"
-echo "Agent \${AGENT_NAME} max_iterations: \${MAX}"
+    run: `DEADLINE=$(( $(date +%s) + ${JOB_TIMEOUT_MINUTES * 60 - RESERVED_FOR_WHAT_FOLLOWS_SECS} ))
+echo "at=\${DEADLINE}" >> "$GITHUB_OUTPUT"
+echo "the agent must be finished by $(date -u -d @\${DEADLINE} +%H:%M:%SZ)"
 `,
   },
-  ["max_iterations"] as const,
+  ["at"] as const,
 );
 
 /**
@@ -620,6 +651,20 @@ for name in OPENAI_BASE_URL ATOMA_PROVIDER; do
   if [ -n "$value" ]; then AGENT_ENV+=("\${name}=\${value}"); fi
 done
 
+# What is left of the job, handed to atoma as its own limit. See deadlineStep: the
+# agent stops itself with time to spare instead of being killed mid-call, which is
+# the difference between a session saved for the next run and one that never was.
+#
+# No iteration ceiling is passed at all. atoma stopped having a default one, and a
+# count of turns was never the thing that ran out: a turn that lists a directory
+# and a turn that compiles the project cost that counter the same.
+BUDGET=$(( ${deadlineStep.outputs.at} - $(date +%s) ))
+if [ "$BUDGET" -lt ${MIN_AGENT_BUDGET_SECS} ]; then
+  echo "::warning::only $BUDGET seconds of the job are left; giving the agent the ${MIN_AGENT_BUDGET_SECS}-second floor"
+  BUDGET=${MIN_AGENT_BUDGET_SECS}
+fi
+echo "agent time budget: $BUDGET seconds"
+
 EXIT_CODE=0
 sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
   atoma run \\
@@ -628,7 +673,7 @@ sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
   --out-session "${RUN_DIR}/session.json" \\
   --template "${MACHINERY}/${PROMPT_TEMPLATE}" \\
   --skills-dir "${MACHINERY}/${SKILLS_DIR}" \\
-  --max-iterations "${cfgStep.outputs.max_iterations}" \\
+  --max-runtime-secs "$BUDGET" \\
   --credentials-file "${CREDENTIALS_FILE}" \\
   \${TOOLS_ARG} \\
   > "${RUN_DIR}/atoma_output.txt" 2> "${RUN_DIR}/atoma_logs.txt" || EXIT_CODE=$?
@@ -637,8 +682,8 @@ echo "=== Atoma Logs ===" >&2
 cat "${RUN_DIR}/atoma_logs.txt" >&2
 
 if [ "$EXIT_CODE" = "2" ]; then
-  echo "::notice::Max iterations reached — session saved for next run"
-  echo "max_iterations_reached=true" >> "$GITHUB_OUTPUT"
+  echo "::notice::The run reached its limit — session saved for next run"
+  echo "limit_reached=true" >> "$GITHUB_OUTPUT"
 elif [ "$EXIT_CODE" != "0" ]; then
   exit $EXIT_CODE
 fi
@@ -687,7 +732,7 @@ fi
 echo "changed=\${CHANGED}" >> "$GITHUB_OUTPUT"
 `,
   },
-  ["result", "directive", "max_iterations_reached", "chain_continues", "changed"] as const,
+  ["result", "directive", "limit_reached", "chain_continues", "changed"] as const,
 );
 
 const tokenUsageStep = new TypedOutputsStep({
@@ -744,7 +789,7 @@ const postResultCommentStep = new TypedOutputsStep(
       notify: notifyStep.outputs.notify,
       directive: runAgentStep.outputs.directive,
       "chain-continues": runAgentStep.outputs.chain_continues,
-      "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
+      "limit-reached": runAgentStep.outputs.limit_reached,
       // Written into the comment, because that is where the next run reads it:
       // the no-progress limit counts consecutive runs from the thread rather than
       // from a counter -- see domain/progress.ts.
@@ -753,7 +798,7 @@ const postResultCommentStep = new TypedOutputsStep(
       // Passed in, because the script used to open these by their bare names --
       // relative paths that stopped resolving when #487 moved the run's files out
       // of the work tree, and every result comment since was dropped in silence.
-      // Read only when the run ran out of iterations, to salvage the last thing the
+      // Read only when the run reached its limit, to salvage the last thing the
       // agent said -- see post_result_comment.ts. #544 measured what the alternative
       // costs: 17 minutes of work and a one-line notice.
       session: `${RUN_DIR}/session.json`,
@@ -842,7 +887,7 @@ BD=$(mktemp)
 # Out of the model's context. This is addressed to a person and the next run can do
 # nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
 # server closed connection", "Unexpected while resolving package"), which no agent
-# can act on. See notify_max_iterations.ts for what carrying these costs.
+# can act on. See notify_limit_reached.ts for what carrying these costs.
 printf '%s\n' "${LLM_CONTEXT_TAG.write("exclude")}" > "$BD"
 echo "\${MENTION}Warning: \${AGENT_LABEL} encountered an error." >> "$BD"
 echo "Please check the reason and retry if necessary." >> "$BD"
@@ -911,7 +956,7 @@ const decideGuardReleaseStep = new TypedOutputsStep(
     shell: "bash",
     run: `${scriptCommandWithArgs(decideGuardReleaseRef, {
       outcome: runAgentStep.outcome,
-      "max-iterations-reached": runAgentStep.outputs.max_iterations_reached,
+      "limit-reached": runAgentStep.outputs.limit_reached,
       "loop-limit-reached": loopControlStep.outputs.loop_limit_reached,
       "chain-continues": runAgentStep.outputs.chain_continues,
       directive: runAgentStep.outputs.directive,
@@ -934,7 +979,7 @@ const removeLabelStep = new TypedOutputsStep({
 
 const DISPATCH_NEXT_GUARD =
   `${runAgentStep.rawOutcome} == 'success' && ${runAgentStep.rawOutputs.directive} != '' && ` +
-  `${runAgentStep.rawOutputs.max_iterations_reached} != 'true'`;
+  `${runAgentStep.rawOutputs.limit_reached} != 'true'`;
 
 const dispatchNextAgentStep = new TypedOutputsStep({
   name: "Dispatch next agent",
@@ -1023,7 +1068,7 @@ Atoma: reviewer starting review."
 
 const runJob = new NormalJob("run", {
   "runs-on": "ubuntu-latest",
-  "timeout-minutes": 60,
+  "timeout-minutes": JOB_TIMEOUT_MINUTES,
   concurrency: {
     group: "atoma-${{ inputs.type }}-${{ inputs.number }}",
     "cancel-in-progress": false,
@@ -1042,6 +1087,9 @@ const runJob = new NormalJob("run", {
   // First, before the checkout: nothing should run at all on an input this job
   // is going to splice into shell text.
   validateInputsStep,
+  // Second, and before anything slow. This is the clock the agent's budget is
+  // measured against, so it has to start before the work it is measuring does.
+  deadlineStep,
   // Before the checkout, because it has nothing to do with the checkout: this is a
   // directory in the runner's temp space, and putting it first means no later
   // reordering can leave a writer ahead of it.
@@ -1277,7 +1325,6 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   // that already exists. See the comment beside those setfacl lines.
   restoreWorkspaceStep,
   buildContextStep,
-  cfgStep,
   new TypedOutputsStep({
     // Added BEFORE the agent actually runs (not after) so it's visible to a
     // human for the entire duration of the run, not just flickered on/off
@@ -1506,8 +1553,8 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
     run: `${scriptCommandWithArgs(injectUncommittedNoticeRef, { session: `${RUN_DIR}/session.json` })}\n`,
   }),
   new TypedOutputsStep({
-    name: "Notify on max iterations",
-    if: `${runAgentStep.rawOutputs.max_iterations_reached} == 'true'`,
+    name: "Notify that the run reached its limit",
+    if: `${runAgentStep.rawOutputs.limit_reached} == 'true'`,
     shell: "bash",
     env: {
       GH_TOKEN: "${{ github.token }}",
@@ -1515,11 +1562,11 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
       NOTIFY: notifyStep.outputs.notify,
       AGENT: "${{ inputs.agent }}",
     },
-    run: `${scriptCommandWithArgs(notifyMaxIterationsRef, {
+    run: `${scriptCommandWithArgs(notifyLimitReachedRef, {
       number: "\${NUMBER}",
       agent: "\${AGENT}",
       notify: "\${NOTIFY}",
-      // Read for the tally: which tools the run spent its iterations on. Its own
+      // Read for the tally: which tools the run spent its budget on. Its own
       // notice is what tells a person to retry, and a tally is what tells them
       // whether retrying is the right move -- see domain/tool-tally.ts.
       session: `${RUN_DIR}/session.json`,

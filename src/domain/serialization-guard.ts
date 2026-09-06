@@ -20,8 +20,8 @@
 export interface TurnOutcomeSignals {
   /** Did the agent run itself complete successfully (as opposed to crashing/failing outright)? */
   succeeded: boolean;
-  /** Explicit hand-back to a human: this run's own iteration budget was exhausted. */
-  maxIterationsReached: boolean;
+  /** Explicit hand-back to a human: this run reached a limit the caller set on it. */
+  limitReached: boolean;
   /** Explicit hand-back to a human: the cross-run auto-dispatch loop's own safety limit was hit. */
   loopLimitReached: boolean;
   /** A tool call (launch_sub_agent / create_pr / merge_pr) already triggered an automatic follow-up dispatch during this run. */
@@ -35,7 +35,7 @@ export interface TurnOutcomeSignals {
  * WorkItem, so the SerializationGuard should be released:
  *
  *   1. the run failed outright (cleanup, regardless of anything else)
- *   2. max_iterations was reached (explicit hand-back to a human)
+ *   2. the run reached its own limit (explicit hand-back to a human)
  *   3. the auto-dispatch loop's own limit was reached (also an explicit,
  *      loop-limit-driven hand-back to a human)
  *   4. nothing further is happening at all: no tool call triggered a
@@ -50,7 +50,7 @@ export interface TurnOutcomeSignals {
  */
 export function shouldReleaseGuard(signals: TurnOutcomeSignals): boolean {
   if (!signals.succeeded) return true;
-  if (signals.maxIterationsReached) return true;
+  if (signals.limitReached) return true;
   if (signals.loopLimitReached) return true;
   return !signals.chainContinues && signals.directive === "";
 }

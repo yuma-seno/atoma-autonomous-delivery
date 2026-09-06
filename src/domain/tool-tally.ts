@@ -1,7 +1,7 @@
 /**
  * tool-tally.ts — what a run spent its iterations on, in one line.
  *
- * For the notice a person receives when a run hits its iteration limit. Before
+ * For the notice a person receives when a run hits its limit. Before
  * this it said only that the limit was reached, which does not distinguish the two
  * cases a person has to choose between: a run that was making progress and needs
  * more budget, and a run that was going round and needs the task re-scoped.

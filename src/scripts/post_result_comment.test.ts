@@ -102,15 +102,15 @@ describe("post_result_comment.ts buildCommentBody", () => {
     expect(body).toContain("@octocat");
   });
 
-  test("appends the max-iterations warning", () => {
+  test("appends the limit-reached warning", () => {
     const body = buildCommentBody({
       agent: "engineer",
-      maxIterationsReached: "true",
+      limitReached: "true",
       runUrl: "http://example.com/run/1",
       output: "Still working.",
       usageLines: [],
     });
-    expect(body).toContain("Max iterations reached");
+    expect(body).toContain("The run reached its limit");
     expect(body).toContain("`/engineer`");
   });
 });

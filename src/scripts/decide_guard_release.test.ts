@@ -37,8 +37,8 @@ describe("decide_guard_release.ts", () => {
     expect(out.should_release).toBe("false");
   });
 
-  test("releases when max_iterations was reached even mid-chain", () => {
-    const { out } = run(["--outcome", "success", "--max-iterations-reached", "true", "--chain-continues", "true"]);
+  test("releases when the run reached its limit even mid-chain", () => {
+    const { out } = run(["--outcome", "success", "--limit-reached", "true", "--chain-continues", "true"]);
     expect(out.should_release).toBe("true");
   });
 

@@ -17,7 +17,6 @@ const SOUND = {
   checks: { commands: [], secrets: [] },
   deploy: { targets: [], secrets: [] },
   tools: { secrets: [] },
-  agents: { orchestrator: { max_iterations: 100 }, engineer: { max_iterations: 200 } },
   labels: { in_progress: "atoma/in-progress" },
   auto_triggers: [{ event: "pull_request.opened", agent: "reviewer" }],
 };
@@ -55,15 +54,6 @@ describe("keys nothing reads", () => {
     const problems = problemsFor({ ...SOUND, checks: { command: ["bun test"] } });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("`checks.command`");
-  });
-
-  // `agents` names the project's agents, so no name there can be wrong in itself —
-  // only its interior can be, and only against a definition that exists.
-  test("an agent name is not a misspelled key, but its interior is checked", () => {
-    expect(problemsFor({ ...SOUND, agents: { reviewer: { max_iterations: 5 } } })).toEqual([]);
-    const problems = problemsFor({ ...SOUND, agents: { reviewer: { max_iteration: 5 } } });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("`agents.reviewer.max_iteration`");
   });
 
   // `labels` has an index signature: a project may name labels of its own, and
@@ -146,10 +136,13 @@ describe("names that have to resolve to a file", () => {
     ).toEqual([]);
   });
 
-  test("an iteration budget for an agent that does not exist is reported", () => {
-    const problems = problemsFor({ ...SOUND, agents: { enginer: { max_iterations: 200 } } });
+  // The key an adopter is most likely to still have: it configured a per-agent
+  // iteration budget, and nothing has read it since a run stopped being bounded by
+  // turns. Reported as unrecognised, which is what it now is.
+  test("a per-agent iteration budget is reported as a key nothing reads", () => {
+    const problems = problemsFor({ ...SOUND, agents: { engineer: { max_iterations: 200 } } });
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("`agents.enginer`");
+    expect(problems[0]).toContain("`agents`");
   });
 
   // Without definitions there is nothing to resolve against, and reporting every
@@ -198,7 +191,6 @@ describe("knownConfigKeys", () => {
   // mismatch with the type rather than as a change to this function.
   test("renders a wildcard level as `*` and descends through it", () => {
     const keys = knownConfigKeys();
-    expect(keys).toContain("agents.*.max_iterations");
     expect(keys).toContain("labels.*");
     expect(keys).toContain("labels.in_progress");
     expect(keys).toContain("checks.commands");

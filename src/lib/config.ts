@@ -25,7 +25,7 @@ import type { AtomaConfig } from "./types.ts";
  * branch, and unset everywhere else. The difference matters on a pull request
  * run: that workspace is the pull request's own head, so reading configuration
  * from it would let a pull request decide how the run reviewing it behaves --
- * which agent, which iteration budget, which commands, which credentials.
+ * which agent, which commands, which credentials.
  *
  * Unset resolves to the working directory, which is what every other caller
  * wants and what this did before.
