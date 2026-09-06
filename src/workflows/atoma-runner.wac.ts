@@ -430,7 +430,12 @@ const buildContextStep = new TypedOutputsStep(
       out: `${RUN_DIR}/session.json`,
     })}\n`,
   },
-  ["new_event_count", "context_snapshot_hash", "context_event_count"] as const,
+  [
+    "new_event_count",
+    "context_snapshot_hash",
+    "context_event_count",
+    "messages_before",
+  ] as const,
 );
 
 /**
@@ -851,6 +856,9 @@ const postResultCommentStep = new TypedOutputsStep(
       "chain-continues": runAgentStep.outputs.chain_continues,
       "limit-reached": runAgentStep.outputs.limit_reached,
       "stop-requested": runAgentStep.outputs.stop_requested,
+      // Where this run's own messages begin, so a salvage cannot reach below it into
+      // an earlier run's conclusion. See `lastAgentText`.
+      "messages-before": buildContextStep.outputs.messages_before,
       // Written into the comment, because that is where the next run reads it:
       // the no-progress limit counts consecutive runs from the thread rather than
       // from a counter -- see domain/progress.ts.
