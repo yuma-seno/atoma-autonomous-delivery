@@ -83,8 +83,8 @@ function main(): void {
  *
  * Here rather than in the core, because it needs no core change and because this
  * is the moment the history becomes this run's problem. See
- * `domain/session-size.ts` for what is dropped and why that is the right thing to
- * drop.
+ * `domain/session-size.ts` for what is replaced, and for why the calls that produced
+ * it are kept.
  *
  * Unreadable JSON is written back untouched rather than refused: whatever it is,
  * this script's job is to put the previous session in front of the run, and atoma
@@ -100,7 +100,7 @@ function sized(content: string, target: string): string {
   }
 
   const result = shrinkIfNeeded(session);
-  const shrank = shrinkLogLine(result);
+  const shrank = shrinkLogLine(result, "tool results replaced with a note");
   if (shrank !== undefined) console.error(shrank);
   // Said after the shrink, because it is only knowable then: a session that is
   // still too big has nothing left but conversation.

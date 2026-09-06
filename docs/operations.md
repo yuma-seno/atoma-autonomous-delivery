@@ -34,6 +34,15 @@ Shared executor:
 - Recovery archives are stored beside the active sessions as `sessions/<type>-<number>/archive/<agent>-N.json`, where `N` is the next per-agent sequence number.
 - Restore uses `git fetch` + `git show` from `origin/atoma-data` without checkout changes.
 - Save uses an isolated git worktree and push-retry loop to handle concurrent writes safely.
+- **A session is saved whatever ended the run**, including a failure. What this run
+  worked out is still there; `/<agent> recover` archives it and starts fresh when that
+  is what you want. The choice belongs to a person, not to the machinery.
+- Each tool result is shortened to 4,000 characters on the way in, so a session does
+  not grow past what a model will accept. Nine results in ten are under that already.
+- If a restored session is still too big, the contents of older tool results are
+  replaced with a note. **The calls themselves stay**, so an agent can see what it
+  already looked at and re-fetch only what it still needs. Nothing is removed, so a
+  tool call can never be left without its result.
 
 ## Work branches (`atoma/issue-N`)
 

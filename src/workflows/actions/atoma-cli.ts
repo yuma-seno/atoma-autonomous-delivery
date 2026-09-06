@@ -121,8 +121,14 @@ import { TypedOutputsStep } from "./base.ts";
  * the job would have left the previous run's session on disk. Pinned rather than
  * optional for the same reason as above — the runner passes the flag, and a binary
  * that does not know it refuses the invocation (#560).
+ *
+ * v0.1.24 keeps a session whatever ended the run, and answers any tool call left
+ * without a result before it writes one. The pin is required by the step below it:
+ * saving on failure is only safe because of that repair -- a session carrying an
+ * unanswered call is refused by every provider, so an older binary would turn lost
+ * work into an issue nothing can run on (atoma#18, #564).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.23";
+export const ATOMA_DEFAULT_VERSION = "v0.1.24";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";

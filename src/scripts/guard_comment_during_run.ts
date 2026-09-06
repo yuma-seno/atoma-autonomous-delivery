@@ -16,6 +16,7 @@ import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
 import { getLabel } from "../lib/config.ts";
+import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface GuardCommentDuringRunArgs {
@@ -81,10 +82,17 @@ function main(): void {
   const what = deleted
     ? "Your comment was removed because"
     : "Your comment could not be removed, and will not be acted on, because";
+  // Tagged out of the model's context, like every other notice addressed to a
+  // person. This one is posted DURING a run, on the issue that run is working on,
+  // so an untagged copy is read by that very agent as something it was told --
+  // when what it actually says is that somebody else was asked to wait.
   gh(
     "issue", "comment", String(values.number), "--repo", repo,
     "--body",
-    `${mention}${what} Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`,
+    [
+      LLM_CONTEXT_TAG.write("exclude"),
+      `${mention}${what} Atoma is currently processing this issue/PR (the \`${label}\` label is active). Please wait for the current run to finish, then comment again.`,
+    ].join("\n"),
   );
 
   if (githubOutput) appendFileSync(githubOutput, "blocked=true\n");

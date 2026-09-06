@@ -97,6 +97,54 @@ describe("generated workflows", () => {
   });
 
   /**
+   * The same rule, on the other side of the line, and stated the way it actually is.
+   *
+   * The test above reads the generated workflow and can only see a notice posted by
+   * workflow bash. Every notice this repository adds now goes into a script instead,
+   * where the tag is one import away from being forgotten -- and it was, twice:
+   * `guard_comment_during_run.ts` had gone untagged since it was written, and
+   * `resolve_resume_agent.ts` arrived untagged with `/resume`.
+   *
+   * What is required is a DECISION, not a particular one. `validate_pull_request.ts`
+   * writes `include` on purpose: a CI failure is the one comment the engineer has to
+   * read. The bug is a comment with no tag at all, because that is included by
+   * omission -- nobody chose it, and the choice is invisible to the next reader.
+   *
+   * It is not cosmetic. An untagged notice becomes part of what the next run reads,
+   * and #492 measured the cost: three failed runs left a 425-message session, and the
+   * fourth spent 348k prompt tokens and then abandoned its instructions. The same
+   * instructions on a fresh issue took 61k.
+   */
+  test("every script that posts a comment says whether the agent should read it", () => {
+    const dir = "src/scripts";
+    const scripts = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+
+    // `post_result_comment.ts` is the one comment that IS the agent's own output. It
+    // is the thing the next run is supposed to read.
+    const exempt = new Set(["post_result_comment.ts"]);
+
+    const posters: string[] = [];
+    for (const file of scripts) {
+      if (exempt.has(file)) continue;
+      const source = readFileSync(`${dir}/${file}`, "utf8");
+      // Whitespace-normalised, because these calls are written both on one line and
+      // across five, and a test that only matched one formatting would pass by
+      // missing the file rather than by checking it.
+      const flat = source.replace(/\s+/g, " ");
+      if (!/gh\( ?"issue", ?"comment"/.test(flat)) continue;
+      posters.push(file);
+      expect(
+        /LLM_CONTEXT_TAG\.write\("(include|exclude)"\)/.test(source),
+        `${file} posts a comment with no llm-context tag, so it joins the next run's ` +
+          "context because nobody said otherwise. Write exclude for a notice addressed " +
+          "to a person, or include for something the agent has to read",
+      ).toBe(true);
+    }
+
+    expect(posters.length, "scripts that post a comment").toBeGreaterThan(0);
+  });
+
+  /**
    * A stop has to cross a boundary nothing else does.
    *
    * The person deciding is outside the job; atoma is inside it and busy. Three things
@@ -585,7 +633,11 @@ describe("generated workflows", () => {
         .join("\n");
 
     const posters = steps.filter((step) => /gh issue comment/.test(executed(step)));
-    expect(posters.length, "steps that post a comment").toBeGreaterThan(2);
+    // A floor, not a census. Notices keep moving out of workflow bash and into
+    // scripts, where this cannot see them -- "every script that posts a comment tags
+    // it" covers that half, and lives beside this one. Zero here would mean the
+    // filter had stopped matching anything, which is the failure worth catching.
+    expect(posters.length, "steps that post a comment inline").toBeGreaterThan(0);
 
     for (const step of posters) {
       const run = executed(step);
