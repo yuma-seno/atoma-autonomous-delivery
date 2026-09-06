@@ -290,7 +290,47 @@ describe("salvaging a run that ended before it reported", () => {
         { role: "tool", tool_call_id: "c1", content: "grep output" },
       ],
     });
-    expect(lastAgentText(path)).toBe("I checked config.json and found 13 keys.");
+    expect(lastAgentText(path, 0)).toBe("I checked config.json and found 13 keys.");
+  });
+
+  /**
+   * The defect this boundary exists for, measured on #568.
+   *
+   * A session accumulates across runs, and these models write prose exactly once, in
+   * their final turn. So a run that is stopped has no assistant text of its own at
+   * all, and the newest one in the session belongs to whichever earlier run finished
+   * -- which the salvage then published under "this run ended before it wrote a
+   * report, below is the last thing it said, from the middle of the work". Every
+   * clause of that was false about the text it showed.
+   */
+  test("an earlier run's conclusion is not this run's fragment", () => {
+    const path = write({
+      messages: [
+        { role: "user", content: "read src/domain" },
+        { role: "assistant", content: "Done. Here is the full report on all 32 modules." },
+        // This run starts here, and never says anything in words.
+        { role: "user", content: "now read src/scripts" },
+        { role: "assistant", content: "", tool_calls: [{ id: "c1" }] },
+        { role: "tool", tool_call_id: "c1", content: "file contents" },
+      ],
+    });
+    expect(lastAgentText(path, 2), "the previous report is out of reach").toBeUndefined();
+    expect(lastAgentText(path, 0), "and reachable only by looking below the boundary").toBe(
+      "Done. Here is the full report on all 32 modules.",
+    );
+  });
+
+  /**
+   * A boundary nobody supplied means nothing is salvaged. Showing a person less than
+   * they could have had is a smaller failure than showing them an old conclusion
+   * labelled as a new fragment.
+   */
+  test("no boundary salvages nothing", () => {
+    const path = write({
+      messages: [{ role: "assistant", content: "something" }],
+    });
+    expect(lastAgentText(path)).toBeUndefined();
+    expect(lastAgentText(path, Number.NaN)).toBeUndefined();
   });
 
   /**
@@ -304,14 +344,14 @@ describe("salvaging a run that ended before it reported", () => {
         { role: "assistant", content: "", tool_calls: [{ id: "c1" }] },
       ],
     });
-    expect(lastAgentText(path)).toBeUndefined();
+    expect(lastAgentText(path, 0)).toBeUndefined();
   });
 
   test("a missing or unreadable session salvages nothing rather than failing", () => {
-    expect(lastAgentText(undefined)).toBeUndefined();
-    expect(lastAgentText("/definitely/not/here.json")).toBeUndefined();
+    expect(lastAgentText(undefined, 0)).toBeUndefined();
+    expect(lastAgentText("/definitely/not/here.json", 0)).toBeUndefined();
     const path = write("not a session at all");
-    expect(lastAgentText(path)).toBeUndefined();
+    expect(lastAgentText(path, 0)).toBeUndefined();
   });
 
   /**
