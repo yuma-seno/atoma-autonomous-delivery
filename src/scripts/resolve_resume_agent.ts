@@ -21,7 +21,7 @@
 import { appendFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { gh } from "../lib/gh.ts";
-import { AGENT_TAG } from "../lib/tags.ts";
+import { AGENT_TAG, LLM_CONTEXT_TAG } from "../lib/tags.ts";
 import { defineScript } from "./lib/script-ref.ts";
 
 export interface ResolveResumeAgentArgs {
@@ -75,7 +75,10 @@ function main(): void {
     gh(
       "issue", "comment", String(values.number), "--repo", repo,
       "--body",
-      "Atoma: `/resume` found no previous run on this issue to continue. Use `/<agent>` to start one.",
+      [
+        LLM_CONTEXT_TAG.write("exclude"),
+        "Atoma: `/resume` found no previous run on this issue to continue. Use `/<agent>` to start one.",
+      ].join("\n"),
     );
   }
 
