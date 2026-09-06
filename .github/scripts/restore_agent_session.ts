@@ -96,6 +96,7 @@ function defineScript(importMetaUrl) {
 }
 
 // src/domain/session-size.ts
+var KEEP_RECENT_RESULTS = 10;
 var SESSION_TOKEN_LIMIT = 1e5;
 var CHARS_PER_TOKEN = 4;
 function estimateTokens(session) {
@@ -104,70 +105,61 @@ function estimateTokens(session) {
     return 0;
   return Math.round(JSON.stringify(messages).length / CHARS_PER_TOKEN);
 }
-function hasText(content) {
+function contentText(content) {
   if (typeof content === "string")
-    return content.trim() !== "";
-  return Array.isArray(content) && content.length > 0;
+    return content;
+  return;
 }
-function shrinkNotice(removed) {
+function removedResultNotice(originalLength) {
+  return `[atoma] This result (${originalLength} characters) was removed so the session fits in the ` + "model's context window. The call that produced it is still above \u2014 call it again if you need it.";
+}
+function replaceOldToolResults(session, keepRecent = KEEP_RECENT_RESULTS) {
+  const messages = session.messages ?? [];
+  const tokensBefore = estimateTokens(session);
+  const resultIndexes = messages.map((m, i) => m.role === "tool" ? i : -1).filter((i) => i >= 0);
+  const replaceBefore = resultIndexes[resultIndexes.length - keepRecent] ?? Infinity;
+  let changed = 0;
+  const kept = messages.map((message, i) => {
+    if (message.role !== "tool" || i >= replaceBefore)
+      return message;
+    const text = contentText(message.content);
+    if (text === undefined || text.length <= 200)
+      return message;
+    changed += 1;
+    return { ...message, content: removedResultNotice(text.length) };
+  });
+  if (changed === 0) {
+    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
+  }
+  const out = { ...session, messages: [...kept, shrinkNotice(changed)] };
+  return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
+}
+function shrinkNotice(changed) {
   return {
     role: "user",
     content: [
-      `[atoma] ${removed} earlier tool results were removed from this session so it fits in the model's context window.`,
+      `[atoma] The contents of ${changed} earlier tool results were removed from this session so it`,
+      "fits in the model's context window.",
       "",
-      "Your own messages are unchanged, so what you concluded is still here. What is gone is what the tools returned:",
-      "file contents, command output, search results. If you need any of it, call the tool again \u2014 do not answer from",
-      "memory of something you can no longer see."
+      "The calls themselves are still here, so you can see what you already looked at. What is gone is",
+      "what came back: file contents, command output, search results. Call again for the ones you still",
+      "need \u2014 do not answer from memory of something you can no longer see."
     ].join(`
 `),
-    atoma_metadata: { source: "atoma", layer: "session-shrink", removed }
-  };
-}
-function dropToolTraffic(session) {
-  const messages = session.messages ?? [];
-  const tokensBefore = estimateTokens(session);
-  const kept = [];
-  let removed = 0;
-  for (const message of messages) {
-    if (message.role === "tool") {
-      removed += 1;
-      continue;
-    }
-    if (message.tool_calls === undefined) {
-      kept.push(message);
-      continue;
-    }
-    const { tool_calls: _dropped, ...rest } = message;
-    if (hasText(rest.content)) {
-      kept.push(rest);
-    } else {
-      removed += 1;
-    }
-  }
-  if (removed === 0) {
-    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, removed: 0 };
-  }
-  kept.push(shrinkNotice(removed));
-  const shrunkSession = { ...session, messages: kept };
-  return {
-    session: shrunkSession,
-    shrunk: true,
-    tokensBefore,
-    tokensAfter: estimateTokens(shrunkSession),
-    removed
+    atoma_metadata: { source: "atoma", layer: "session-shrink", changed }
   };
 }
 function shrinkIfNeeded(session, limit = SESSION_TOKEN_LIMIT) {
   const tokensBefore = estimateTokens(session);
   if (tokensBefore <= limit) {
-    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, removed: 0 };
+    return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
   }
-  return dropToolTraffic(session);
+  return replaceOldToolResults(session);
 }
-function shrinkLogLine(outcome) {
+function shrinkLogLine(outcome, what = "tool results replaced") {
   if (!outcome.shrunk)
     return;
-  return `session shrunk: ${outcome.removed} tool messages dropped, ` + `~${Math.round(outcome.tokensBefore / 1000)}k -> ~${Math.round(outcome.tokensAfter / 1000)}k estimated tokens`;
+  return `session shrunk: ${outcome.changed} ${what}, ` + `~${Math.round(outcome.tokensBefore / 1000)}k -> ~${Math.round(outcome.tokensAfter / 1000)}k estimated tokens`;
 }
 function stillTooBigLine(outcome, limit = SESSION_TOKEN_LIMIT) {
   if (outcome.tokensAfter <= limit)
@@ -224,7 +216,7 @@ function sized(content, target) {
     return content;
   }
   const result = shrinkIfNeeded(session);
-  const shrank = shrinkLogLine(result);
+  const shrank = shrinkLogLine(result, "tool results replaced with a note");
   if (shrank !== undefined)
     console.error(shrank);
   const stuck = stillTooBigLine(result);
