@@ -274,7 +274,7 @@ describe("post_result_comment.ts main", () => {
  * a one-line notice saying the limit was reached. Everything the run had worked out
  * was in the session, where nobody looks.
  */
-describe("salvaging a run that ran out of iterations", () => {
+describe("salvaging a run that ended before it reported", () => {
   const write = (session: unknown): string => {
     const dir = mkdtempSync(join(tmpdir(), "salvage-"));
     const path = join(dir, "session.json");
@@ -326,9 +326,9 @@ describe("salvaging a run that ran out of iterations", () => {
       salvaged: true,
       usageLines: [],
     });
-    expect(body).toContain("never wrote a report");
+    expect(body).toContain("ended before it wrote a report");
     expect(body).toContain("not a conclusion");
-    expect(body.indexOf("never wrote a report")).toBeLessThan(body.indexOf("Now checking"));
+    expect(body.indexOf("ended before it wrote a report")).toBeLessThan(body.indexOf("Now checking"));
   });
 
   test("an ordinary report carries no such warning", () => {
@@ -338,6 +338,6 @@ describe("salvaging a run that ran out of iterations", () => {
       output: "Done.",
       usageLines: [],
     });
-    expect(body).not.toContain("never wrote a report");
+    expect(body).not.toContain("ended before it wrote a report");
   });
 });

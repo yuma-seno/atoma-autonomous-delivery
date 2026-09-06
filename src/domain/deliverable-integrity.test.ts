@@ -149,7 +149,7 @@ describe("names that have to resolve to a file", () => {
   // one that resolves to two things. `/stop` is read as a control command before the
   // agent namespace is consulted, so `stop.md` could never be invoked.
   test("an agent named after a control command is reported", () => {
-    const problems = configProblems({ ...facts(SOUND), agentNames: ["engineer", "stop"] });
+    const problems = configProblems({ ...facts(SOUND), agentNames: ["engineer", "reviewer", "stop"] });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("agent-definitions/stop.md");
     expect(problems[0]).toContain("/stop");
