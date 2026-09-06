@@ -40,7 +40,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.21
+        default: v0.1.23
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -80,7 +80,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.21
+        default: v0.1.23
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -131,6 +131,13 @@ jobs:
             reject notify "$NOTIFY" "Expected a GitHub login, or empty."
 
           echo "Inputs validated: ${TYPE} #${NUMBER}, agent=${AGENT}, session_mode=${SESSION_MODE}"
+      - name: Record when the agent must be finished
+        id: deadline
+        shell: bash
+        run: |
+          DEADLINE=$(( $(date +%s) + 3300 ))
+          echo "at=${DEADLINE}" >> "$GITHUB_OUTPUT"
+          echo "the agent must be finished by $(date -u -d @${DEADLINE} +%H:%M:%SZ)"
       - name: Make a place for this run's own files
         shell: bash
         run: |
@@ -322,15 +329,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/reconcile_github_session.ts" --events "${RUNNER_TEMP}/atoma-run/events.json" --agent-name "${{ inputs.agent }}" --agent-def "${ATOMA_MACHINERY_ROOT}/.github/atoma/agent-definitions/${{ inputs.agent }}.md" --config "${ATOMA_MACHINERY_ROOT}/.github/atoma/config.json" --session "${RUNNER_TEMP}/atoma-run/session.json" --out "${RUNNER_TEMP}/atoma-run/session.json"
-      - name: Read max_iterations from config
-        id: cfg
-        shell: bash
-        env:
-          AGENT_NAME: ${{ inputs.agent }}
-        run: |
-          MAX=$(bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/get_config_value.ts" "agents.${AGENT_NAME}.max_iterations" "30")
-          echo "max_iterations=${MAX}" >> "$GITHUB_OUTPUT"
-          echo "Agent ${AGENT_NAME} max_iterations: ${MAX}"
       - name: Add atoma/in-progress label
         if: steps.context.outputs.new_event_count != '0'
         shell: bash
@@ -551,6 +549,17 @@ jobs:
           # any server. Handed over rather than opened up: it holds every credential the run
           # supplies, and this step's own user keeps none of them afterwards.
           sudo chown atoma-tools "$RUNNER_TEMP/atoma-credentials/credentials.json"
+      - name: Watch for a stop request
+        if: steps.context.outputs.new_event_count != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+        run: |
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          nohup bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/watch_for_stop.ts" --number "${NUMBER}" --stop-file "${RUNNER_TEMP}/atoma-run/stop-requested" --since "${SINCE}" > "${RUNNER_TEMP}/atoma-run/stop-watch.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/atoma-run/stop-watch.pid"
+          echo "watching #${NUMBER} for /stop since ${SINCE}"
       - name: Run agent
         id: atoma
         if: steps.context.outputs.new_event_count != '0'
@@ -639,6 +648,20 @@ jobs:
             if [ -n "$value" ]; then AGENT_ENV+=("${name}=${value}"); fi
           done
 
+          # What is left of the job, handed to atoma as its own limit. See deadlineStep: the
+          # agent stops itself with time to spare instead of being killed mid-call, which is
+          # the difference between a session saved for the next run and one that never was.
+          #
+          # No iteration ceiling is passed at all. atoma stopped having a default one, and a
+          # count of turns was never the thing that ran out: a turn that lists a directory
+          # and a turn that compiles the project cost that counter the same.
+          BUDGET=$(( ${{ steps.deadline.outputs.at }} - $(date +%s) ))
+          if [ "$BUDGET" -lt 300 ]; then
+            echo "::warning::only $BUDGET seconds of the job are left; giving the agent the 300-second floor"
+            BUDGET=300
+          fi
+          echo "agent time budget: $BUDGET seconds"
+
           EXIT_CODE=0
           sudo -n -u "atoma-tools" env "${AGENT_ENV[@]}" \
             atoma run \
@@ -647,7 +670,8 @@ jobs:
             --out-session "${RUNNER_TEMP}/atoma-run/session.json" \
             --template "${ATOMA_MACHINERY_ROOT}/.github/atoma/prompt-template.md" \
             --skills-dir "${ATOMA_MACHINERY_ROOT}/.github/atoma/skills" \
-            --max-iterations "${{ steps.cfg.outputs.max_iterations }}" \
+            --max-runtime-secs "$BUDGET" \
+            --stop-file "${RUNNER_TEMP}/atoma-run/stop-requested" \
             --credentials-file "$RUNNER_TEMP/atoma-credentials/credentials.json" \
             ${TOOLS_ARG} \
             > "${RUNNER_TEMP}/atoma-run/atoma_output.txt" 2> "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" || EXIT_CODE=$?
@@ -655,9 +679,24 @@ jobs:
           echo "=== Atoma Logs ===" >&2
           cat "${RUNNER_TEMP}/atoma-run/atoma_logs.txt" >&2
 
+          # The watcher has nothing left to watch for. Killed rather than left to the job,
+          # because a poller that outlives the run it was polling for spends API budget on an
+          # answer nobody will read.
+          if [ -f "${RUNNER_TEMP}/atoma-run/stop-watch.pid" ]; then
+            kill "$(cat "${RUNNER_TEMP}/atoma-run/stop-watch.pid")" 2>/dev/null || true
+          fi
+
+          # Both a limit and a stop leave atoma at status 2, because to atoma they are the
+          # same thing: an ending somebody asked for, with the session written. Only this job
+          # can tell them apart, because only this job asked -- the file is the record of it.
           if [ "$EXIT_CODE" = "2" ]; then
-            echo "::notice::Max iterations reached — session saved for next run"
-            echo "max_iterations_reached=true" >> "$GITHUB_OUTPUT"
+            if [ -f "${RUNNER_TEMP}/atoma-run/stop-requested" ]; then
+              echo "::notice::Stopped on request — session saved"
+              echo "stop_requested=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::The run reached its limit — session saved for next run"
+              echo "limit_reached=true" >> "$GITHUB_OUTPUT"
+            fi
           elif [ "$EXIT_CODE" != "0" ]; then
             exit $EXIT_CODE
           fi
@@ -728,7 +767,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/post_result_comment.ts" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --type "${{ inputs.type }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --changed "${{ steps.atoma.outputs.changed }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --session "${RUNNER_TEMP}/atoma-run/session.json" --output "${RUNNER_TEMP}/atoma-run/atoma_output.txt" --logs-file "${RUNNER_TEMP}/atoma-run/atoma_logs.txt"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/post_result_comment.ts" --number "${{ inputs.number }}" --agent "${{ inputs.agent }}" --type "${{ inputs.type }}" --notify "${{ steps.notify.outputs.notify }}" --directive "${{ steps.atoma.outputs.directive }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --limit-reached "${{ steps.atoma.outputs.limit_reached }}" --stop-requested "${{ steps.atoma.outputs.stop_requested }}" --changed "${{ steps.atoma.outputs.changed }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --session "${RUNNER_TEMP}/atoma-run/session.json" --output "${RUNNER_TEMP}/atoma-run/atoma_output.txt" --logs-file "${RUNNER_TEMP}/atoma-run/atoma_logs.txt"
       - name: Record run metadata
         if: steps.atoma.outcome == 'success' && steps.post-result.outputs.comment_id != ''
         shell: bash
@@ -781,7 +820,7 @@ jobs:
           # Out of the model's context. This is addressed to a person and the next run can do
           # nothing with it -- the excerpt it carries is usually about the infrastructure ("MCP
           # server closed connection", "Unexpected while resolving package"), which no agent
-          # can act on. See notify_max_iterations.ts for what carrying these costs.
+          # can act on. See notify_limit_reached.ts for what carrying these costs.
           printf '%s
           ' "<!-- atoma:llm-context=exclude -->" > "$BD"
           echo "${MENTION}Warning: ${AGENT_LABEL} encountered an error." >> "$BD"
@@ -809,8 +848,8 @@ jobs:
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/inject_uncommitted_notice.ts" --session "${RUNNER_TEMP}/atoma-run/session.json"
-      - name: Notify on max iterations
-        if: steps.atoma.outputs.max_iterations_reached == 'true'
+      - name: Notify that the run reached its limit
+        if: steps.atoma.outputs.limit_reached == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -818,7 +857,7 @@ jobs:
           NOTIFY: ${{ steps.notify.outputs.notify }}
           AGENT: ${{ inputs.agent }}
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/notify_max_iterations.ts" --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}" --session "${RUNNER_TEMP}/atoma-run/session.json"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/notify_limit_reached.ts" --number "${NUMBER}" --agent "${AGENT}" --notify "${NOTIFY}" --session "${RUNNER_TEMP}/atoma-run/session.json"
       - name: Manage auto-dispatch loop control
         id: loop-control
         if: steps.atoma.outcome == 'success'
@@ -832,7 +871,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/decide_guard_release.ts" --outcome "${{ steps.atoma.outcome }}" --max-iterations-reached "${{ steps.atoma.outputs.max_iterations_reached }}" --loop-limit-reached "${{ steps.loop-control.outputs.loop_limit_reached }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --directive "${{ steps.atoma.outputs.directive }}"
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/decide_guard_release.ts" --outcome "${{ steps.atoma.outcome }}" --limit-reached "${{ steps.atoma.outputs.limit_reached }}" --stop-requested "${{ steps.atoma.outputs.stop_requested }}" --loop-limit-reached "${{ steps.loop-control.outputs.loop_limit_reached }}" --chain-continues "${{ steps.atoma.outputs.chain_continues }}" --directive "${{ steps.atoma.outputs.directive }}"
       - name: Remove atoma/in-progress label on completion
         if: always() && steps.decide-guard-release.outputs.should_release == 'true'
         shell: bash
@@ -842,7 +881,7 @@ jobs:
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/manage_in_progress_label.ts" --action "remove" --number "${NUMBER}"
       - name: Dispatch next agent
-        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.max_iterations_reached != 'true' && steps.loop-control.outputs.loop_limit_reached != 'true'
+        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.limit_reached != 'true' && steps.atoma.outputs.stop_requested != 'true' && steps.loop-control.outputs.loop_limit_reached != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -865,7 +904,7 @@ jobs:
             --field type="$TYPE" \
             --field notify="$NOTIFY"
       - name: Comment on loop limit reached
-        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.max_iterations_reached != 'true' && steps.loop-control.outputs.loop_limit_reached == 'true'
+        if: steps.atoma.outcome == 'success' && steps.atoma.outputs.directive != '' && steps.atoma.outputs.limit_reached != 'true' && steps.atoma.outputs.stop_requested != 'true' && steps.loop-control.outputs.loop_limit_reached == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

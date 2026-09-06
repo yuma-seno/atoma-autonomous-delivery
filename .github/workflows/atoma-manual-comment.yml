@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     if: (github.event.comment.user.type != 'Bot') || (github.event.comment.user.type == 'Bot' && contains(github.event.comment.body, 'atoma:dispatch'))
     outputs:
-      agent: ${{ steps.command.outputs.agent }}
+      agent: ${{ steps.dispatch.outputs.agent }}
       session_mode: ${{ steps.command.outputs.session_mode }}
       number: ${{ steps.target.outputs.number }}
       type: ${{ steps.target.outputs.type }}
@@ -36,9 +36,21 @@ jobs:
         with:
           bun-version: latest
         uses: oven-sh/setup-bun@v2
+      - name: Parse slash command
+        id: command
+        if: |-
+          (github.event.comment.user.type == 'Bot' &&
+           contains(github.event.comment.body, 'atoma:dispatch')) ||
+          (github.event.comment.user.type != 'Bot' &&
+           contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+        shell: bash
+        env:
+          ATOMA_COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/parse_comment_command.ts"
       - name: 'Guard: reject comment while atoma/in-progress'
         id: guard
-        if: github.event.comment.user.type != 'Bot'
+        if: (github.event.comment.user.type != 'Bot') && steps.command.outputs.control != 'stop'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,18 +59,6 @@ jobs:
           COMMENTER: ${{ github.event.comment.user.login }}
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/guard_comment_during_run.ts" --number "${NUMBER}" --comment-id "${COMMENT_ID}" --commenter "${COMMENTER}"
-      - name: Parse slash command
-        id: command
-        if: |-
-          ((github.event.comment.user.type == 'Bot' &&
-           contains(github.event.comment.body, 'atoma:dispatch')) ||
-          (github.event.comment.user.type != 'Bot' &&
-           contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) && steps.guard.outputs.blocked != 'true'
-        shell: bash
-        env:
-          ATOMA_COMMENT_BODY: ${{ github.event.comment.body }}
-        run: |
-          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/parse_comment_command.ts"
       - name: Resolve target context
         id: target
         shell: bash
@@ -74,6 +74,40 @@ jobs:
             echo "type=issue" >> "$GITHUB_OUTPUT"
           fi
           echo "notify=${NOTIFY}" >> "$GITHUB_OUTPUT"
+      - name: Request a stop
+        if: steps.command.outputs.control == 'stop'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/request_stop.ts" --number "${NUMBER}" --comment-id "${COMMENT_ID}" --commenter "${COMMENTER}"
+      - name: Resolve the agent to resume
+        id: resume
+        if: steps.command.outputs.control == 'resume'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/resolve_resume_agent.ts" --number "${NUMBER}"
+      - name: Decide what to dispatch
+        id: dispatch
+        shell: bash
+        env:
+          FROM_COMMAND: ${{ steps.command.outputs.agent }}
+          FROM_RESUME: ${{ steps.resume.outputs.agent }}
+          BLOCKED: ${{ steps.guard.outputs.blocked }}
+        run: |
+          if [ "$BLOCKED" = "true" ]; then
+            AGENT=""
+          else
+            AGENT="${FROM_COMMAND:-${FROM_RESUME}}"
+          fi
+          echo "agent=${AGENT}" >> "$GITHUB_OUTPUT"
+          echo "dispatching: ${AGENT:-nothing}"
       - name: Report invalid slash command
         if: steps.command.outputs.error != ''
         shell: bash

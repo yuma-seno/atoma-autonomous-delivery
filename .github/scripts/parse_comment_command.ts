@@ -8,6 +8,12 @@ import { appendFileSync } from "fs";
 var AGENT_NAME_PATTERN = "[a-z][a-z0-9-]*";
 var AGENT_NAME_RE = new RegExp(`^${AGENT_NAME_PATTERN}$`);
 
+// src/domain/control-commands.ts
+var CONTROL_COMMAND_NAMES = ["stop", "resume"];
+function isControlCommand(name) {
+  return CONTROL_COMMAND_NAMES.includes(name);
+}
+
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -20,40 +26,49 @@ function defineScript(importMetaUrl) {
 var ref = defineScript(import.meta.url);
 var COMMAND_RE = new RegExp(`^\\/(${AGENT_NAME_PATTERN})(?:\\s+(.*))?$`);
 var DISPATCH_RE = new RegExp(`^<!--\\s*atoma:dispatch\\s*=\\s*(${AGENT_NAME_PATTERN})\\s*-->`);
+var NOTHING = { agent: "", control: "", sessionMode: "continue", error: "" };
 function parseCommentCommand(body) {
   if (!body)
-    return { agent: "", sessionMode: "continue", error: "" };
+    return NOTHING;
   for (const rawLine of body.split(`
 `)) {
     const line = rawLine.trim();
     const commandMatch = COMMAND_RE.exec(line);
     if (commandMatch) {
-      const agent = commandMatch[1];
+      const name = commandMatch[1];
       const modifier = commandMatch[2]?.trim() ?? "";
+      if (isControlCommand(name)) {
+        if (!modifier)
+          return { ...NOTHING, control: name };
+        return {
+          ...NOTHING,
+          error: `'/${name}' takes nothing after it. To resume with an instruction, use '/<agent>' and put the instruction on the following lines.`
+        };
+      }
       if (!modifier)
-        return { agent, sessionMode: "continue", error: "" };
+        return { ...NOTHING, agent: name };
       if (modifier === "recover")
-        return { agent, sessionMode: "recover", error: "" };
+        return { ...NOTHING, agent: name, sessionMode: "recover" };
       return {
-        agent: "",
-        sessionMode: "continue",
-        error: `Unknown command syntax: '/${agent} ${modifier}'. Put instructions on the lines after '/${agent}', or use '/${agent} recover'.`
+        ...NOTHING,
+        error: `Unknown command syntax: '/${name} ${modifier}'. Put instructions on the lines after '/${name}', or use '/${name} recover'.`
       };
     }
     const dispatchMatch = DISPATCH_RE.exec(line);
     if (dispatchMatch)
-      return { agent: dispatchMatch[1], sessionMode: "continue", error: "" };
+      return { ...NOTHING, agent: dispatchMatch[1] };
   }
-  return { agent: "", sessionMode: "continue", error: "" };
+  return NOTHING;
 }
 function main() {
   const body = process.env.ATOMA_COMMENT_BODY ?? "";
-  const { agent, sessionMode, error } = parseCommentCommand(body);
+  const { agent, control, sessionMode, error } = parseCommentCommand(body);
   const matched = agent ? "true" : "false";
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
     appendFileSync(githubOutput, `matched=${matched}
 agent=${agent}
+control=${control}
 `);
     appendFileSync(githubOutput, `session_mode=${sessionMode}
 error=${error}

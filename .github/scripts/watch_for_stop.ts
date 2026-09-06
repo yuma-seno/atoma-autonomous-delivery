@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // @bun
 
-// src/scripts/resolve_orchestrator_parent.ts
+// src/scripts/watch_for_stop.ts
+import { writeFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/lib/gh.ts
@@ -19,21 +20,6 @@ function run(cmd) {
 }
 function gh(...args) {
   return run(["gh", ...args]);
-}
-function ghGraphql(query, variables = {}) {
-  const args = ["api", "graphql", "-f", `query=${query}`];
-  for (const [key, value] of Object.entries(variables)) {
-    args.push("-F", `${key}=${value}`);
-  }
-  const { code, stdout, stderr } = gh(...args);
-  if (code !== 0) {
-    throw new Error(`GraphQL query failed: ${stderr || stdout.slice(0, 200)}`);
-  }
-  const result = JSON.parse(stdout);
-  if (result.errors) {
-    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-  }
-  return result.data;
 }
 
 // src/lib/agent-name.ts
@@ -71,34 +57,6 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
-// src/lib/parent-issue.ts
-function log(message) {
-  console.error(`[atoma-parent] ${message}`);
-}
-function nativeParent(repo, issue) {
-  const [owner, name] = repo.split("/", 2);
-  if (!owner || !name)
-    return;
-  try {
-    const data = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}", { owner, repo: name, num: issue });
-    return data.repository.issue.parent?.number;
-  } catch {
-    return;
-  }
-}
-function parentIssueOf(repo, issue) {
-  const native = nativeParent(repo, issue);
-  if (native)
-    return { known: true, parent: native };
-  const { code, stderr, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
-  if (code) {
-    const why = `could not read issue #${issue}: ${stderr.trim() || `gh exited ${code}`}`;
-    log(`WARN ${why}`);
-    return { known: false, why };
-  }
-  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
-}
-
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -107,31 +65,58 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-// src/scripts/resolve_orchestrator_parent.ts
+// src/scripts/watch_for_stop.ts
 var ref = defineScript(import.meta.url);
-function main() {
+var DEFAULT_INTERVAL_SECONDS = 30;
+function stopRequested(comments, since) {
+  return comments.some((c) => {
+    if (!STOP_TAG.has(c.body ?? ""))
+      return false;
+    const at = c.created_at ? Date.parse(c.created_at) : NaN;
+    return Number.isNaN(at) || at > since.getTime();
+  });
+}
+function poll(repo, number, since) {
+  const { code, stdout } = gh("api", `repos/${repo}/issues/${number}/comments`, "--method", "GET", "-f", `since=${since.toISOString()}`, "--jq", "[.[] | {body, created_at}]");
+  if (code !== 0)
+    return false;
+  try {
+    return stopRequested(JSON.parse(stdout || "[]"), since);
+  } catch {
+    return false;
+  }
+}
+async function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      repo: { type: "string" },
-      sub: { type: "string" }
+      number: { type: "string" },
+      "stop-file": { type: "string" },
+      since: { type: "string" },
+      "interval-seconds": { type: "string" }
     }
   });
-  if (!values.repo || !values.sub) {
-    console.error("usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N");
+  if (!values.number || !values["stop-file"] || !values.since) {
+    console.error("usage: watch_for_stop.ts --number N --stop-file PATH --since ISO8601");
     process.exit(2);
   }
-  const found = parentIssueOf(values.repo, Number(values.sub));
-  if (!found.known) {
-    console.error(`::error::${found.why}`);
-    process.exit(1);
+  const repo = process.env.GITHUB_REPOSITORY ?? "";
+  const since = new Date(values.since);
+  const intervalMs = (Number(values["interval-seconds"]) || DEFAULT_INTERVAL_SECONDS) * 1000;
+  console.error(`Watching #${values.number} for a stop request since ${since.toISOString()}`);
+  for (;; ) {
+    await Bun.sleep(intervalMs);
+    if (!poll(repo, String(values.number), since))
+      continue;
+    writeFileSync(values["stop-file"], `stop requested on #${values.number}
+`);
+    console.error(`Stop request found; wrote ${values["stop-file"]}`);
+    return;
   }
-  if (found.parent)
-    console.error(`sub-issue #${values.sub} -> parent #${found.parent}`);
-  console.log(found.parent || "");
 }
 if (import.meta.main)
-  main();
+  await main();
 export {
-  ref
+  ref,
+  stopRequested
 };

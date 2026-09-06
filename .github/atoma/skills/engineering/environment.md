@@ -69,7 +69,7 @@ Two things to know before you call it:
 - **Your session ends immediately.** Commit what is worth keeping first. Leave
   notes in `/tmp/atoma-workspace`, which survives into the next run.
 - **There is a limit**, because each reload starts a new run and resets the
-  iteration budget. The tool tells you where you stand. When it refuses, report
+  run's time budget. The tool tells you where you stand. When it refuses, report
   what you found — that is the useful thing left.
 
 ## 4. Did a tool report a problem with itself?
