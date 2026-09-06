@@ -119,6 +119,9 @@ flowchart TD
   session and posting the result. The runner hands the agent whatever is left of
   that when it starts, so a run that reaches it stops itself and stays resumable.
   There is no ceiling on turns; a new run gets a fresh budget.
+- How a person intervenes: `/stop` on the issue stops the run at its next turn with
+  its session saved, and `/resume` continues it. See
+  [docs/operations.md](docs/operations.md).
 - What bounds a chain of runs: validation hands a pull request back to the engineer
   at most three times. **There is currently no working cap on agent-to-agent
   handoffs** — one is written but cannot fire, and there is no token or cost

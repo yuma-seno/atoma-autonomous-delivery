@@ -37,6 +37,7 @@ import { ref as decideGuardReleaseRef } from "../scripts/decide_guard_release.ts
 import { runCredentialEnv, secretNamesStep, secretSlotEnv } from "./actions/secret-slots.ts";
 import { ref as redactStreamRef } from "../scripts/redact_stream.ts";
 import { ref as writeCredentialsFileRef } from "../scripts/write_credentials_file.ts";
+import { ref as watchForStopRef } from "../scripts/watch_for_stop.ts";
 import { AGENT_NAME_PATTERN } from "../lib/agent-name.ts";
 import { LLM_CONTEXT_TAG } from "../lib/tags.ts";
 
@@ -230,6 +231,19 @@ echo "cache_key=atoma-reranker-$(echo "\${MODEL}" | tr '/:' '--')" >> "$GITHUB_O
  * before the user is created, and `atoma run` writes the session as that user.
  */
 const RUN_DIR = "\${RUNNER_TEMP}/atoma-run";
+
+/**
+ * The file `atoma run --stop-file` watches, and `watch_for_stop.ts` creates.
+ *
+ * A file, because a stop has to cross a boundary nothing else can: the person who
+ * decides is outside the job, and atoma is inside it and busy. The watcher is the
+ * part that goes and looks; this is where it leaves the answer.
+ *
+ * Written by the runner's own user and read by the tool user, which needs only the
+ * execute bit on the directory to stat it -- already granted, along with everything
+ * else in the run directory.
+ */
+const STOP_FILE = `${RUN_DIR}/stop-requested`;
 
 /**
  * The agent's scratch workspace: restored before the run, saved after it.
@@ -536,6 +550,36 @@ sudo chown ${TOOL_USER} "${CREDENTIALS_FILE}"
 `,
 });
 
+/**
+ * Starts the poller that turns a `/stop` comment into a file the agent can see.
+ *
+ * Its own step, and not part of "Run agent", for the reason that step gives for
+ * carrying no credentials: that step's bash lives for the whole run, so anything in
+ * its `env:` is exposed for minutes to everything the agent starts. This step exits
+ * immediately and leaves a background process behind, whose environment belongs to a
+ * different user than the tool servers run as.
+ *
+ * `--since` is stamped here rather than inside the watcher, so it is the moment the
+ * run began watching and not the moment of the first poll. A stop typed between
+ * those two would otherwise be missed, at the worst possible time to miss one: a
+ * person who saw a run start badly and said so immediately.
+ */
+const startStopWatcherStep = new TypedOutputsStep({
+  name: "Watch for a stop request",
+  if: `${buildContextStep.rawOutputs.new_event_count} != '0'`,
+  shell: "bash",
+  env: { GH_TOKEN: "${{ github.token }}", NUMBER: "${{ inputs.number }}" },
+  run: `SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+nohup ${scriptCommandWithArgs(watchForStopRef, {
+  number: "\${NUMBER}",
+  "stop-file": STOP_FILE,
+  since: "\${SINCE}",
+})} > "${RUN_DIR}/stop-watch.log" 2>&1 &
+echo $! > "${RUN_DIR}/stop-watch.pid"
+echo "watching #\${NUMBER} for /stop since \${SINCE}"
+`,
+});
+
 const runAgentStep = new TypedOutputsStep(
   {
     name: "Run agent",
@@ -674,6 +718,7 @@ sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
   --template "${MACHINERY}/${PROMPT_TEMPLATE}" \\
   --skills-dir "${MACHINERY}/${SKILLS_DIR}" \\
   --max-runtime-secs "$BUDGET" \\
+  --stop-file "${STOP_FILE}" \\
   --credentials-file "${CREDENTIALS_FILE}" \\
   \${TOOLS_ARG} \\
   > "${RUN_DIR}/atoma_output.txt" 2> "${RUN_DIR}/atoma_logs.txt" || EXIT_CODE=$?
@@ -681,9 +726,24 @@ sudo -n -u "${TOOL_USER}" env "\${AGENT_ENV[@]}" \\
 echo "=== Atoma Logs ===" >&2
 cat "${RUN_DIR}/atoma_logs.txt" >&2
 
+# The watcher has nothing left to watch for. Killed rather than left to the job,
+# because a poller that outlives the run it was polling for spends API budget on an
+# answer nobody will read.
+if [ -f "${RUN_DIR}/stop-watch.pid" ]; then
+  kill "$(cat "${RUN_DIR}/stop-watch.pid")" 2>/dev/null || true
+fi
+
+# Both a limit and a stop leave atoma at status 2, because to atoma they are the
+# same thing: an ending somebody asked for, with the session written. Only this job
+# can tell them apart, because only this job asked -- the file is the record of it.
 if [ "$EXIT_CODE" = "2" ]; then
-  echo "::notice::The run reached its limit — session saved for next run"
-  echo "limit_reached=true" >> "$GITHUB_OUTPUT"
+  if [ -f "${STOP_FILE}" ]; then
+    echo "::notice::Stopped on request — session saved"
+    echo "stop_requested=true" >> "$GITHUB_OUTPUT"
+  else
+    echo "::notice::The run reached its limit — session saved for next run"
+    echo "limit_reached=true" >> "$GITHUB_OUTPUT"
+  fi
 elif [ "$EXIT_CODE" != "0" ]; then
   exit $EXIT_CODE
 fi
@@ -732,7 +792,7 @@ fi
 echo "changed=\${CHANGED}" >> "$GITHUB_OUTPUT"
 `,
   },
-  ["result", "directive", "limit_reached", "chain_continues", "changed"] as const,
+  ["result", "directive", "limit_reached", "stop_requested", "chain_continues", "changed"] as const,
 );
 
 const tokenUsageStep = new TypedOutputsStep({
@@ -790,6 +850,7 @@ const postResultCommentStep = new TypedOutputsStep(
       directive: runAgentStep.outputs.directive,
       "chain-continues": runAgentStep.outputs.chain_continues,
       "limit-reached": runAgentStep.outputs.limit_reached,
+      "stop-requested": runAgentStep.outputs.stop_requested,
       // Written into the comment, because that is where the next run reads it:
       // the no-progress limit counts consecutive runs from the thread rather than
       // from a counter -- see domain/progress.ts.
@@ -957,6 +1018,7 @@ const decideGuardReleaseStep = new TypedOutputsStep(
     run: `${scriptCommandWithArgs(decideGuardReleaseRef, {
       outcome: runAgentStep.outcome,
       "limit-reached": runAgentStep.outputs.limit_reached,
+      "stop-requested": runAgentStep.outputs.stop_requested,
       "loop-limit-reached": loopControlStep.outputs.loop_limit_reached,
       "chain-continues": runAgentStep.outputs.chain_continues,
       directive: runAgentStep.outputs.directive,
@@ -979,7 +1041,8 @@ const removeLabelStep = new TypedOutputsStep({
 
 const DISPATCH_NEXT_GUARD =
   `${runAgentStep.rawOutcome} == 'success' && ${runAgentStep.rawOutputs.directive} != '' && ` +
-  `${runAgentStep.rawOutputs.limit_reached} != 'true'`;
+  `${runAgentStep.rawOutputs.limit_reached} != 'true' && ` +
+  `${runAgentStep.rawOutputs.stop_requested} != 'true'`;
 
 const dispatchNextAgentStep = new TypedOutputsStep({
   name: "Dispatch next agent",
@@ -1521,6 +1584,7 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
   // lookups in that step's own `env:`.
   toolSecretsStep,
   writeCredentialsStep,
+  startStopWatcherStep,
   runAgentStep,
   tokenUsageStep,
   postResultCommentStep,

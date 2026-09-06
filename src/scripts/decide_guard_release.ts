@@ -29,7 +29,7 @@
  *
  * Usage:
  *   decide_guard_release.ts --outcome success
- *     [--limit-reached true] [--loop-limit-reached true]
+ *     [--limit-reached true] [--stop-requested true] [--loop-limit-reached true]
  *     [--chain-continues true] [--directive AGENT_NAME]
  */
 import { appendFileSync } from "node:fs";
@@ -40,6 +40,7 @@ import { defineScript } from "./lib/script-ref.ts";
 export interface DecideGuardReleaseArgs {
   outcome: string;
   "limit-reached"?: string;
+  "stop-requested"?: string;
   "loop-limit-reached"?: string;
   "chain-continues"?: string;
   directive?: string;
@@ -57,6 +58,7 @@ function main(): void {
     options: {
       outcome: { type: "string" },
       "limit-reached": { type: "string" },
+      "stop-requested": { type: "string" },
       "loop-limit-reached": { type: "string" },
       "chain-continues": { type: "string" },
       directive: { type: "string" },
@@ -69,6 +71,7 @@ function main(): void {
   const release = shouldReleaseGuard({
     succeeded: values.outcome === "success",
     limitReached: isTrue(values["limit-reached"]),
+    stopRequested: isTrue(values["stop-requested"]),
     loopLimitReached: isTrue(values["loop-limit-reached"]),
     chainContinues: isTrue(values["chain-continues"]),
     directive: values.directive ?? "",

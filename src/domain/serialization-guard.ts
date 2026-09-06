@@ -22,6 +22,8 @@ export interface TurnOutcomeSignals {
   succeeded: boolean;
   /** Explicit hand-back to a human: this run reached a limit the caller set on it. */
   limitReached: boolean;
+  /** Explicit hand-back to a human: a person asked this run to stop, and it did. */
+  stopRequested: boolean;
   /** Explicit hand-back to a human: the cross-run auto-dispatch loop's own safety limit was hit. */
   loopLimitReached: boolean;
   /** A tool call (launch_sub_agent / create_pr / merge_pr) already triggered an automatic follow-up dispatch during this run. */
@@ -36,6 +38,7 @@ export interface TurnOutcomeSignals {
  *
  *   1. the run failed outright (cleanup, regardless of anything else)
  *   2. the run reached its own limit (explicit hand-back to a human)
+ *   2b. a person stopped it, which is the same hand-back with a name on it
  *   3. the auto-dispatch loop's own limit was reached (also an explicit,
  *      loop-limit-driven hand-back to a human)
  *   4. nothing further is happening at all: no tool call triggered a
@@ -51,6 +54,11 @@ export interface TurnOutcomeSignals {
 export function shouldReleaseGuard(signals: TurnOutcomeSignals): boolean {
   if (!signals.succeeded) return true;
   if (signals.limitReached) return true;
+  // Deliberately alongside the ceilings rather than a state of its own. A stopped run
+  // has ended and handed back, which is what every other case here means, and giving
+  // it a fourth kind of ending would have needed a label to say so -- one that then
+  // has to be taken off again by everything that starts a run.
+  if (signals.stopRequested) return true;
   if (signals.loopLimitReached) return true;
   return !signals.chainContinues && signals.directive === "";
 }

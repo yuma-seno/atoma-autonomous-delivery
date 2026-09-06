@@ -113,6 +113,36 @@ describe("post_result_comment.ts buildCommentBody", () => {
     expect(body).toContain("The run reached its limit");
     expect(body).toContain("`/engineer`");
   });
+  // The line has to say the session survived: that is the entire difference between
+  // a stop and cancelling the workflow run, and the person who asked cannot tell
+  // which one they got from anywhere else.
+  test("a stop says the session is saved and how to continue", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      stopRequested: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Halfway through.",
+      usageLines: [],
+    });
+    expect(body).toContain("Stopped on request");
+    expect(body).toContain("session is saved");
+    expect(body).toContain("`/resume`");
+  });
+
+  // Both arrive as status 2 and the runner can set both wrong. Saying "reached its
+  // limit" to somebody who typed /stop is the confusing half, so the stop wins.
+  test("a stop and a limit together read as a stop", () => {
+    const body = buildCommentBody({
+      agent: "engineer",
+      stopRequested: "true",
+      limitReached: "true",
+      runUrl: "http://example.com/run/1",
+      output: "Halfway through.",
+      usageLines: [],
+    });
+    expect(body).toContain("Stopped on request");
+    expect(body).not.toContain("reached its limit");
+  });
 });
 
 describe("post_result_comment.ts main", () => {

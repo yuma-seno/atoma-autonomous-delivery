@@ -76,6 +76,54 @@ Continue from the current Issue, repository, pull request, and CI state.
 
 Recovery archives the previous agent session, does not restore its assistant/tool history, rebuilds a fresh session from current GitHub events, and then runs the named agent. Repository branches and GitHub state are not reset. Internal automation dispatches continue existing sessions by default.
 
+### Stopping a run, and continuing it
+
+`/stop` on its own line stops the agent currently running on that issue or pull
+request. `/resume` continues it.
+
+```text
+/stop
+```
+
+Three things are worth knowing about it.
+
+**It is not immediate.** The running job polls for the request every 30 seconds, and
+the agent stops at its next turn — so it can finish the tool call it is in and start
+one more. Expect up to a minute or two. The comment Atoma posts in reply says this,
+because a command that appears to do nothing looks broken.
+
+**Nothing is lost.** The agent stops between turns, where the conversation is
+complete, and writes its session before exiting. This is the whole reason `/stop`
+exists rather than a note saying "cancel the workflow run": a cancelled job never
+reaches the step that saves the session, so cancelling means discarding.
+
+**Your `/stop` comment is deleted.** It must not become part of what the agent reads
+when it resumes — a paused run is not a run that was told something. Atoma's reply
+carries the record of who asked and when, and is itself excluded from the agent's
+context.
+
+A stopped run has ended and handed back to a person, which is the same terminal
+state as an agent that finished its turn or ran out of time. So the `atoma/in-progress`
+label comes off, nothing is dispatched next, and the issue is open for comment again.
+There is no separate "paused" state to get stuck in.
+
+To continue:
+
+| | |
+| --- | --- |
+| `/resume` | continue with the same agent and the saved session, carrying no new instruction |
+| `/<agent>` + instructions on the following lines | continue with an instruction of your own, which is what to use when you stopped the run because it was going the wrong way |
+
+`/resume` finds the agent from the last one that ran here, so there is nothing to
+remember. It takes no instruction of its own — the ordinary agent command already
+does that, and having two ways to say it would only make one of them wrong.
+
+**On a parent issue.** An orchestrator keeps the in-progress label while its chain
+runs on sub-issues, so a `/stop` on the parent may be aimed at a number where nothing
+is executing. It still posts the request, and it also lists the sub-issues that are
+running so you can stop those. It does not stop them for you: their sessions are
+separate, and stopping work nobody asked to stop is the worse mistake.
+
 ## Serialization guard and in-progress label
 
 - Runner uses workflow concurrency group per `<type>-<number>`.
@@ -83,6 +131,9 @@ Recovery archives the previous agent session, does not restore its assistant/too
 - Manual comments during active runs are guarded:
   - comment can be deleted
   - commenter is notified to retry after completion
+  - `/stop` is the one exemption: it is the only command whose meaning is "act on the
+    run happening right now", so guarding it would make it unusable exactly when it
+    is needed
 - Label release is decided by domain rule (`shouldReleaseGuard`), not by ad-hoc workflow condition strings.
 
 ## Dispatch, handoff, aggregation, idempotency
