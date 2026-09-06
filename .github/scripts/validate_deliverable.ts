@@ -6,6 +6,12 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { parseArgs } from "util";
 
+// src/domain/control-commands.ts
+var CONTROL_COMMAND_NAMES = ["stop", "resume"];
+function isControlCommand(name) {
+  return CONTROL_COMMAND_NAMES.includes(name);
+}
+
 // src/domain/auto-triggers.ts
 var TRIGGER_CONDITIONS = {
   changes_requested: {
@@ -417,7 +423,6 @@ var CONFIG_SCHEMA = {
     search: { children: { reranker_model: null } },
     environment: { children: { setup_commands: null } },
     workflows: { children: { ci: null, cd: null } },
-    agents: { anyName: { children: { max_iterations: null } } },
     limits: { children: { agent_handoffs: null, environment_reloads: null, runs_without_change: null } },
     labels: { children: { in_progress: null, sub_issue: null, launched: null }, anyName: null }
   }
@@ -468,6 +473,9 @@ function configProblems(facts) {
   problems.push(...resolveDeclaredSecrets(tools.secrets, SECRET_DESTINATIONS.tools).problems);
   problems.push(...resolveDeclaredSecrets(checks.secrets, SECRET_DESTINATIONS.checks).problems);
   problems.push(...resolveDeclaredSecrets(deploy.secrets, SECRET_DESTINATIONS.deploy).problems);
+  for (const name of agentNames.filter(isControlCommand).sort()) {
+    problems.push(`agent-definitions/${name}.md is named after the '/${name}' control command, ` + `so '/${name}' will never dispatch it. Rename the agent.`);
+  }
   if (agentNames.length > 0) {
     const known = new Set(agentNames);
     const available = [...known].sort().join(", ");
@@ -475,13 +483,6 @@ function configProblems(facts) {
       const agent = triggerAgent(trigger.agent);
       if (agent && !known.has(agent)) {
         problems.push(`\`auto_triggers\` routes \`${trigger.event}\` to '${agent}', which has no ` + `agent-definitions/${agent}.md. The event would dispatch a run that cannot start. ` + `Available: ${available}`);
-      }
-    }
-    if (isRecord3(config.agents)) {
-      for (const name of Object.keys(config.agents).sort()) {
-        if (!known.has(name)) {
-          problems.push(`\`agents.${name}\` configures an agent with no agent-definitions/${name}.md, ` + `so nothing reads it. Available: ${available}`);
-        }
       }
     }
   } else {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // @bun
 
-// src/scripts/notify_max_iterations.ts
-import { existsSync, readFileSync } from "fs";
+// src/scripts/resolve_resume_agent.ts
+import { appendFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/lib/gh.ts
@@ -44,6 +44,7 @@ function numericTag(key) {
 function stringTag(key, valuePattern) {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
+var STOP_TAG = stringTag("stop", "requested");
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
@@ -56,32 +57,6 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
-// src/domain/tool-tally.ts
-var NAMED = 4;
-function toolCallTally(session) {
-  const names = [];
-  for (const message of session?.messages ?? []) {
-    for (const call of message.tool_calls ?? []) {
-      const name = call.function?.name;
-      if (typeof name === "string" && name !== "")
-        names.push(name);
-    }
-  }
-  if (names.length === 0)
-    return;
-  const counts = new Map;
-  for (const name of names)
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const shown = ranked.slice(0, NAMED).map(([name, n]) => `\`${name}\` ${n}`);
-  const rest = ranked.slice(NAMED);
-  if (rest.length > 0) {
-    const restCalls = rest.reduce((sum, [, n]) => sum + n, 0);
-    shown.push(`and ${rest.length} other tool${rest.length === 1 ? "" : "s"} ${restCalls}`);
-  }
-  return `Spent on: ${names.length} tool calls \u2014 ${shown.join(", ")}.`;
-}
-
 // src/scripts/lib/script-ref.ts
 import { basename } from "path";
 import { fileURLToPath } from "url";
@@ -90,38 +65,46 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-// src/scripts/notify_max_iterations.ts
+// src/scripts/resolve_resume_agent.ts
 var ref = defineScript(import.meta.url);
+function mostRecentAgent(bodies) {
+  for (let i = bodies.length - 1;i >= 0; i--) {
+    const agent = AGENT_TAG.read(bodies[i] ?? "");
+    if (agent)
+      return agent;
+  }
+  return "";
+}
 function main() {
-  const { values } = parseArgs({
-    args: Bun.argv.slice(2),
-    options: {
-      number: { type: "string" },
-      agent: { type: "string" },
-      notify: { type: "string" },
-      session: { type: "string" }
-    }
-  });
-  if (!values.number || !values.agent) {
-    console.error("usage: notify_max_iterations.ts --number N --agent AGENT [--notify LOGIN]");
+  const { values } = parseArgs({ args: Bun.argv.slice(2), options: { number: { type: "string" } } });
+  if (!values.number) {
+    console.error("usage: resolve_resume_agent.ts --number N");
     process.exit(2);
   }
-  const notice = values.notify ? `@${values.notify} Atoma: \`${values.agent}\` reached the max iteration limit. Review the issue and comment \`/${values.agent}\` to retry.` : `Atoma: \`${values.agent}\` reached the max iteration limit. Comment \`/${values.agent}\` to retry.`;
-  const spent = toolCallTally(readSession(values.session));
-  gh("issue", "comment", values.number, "--body", [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...spent ? ["", spent] : []].join(`
-`));
-}
-function readSession(path) {
-  if (!path || !existsSync(path))
-    return;
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return;
+  const repo = process.env.GITHUB_REPOSITORY ?? "";
+  const { code, stdout, stderr } = gh("api", `repos/${repo}/issues/${values.number}/comments`, "--paginate", "--jq", "[.[].body]");
+  let agent = "";
+  if (code === 0) {
+    try {
+      agent = mostRecentAgent(JSON.parse(stdout || "[]"));
+    } catch {
+      agent = "";
+    }
+  } else {
+    console.error(`Could not read comments on #${values.number}: ${stderr || stdout}`);
   }
+  if (!agent) {
+    gh("issue", "comment", String(values.number), "--repo", repo, "--body", "Atoma: `/resume` found no previous run on this issue to continue. Use `/<agent>` to start one.");
+  }
+  const githubOutput = process.env.GITHUB_OUTPUT;
+  if (githubOutput)
+    appendFileSync(githubOutput, `agent=${agent}
+`);
+  console.error(agent ? `Resuming ${agent}` : "Nothing to resume");
 }
 if (import.meta.main)
   main();
 export {
+  mostRecentAgent,
   ref
 };

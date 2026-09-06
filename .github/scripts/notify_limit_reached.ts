@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // @bun
 
-// src/scripts/resolve_orchestrator_parent.ts
+// src/scripts/notify_limit_reached.ts
+import { existsSync, readFileSync } from "fs";
 import { parseArgs } from "util";
 
 // src/lib/gh.ts
@@ -19,21 +20,6 @@ function run(cmd) {
 }
 function gh(...args) {
   return run(["gh", ...args]);
-}
-function ghGraphql(query, variables = {}) {
-  const args = ["api", "graphql", "-f", `query=${query}`];
-  for (const [key, value] of Object.entries(variables)) {
-    args.push("-F", `${key}=${value}`);
-  }
-  const { code, stdout, stderr } = gh(...args);
-  if (code !== 0) {
-    throw new Error(`GraphQL query failed: ${stderr || stdout.slice(0, 200)}`);
-  }
-  const result = JSON.parse(stdout);
-  if (result.errors) {
-    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-  }
-  return result.data;
 }
 
 // src/lib/agent-name.ts
@@ -71,32 +57,30 @@ var AGGREGATED_TAG = numericTag("aggregated");
 var SUB_RESULT_TAG = numericTag("sub-result");
 var CI_RETRY_TAG = numericTag("ci-retry");
 
-// src/lib/parent-issue.ts
-function log(message) {
-  console.error(`[atoma-parent] ${message}`);
-}
-function nativeParent(repo, issue) {
-  const [owner, name] = repo.split("/", 2);
-  if (!owner || !name)
-    return;
-  try {
-    const data = ghGraphql("query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){issue(number:$num){parent{number}}}}", { owner, repo: name, num: issue });
-    return data.repository.issue.parent?.number;
-  } catch {
-    return;
+// src/domain/tool-tally.ts
+var NAMED = 4;
+function toolCallTally(session) {
+  const names = [];
+  for (const message of session?.messages ?? []) {
+    for (const call of message.tool_calls ?? []) {
+      const name = call.function?.name;
+      if (typeof name === "string" && name !== "")
+        names.push(name);
+    }
   }
-}
-function parentIssueOf(repo, issue) {
-  const native = nativeParent(repo, issue);
-  if (native)
-    return { known: true, parent: native };
-  const { code, stderr, stdout } = gh("issue", "view", String(issue), "--repo", repo, "--json", "body", "--jq", ".body");
-  if (code) {
-    const why = `could not read issue #${issue}: ${stderr.trim() || `gh exited ${code}`}`;
-    log(`WARN ${why}`);
-    return { known: false, why };
+  if (names.length === 0)
+    return;
+  const counts = new Map;
+  for (const name of names)
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const shown = ranked.slice(0, NAMED).map(([name, n]) => `\`${name}\` ${n}`);
+  const rest = ranked.slice(NAMED);
+  if (rest.length > 0) {
+    const restCalls = rest.reduce((sum, [, n]) => sum + n, 0);
+    shown.push(`and ${rest.length} other tool${rest.length === 1 ? "" : "s"} ${restCalls}`);
   }
-  return { known: true, parent: PARENT_TAG.read(stdout) ?? 0 };
+  return `Spent on: ${names.length} tool calls \u2014 ${shown.join(", ")}.`;
 }
 
 // src/scripts/lib/script-ref.ts
@@ -107,28 +91,35 @@ function defineScript(importMetaUrl) {
   return { runtimePath: `${SCRIPTS_RUNTIME_ROOT}/${basename(fileURLToPath(importMetaUrl))}` };
 }
 
-// src/scripts/resolve_orchestrator_parent.ts
+// src/scripts/notify_limit_reached.ts
 var ref = defineScript(import.meta.url);
 function main() {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     options: {
-      repo: { type: "string" },
-      sub: { type: "string" }
+      number: { type: "string" },
+      agent: { type: "string" },
+      notify: { type: "string" },
+      session: { type: "string" }
     }
   });
-  if (!values.repo || !values.sub) {
-    console.error("usage: resolve_orchestrator_parent.ts --repo OWNER/REPO --sub N");
+  if (!values.number || !values.agent) {
+    console.error("usage: notify_limit_reached.ts --number N --agent AGENT [--notify LOGIN]");
     process.exit(2);
   }
-  const found = parentIssueOf(values.repo, Number(values.sub));
-  if (!found.known) {
-    console.error(`::error::${found.why}`);
-    process.exit(1);
+  const notice = values.notify ? `@${values.notify} Atoma: \`${values.agent}\` ran out of time. Review the issue and comment \`/${values.agent}\` to retry.` : `Atoma: \`${values.agent}\` ran out of time. Comment \`/${values.agent}\` to retry.`;
+  const spent = toolCallTally(readSession(values.session));
+  gh("issue", "comment", values.number, "--body", [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...spent ? ["", spent] : []].join(`
+`));
+}
+function readSession(path) {
+  if (!path || !existsSync(path))
+    return;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return;
   }
-  if (found.parent)
-    console.error(`sub-issue #${values.sub} -> parent #${found.parent}`);
-  console.log(found.parent || "");
 }
 if (import.meta.main)
   main();

@@ -6730,6 +6730,7 @@ function numericTag(key) {
 function stringTag(key, valuePattern) {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
+var STOP_TAG = stringTag("stop", "requested");
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
@@ -18048,7 +18049,7 @@ function reloadsSoFar(raw) {
 function reloadRefusal(soFar, limit) {
   if (soFar < limit)
     return;
-  return `This run has already rebuilt its environment ${soFar} time${soFar === 1 ? "" : "s"}, which is the limit ` + `(${limit}). Reloading again is refused: each one starts a new run and resets the iteration budget, so an ` + `unbounded chain of them is an unbounded chain of runs. ` + `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` + `and a person can decide. If the answer is a system package, it belongs in ` + `\`environment.setup_commands\` in .github/atoma/config.json, which needs a human merge either way.`;
+  return `This run has already rebuilt its environment ${soFar} time${soFar === 1 ? "" : "s"}, which is the limit ` + `(${limit}). Reloading again is refused: each one starts a new run with a fresh time budget, so an ` + `unbounded chain of them is an unbounded chain of runs. ` + `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` + `and a person can decide. If the answer is a system package, it belongs in ` + `\`environment.setup_commands\` in .github/atoma/config.json, which needs a human merge either way.`;
 }
 function reloadAccepted(next, limit) {
   return `Rebuilding the environment and starting a new run (${next} of ${limit}). ` + `The setup commands come from the default branch and run against the current work tree, so a dependency ` + `you added to a manifest will be installed. A system package the default branch does not already install ` + `will NOT appear -- that needs \`environment.setup_commands\` and a person. This session ends now.`;
@@ -18191,7 +18192,7 @@ var { tools: TOOLS, dispatch } = buildMcpTools([
   }),
   defineMcpTool({
     name: "reload_environment",
-    description: "Rebuild this project's environment and restart your run. Use it when something you need is missing " + "and you cannot install it yourself: a system package (you have no sudo), a globally installed CLI, or " + "a work tree you broke. YOUR SESSION ENDS IMMEDIATELY and a new run starts, so finish anything you were " + "part-way through first -- commit what is worth keeping and leave notes in /tmp/atoma-workspace, which " + "survives into the next run. " + "What it does: re-runs `environment.setup_commands` as a privileged workflow step, against the CURRENT " + "work tree. So a dependency you added to package.json, Cargo.toml or requirements.txt gets installed by " + "the project's own trusted command -- you do not edit that command, and cannot. " + "What it does NOT do: install a system package the setup does not already ask for. Those commands come " + "from the default branch, so a package you decided you need is not in them yet; add it to " + "`environment.setup_commands` in .github/atoma/config.json, say so in your report, and a person merges " + "it. Reloading first will hand you the same environment back and cost a run. " + "There is a limit on how many times one piece of work may do this, because each reload starts a new run " + "and resets the iteration budget. The tool tells you where you stand.",
+    description: "Rebuild this project's environment and restart your run. Use it when something you need is missing " + "and you cannot install it yourself: a system package (you have no sudo), a globally installed CLI, or " + "a work tree you broke. YOUR SESSION ENDS IMMEDIATELY and a new run starts, so finish anything you were " + "part-way through first -- commit what is worth keeping and leave notes in /tmp/atoma-workspace, which " + "survives into the next run. " + "What it does: re-runs `environment.setup_commands` as a privileged workflow step, against the CURRENT " + "work tree. So a dependency you added to package.json, Cargo.toml or requirements.txt gets installed by " + "the project's own trusted command -- you do not edit that command, and cannot. " + "What it does NOT do: install a system package the setup does not already ask for. Those commands come " + "from the default branch, so a package you decided you need is not in them yet; add it to " + "`environment.setup_commands` in .github/atoma/config.json, say so in your report, and a person merges " + "it. Reloading first will hand you the same environment back and cost a run. " + "There is a limit on how many times one piece of work may do this, because each reload starts a new run " + "and resets the run's time budget. The tool tells you where you stand.",
     schema: RELOAD_ENVIRONMENT_SCHEMA,
     handler: handleReloadEnvironment
   })

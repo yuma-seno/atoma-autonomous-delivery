@@ -9,7 +9,9 @@ import { parseArgs } from "util";
 function shouldReleaseGuard(signals) {
   if (!signals.succeeded)
     return true;
-  if (signals.maxIterationsReached)
+  if (signals.limitReached)
+    return true;
+  if (signals.stopRequested)
     return true;
   if (signals.loopLimitReached)
     return true;
@@ -34,7 +36,8 @@ function main() {
     args: Bun.argv.slice(2),
     options: {
       outcome: { type: "string" },
-      "max-iterations-reached": { type: "string" },
+      "limit-reached": { type: "string" },
+      "stop-requested": { type: "string" },
       "loop-limit-reached": { type: "string" },
       "chain-continues": { type: "string" },
       directive: { type: "string" }
@@ -45,7 +48,8 @@ function main() {
   }
   const release = shouldReleaseGuard({
     succeeded: values.outcome === "success",
-    maxIterationsReached: isTrue(values["max-iterations-reached"]),
+    limitReached: isTrue(values["limit-reached"]),
+    stopRequested: isTrue(values["stop-requested"]),
     loopLimitReached: isTrue(values["loop-limit-reached"]),
     chainContinues: isTrue(values["chain-continues"]),
     directive: values.directive ?? ""

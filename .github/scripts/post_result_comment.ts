@@ -44,6 +44,7 @@ function numericTag(key) {
 function stringTag(key, valuePattern) {
   return makeTag(key, valuePattern, (raw) => raw, (value) => value);
 }
+var STOP_TAG = stringTag("stop", "requested");
 var PARENT_TAG = numericTag("parent");
 var PARENT_ISSUE_TAG = numericTag("parent-issue");
 var NOTIFY_TAG = stringTag("notify", "[A-Za-z0-9-]+");
@@ -212,7 +213,7 @@ function buildCommentBody(args) {
     CHANGED_TAG.write(args.changed === true ? "yes" : "no")
   ];
   if (args.salvaged === true) {
-    lines.push("> [!WARNING]", "> This run hit its iteration limit and never wrote a report. Below is the last thing it said,", "> from the middle of the work \u2014 not a conclusion, and not a summary of what it found.", "");
+    lines.push("> [!WARNING]", "> This run ended before it wrote a report. Below is the last thing it said,", "> from the middle of the work \u2014 not a conclusion, and not a summary of what it found.", "");
   }
   lines.push(args.output, "", ...args.usageLines);
   const escapedNotice = escapedMentionNotice(args.escapedMentions ?? []);
@@ -228,8 +229,10 @@ function buildCommentBody(args) {
     lines.push(`@${args.notify} \u2014 **${args.agent}** task completed. No agent will be automatically executed next. Please review the results or provide instructions for the next step.`, "");
   }
   lines.push("---", `_run by [${args.agent}](${args.runUrl})_`);
-  if (args.maxIterationsReached === "true") {
-    lines.push(`\u26A0\uFE0F _Max iterations reached. Comment \`/${args.agent}\` to continue._`);
+  if (args.stopRequested === "true") {
+    lines.push(`\u23F8\uFE0F _Stopped on request. **The session is saved.** Comment \`/resume\` to continue ` + `from here, or \`/${args.agent}\` with an instruction on the following lines._`);
+  } else if (args.limitReached === "true") {
+    lines.push(`\u26A0\uFE0F _The run reached its limit. Comment \`/${args.agent}\` to continue._`);
   }
   return lines.join(`
 `);
@@ -244,7 +247,8 @@ function main() {
       notify: { type: "string" },
       directive: { type: "string" },
       "chain-continues": { type: "string" },
-      "max-iterations-reached": { type: "string" },
+      "limit-reached": { type: "string" },
+      "stop-requested": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
       session: { type: "string" },
@@ -264,12 +268,12 @@ function main() {
   const redacted = redact(existsSync(outputFile) ? readFileSync(outputFile, "utf8") : "");
   let output = redacted;
   let salvaged = false;
-  if (!output.trim() && values["max-iterations-reached"] === "true") {
+  if (!output.trim() && (values["limit-reached"] === "true" || values["stop-requested"] === "true")) {
     const last = lastAgentText(values.session);
     if (last !== undefined) {
       output = redact(last);
       salvaged = true;
-      console.error("salvaged the agent's last message from the session (iteration limit)");
+      console.error("salvaged the agent's last message from the session (limit reached)");
     }
   }
   if (!output.trim()) {
@@ -286,7 +290,8 @@ function main() {
     notify: values.notify,
     directive: values.directive,
     chainContinues: values["chain-continues"],
-    maxIterationsReached: values["max-iterations-reached"],
+    limitReached: values["limit-reached"],
+    stopRequested: values["stop-requested"],
     runUrl: values["run-url"],
     output: checked.text,
     escapedMentions: checked.escaped,
