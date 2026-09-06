@@ -29,17 +29,6 @@
   "tools": {
     "secrets": []
   },
-  "agents": {
-    "orchestrator": {
-      "max_iterations": 100
-    },
-    "engineer": {
-      "max_iterations": 200
-    },
-    "reviewer": {
-      "max_iterations": 30
-    }
-  },
   "labels": {
     "in_progress": "atoma/in-progress",
     "sub_issue": "atoma/sub-issue",
