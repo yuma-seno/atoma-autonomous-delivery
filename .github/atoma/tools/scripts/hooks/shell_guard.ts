@@ -2,7 +2,38 @@
 // @bun
 
 // src/atoma/tools/scripts/hooks/shell_guard.ts
+import { readFileSync, writeFileSync } from "fs";
 import { resolve, sep } from "path";
+
+// src/domain/search-streak.ts
+var MAX_SEARCHES_WITHOUT_OPENING = 15;
+var SEARCHES = /^(grep|egrep|fgrep|rg|ag|ack|ugrep|find)$/;
+var OPENS = /^(cat|bat|head|tail|sed|less|more|nl|od|xxd)$/;
+function classifyShellAct(command) {
+  const first = command.trim().split(/\s*(?:\|\||&&|[;|])\s*/)[0]?.trim().split(/\s+/).find((token) => token.length > 0 && !token.includes("=") && token !== "sudo" && token !== "time");
+  if (first === undefined)
+    return "other";
+  const name = first.split("/").pop() ?? first;
+  if (SEARCHES.test(name))
+    return "search";
+  if (OPENS.test(name))
+    return "open";
+  return "other";
+}
+function nextStreak(streak, act) {
+  if (act === "search")
+    return streak + 1;
+  if (act === "open")
+    return 0;
+  return streak;
+}
+function refusalReason(streak, limit = MAX_SEARCHES_WITHOUT_OPENING) {
+  if (streak < limit)
+    return;
+  return `${streak} searches in a row without opening any of the files they found. A search returns ` + "where something is, not what it is, so nothing found so far has been read. Open the most " + "promising result \u2014 with filesystem__read_text_file, or `sed -n` for a range \u2014 before searching again. " + "If the answer needs understanding rather than locating, say what tool you are missing and end.";
+}
+
+// src/atoma/tools/scripts/hooks/shell_guard.ts
 var ROUTING_RULES = [
   [
     /\bgh\b/,
@@ -117,6 +148,36 @@ function checkInvocation(invocation) {
   }
   return ALLOWED;
 }
+function streakFile() {
+  const opsLog = process.env.ATOMA_OPS_LOG;
+  if (!opsLog)
+    return;
+  const dir = opsLog.replace(/[/\\][^/\\]*$/, "");
+  return dir === opsLog ? undefined : `${dir}/search-streak`;
+}
+function readStreak(file) {
+  if (!file)
+    return 0;
+  try {
+    const n = Number(readFileSync(file, "utf8").trim());
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+function writeStreak(file, streak) {
+  if (!file)
+    return;
+  try {
+    writeFileSync(file, String(streak));
+  } catch {}
+}
+function streakRefusal(command) {
+  const file = streakFile();
+  const streak = nextStreak(readStreak(file), classifyShellAct(command));
+  writeStreak(file, streak);
+  return refusalReason(streak);
+}
 async function main() {
   let data;
   try {
@@ -132,6 +193,11 @@ async function main() {
     command,
     workingDirectory: typeof args.working_directory === "string" ? args.working_directory : undefined
   });
+  const refusal = allow ? streakRefusal(command) : undefined;
+  if (refusal !== undefined) {
+    console.log(JSON.stringify({ allow: false, reason: `shell_guard: ${refusal}` }));
+    return;
+  }
   if (allow) {
     console.log(JSON.stringify({ allow: true }));
   } else {
