@@ -187,8 +187,10 @@ function subIssueState(number, type) {
     return { isSubIssue: false, issueClosed: false };
   }
 }
-function lastAgentText(sessionPath) {
+function lastAgentText(sessionPath, from) {
   if (!sessionPath || !existsSync(sessionPath))
+    return;
+  if (from === undefined || !Number.isFinite(from))
     return;
   let session;
   try {
@@ -197,7 +199,7 @@ function lastAgentText(sessionPath) {
     return;
   }
   const messages = session.messages ?? [];
-  for (let i = messages.length - 1;i >= 0; i -= 1) {
+  for (let i = messages.length - 1;i >= from; i -= 1) {
     const message = messages[i];
     if (message?.role !== "assistant")
       continue;
@@ -249,6 +251,7 @@ function main() {
       "chain-continues": { type: "string" },
       "limit-reached": { type: "string" },
       "stop-requested": { type: "string" },
+      "messages-before": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
       session: { type: "string" },
@@ -269,7 +272,7 @@ function main() {
   let output = redacted;
   let salvaged = false;
   if (!output.trim() && (values["limit-reached"] === "true" || values["stop-requested"] === "true")) {
-    const last = lastAgentText(values.session);
+    const last = lastAgentText(values.session, Number(values["messages-before"]));
     if (last !== undefined) {
       output = redact(last);
       salvaged = true;

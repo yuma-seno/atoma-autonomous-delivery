@@ -329,6 +329,7 @@ function main() {
     appendFileSync(githubOutput, `new_event_count=${changedCount}
 context_snapshot_hash=${snapshotHash}
 context_event_count=${eventCount}
+` + `messages_before=${mergedSession.messages?.length ?? 0}
 `);
   }
   console.error(`Context build complete: ${events.length} events fetched, ${eventCount} shared messages, changed=${changedCount}`);
