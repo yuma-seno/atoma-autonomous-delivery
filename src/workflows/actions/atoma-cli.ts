@@ -127,8 +127,16 @@ import { TypedOutputsStep } from "./base.ts";
  * saving on failure is only safe because of that repair -- a session carrying an
  * unanswered call is refused by every provider, so an older binary would turn lost
  * work into an issue nothing can run on (atoma#18, #564).
+ *
+ * v0.1.25 adds three guards on a run that has stopped being work: the same call
+ * returning the same answer, a cycle (A,B,A,B) that the old single-slot tracker could
+ * not see, and nothing coming back over and over. Each fires on 0-0.3% of the 341
+ * stored sessions, which is the point -- they are insurance with no false positives.
+ * The pin moves because the guard in `shell_guard.ts` depends on the first of them:
+ * its refusal is deterministic, so an agent that ignores it is stopped by the core
+ * rather than by a new rule (atoma#17, #570).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.24";
+export const ATOMA_DEFAULT_VERSION = "v0.1.25";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
