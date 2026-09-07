@@ -33,6 +33,7 @@ export interface PostResultCommentArgs {
   "chain-continues"?: string;
   "limit-reached"?: string;
   "stop-requested"?: string;
+  "messages-before"?: string | number;
   /** "true" when this run pushed a commit, opened a pull request, or merged one. */
   changed?: string;
   /**
@@ -154,8 +155,28 @@ function subIssueState(number: string, type?: string): { isSubIssue: boolean; is
  * made 324 tool calls and never wrote a sentence has nothing to report, and saying so
  * is better than posting an empty comment.
  */
-export function lastAgentText(sessionPath: string | undefined): string | undefined {
+/**
+ * The last thing THIS run said, if it said anything.
+ *
+ * `from` is where this run's own messages begin -- everything below it was written by
+ * an earlier run or is the GitHub context put in front of this one. Without that
+ * boundary this walks the whole accumulated session and finds the previous run's
+ * final report, which it then publishes under a warning saying "this run ended before
+ * it wrote a report, below is the last thing it said, from the middle of the work".
+ * Every clause of that is false about the text it shows.
+ *
+ * Measured on #568: a run stopped after 19 iterations republished the previous run's
+ * complete conclusion. It is easy to reach because these models write prose exactly
+ * once, in their final turn -- so a run that is stopped has no assistant text of its
+ * own at all, and the newest one in the session always belongs to somebody else.
+ *
+ * An absent or unreadable boundary salvages nothing. The failure of showing a person
+ * less than they could have had is smaller than the failure of showing them an old
+ * conclusion labelled as a new fragment.
+ */
+export function lastAgentText(sessionPath: string | undefined, from?: number): string | undefined {
   if (!sessionPath || !existsSync(sessionPath)) return undefined;
+  if (from === undefined || !Number.isFinite(from)) return undefined;
   let session: Session;
   try {
     session = JSON.parse(readFileSync(sessionPath, "utf8")) as Session;
@@ -163,7 +184,7 @@ export function lastAgentText(sessionPath: string | undefined): string | undefin
     return undefined;
   }
   const messages = session.messages ?? [];
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
+  for (let i = messages.length - 1; i >= from; i -= 1) {
     const message = messages[i];
     if (message?.role !== "assistant") continue;
     const content = message.content;
@@ -265,6 +286,7 @@ function main(): void {
       "chain-continues": { type: "string" },
       "limit-reached": { type: "string" },
       "stop-requested": { type: "string" },
+      "messages-before": { type: "string" },
       "run-url": { type: "string" },
       changed: { type: "string" },
       session: { type: "string" },
@@ -324,7 +346,7 @@ function main(): void {
   let output = redacted;
   let salvaged = false;
   if (!output.trim() && (values["limit-reached"] === "true" || values["stop-requested"] === "true")) {
-    const last = lastAgentText(values.session);
+    const last = lastAgentText(values.session, Number(values["messages-before"]));
     if (last !== undefined) {
       output = redact(last);
       salvaged = true;

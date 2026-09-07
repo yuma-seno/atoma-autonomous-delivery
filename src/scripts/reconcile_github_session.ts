@@ -18,7 +18,8 @@
  *        - apply the agent's configured shared_context include/exclude policy, if any
  *   3. Reconcile the filtered events into session.json by stable event ID.
  *   4. Compute a snapshot hash for change detection.
- *   5. Write new_event_count/context_snapshot_hash/context_event_count to $GITHUB_OUTPUT.
+ *   5. Write new_event_count/context_snapshot_hash/context_event_count/messages_before
+ *      to $GITHUB_OUTPUT.
  *
  * Usage:
  *   reconcile_github_session.ts --events events.json --agent-name orchestrator \
@@ -346,7 +347,13 @@ function main(): void {
   if (githubOutput) {
     appendFileSync(
       githubOutput,
-      `new_event_count=${changedCount}\ncontext_snapshot_hash=${snapshotHash}\ncontext_event_count=${eventCount}\n`,
+      `new_event_count=${changedCount}\ncontext_snapshot_hash=${snapshotHash}\ncontext_event_count=${eventCount}\n` +
+        // Where this run's own messages will begin. Everything below this index was
+        // written by an earlier run or is the GitHub context put in front of this one,
+        // and `post_result_comment.ts` needs the boundary: without it, a run that
+        // stopped before writing anything salvages the LAST run's conclusion and
+        // presents it as a fragment of this one. Measured on #568.
+        `messages_before=${mergedSession.messages?.length ?? 0}\n`,
     );
   }
 
