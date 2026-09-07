@@ -34,7 +34,9 @@
  *   2. HARDENING — exactly one rule, for the one real threat nothing else
  *      covers. Honest about being partial. See PROCESS_ENVIRONMENT_READ.
  */
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, sep } from "node:path";
+import { classifyShellAct, nextStreak, refusalReason } from "../../../../domain/search-streak.ts";
 
 /**
  * Commands that have a proper route through an MCP tool.
@@ -224,6 +226,65 @@ function checkInvocation(invocation: ShellInvocation): GuardVerdict {
   return ALLOWED;
 }
 
+/**
+ * Where the search streak is kept.
+ *
+ * A file, because this hook is a fresh process per tool call -- there is nowhere else
+ * for a count to live. Beside the ops log, which is the run's own directory and is
+ * already written by this user.
+ *
+ * `undefined` when the run did not say where that is, and then the streak rule is
+ * simply off. A guard with nowhere to keep its state should do nothing, not guess.
+ */
+function streakFile(): string | undefined {
+  const opsLog = process.env.ATOMA_OPS_LOG;
+  if (!opsLog) return undefined;
+  const dir = opsLog.replace(/[/\\][^/\\]*$/, "");
+  return dir === opsLog ? undefined : `${dir}/search-streak`;
+}
+
+/**
+ * The streak so far, or zero.
+ *
+ * Every failure reads as zero. This hook is fail-closed by contract -- a non-zero exit
+ * or unparseable output is taken as a refusal -- so a bug in reading a counter would
+ * refuse every shell call the agent makes. Zero means the rule does not fire, which is
+ * the only safe direction for it to be wrong in.
+ */
+function readStreak(file: string | undefined): number {
+  if (!file) return 0;
+  try {
+    const n = Number(readFileSync(file, "utf8").trim());
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Silent on failure, for the same reason. */
+function writeStreak(file: string | undefined, streak: number): void {
+  if (!file) return;
+  try {
+    writeFileSync(file, String(streak));
+  } catch {
+    // Nothing to do about it, and nothing worth failing a tool call over.
+  }
+}
+
+/**
+ * Advance the streak for this command, and say whether it is refused.
+ *
+ * The streak is written whichever way it goes, including on the refusal: it clears when
+ * something is opened, which is the act being asked for. Clearing it here would let the
+ * agent search on for another fifteen.
+ */
+function streakRefusal(command: string): string | undefined {
+  const file = streakFile();
+  const streak = nextStreak(readStreak(file), classifyShellAct(command));
+  writeStreak(file, streak);
+  return refusalReason(streak);
+}
+
 async function main(): Promise<void> {
   let data: { arguments?: Record<string, unknown> };
   try {
@@ -240,6 +301,14 @@ async function main(): Promise<void> {
     command,
     workingDirectory: typeof args.working_directory === "string" ? args.working_directory : undefined,
   });
+
+  // Only on a command the rules above allowed: a refusal for the wrong reason is
+  // worse than a late one, and a command blocked outright never reached a search.
+  const refusal = allow ? streakRefusal(command) : undefined;
+  if (refusal !== undefined) {
+    console.log(JSON.stringify({ allow: false, reason: `shell_guard: ${refusal}` }));
+    return;
+  }
 
   if (allow) {
     console.log(JSON.stringify({ allow: true }));

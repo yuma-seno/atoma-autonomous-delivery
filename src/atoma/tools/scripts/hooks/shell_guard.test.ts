@@ -1,17 +1,102 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { MAX_SEARCHES_WITHOUT_OPENING } from "../../../../domain/search-streak.ts";
 
 const SCRIPT = "src/atoma/tools/scripts/hooks/shell_guard.ts";
 
 /** Run the guard the way the `before_tool` hook does: JSON on stdin. */
-function guard(args: Record<string, unknown>): string {
+function guard(args: Record<string, unknown>, env?: Record<string, string>): string {
   return spawnSync("bun", ["run", SCRIPT], {
     input: JSON.stringify({ arguments: args }),
     encoding: "utf8",
+    env: env ? { ...process.env, ...env } : process.env,
   }).stdout;
 }
 
+/**
+ * A run of its own, for the rule that keeps a count.
+ *
+ * The hook is a fresh process per call, so the streak lives in a file beside the run's
+ * ops log. Each of these gets its own directory, or one test's streak would decide
+ * another's verdict.
+ */
+function ownRun(): (command: string) => string {
+  const dir = mkdtempSync(join(tmpdir(), "streak-"));
+  return (command: string) => guard({ command }, { ATOMA_OPS_LOG: join(dir, "atoma_ops.log") });
+}
+
 describe("shell_guard.ts", () => {
+  /**
+   * The measured failure this exists for: three sessions searched 124-188 times while
+   * opening almost nothing, one of them 85 times in a row. See
+   * `domain/search-streak.ts` for the numbers and for why repetition was not the
+   * signal.
+   */
+  describe("searching without opening anything", () => {
+    test("an ordinary amount of searching is allowed", () => {
+      const run = ownRun();
+      // The measured p99 is 8, so this is already an unusual run and still fine.
+      for (let n = 0; n < 8; n += 1) {
+        expect(run(`grep -rn pattern${n} src/`), `search ${n}`).toContain('"allow":true');
+      }
+    });
+
+    test("at the limit the search is refused, and the run is not", () => {
+      const run = ownRun();
+      for (let n = 0; n < MAX_SEARCHES_WITHOUT_OPENING - 1; n += 1) {
+        expect(run(`grep -rn pattern${n} src/`), `search ${n}`).toContain('"allow":true');
+      }
+      const refused = run("grep -rn onemore src/");
+      expect(refused).toContain('"allow":false');
+      expect(refused).toContain("where something is, not what it is");
+    });
+
+    /**
+     * Opening something is the act being asked for, so it has to be the act that
+     * clears the count -- otherwise the refusal is a dead end.
+     */
+    test("opening a file clears the count", () => {
+      const run = ownRun();
+      for (let n = 0; n < MAX_SEARCHES_WITHOUT_OPENING - 1; n += 1) run(`grep -rn p${n} src/`);
+      expect(run("cat src/foo.ts")).toContain('"allow":true');
+      expect(run("grep -rn afterwards src/"), "the count started again").toContain('"allow":true');
+    });
+
+    /**
+     * The count is per run. A file left behind by an earlier run must not refuse the
+     * first search of the next one -- and each run's directory is its own, so this is
+     * really a test that the path is derived from the run's own ops log.
+     */
+    test("another run's searching does not count against this one", () => {
+      const first = ownRun();
+      for (let n = 0; n < MAX_SEARCHES_WITHOUT_OPENING; n += 1) first(`grep -rn p${n} src/`);
+      const second = ownRun();
+      expect(second("grep -rn anything src/")).toContain('"allow":true');
+    });
+
+    /**
+     * With nowhere to keep a count, the rule does nothing. The hook is fail-closed by
+     * contract -- unparseable output is a refusal -- so a guard that cannot find its
+     * state must not start guessing.
+     */
+    test("no run directory means no rule", () => {
+      for (let n = 0; n < MAX_SEARCHES_WITHOUT_OPENING + 5; n += 1) {
+        const out = guard({ command: `grep -rn p${n} src/` }, { ATOMA_OPS_LOG: "" });
+        expect(out, `search ${n}`).toContain('"allow":true');
+      }
+    });
+
+    test("work that is not searching neither climbs nor clears the count", () => {
+      const run = ownRun();
+      for (let n = 0; n < MAX_SEARCHES_WITHOUT_OPENING - 1; n += 1) run(`grep -rn p${n} src/`);
+      expect(run("bun test"), "running the tests is allowed").toContain('"allow":true');
+      expect(run("grep -rn onemore src/"), "and did not clear the count").toContain('"allow":false');
+    });
+  });
+
   // The guard is a routing mechanism, not a boundary — see the file header. So
   // these tests check that the agent is pointed at the right tool, not that a
   // determined caller cannot get past. Tests asserting evasion resistance were
