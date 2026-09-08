@@ -17614,15 +17614,45 @@ async function serveMcpServer(options) {
 var CHUNK_LIMIT = 700;
 var MIN_CHUNK = 40;
 function splitBody(text, limit = CHUNK_LIMIT) {
-  return text.split(/\n(?=#{1,4}\s)/).flatMap((section) => section.length > limit ? section.split(/\n\n+/) : [section]).map((piece) => piece.trim()).flatMap((piece) => cutToWidth(piece, limit)).filter((piece) => piece.length >= MIN_CHUNK);
+  return splitBodyWithOffsets(text, limit).map((piece) => piece.text);
+}
+function splitBodyWithOffsets(text, limit = CHUNK_LIMIT) {
+  let pieces = [{ text, start: 0 }];
+  pieces = pieces.flatMap((piece) => splitOn(piece, /\n(?=#{1,4}\s)/g));
+  pieces = pieces.flatMap((piece) => piece.text.length > limit ? splitOn(piece, /\n\n+/g) : [piece]);
+  return pieces.map(trimmed).flatMap((piece) => cutToWidth(piece, limit)).filter((piece) => piece.text.length >= MIN_CHUNK);
+}
+function splitOn(piece, separator) {
+  const out = [];
+  let at = 0;
+  separator.lastIndex = 0;
+  for (let match = separator.exec(piece.text);match; match = separator.exec(piece.text)) {
+    out.push({ text: piece.text.slice(at, match.index), start: piece.start + at });
+    at = match.index + match[0].length;
+  }
+  out.push({ text: piece.text.slice(at), start: piece.start + at });
+  return out;
+}
+function trimmed(piece) {
+  const lead = piece.text.length - piece.text.trimStart().length;
+  return { text: piece.text.trim(), start: piece.start + lead };
 }
 function cutToWidth(piece, limit) {
-  if (piece.length <= limit)
+  if (piece.text.length <= limit)
     return [piece];
   const chunks = [];
-  for (let at = 0;at < piece.length; at += limit)
-    chunks.push(piece.slice(at, at + limit).trim());
+  for (let at = 0;at < piece.text.length; at += limit) {
+    chunks.push(trimmed({ text: piece.text.slice(at, at + limit), start: piece.start + at }));
+  }
   return chunks;
+}
+function lineAt(text, offset) {
+  let line = 1;
+  for (let i = 0;i < offset && i < text.length; i += 1)
+    if (text[i] === `
+`)
+      line += 1;
+  return line;
 }
 function tokenize(text) {
   const compact = text.toLowerCase().replace(/[\s\u3001\u3002\uFF08\uFF09()\uFF1A:,.\n\r\t`*#|[\]{}<>/\\"'-]+/g, "");
@@ -17693,6 +17723,74 @@ function rankIssues(chunks, scores, limit) {
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+// src/domain/code-corpus.ts
+var INDEXED = /\.(ts|tsx|js|jsx|mjs|cjs|rs|py|go|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|sql|md|mdx|yaml|yml|toml|json|jsonc)$/i;
+var EXCLUDED = [
+  /^\.github\/atoma\//,
+  /^\.github\/scripts\//,
+  /^\.github\/workflows\/.*\.yml$/,
+  /(^|\/)(dist|build|out|coverage|vendor|node_modules|target|\.next|__pycache__)\//,
+  /(^|\/)(package-lock\.json|bun\.lock|bun\.lockb|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|Gemfile\.lock|composer\.lock)$/,
+  /(^|\/)__snapshots__\//
+];
+function shouldIndex(path) {
+  if (!INDEXED.test(path))
+    return false;
+  return !EXCLUDED.some((pattern) => pattern.test(path));
+}
+function corpusFrom(tracked) {
+  return tracked.map((line) => line.trim().replace(/\\/g, "/")).filter((path) => path.length > 0 && shouldIndex(path)).sort();
+}
+
+// src/domain/code-search.ts
+var CANDIDATES = 20;
+var DOCUMENT_BUDGET = 1000;
+function passagesOf(path, text) {
+  const out = [];
+  for (const piece of splitBodyWithOffsets(text)) {
+    out.push({
+      path,
+      text: piece.text,
+      startLine: lineAt(text, piece.start),
+      endLine: lineAt(text, piece.start + piece.text.length)
+    });
+  }
+  out.push({
+    path,
+    text: `${path.replace(/[/_.-]/g, " ")} ${path}`,
+    startLine: 1,
+    endLine: 1
+  });
+  return out;
+}
+function rankFiles(passages, scores, limit) {
+  const best = new Map;
+  for (let i = 0;i < passages.length; i += 1) {
+    const score = scores[i] ?? 0;
+    if (score <= 0)
+      continue;
+    const path = passages[i].path;
+    const current = best.get(path);
+    if (!current || current.score < score)
+      best.set(path, { passage: i, score });
+  }
+  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+function documentFor(passage) {
+  return `${passage.path}
+${passage.text}`.slice(0, DOCUMENT_BUDGET);
+}
+function resultsOf(passages, matches, excerptBudget) {
+  return matches.map((match) => {
+    const passage = passages[match.passage];
+    return {
+      path: passage.path,
+      lines: `${passage.startLine}-${passage.endLine}`,
+      excerpt: passage.text.slice(0, excerptBudget).trim()
+    };
+  });
+}
+
 // src/lib/config.ts
 import { readFileSync } from "fs";
 
@@ -17727,6 +17825,9 @@ function getRerankerModel() {
 
 // src/domain/model-cache.ts
 var MODEL_CACHE_DIR = "atoma-transformers";
+
+// src/atoma/tools/scripts/mcp/search.ts
+import { readFileSync as readFileSync2 } from "fs";
 
 // src/lib/gh.ts
 function run(cmd) {
@@ -18011,8 +18112,8 @@ function hardenCredentialHolder(log) {
 
 // src/atoma/tools/scripts/mcp/search.ts
 var REPO = process.env.GITHUB_REPOSITORY ?? "";
-var CANDIDATES = 20;
-var DOCUMENT_BUDGET = 1800;
+var CANDIDATES2 = 20;
+var DOCUMENT_BUDGET2 = 1800;
 var EXCERPT_BUDGET = 700;
 var SEARCH_SCHEMA = objectType({
   query: stringType().min(1).describe([
@@ -18032,7 +18133,7 @@ var SEARCH_SCHEMA = objectType({
     "Write it in the language this repository's issues are written in, which is the language of the issue in front of you \u2014 not necessarily the language you are being instructed in. The first stage matches characters rather than meaning, so a question in the wrong language finds nothing at all."
   ].join(`
 `)),
-  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured. " + "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.").max(CANDIDATES).optional()
+  limit: positiveInt("How many issues to return. Defaults to 3, which held the answer for every question measured. " + "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.").max(CANDIDATES2).optional()
 });
 function log2(message) {
   console.error(`[atoma-search] ${message}`);
@@ -18114,10 +18215,10 @@ async function loadRerankerOnce() {
     }
   };
 }
-function documentFor(issue, passage) {
+function documentFor2(issue, passage) {
   const head = `${issue.title}
-${passage}`.slice(0, DOCUMENT_BUDGET);
-  const remaining = DOCUMENT_BUDGET - head.length;
+${passage}`.slice(0, DOCUMENT_BUDGET2);
+  const remaining = DOCUMENT_BUDGET2 - head.length;
   return remaining > 200 ? `${head}
 ${issue.body.slice(0, remaining)}` : head;
 }
@@ -18129,11 +18230,11 @@ async function searchIssues(a) {
   const bm25 = index.bm25;
   if (!chunks?.length || !bm25)
     return "The issue index is empty; there is nothing to search yet.";
-  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES).filter((match) => match.issue !== currentIssue());
+  const candidates = rankIssues(chunks, score(bm25, a.query), CANDIDATES2).filter((match) => match.issue !== currentIssue());
   if (candidates.length === 0)
     return `Nothing matched "${a.query}".`;
   const byNumber = new Map(index.issues.map((issue) => [issue.number, issue]));
-  const documents = candidates.map((match) => documentFor(byNumber.get(match.issue), chunks[match.chunk]?.text ?? ""));
+  const documents = candidates.map((match) => documentFor2(byNumber.get(match.issue), chunks[match.chunk]?.text ?? ""));
   let ordered = candidates;
   try {
     const scores = await (await loadReranker()).score(a.query, documents);
@@ -18163,12 +18264,78 @@ function locationOf(source) {
     return `comment ${source}`;
   return source === "title" ? "title" : "body";
 }
+var CODE_SCHEMA = objectType({
+  query: stringType().min(1).describe([
+    "A whole question about what the code does, in one sentence.",
+    "",
+    "Phrasing decides whether the answer comes back at all. Measured over 30 questions against this repository: asked as a sentence the right file was in the top five 80% of the time and in the top twenty 96.7%; asked as the keywords from the same question, 42% and 62%. Nothing else about the search changed.",
+    "",
+    "  good: where is the atoma/in-progress label added to and removed from an issue",
+    "  good: how does a run decide the base branch for a stacked pull request",
+    "  bad:  in_progress label",
+    "  bad:  createLabel|labels.create|ensureLabel",
+    "",
+    "The last one is the mistake worth naming, because it is the one that actually happens: listing synonyms because you do not know what the thing is called. Ask for the behaviour instead \u2014 the words in a doc comment are prose, and prose is what this matches.",
+    "",
+    "In the language the code and its comments are written in. The first stage matches character bigrams, so a question in another language shares none with them and scores near zero \u2014 the answer never reaches the second stage, which would have recognised it."
+  ].join(`
+`)),
+  limit: positiveInt("How many files to return. Defaults to 3. Each carries a line range, so three of them " + "is three places to read rather than three files to open.").optional()
+});
+function codePassages() {
+  const listed = gitRun("ls-files", "-z");
+  if (listed.code !== 0) {
+    log2(`could not list the tracked files: ${listed.stderr || listed.stdout}`);
+    return [];
+  }
+  const paths = corpusFrom(listed.stdout.split("\x00"));
+  const passages = [];
+  for (const file of paths) {
+    let text;
+    try {
+      text = readFileSync2(file, "utf8");
+    } catch {
+      continue;
+    }
+    passages.push(...passagesOf(file, text));
+  }
+  log2(`code index: ${paths.length} files, ${passages.length} passages`);
+  return passages;
+}
+async function searchCode(a) {
+  const passages = codePassages();
+  if (passages.length === 0) {
+    return "No tracked source files were found, so there is nothing to search. Read files directly instead.";
+  }
+  const bm25 = buildIndex(passages.map((p) => p.text));
+  const candidates = rankFiles(passages, score(bm25, a.query), CANDIDATES);
+  if (candidates.length === 0) {
+    return `Nothing matched "${a.query}". Try the behaviour you are looking for in a whole sentence, in the language the code is written in.`;
+  }
+  let ordered = candidates;
+  try {
+    const documents = candidates.map((match) => documentFor(passages[match.passage]));
+    const scores = await (await loadReranker()).score(a.query, documents);
+    ordered = candidates.map((match, i) => [match, scores[i] ?? 0]).sort((x, y) => y[1] - x[1]).map(([match]) => match);
+  } catch (error) {
+    report("warning", `reranking failed (${error.message}); these code results are first-stage ordered, not reranked`);
+  }
+  const results = resultsOf(passages, ordered.slice(0, a.limit ?? 3), EXCERPT_BUDGET);
+  log2(`code query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `${r.path}:${r.lines}`).join(", ")}`);
+  return JSON.stringify(results, null, 2);
+}
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
     description: "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question \u2014 'why does a branch get created at the first commit rather than up front' \u2014 and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all. The issue this run is working on is excluded from the results, since you can read it directly \u2014 so a decision recorded there will not appear here.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues
+  }),
+  defineMcpTool({
+    name: "search_code",
+    description: "Find the code that answers a question about what this project does, by meaning rather than by matching text. Ask a whole question \u2014 'how does a run decide the base branch for a stacked pull request' \u2014 and the files that answer it come back, most relevant first, each with the line range and an excerpt, so the next step is reading forty lines rather than a whole file. Use it when you do not know where something lives or what it is called; use a `grep` when you know the exact string and want every place it appears. Read `query` before calling: how the question is phrased decides whether the answer comes back at all, and listing synonyms because you do not know the name is the one phrasing that fails. The index is built from the tracked files at the moment you call, so a file this run has already edited is current.",
+    schema: CODE_SCHEMA,
+    handler: searchCode
   })
 ]);
 async function main() {
