@@ -17744,15 +17744,32 @@ function corpusFrom(tracked) {
 
 // src/domain/code-search.ts
 var CANDIDATES = 20;
+var MIN_QUERY_COVERAGE = 0.4;
+function queryCoverage(index, query) {
+  const tokens = [...new Set(tokenize(query))];
+  if (tokens.length === 0)
+    return 1;
+  const known = tokens.filter((token) => index.documentFrequency[token] !== undefined);
+  return known.length / tokens.length;
+}
+function unreachableQueryReason(coverage, limit = MIN_QUERY_COVERAGE) {
+  if (coverage >= limit)
+    return;
+  return `Only ${Math.round(coverage * 100)}% of the words in that question appear anywhere in this ` + "codebase, so the search cannot match it: the first stage scores near zero and the answer " + "never reaches the second. This is what happens when the question is in a different " + "language from the code and its comments, or is built from names that do not exist. Ask " + "again in the language the code is written in, using the words the code uses \u2014 read a file " + "first if you are not sure which that is.";
+}
 var DOCUMENT_BUDGET = 1000;
 function passagesOf(path, text) {
+  const body = text.includes(`\r
+`) ? text.split(`\r
+`).join(`
+`) : text;
   const out = [];
-  for (const piece of splitBodyWithOffsets(text)) {
+  for (const piece of splitBodyWithOffsets(body)) {
     out.push({
       path,
       text: piece.text,
-      startLine: lineAt(text, piece.start),
-      endLine: lineAt(text, piece.start + piece.text.length)
+      startLine: lineAt(body, piece.start),
+      endLine: lineAt(body, piece.start + piece.text.length)
     });
   }
   out.push({
@@ -18268,7 +18285,7 @@ var CODE_SCHEMA = objectType({
   query: stringType().min(1).describe([
     "A whole question about what the code does, in one sentence.",
     "",
-    "Phrasing decides whether the answer comes back at all. Measured over 30 questions against this repository: asked as a sentence the right file was in the top five 80% of the time and in the top twenty 96.7%; asked as the keywords from the same question, 42% and 62%. Nothing else about the search changed.",
+    "Phrasing decides whether the answer comes back at all. Measured against this repository: 30 questions asked as sentences put the right file in the top five 70% of the time and in the top twenty 93.3%; the 142 regex patterns agents actually searched with reached 41.5% and 64.8%. Same index, same corpus \u2014 only the query changed.",
     "",
     "  good: where is the atoma/in-progress label added to and removed from an issue",
     "  good: how does a run decide the base branch for a stacked pull request",
@@ -18308,6 +18325,12 @@ async function searchCode(a) {
     return "No tracked source files were found, so there is nothing to search. Read files directly instead.";
   }
   const bm25 = buildIndex(passages.map((p) => p.text));
+  const coverage = queryCoverage(bm25, a.query);
+  const unreachable = unreachableQueryReason(coverage);
+  if (unreachable !== undefined) {
+    log2(`code query rejected: ${Math.round(coverage * 100)}% of its words are in the corpus`);
+    return unreachable;
+  }
   const candidates = rankFiles(passages, score(bm25, a.query), CANDIDATES);
   if (candidates.length === 0) {
     return `Nothing matched "${a.query}". Try the behaviour you are looking for in a whole sentence, in the language the code is written in.`;
