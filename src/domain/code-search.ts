@@ -62,9 +62,42 @@
  * ```
  *
  * Any threshold between 30% and 60% flags all four and none of the thirty. Nothing
- * about it knows what a language is, so it holds for one nobody here anticipated — and
- * for a question made of invented identifiers, which fails the same way and for the
- * same reason.
+ * about it knows what a language is, so it holds for one nobody here anticipated.
+ *
+ * # A name that does not exist is a separate failure, and needs a separate signal
+ *
+ * An earlier version of this comment claimed coverage also caught a question built
+ * from invented identifiers. It does not, and the verification run showed it:
+ * `how does the FrobnicatorWidget reconcile its ZuffleBuffer` scores **96.3%** and is
+ * answered with three unrelated files. The reason is the tokenizer. An invented name
+ * that looks like English is made of bigrams an English corpus already has; only the
+ * whole-identifier token is missing, and it is one token among dozens.
+ *
+ * So the name is checked as a name. A word the asker spells like an identifier — an
+ * internal capital or an underscore — is a claim that the thing exists, and that claim
+ * is either true of the index or it is not:
+ *
+ * ```text
+ *   3 invented-name questions      flagged 3
+ *   5 real-identifier questions    flagged 0
+ *   the 30 hand-labelled questions flagged 0
+ * ```
+ *
+ * It is a note attached to the results rather than a refusal, and that asymmetry is
+ * deliberate. A foreign-language question has no salvageable result at all, so refusing
+ * loses nothing. A missing name can be missing for innocent reasons, and one turned up
+ * the moment this was measured against the real corpus: `session_size` is reported
+ * missing although `src/domain/session-size.ts` is right there, because the tokenizer
+ * splits on the hyphen and never forms that token. A name can also live in a file
+ * `code-corpus.ts` excludes, or be one the run is about to create. Meanwhile the rest of
+ * the question still ranks. A note costs a sentence when it is wrong; a refusal would
+ * cost the answer — which is why the wording says "not under that spelling" rather than
+ * "not in this codebase".
+ *
+ * One consequence worth knowing before trying the example above: naming an invented
+ * identifier in a comment puts it in the index, so `FrobnicatorWidget` is now a word
+ * this repository contains and no longer triggers its own illustration. Prose is
+ * indexed exactly like code, which is what makes the search work at all.
  *
  * # No index is stored
  *
@@ -97,10 +130,14 @@ export const MIN_QUERY_COVERAGE = 0.4;
  * How much of the question the corpus has any word for, from 0 to 1.
  *
  * The signal for "this question cannot reach this corpus", whatever the reason. A
- * question in another language shares nothing; so does a question made of identifiers
- * that do not exist. Both fail the same way — the first stage scores near zero, the
- * answer never reaches the cross encoder, and what comes back is whichever passages
- * happened to share an accident.
+ * The signal for "this question is not in this corpus's language". Such a question
+ * shares almost no token with it, the first stage scores near zero, the answer never
+ * reaches the cross encoder, and what comes back is whichever passages happened to
+ * share an accident.
+ *
+ * It does NOT catch a question built from names that do not exist -- measured, one
+ * scores 96.3%, because an invented English-looking name is spelled out of bigrams the
+ * corpus already has. `unknownNames` is the signal for that.
  *
  * Deliberately not language detection. Nothing here knows what a language is, which is
  * what lets it hold for a repository written in one nobody here anticipated.
@@ -135,6 +172,66 @@ export function unreachableQueryReason(
   );
 }
 
+
+/**
+ * A word spelled the way code spells a name: an internal capital, or an underscore.
+ *
+ * `stackedPrBase` and `watch_for_stop` are claims that a thing exists by that name;
+ * `branch` and `stop` are ordinary words that happen to appear in code. Only the first
+ * kind can be checked against the index and be wrong, so only the first kind is
+ * checked -- which is what keeps this off the 30 hand-labelled questions, none of
+ * which name anything.
+ */
+const NAME_LIKE = /\b(?=[A-Za-z_]*[A-Z_])[A-Za-z_][A-Za-z0-9_]{2,}\b/g;
+
+/**
+ * The names the question claims exist, that the index has never seen.
+ *
+ * Measured on the verification run: 3 of 3 invented-name questions flagged, 0 of 5
+ * questions naming real identifiers, 0 of the 30 hand-labelled questions. `queryCoverage`
+ * cannot see this case at all -- an invented English-looking name scores 96.3%, because
+ * its bigrams are all bigrams the corpus already has and only the whole identifier is
+ * missing.
+ *
+ * Compared case-insensitively because `tokenize` lowercases, so `MIN_QUERY_COVERAGE`
+ * and `min_query_coverage` are the same token here. That also means a real name written
+ * in the wrong case is not reported, which is the safe direction for a signal that is
+ * advisory.
+ */
+export function unknownNames(index: Bm25Index, query: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of query.match(NAME_LIKE) ?? []) {
+    const token = name.toLowerCase();
+    if (seen.has(token) || index.documentFrequency[token] !== undefined) continue;
+    seen.add(token);
+    out.push(name);
+  }
+  return out;
+}
+
+/**
+ * What to say about names the codebase does not have, or nothing.
+ *
+ * A note beside the results, not instead of them -- see the module comment for why this
+ * one is advisory where the language check is a refusal. Its job is to make the premise
+ * visible: the run that found this defect was handed three unrelated files for a
+ * question about two names that exist nowhere, and nothing in that answer said so.
+ */
+export function unknownNamesNotice(names: readonly string[]): string | undefined {
+  if (names.length === 0) return undefined;
+  const listed = names.map((name) => "`" + name + "`").join(", ");
+  const [subject, verb, appear, them] =
+    names.length === 1
+      ? ["That name", "does", "appears", "it"]
+      : ["Those names", "do", "appear", "them"];
+  return (
+    `Note: ${listed} ${appear} nowhere in the indexed code, so nothing below matches ${them} — ` +
+    `the results are ranked on the rest of the question. ${subject} ${verb} not exist under ` +
+    "that spelling; check it, or consider that the code may live in a file the index leaves " +
+    "out (the .github/ tree, generated output, lock files), which a `grep` would still find."
+  );
+}
 /**
  * How much of a passage the cross encoder is shown.
  *
