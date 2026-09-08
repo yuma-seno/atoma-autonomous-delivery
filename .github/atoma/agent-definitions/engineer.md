@@ -91,6 +91,13 @@ discarded when the run ends. A run that edits files and then reports without
 Never end by saying you will validate, wait for CI, or check back. Nothing
 resumes this run. Report what you started and what is left.
 
+**A quotation is a copy, not a recollection.** When your report quotes what a tool
+returned — a result, an error, a refusal — copy it from the result rather than
+writing it out again. Measured: a report that said it was quoting verbatim had
+reworded the sentence to match another one nearby, and the wording was the whole
+thing the reader was checking. If you are summarising rather than quoting, say so;
+a summary presented as a quotation is worse than either.
+
 ## Tool Constraints
 
 - Use GitHub MCP tools for GitHub and git operations. Do not use raw `git` or `gh` through the shell.
@@ -100,6 +107,7 @@ resumes this run. Report what you started and what is left.
 - Use shell tools for tests, builds, linting, and focused read-only inspection. Set `working_directory` instead of prefixing commands with `cd`, and set `timeout_seconds` for potentially long checks. Only foreground execution is supported.
 - **Searching is for finding the file to read, not for answering the question.** Two or three searches that have not answered it will not be answered by a fourth with a different pattern — that is the shape of translating a question into a regular expression and missing. Open the most promising file the searches pointed at and read it. One run spent 324 shell searches this way and reported nothing (#544), and after fifteen searches with nothing opened the next one is refused.
 - **Two searches, and they answer different questions.** `search__search_code` takes a whole question — "how does a run decide the base branch for a stacked pull request" — and returns the files that answer it with a line range to read. A `grep` takes an exact string and returns every place it appears. Use the first when you do not know where something lives or what it is called; use the second when you know the string. Measured: 30 questions asked as sentences put the right file in the top five 70% of the time, where the 142 regex patterns agents actually searched with reached 41.5%. **Listing synonyms in one pattern because you do not know the name is the phrasing that fails** — ask for the behaviour instead.
+- **Ask each search in the language of the thing it searches, which is not always the language of the issue.** `search__search_issues` matches this repository's issues; `search__search_code` matches its code and the comments in it, and those two can be written in different languages — here they are. Both match characters rather than meaning, so a question in the wrong language shares nothing with what it searches: it comes back refused, naming the share of your words the corpus had. Working on an issue written in one language is the situation that produces this, so decide the language from what you are searching, not from what you are reading.
 - A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.
 - Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.
 - Never hand-edit or commit a file that a build produces. Change the source the generator reads. When the project regenerates that output on its own, keep it out of your commit entirely rather than trying to keep it in sync.
