@@ -17757,6 +17757,26 @@ function unreachableQueryReason(coverage, limit = MIN_QUERY_COVERAGE) {
     return;
   return `Only ${Math.round(coverage * 100)}% of the words in that question appear anywhere in this ` + "codebase, so the search cannot match it: the first stage scores near zero and the answer " + "never reaches the second. This is what happens when the question is in a different " + "language from the code and its comments, or is built from names that do not exist. Ask " + "again in the language the code is written in, using the words the code uses \u2014 read a file " + "first if you are not sure which that is.";
 }
+var NAME_LIKE = /\b(?=[A-Za-z_]*[A-Z_])[A-Za-z_][A-Za-z0-9_]{2,}\b/g;
+function unknownNames(index, query) {
+  const seen = new Set;
+  const out = [];
+  for (const name of query.match(NAME_LIKE) ?? []) {
+    const token = name.toLowerCase();
+    if (seen.has(token) || index.documentFrequency[token] !== undefined)
+      continue;
+    seen.add(token);
+    out.push(name);
+  }
+  return out;
+}
+function unknownNamesNotice(names) {
+  if (names.length === 0)
+    return;
+  const listed = names.map((name) => "`" + name + "`").join(", ");
+  const [subject, verb, appear, them] = names.length === 1 ? ["That name", "does", "appears", "it"] : ["Those names", "do", "appear", "them"];
+  return `Note: ${listed} ${appear} nowhere in the indexed code, so nothing below matches ${them} \u2014 ` + `the results are ranked on the rest of the question. ${subject} ${verb} not exist under ` + "that spelling; check it, or consider that the code may live in a file the index leaves " + "out (the .github/ tree, generated output, lock files), which a `grep` would still find.";
+}
 var DOCUMENT_BUDGET = 1000;
 function passagesOf(path, text) {
   const body = text.includes(`\r
@@ -18345,7 +18365,13 @@ async function searchCode(a) {
   }
   const results = resultsOf(passages, ordered.slice(0, a.limit ?? 3), EXCERPT_BUDGET);
   log2(`code query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `${r.path}:${r.lines}`).join(", ")}`);
-  return JSON.stringify(results, null, 2);
+  const missing = unknownNames(bm25, a.query);
+  const notice = unknownNamesNotice(missing);
+  if (notice !== undefined)
+    log2(`code query names nothing known: ${missing.join(", ")}`);
+  return notice === undefined ? JSON.stringify(results, null, 2) : `${notice}
+
+${JSON.stringify(results, null, 2)}`;
 }
 var { tools, dispatch } = buildMcpTools([
   defineMcpTool({
