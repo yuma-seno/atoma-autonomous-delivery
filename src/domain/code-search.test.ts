@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { buildIndex, score } from "./bm25.ts";
 import {
+  MIN_QUERY_COVERAGE,
   documentFor,
   passagesOf,
+  queryCoverage,
   rankFiles,
   resultsOf,
+  unreachableQueryReason,
   type CodePassage,
 } from "./code-search.ts";
 
@@ -154,5 +157,95 @@ describe("the two stages, end to end without the reranker", () => {
 
     const ranked = rankFiles(passages, score(index, "where are the checks a project configured actually run?"), 3);
     expect(passages[ranked[0]!.passage]!.path).toBe("src/scripts/run_checks.ts");
+  });
+});
+
+
+/**
+ * A CRLF checkout used to split differently from the runner's LF one, and that quietly
+ * made a measurement mean something other than what it said. The sections below are
+ * over the passage limit on purpose: under it there is only one passage either way, and
+ * the test would pass without proving anything.
+ */
+describe("line endings", () => {
+  const LF_TEXT = ["a".repeat(400), "", "", "b".repeat(400)].join(String.fromCharCode(10));
+  const CRLF_TEXT = LF_TEXT.split(String.fromCharCode(10)).join(String.fromCharCode(13, 10));
+
+  test("a CRLF file is split exactly as its LF twin is", () => {
+    const lf = passagesOf("a.ts", LF_TEXT);
+    expect(lf.length).toBeGreaterThan(2);
+    expect(passagesOf("a.ts", CRLF_TEXT)).toEqual(lf);
+  });
+
+  test("no carriage return survives into a passage", () => {
+    for (const passage of passagesOf("a.ts", CRLF_TEXT)) {
+      expect(passage.text).not.toContain(String.fromCharCode(13));
+    }
+  });
+});
+
+/**
+ * The guard against a question that cannot reach this corpus, which is not a
+ * hypothetical: the first real use asked in Japanese and was handed the one file with a
+ * Japanese fixture in it. Nothing here knows what a language is, and these tests are
+ * written so that it stays that way -- the invented-identifier case fails identically.
+ */
+describe("queryCoverage", () => {
+  const index = buildIndex([
+    "Above this many estimated tokens a restored session is shrunk before use.",
+    "Runs the commands a project configured under checks, one after another.",
+  ]);
+
+  test("a question in the corpus's own words is fully covered", () => {
+    expect(queryCoverage(index, "a restored session is shrunk")).toBe(1);
+  });
+
+  test("a question sharing nothing with the corpus scores zero", () => {
+    expect(queryCoverage(index, "zqxjv wpblm")).toBe(0);
+  });
+
+  test("partial overlap lands in between", () => {
+    const coverage = queryCoverage(index, "session zqxjvwpblmkgh");
+    expect(coverage).toBeGreaterThan(0);
+    expect(coverage).toBeLessThan(1);
+  });
+
+  /**
+   * Why the threshold is nowhere near 1. A two-sentence corpus has no bigram for
+   * "how", so an ordinary English question costs a little coverage against it without
+   * being unanswerable -- and this is the small-corpus worst case, against a measured
+   * minimum of 98.1% over thirty questions on the whole repository.
+   */
+  test("ordinary function words cost coverage without earning a refusal", () => {
+    const coverage = queryCoverage(index, "how is a restored session shrunk");
+    expect(coverage).toBeLessThan(1);
+    expect(unreachableQueryReason(coverage)).toBeUndefined();
+  });
+
+  /** Zero of zero words is not a failure to reach the corpus; it is not a question. */
+  test("a query with no tokens at all counts as covered", () => {
+    expect(queryCoverage(index, "   ")).toBe(1);
+  });
+});
+
+describe("unreachableQueryReason", () => {
+  test("full coverage passes silently", () => {
+    expect(unreachableQueryReason(1)).toBeUndefined();
+  });
+
+  test("the threshold itself passes, so the boundary is not a refusal", () => {
+    expect(unreachableQueryReason(MIN_QUERY_COVERAGE)).toBeUndefined();
+  });
+
+  /**
+   * The refusal replaces the results, so it has to carry what to do instead -- the
+   * measured lesson being that the agent asked in Japanese even though the tool
+   * description told it not to. A refusal that only says no earns the same outcome.
+   */
+  test("a refusal states the share and what to do instead", () => {
+    const reason = unreachableQueryReason(0.12)!;
+    expect(reason).toContain("12%");
+    expect(reason).toContain("language");
+    expect(reason).toContain("read a file");
   });
 });
