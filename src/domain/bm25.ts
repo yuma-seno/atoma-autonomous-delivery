@@ -74,20 +74,87 @@ const MIN_CHUNK = 40;
  * passage that was never indexed cannot.
  */
 export function splitBody(text: string, limit = CHUNK_LIMIT): string[] {
-  return text
-    .split(/\n(?=#{1,4}\s)/)
-    .flatMap((section) => (section.length > limit ? section.split(/\n\n+/) : [section]))
-    .map((piece) => piece.trim())
+  return splitBodyWithOffsets(text, limit).map((piece) => piece.text);
+}
+
+/** A passage, and where in the original text it began. */
+export interface Passage {
+  text: string;
+  /** Character offset of `text[0]` in the text that was split. */
+  start: number;
+}
+
+/**
+ * The same split, carrying where each passage came from.
+ *
+ * Code search needs it: a result that names a file makes the agent open the file, and
+ * a result that names `src/foo.ts:120-160` makes it read forty lines. The difference
+ * matters twice over — the whole-file read is what the output caps exist for, and a
+ * search that has to be followed by an open is the shape the shell guard counts.
+ *
+ * One implementation rather than a second copy of the rule beside it. Two copies of a
+ * splitting rule is the defect this repository keeps finding in other forms: `self/`
+ * against `.github/`, the config interface against its runtime mirror. `splitBody`
+ * is now the shape without the offsets rather than a rule of its own.
+ */
+export function splitBodyWithOffsets(text: string, limit = CHUNK_LIMIT): Passage[] {
+  let pieces: Passage[] = [{ text, start: 0 }];
+  // Headings first: the author already decided one subject ends there.
+  pieces = pieces.flatMap((piece) => splitOn(piece, /\n(?=#{1,4}\s)/g));
+  // Blank lines for whatever is still too long to be about one thing.
+  pieces = pieces.flatMap((piece) =>
+    piece.text.length > limit ? splitOn(piece, /\n\n+/g) : [piece],
+  );
+  return pieces
+    .map(trimmed)
     .flatMap((piece) => cutToWidth(piece, limit))
-    .filter((piece) => piece.length >= MIN_CHUNK);
+    .filter((piece) => piece.text.length >= MIN_CHUNK);
+}
+
+/**
+ * Split one passage on every match of `separator`, keeping offsets.
+ *
+ * `String.split` cannot do this: it discards the separators, and a separator of
+ * variable length (`\n\n+`) makes the offsets unrecoverable afterwards.
+ */
+function splitOn(piece: Passage, separator: RegExp): Passage[] {
+  const out: Passage[] = [];
+  let at = 0;
+  separator.lastIndex = 0;
+  for (let match = separator.exec(piece.text); match; match = separator.exec(piece.text)) {
+    out.push({ text: piece.text.slice(at, match.index), start: piece.start + at });
+    at = match.index + match[0].length;
+  }
+  out.push({ text: piece.text.slice(at), start: piece.start + at });
+  return out;
+}
+
+/** The passage without its surrounding whitespace, and the offset moved with it. */
+function trimmed(piece: Passage): Passage {
+  const lead = piece.text.length - piece.text.trimStart().length;
+  return { text: piece.text.trim(), start: piece.start + lead };
 }
 
 /** One piece, as consecutive chunks of at most `limit` characters. */
-function cutToWidth(piece: string, limit: number): string[] {
-  if (piece.length <= limit) return [piece];
-  const chunks: string[] = [];
-  for (let at = 0; at < piece.length; at += limit) chunks.push(piece.slice(at, at + limit).trim());
+function cutToWidth(piece: Passage, limit: number): Passage[] {
+  if (piece.text.length <= limit) return [piece];
+  const chunks: Passage[] = [];
+  for (let at = 0; at < piece.text.length; at += limit) {
+    chunks.push(trimmed({ text: piece.text.slice(at, at + limit), start: piece.start + at }));
+  }
   return chunks;
+}
+
+/**
+ * The 1-based line a character offset falls on.
+ *
+ * For turning a passage's offset into something a person or an agent can act on:
+ * `sed -n '120,160p'` reads forty lines where `read_text_file` reads the file.
+ */
+export function lineAt(text: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < text.length; i += 1) if (text[i] === "\n") line += 1;
+  return line;
 }
 
 /**
