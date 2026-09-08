@@ -90,10 +90,19 @@ describe("the refusal", () => {
     const reason = refusalReason(MAX_SEARCHES_WITHOUT_OPENING);
     expect(reason).toBeDefined();
     expect(reason).toContain("where something is, not what it is");
-    expect(reason).toContain("Open the most promising result");
-    // The exit that exists in the prompt and has never once been used: an agent that
-    // needs understanding rather than locating should say so instead of searching on.
-    expect(reason).toContain("say what tool you are missing");
+    expect(reason).toContain("open the most promising result");
+  });
+
+  /**
+   * A refusal has to leave somewhere to go. Fifteen searches with nothing opened is
+   * usually an agent guessing at what a thing is called, and guessing is exactly what
+   * `search_code` answers — measured, 80% in the top five against 42% for the keywords
+   * from the same question.
+   */
+  test("it points at the tool for the case that caused it", () => {
+    const reason = refusalReason(MAX_SEARCHES_WITHOUT_OPENING);
+    expect(reason).toContain("search__search_code");
+    expect(reason).toContain("in a sentence");
   });
 
   test("the count in the message is the real one", () => {

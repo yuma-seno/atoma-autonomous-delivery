@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * search.ts — finds the issues that answer a question.
+ * search.ts — finds the issues, and the code, that answer a question.
  *
  * Two stages, and the division of labour matters. BM25 casts a net over every
  * passage of every issue and comment; a cross encoder then reads the twenty
@@ -37,9 +37,20 @@
 import { AutoTokenizer, AutoModelForSequenceClassification, env as transformersEnv } from "@huggingface/transformers";
 import { buildMcpTools, defineMcpTool, positiveInt, serveMcpServer, z } from "../../../../lib/mcp-tool.ts";
 import { report } from "../../../../lib/mcp-report.ts";
-import { rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
+import { buildIndex, rankIssues, score, type Bm25Index, type Chunk } from "../../../../domain/bm25.ts";
+import { corpusFrom } from "../../../../domain/code-corpus.ts";
+import {
+  CANDIDATES as CODE_CANDIDATES,
+  documentFor as codeDocumentFor,
+  passagesOf,
+  rankFiles,
+  resultsOf,
+  type CodePassage,
+} from "../../../../domain/code-search.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
 import { MODEL_CACHE_DIR } from "../../../../domain/model-cache.ts";
+import { readFileSync } from "node:fs";
+import { gitRun } from "../../../../lib/gh.ts";
 import {
   INDEX_PATH,
   INDEX_VERSION,
@@ -356,6 +367,97 @@ function locationOf(source: Chunk["source"] | undefined): string {
   return source === "title" ? "title" : "body";
 }
 
+const CODE_SCHEMA = z.object({
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      [
+        "A whole question about what the code does, in one sentence.",
+        "",
+        "Phrasing decides whether the answer comes back at all. Measured over 30 questions against this repository: asked as a sentence the right file was in the top five 80% of the time and in the top twenty 96.7%; asked as the keywords from the same question, 42% and 62%. Nothing else about the search changed.",
+        "",
+        "  good: where is the atoma/in-progress label added to and removed from an issue",
+        "  good: how does a run decide the base branch for a stacked pull request",
+        "  bad:  in_progress label",
+        "  bad:  createLabel|labels.create|ensureLabel",
+        "",
+        "The last one is the mistake worth naming, because it is the one that actually happens: listing synonyms because you do not know what the thing is called. Ask for the behaviour instead — the words in a doc comment are prose, and prose is what this matches.",
+        "",
+        "In the language the code and its comments are written in. The first stage matches character bigrams, so a question in another language shares none with them and scores near zero — the answer never reaches the second stage, which would have recognised it.",
+      ].join("\n"),
+    ),
+  limit: positiveInt(
+    "How many files to return. Defaults to 3. Each carries a line range, so three of them " +
+      "is three places to read rather than three files to open.",
+  ).optional(),
+});
+
+/**
+ * Every tracked file, read fresh.
+ *
+ * No cache, and the freshness question therefore does not exist: a file this run just
+ * edited is in the next search. Measured at 275ms for the whole build, against a
+ * reranker that takes 55 seconds to load -- see `domain/code-search.ts`.
+ */
+function codePassages(): CodePassage[] {
+  const listed = gitRun("ls-files", "-z");
+  if (listed.code !== 0) {
+    log(`could not list the tracked files: ${listed.stderr || listed.stdout}`);
+    return [];
+  }
+  const paths = corpusFrom(listed.stdout.split("\0"));
+  const passages: CodePassage[] = [];
+  for (const file of paths) {
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      // A tracked path that cannot be read is one file missing from the index, not a
+      // failed search.
+      continue;
+    }
+    passages.push(...passagesOf(file, text));
+  }
+  log(`code index: ${paths.length} files, ${passages.length} passages`);
+  return passages;
+}
+
+async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
+  const passages = codePassages();
+  if (passages.length === 0) {
+    return "No tracked source files were found, so there is nothing to search. Read files directly instead.";
+  }
+
+  const bm25 = buildIndex(passages.map((p) => p.text));
+  const candidates = rankFiles(passages, score(bm25, a.query), CODE_CANDIDATES);
+  if (candidates.length === 0) {
+    return `Nothing matched "${a.query}". Try the behaviour you are looking for in a whole sentence, in the language the code is written in.`;
+  }
+
+  let ordered = candidates;
+  try {
+    const documents = candidates.map((match) => codeDocumentFor(passages[match.passage]!));
+    const scores = await (await loadReranker()).score(a.query, documents);
+    ordered = candidates
+      .map((match, i) => [match, scores[i] ?? 0] as const)
+      .sort((x, y) => y[1] - x[1])
+      .map(([match]) => match);
+  } catch (error) {
+    // The first stage alone put the answer in the top twenty 96.7% of the time; it
+    // just orders them less well. A rougher answer beats none -- and saying so
+    // matters, because a worse answer looks exactly like a good one (#519).
+    report(
+      "warning",
+      `reranking failed (${(error as Error).message}); these code results are first-stage ordered, not reranked`,
+    );
+  }
+
+  const results = resultsOf(passages, ordered.slice(0, a.limit ?? 3), EXCERPT_BUDGET);
+  log(`code query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `${r.path}:${r.lines}`).join(", ")}`);
+  return JSON.stringify(results, null, 2);
+}
+
 const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "search_issues",
@@ -363,6 +465,13 @@ const { tools, dispatch } = buildMcpTools([
       "Search this repository's issues and their discussion by meaning, not by keyword. Ask a whole question — 'why does a branch get created at the first commit rather than up front' — and the issues that answer it come back, most relevant first, with an excerpt. Use it to find why something is the way it is, whether a problem is already known, or whether the work has been attempted before; the comments are usually where the decision was argued, and they are searched too. Read `query` before calling: how the question is phrased, and what language it is in, decide whether the answer comes back at all. The issue this run is working on is excluded from the results, since you can read it directly — so a decision recorded there will not appear here.",
     schema: SEARCH_SCHEMA,
     handler: searchIssues,
+  }),
+  defineMcpTool({
+    name: "search_code",
+    description:
+      "Find the code that answers a question about what this project does, by meaning rather than by matching text. Ask a whole question — 'how does a run decide the base branch for a stacked pull request' — and the files that answer it come back, most relevant first, each with the line range and an excerpt, so the next step is reading forty lines rather than a whole file. Use it when you do not know where something lives or what it is called; use a `grep` when you know the exact string and want every place it appears. Read `query` before calling: how the question is phrased decides whether the answer comes back at all, and listing synonyms because you do not know the name is the one phrasing that fails. The index is built from the tracked files at the moment you call, so a file this run has already edited is current.",
+    schema: CODE_SCHEMA,
+    handler: searchCode,
   }),
 ]);
 
