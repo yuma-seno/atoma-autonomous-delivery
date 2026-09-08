@@ -30,7 +30,7 @@ function nextStreak(streak, act) {
 function refusalReason(streak, limit = MAX_SEARCHES_WITHOUT_OPENING) {
   if (streak < limit)
     return;
-  return `${streak} searches in a row without opening any of the files they found. A search returns ` + "where something is, not what it is, so nothing found so far has been read. Do one of two " + "things before searching again: open the most promising result \u2014 with " + "filesystem__read_text_file, or `sed -n` for a range \u2014 or, if you are guessing at what the " + "thing is called, ask search__search_code the same question in a sentence. Measured, that " + "finds the right file in the top five 80% of the time where the keywords from it find it 42%.";
+  return `${streak} searches in a row without opening any of the files they found. A search returns ` + "where something is, not what it is, so nothing found so far has been read. Do one of two " + "things before searching again: open the most promising result \u2014 with " + "filesystem__read_text_file, or `sed -n` for a range \u2014 or, if you are guessing at what the " + "thing is called, ask search__search_code the same question in a sentence. Measured, that " + "finds the right file in the top five 70% of the time, against 41.5% for the regex patterns " + "agents search with.";
 }
 
 // src/atoma/tools/scripts/hooks/shell_guard.ts
