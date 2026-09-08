@@ -38,11 +38,30 @@ describe("passagesOf", () => {
     }
   });
 
+  /**
+   * A blank line only splits a section that is already too long to be about one
+   * thing — the rule `splitBody` has always had, and the one I got wrong first: a
+   * short file is one passage however many blank lines are in it.
+   */
+  test("a file short enough to be about one thing is one passage", () => {
+    const passages = passagesOf("a.ts", "one\ntwo\n\nthree four five six seven eight nine ten\n");
+    expect(passages.filter((p) => p.text.startsWith("one"))).toHaveLength(1);
+  });
+
   test("the line range is inclusive, so sed can use it directly", () => {
-    const passages = passagesOf("a.ts", "one\ntwo\nthree\n\n\nfour five six seven eight nine ten\n");
-    const last = passages.find((p) => p.text.startsWith("four"));
-    expect(last?.startLine).toBe(6);
-    expect(last?.endLine).toBe(6);
+    // Long enough that the blank line becomes a seam, with each half short enough
+    // that the fixed-width cut does not also fire.
+    const first = "a".repeat(400);
+    const second = "b".repeat(400);
+    const passages = passagesOf("a.ts", `${first}\n\n${second}`);
+
+    const one = passages.find((p) => p.text.startsWith("a"))!;
+    expect(one.startLine).toBe(1);
+    expect(one.endLine).toBe(1);
+
+    const other = passages.find((p) => p.text.startsWith("b"))!;
+    expect(other.startLine, "after two newlines, the third line").toBe(3);
+    expect(other.endLine).toBe(3);
   });
 
   /**
