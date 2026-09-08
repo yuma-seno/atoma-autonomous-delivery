@@ -43,8 +43,10 @@ import {
   CANDIDATES as CODE_CANDIDATES,
   documentFor as codeDocumentFor,
   passagesOf,
+  queryCoverage,
   rankFiles,
   resultsOf,
+  unreachableQueryReason,
   type CodePassage,
 } from "../../../../domain/code-search.ts";
 import { getRerankerModel } from "../../../../lib/config.ts";
@@ -375,7 +377,7 @@ const CODE_SCHEMA = z.object({
       [
         "A whole question about what the code does, in one sentence.",
         "",
-        "Phrasing decides whether the answer comes back at all. Measured over 30 questions against this repository: asked as a sentence the right file was in the top five 80% of the time and in the top twenty 96.7%; asked as the keywords from the same question, 42% and 62%. Nothing else about the search changed.",
+        "Phrasing decides whether the answer comes back at all. Measured against this repository: 30 questions asked as sentences put the right file in the top five 70% of the time and in the top twenty 93.3%; the 142 regex patterns agents actually searched with reached 41.5% and 64.8%. Same index, same corpus — only the query changed.",
         "",
         "  good: where is the atoma/in-progress label added to and removed from an issue",
         "  good: how does a run decide the base branch for a stacked pull request",
@@ -430,6 +432,18 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
   }
 
   const bm25 = buildIndex(passages.map((p) => p.text));
+
+  // Before ranking, because the ranking in this case is meaningless: measured on the
+  // first real use, three Japanese questions against this English corpus returned
+  // whichever files contain a Japanese test fixture, and the answer was outside the
+  // top twenty for all three. See `domain/code-search.ts`.
+  const coverage = queryCoverage(bm25, a.query);
+  const unreachable = unreachableQueryReason(coverage);
+  if (unreachable !== undefined) {
+    log(`code query rejected: ${Math.round(coverage * 100)}% of its words are in the corpus`);
+    return unreachable;
+  }
+
   const candidates = rankFiles(passages, score(bm25, a.query), CODE_CANDIDATES);
   if (candidates.length === 0) {
     return `Nothing matched "${a.query}". Try the behaviour you are looking for in a whole sentence, in the language the code is written in.`;
@@ -444,7 +458,7 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
       .sort((x, y) => y[1] - x[1])
       .map(([match]) => match);
   } catch (error) {
-    // The first stage alone put the answer in the top twenty 96.7% of the time; it
+    // The first stage alone put the answer in the top twenty 93.3% of the time; it
     // just orders them less well. A rougher answer beats none -- and saying so
     // matters, because a worse answer looks exactly like a good one (#519).
     report(

@@ -129,6 +129,7 @@ export function refusalReason(streak: number, limit = MAX_SEARCHES_WITHOUT_OPENI
     "things before searching again: open the most promising result — with " +
     "filesystem__read_text_file, or `sed -n` for a range — or, if you are guessing at what the " +
     "thing is called, ask search__search_code the same question in a sentence. Measured, that " +
-    "finds the right file in the top five 80% of the time where the keywords from it find it 42%."
+    "finds the right file in the top five 70% of the time, against 41.5% for the regex patterns " +
+    "agents search with."
   );
 }

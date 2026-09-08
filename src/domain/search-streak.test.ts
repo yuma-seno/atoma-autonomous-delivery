@@ -96,7 +96,7 @@ describe("the refusal", () => {
   /**
    * A refusal has to leave somewhere to go. Fifteen searches with nothing opened is
    * usually an agent guessing at what a thing is called, and guessing is exactly what
-   * `search_code` answers — measured, 80% in the top five against 42% for the keywords
+   * `search_code` answers — measured, 70% in the top five against 41.5% for the patterns
    * from the same question.
    */
   test("it points at the tool for the case that caused it", () => {
