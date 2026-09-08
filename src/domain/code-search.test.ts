@@ -7,6 +7,8 @@ import {
   queryCoverage,
   rankFiles,
   resultsOf,
+  unknownNames,
+  unknownNamesNotice,
   unreachableQueryReason,
   type CodePassage,
 } from "./code-search.ts";
@@ -188,7 +190,11 @@ describe("line endings", () => {
  * The guard against a question that cannot reach this corpus, which is not a
  * hypothetical: the first real use asked in Japanese and was handed the one file with a
  * Japanese fixture in it. Nothing here knows what a language is, and these tests are
- * written so that it stays that way -- the invented-identifier case fails identically.
+ * written so that it stays that way.
+ *
+ * What it does NOT catch is a question built from names that do not exist -- an earlier
+ * version of this comment claimed it did, and the verification run proved otherwise.
+ * That case belongs to `unknownNames`, tested below.
  */
 describe("queryCoverage", () => {
   const index = buildIndex([
@@ -247,5 +253,74 @@ describe("unreachableQueryReason", () => {
     expect(reason).toContain("12%");
     expect(reason).toContain("language");
     expect(reason).toContain("read a file");
+  });
+});
+
+
+/**
+ * The case coverage cannot see, and the reason it cannot.
+ *
+ * Measured on the verification run: `how does the FrobnicatorWidget reconcile its
+ * ZuffleBuffer` scored 96.3% coverage and came back with three unrelated files, because
+ * an invented English-looking name is spelled out of bigrams the corpus already has.
+ * The name has to be checked as a name.
+ */
+describe("unknownNames", () => {
+  const index = buildIndex([
+    "export function stackedPrBase(parent: string): string | undefined {",
+    "The watch_for_stop script polls for a stop request every thirty seconds.",
+  ]);
+
+  test("a name the codebase does not have is reported", () => {
+    expect(unknownNames(index, "how does the FrobnicatorWidget reconcile its ZuffleBuffer")).toEqual([
+      "FrobnicatorWidget",
+      "ZuffleBuffer",
+    ]);
+  });
+
+  test("a name the codebase does have is not reported", () => {
+    expect(unknownNames(index, "how does stackedPrBase pick the parent branch")).toEqual([]);
+    expect(unknownNames(index, "where does watch_for_stop write the file")).toEqual([]);
+  });
+
+  /**
+   * The property that keeps this off ordinary questions. `branch` and `stop` are words
+   * that happen to appear in code; only a word spelled the way code spells a name is a
+   * claim about what exists, and only that claim can be wrong.
+   */
+  test("ordinary words are not treated as claims about what exists", () => {
+    expect(unknownNames(index, "how does a run decide the base branch for a stacked pull request")).toEqual([]);
+  });
+
+  /** `tokenize` lowercases, so case is not a difference the index can see. */
+  test("a real name in the wrong case is not reported", () => {
+    expect(unknownNames(index, "what does STACKEDPRBASE return")).toEqual([]);
+  });
+
+  test("a name asked about twice is reported once", () => {
+    expect(unknownNames(index, "does FrobnicatorWidget call FrobnicatorWidget again")).toEqual(["FrobnicatorWidget"]);
+  });
+});
+
+describe("unknownNamesNotice", () => {
+  test("nothing missing, nothing said", () => {
+    expect(unknownNamesNotice([])).toBeUndefined();
+  });
+
+  /**
+   * A note, not a refusal: the results are still ranked on the rest of the question, and
+   * a name can be absent because it lives in a file the index leaves out. So it has to
+   * name the names and say that second thing, or it reads as a false accusation.
+   */
+  test("the notice names the names and says why one might be missing innocently", () => {
+    const notice = unknownNamesNotice(["FrobnicatorWidget", "ZuffleBuffer"])!;
+    expect(notice).toContain("FrobnicatorWidget");
+    expect(notice).toContain("ZuffleBuffer");
+    expect(notice).toContain("the rest of the question");
+    expect(notice).toContain("the index leaves out");
+  });
+
+  test("one name reads as one name", () => {
+    expect(unknownNamesNotice(["ZuffleBuffer"])).toContain("That name does not exist");
   });
 });

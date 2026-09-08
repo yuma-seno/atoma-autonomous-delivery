@@ -46,6 +46,8 @@ import {
   queryCoverage,
   rankFiles,
   resultsOf,
+  unknownNames,
+  unknownNamesNotice,
   unreachableQueryReason,
   type CodePassage,
 } from "../../../../domain/code-search.ts";
@@ -469,7 +471,16 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
 
   const results = resultsOf(passages, ordered.slice(0, a.limit ?? 3), EXCERPT_BUDGET);
   log(`code query ${JSON.stringify(a.query.slice(0, 60))} -> ${results.map((r) => `${r.path}:${r.lines}`).join(", ")}`);
-  return JSON.stringify(results, null, 2);
+
+  // Beside the results rather than instead of them: the rest of the question still
+  // ranks, and a name can be absent because it lives in a file the index leaves out.
+  // What must not happen again is the verification run's outcome -- three unrelated
+  // files handed back for a question about two names that exist nowhere, with nothing
+  // in the answer saying so.
+  const missing = unknownNames(bm25, a.query);
+  const notice = unknownNamesNotice(missing);
+  if (notice !== undefined) log(`code query names nothing known: ${missing.join(", ")}`);
+  return notice === undefined ? JSON.stringify(results, null, 2) : `${notice}\n\n${JSON.stringify(results, null, 2)}`;
 }
 
 const { tools, dispatch } = buildMcpTools([
