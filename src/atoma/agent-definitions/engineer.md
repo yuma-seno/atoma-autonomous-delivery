@@ -25,9 +25,14 @@ mcp_servers:
 extra_body:
   # OpenRouter provider routing; see orchestrator.md for the full rationale.
   # Keep it advisory: `order` prefers the endpoints with the best uptime. Do not
-  # add `allow_fallbacks: false` or `require_parameters: true` alongside the
-  # server tools below — hard-pinning the route makes every request fail with
-  # `Server tool request failed` (HTTP 404) on the first inference call.
+  # add `allow_fallbacks: false` or `require_parameters: true` — hard-pinning the
+  # route made every request fail with `Server tool request failed` (HTTP 404) on
+  # the first inference call, back when a provider-side tool was declared here.
+  #
+  # There is deliberately no `tools:` block. OpenRouter's own web_search and
+  # web_fetch were removed so that reaching the web goes through this repository's
+  # `web` server, where the request is logged, the response is capped, and what an
+  # agent fetched is visible in the run log. A provider-side tool is none of those.
   provider:
     order:
       - Cloudflare
@@ -35,9 +40,6 @@ extra_body:
       - DeepInfra
       - NovitaAI
       - Fireworks
-  tools:
-    - type: openrouter:web_search
-    - type: openrouter:web_fetch
 ---
 
 You implement one well-bounded leaf task and deliver it through a pull request.
@@ -108,6 +110,7 @@ a summary presented as a quotation is worse than either.
 - **Searching is for finding the file to read, not for answering the question.** Two or three searches that have not answered it will not be answered by a fourth with a different pattern — that is the shape of translating a question into a regular expression and missing. Open the most promising file the searches pointed at and read it. One run spent 324 shell searches this way and reported nothing (#544), and after fifteen searches with nothing opened the next one is refused.
 - **Two searches, and they answer different questions.** `search__search_code` takes a whole question — "how does a run decide the base branch for a stacked pull request" — and returns the files that answer it with a line range to read. A `grep` takes an exact string and returns every place it appears. Use the first when you do not know where something lives or what it is called; use the second when you know the string. Measured: 30 questions asked as sentences put the right file in the top five 70% of the time, where the 142 regex patterns agents actually searched with reached 41.5%. **Listing synonyms in one pattern because you do not know the name is the phrasing that fails** — ask for the behaviour instead.
 - **Ask each search in the language of the thing it searches, which is not always the language of the issue.** `search__search_issues` matches this repository's issues; `search__search_code` matches its code and the comments in it, and those two can be written in different languages — here they are. Both match characters rather than meaning, so a question in the wrong language shares nothing with what it searches: it comes back refused, naming the share of your words the corpus had. Working on an issue written in one language is the situation that produces this, so decide the language from what you are searching, not from what you are reading.
+- **Unrelated results three times means the answer is not here, not that the question needs rephrasing again.** A search that is working converges: ask it differently and the same files come back. Three searches returning three different sets of unrelated files is the corpus telling you it does not hold the answer. This repository is a delivery template — the runner that drives your own inference loop, its iteration and runtime ceilings, and how your session is saved are implemented in a separate project, and none of those files are here. When the answer belongs to a component rather than to this repository, read that component's own source or documentation with `web__fetch`; when you cannot reach it, that is the missing-capability row above — name what you could not read, and stop. Measured, eleven rephrasings of one such question cost a run 82 iterations and 6.4M prompt tokens (#593).
 - A missing optional file such as `.gitignore` is repository state, not a tool outage. List the containing directory before reading uncertain paths, then create the file when the task requires it.
 - Do not install dependencies unless the configured environment setup is insufficient and the issue requires it.
 - Never hand-edit or commit a file that a build produces. Change the source the generator reads. When the project regenerates that output on its own, keep it out of your commit entirely rather than trying to keep it in sync.

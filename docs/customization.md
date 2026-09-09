@@ -325,13 +325,19 @@ Why it is set: `order` puts the endpoints with the best uptime first, while
 OpenRouter stays free to route elsewhere.
 
 **Do not add `allow_fallbacks: false` or `require_parameters: true`.** They look
-like the natural way to make `order` binding, and they break every request. With
-either set alongside the `openrouter:web_search`/`web_fetch` server tools the
-agents declare, every run fails on its first inference call with
-`Server tool request failed` (HTTP 404, `provider_name: null`). Server tools are
-executed by OpenRouter above provider selection, and no endpoint advertises them in
-`supported_parameters`, so hard-pinning the route leaves that layer nowhere to
-dispatch. Keep this list advisory.
+like the natural way to make `order` binding, and they break every request as soon
+as any provider-side tool is declared. Server tools are executed by OpenRouter above
+provider selection, and no endpoint advertises them in `supported_parameters`, so
+hard-pinning the route leaves that layer nowhere to dispatch: every run then fails on
+its first inference call with `Server tool request failed` (HTTP 404,
+`provider_name: null`). Keep this list advisory.
+
+The shipped agents declare no `tools:` block, so nothing triggers this today. They
+used to declare `openrouter:web_search` and `openrouter:web_fetch`, and both were
+removed: a provider-side tool reaches the web outside this repository's own `web`
+server, so the request is not logged, the response is not capped, and what an agent
+fetched cannot be read back from the run log. Reaching the web through `web__fetch`
+is all three of those things.
 
 A single unhealthy endpoint shows up as hung requests, truncated response
 bodies, and contentless completions. List current endpoints and their uptime with:
