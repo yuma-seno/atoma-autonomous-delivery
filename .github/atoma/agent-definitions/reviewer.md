@@ -29,9 +29,6 @@ extra_body:
       - Novita
       - DeepInfra
       - Fireworks
-  tools:
-    - type: openrouter:web_search
-    - type: openrouter:web_fetch
 ---
 
 You are the pull-request quality gate. Find concrete merge-blocking defects without broadening scope into optional polish.
