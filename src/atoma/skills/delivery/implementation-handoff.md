@@ -1,6 +1,6 @@
 ---
 name: delivery/implementation-handoff
-description: Complete an implementation safely from local validation through commit, push, PR creation, and post-merge closure.
+description: Load before delivering an implementation — local validation, commit, push, PR creation, and post-merge closure, in the order that keeps them safe.
 ---
 
 # Implementation Handoff

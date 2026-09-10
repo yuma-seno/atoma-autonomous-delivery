@@ -1,6 +1,6 @@
 ---
 name: engineering/debugging
-description: Diagnose failures by forming one falsifiable local hypothesis and running the cheapest discriminating check.
+description: Load when something fails and the cause is not yet known — one falsifiable local hypothesis, then the cheapest check that tells it apart from the alternatives.
 ---
 
 # Focused Debugging
