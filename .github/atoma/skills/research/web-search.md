@@ -1,6 +1,6 @@
 ---
 name: research/web-search
-description: How to find something that is not in this repository — fetching a page you can name, and running a general search when you cannot.
+description: Load when the answer is not in this repository — fetching a page whose address you know, and running a general search when you do not. Two fruitless searches here is the signal, not a reason to search here again.
 ---
 
 # Looking outside this repository

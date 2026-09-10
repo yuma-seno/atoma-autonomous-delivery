@@ -1,6 +1,6 @@
 ---
 name: delivery/issue-decomposition
-description: Split a delivery issue into independently executable sub-issues with explicit dependencies and acceptance criteria.
+description: Load when an issue is too large to implement as one task — splitting it into independently executable sub-issues with explicit dependencies and acceptance criteria.
 ---
 
 # Issue Decomposition
