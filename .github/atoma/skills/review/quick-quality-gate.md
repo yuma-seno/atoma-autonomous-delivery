@@ -1,6 +1,6 @@
 ---
 name: review/quick-quality-gate
-description: Review a pull request quickly for concrete correctness, security, contract, and regression failures.
+description: Load before reporting on a pull request — a quick pass for concrete correctness, security, contract, and regression failures.
 ---
 
 # Quick Quality Gate

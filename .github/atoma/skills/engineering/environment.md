@@ -1,6 +1,6 @@
 ---
 name: engineering/environment
-description: Decide where a missing dependency or tool belongs, and how to get it without spending the run. Load when something you need is not installed, an install fails, the work tree is broken, or a tool result carries a problem the server reported about itself.
+description: Load when something you need is not installed, an install fails, the work tree is broken, or a tool result carries a problem the server reported about itself — where a missing dependency or tool belongs, and how to get it without spending the run.
 ---
 
 # When something you need is not there

@@ -1,6 +1,6 @@
 ---
 name: delivery/pipeline-setup
-description: Give a repository that has no automated verification or deployment one, by writing commands into config.json rather than workflow files.
+description: Load when this repository has no automated verification or deployment and the work needs one — written into config.json rather than into workflow files.
 ---
 
 # Setting up verification and deployment
