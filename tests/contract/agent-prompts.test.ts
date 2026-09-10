@@ -39,11 +39,26 @@ describe("agent prompt contracts", () => {
     expect(engineer).toContain("Return `/orchestrator` on the first line");
   });
 
+  /**
+   * The three properties of the skill wording, rather than the sentence carrying them.
+   * This test used to pin "Load each relevant skill with ..." word for word, which said
+   * nothing about why that sentence had to be there and broke on the rewrite that fixed
+   * it.
+   *
+   * Each is a measured failure. A run that needed `research/web-search` read the skill
+   * file with `sed` instead of loading it, then spent 240 shell searches inside a
+   * repository that did not hold the answer -- so the prompt has to name the tool, say a
+   * skill replaces your own approach rather than informing it, and say to look at the
+   * catalog again when the work changes shape. That run loaded skills twice, both times
+   * in its first minute.
+   */
   test("loads procedures as skills without requesting visible chain of thought", () => {
     const reviewer = readFileSync("src/atoma/agent-definitions/reviewer.md", "utf8");
     const prompt = readFileSync("src/atoma/prompt-template.md", "utf8");
     expect(reviewer).toContain("Load `review/quick-quality-gate`");
-    expect(prompt).toContain("Load each relevant skill with `atoma_builtin__load_skill`");
+    expect(prompt).toContain("atoma_builtin__load_skill");
+    expect(prompt).toContain("in place of your own approach");
+    expect(prompt).toContain("Check the catalog again");
     expect(prompt).toContain("Reason privately");
     expect(prompt).not.toContain("Before taking action or generating final output, always use the `<thought>` tag");
   });
