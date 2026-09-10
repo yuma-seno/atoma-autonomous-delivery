@@ -109,6 +109,18 @@ export interface StopDecision {
  * specific statement -- "the last two runs changed nothing" says what to look at,
  * where "five handoffs" only says how many there were.
  */
+/**
+ * `1 agent handoff`, `2 agent handoffs`.
+ *
+ * Both sentences below quote a count a person sees exactly once, and both read wrong
+ * at one. Observed in production while verifying that the handoff limit fires at all
+ * (#587): with the limit set to 1, the one message anyone received said "1 agent
+ * handoffs since anyone else commented". A count that can be one has to be written
+ * for one.
+ */
+function counted(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
 export function stopReason(counts: {
   handoffs: number;
   handoffLimit: number;
@@ -119,7 +131,7 @@ export function stopReason(counts: {
     return {
       stop: true,
       reason:
-        `The last ${counts.runsWithoutChange} agent runs changed nothing — no commit was pushed by any of them ` +
+        `The last ${counted(counts.runsWithoutChange, "agent run")} changed nothing — no commit was pushed by any of them ` +
         `(limit ${counts.noProgressLimit}). Repeating a run that changes nothing is unlikely to start changing something, ` +
         `so the next automatic handoff has been withheld.`,
     };
@@ -128,7 +140,7 @@ export function stopReason(counts: {
     return {
       stop: true,
       reason:
-        `Auto-dispatch loop limit reached: ${counts.handoffs} agent handoffs since anyone else commented ` +
+        `Auto-dispatch loop limit reached: ${counted(counts.handoffs, "agent handoff")} since anyone else commented ` +
         `(limit ${counts.handoffLimit}). To prevent unintended infinite agent loops and excessive API costs, ` +
         `the next automatic handoff has been withheld.`,
     };
