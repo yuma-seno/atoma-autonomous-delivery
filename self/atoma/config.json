@@ -29,6 +29,9 @@
   "tools": {
     "secrets": []
   },
+  "limits": {
+    "agent_handoffs": 1
+  },
   "labels": {
     "in_progress": "atoma/in-progress",
     "sub_issue": "atoma/sub-issue",
