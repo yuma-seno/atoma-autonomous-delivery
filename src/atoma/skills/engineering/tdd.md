@@ -1,6 +1,6 @@
 ---
 name: engineering/tdd
-description: Implement behavioral changes with a focused red-green-refactor loop and evidence from executable tests.
+description: Load before changing behaviour — a focused red-green-refactor loop, and evidence from executable tests rather than from reasoning.
 ---
 
 # Test-Driven Development

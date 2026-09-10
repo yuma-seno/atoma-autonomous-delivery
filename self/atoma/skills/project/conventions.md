@@ -1,6 +1,6 @@
 ---
 name: project/conventions
-description: Conventions specific to THIS repository, which override the generic defaults. Load before making, reviewing, or committing any change here.
+description: Load before making, reviewing, or committing any change here — conventions specific to THIS repository, which override the generic defaults.
 ---
 
 # Repository conventions

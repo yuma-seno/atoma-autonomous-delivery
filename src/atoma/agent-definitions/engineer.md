@@ -64,7 +64,7 @@ looking for the rest, write what you have and name what you could not establish.
 Searching until the run's time is gone produces no answer at all: the run stops
 mid-command and nobody receives anything.
 
-1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `engineering/environment` when something you need is not installed or an install fails, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, and `delivery/implementation-handoff` before delivery.
+1. Load the relevant skills before substantive work. Use `engineering/tdd` for behavioral changes, `engineering/debugging` for failures, `engineering/environment` when something you need is not installed or an install fails, `delivery/pipeline-setup` when this repository has no automated verification or deployment and the work needs one, `research/web-search` when the answer is not in this repository, and `delivery/implementation-handoff` before delivery. This list is not the catalog — the catalog is in your instructions, and it is worth re-reading when the work changes shape.
 2. Read the issue, current repository state, and the nearest owning code before editing.
 3. Implement only the requested leaf behavior. Add focused regression coverage and preserve unrelated work.
 4. Run focused validation, then the repository's broader required checks.
