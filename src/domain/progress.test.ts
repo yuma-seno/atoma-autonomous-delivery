@@ -82,6 +82,20 @@ describe("what a person is told about why it stopped", () => {
     expect(decision.reason).toContain("limit 5");
   });
 
+  /**
+   * The sentence a person receives when the limit is one, which is what #587 set it to
+   * in order to see the guard fire at all. It came back as "1 agent handoffs", on the
+   * one message anyone gets.
+   */
+  test("reads correctly when the count is one", () => {
+    const handoff = stopReason({ handoffs: 1, handoffLimit: 1, runsWithoutChange: 0, noProgressLimit: 2 });
+    expect(handoff.reason).toContain("1 agent handoff since");
+    expect(handoff.reason).not.toContain("1 agent handoffs");
+
+    const stalled = stopReason({ handoffs: 0, handoffLimit: 5, runsWithoutChange: 1, noProgressLimit: 1 });
+    expect(stalled.reason).toContain("The last 1 agent run changed nothing");
+  });
+
   test("the progress limit says what to look at instead of how many there were", () => {
     const decision = stopReason({ handoffs: 1, runsWithoutChange: 2, ...limits });
     expect(decision.stop).toBe(true);
