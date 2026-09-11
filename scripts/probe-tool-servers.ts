@@ -175,7 +175,11 @@ async function probe(): Promise<number> {
   // ── every server the tools file declares ────────────────────────────────────
   say("3. the servers a run would start");
   const toolsYaml = Bun.YAML.parse(await Bun.file(TOOLS_FILE).text()) as Record<string, unknown>;
-  const servers = Object.keys(toolsYaml);
+  // `hooks` is the one key at this level that is not a server: atoma reserves it for
+  // hooks that apply to every server. Asking for it as one aborts the whole probe with
+  // `Tool 'hooks' not found in tools file`, which is what the run below would say about any
+  // agent that named it -- so the exclusion belongs here rather than in the agent stub.
+  const servers = Object.keys(toolsYaml).filter((name) => name !== "hooks");
   result("servers_declared", servers.join(" "));
 
   const dir = `${RUNNER_TEMP}/probe-tool-servers`;
