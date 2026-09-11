@@ -281,7 +281,21 @@ const COMMIT_AND_PUSH_SCHEMA = z.object({
 });
 
 
-function notifyTagPrefix(): string {
+/**
+ * The requester tag, and a refusal if the agent wrote one itself.
+ *
+ * The tag decides who hears about this work later, and the run that writes it is the
+ * run being reported on. An agent that can set it can redirect the report of its own
+ * failure, or address it to a name nobody reads and be silent in effect. Neither
+ * needs intent: a login is a word, and agents repeat words they have read.
+ *
+ * `create_pr` has refused this since its parent-issue tag was added; `create_issue`
+ * did not, and the asymmetry was load-bearing. `NOTIFY_TAG.read` returns the first
+ * match, so the machine's tag wins while there is one -- and when the requester is
+ * unknown there is none, which left the agent's as the only tag in the body.
+ */
+function notifyTagPrefix(body: string, what: string): string {
+  if (NOTIFY_TAG.has(body)) mcpFail(`${what} body already contains a notify tag; refusing to add another`);
   const login = (process.env.ISSUE_NOTIFY ?? "").trim();
   return login ? `${NOTIFY_TAG.write(login)}\n` : "";
 }
@@ -293,7 +307,7 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
   const sub = a.sub_issue ?? true;
   const parentNum = (process.env.ISSUE_NUMBER ?? "").trim();
 
-  body = notifyTagPrefix() + withCheckedMentions(body);
+  body = notifyTagPrefix(body, "Issue") + withCheckedMentions(body);
   if (sub) {
     if (parentNum) body = `${PARENT_TAG.write(Number(parentNum))}\n${body}`;
     const subIssueLabel = getLabel("sub_issue");
@@ -546,8 +560,7 @@ function withCheckedMentions(body: string): string {
 
 function injectParentIssue(body: string): string {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
-  if (NOTIFY_TAG.has(body)) mcpFail("PR body already contains a notify tag; refusing to add another");
-  body = notifyTagPrefix() + withCheckedMentions(body);
+  body = notifyTagPrefix(body, "PR") + withCheckedMentions(body);
   if (!parent) return body;
   if (PARENT_ISSUE_TAG.has(body)) {
     mcpFail("PR body already contains a parent-issue tag; refusing to add another");

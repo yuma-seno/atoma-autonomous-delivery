@@ -198,6 +198,32 @@ describe("mcp/github.ts", () => {
     expect(r.result.content[0].text).toContain("gh issue create: unexpected output");
   });
 
+  /**
+   * The tag decides who hears about this work, so an agent that can write it can
+   * redirect the report of its own failure or address it to a name nobody reads.
+   * `create_pr` refused this and `create_issue` did not, and the asymmetry mattered
+   * most exactly when the requester was unknown -- with no machine tag to win the
+   * first match, the agent's was the only one in the body.
+   */
+  test("create_issue refuses a body that already names who to notify", async () => {
+    const r = await sendRequest(
+      "github.ts",
+      {
+        jsonrpc: "2.0", id: 31, method: "tools/call",
+        params: {
+          name: "create_issue",
+          arguments: { title: "Test", body: "<!-- atoma:notify=someone-else -->", sub_issue: false },
+        },
+      },
+      {
+        PATH: `${FAKE_GH_BIN_DIR}:${process.env.PATH ?? ""}`,
+        FAKE_GH_RESPONSES: JSON.stringify([{ match: ["issue", "create"], stdout: "https://github.com/o/r/issues/1" }]),
+      },
+    );
+    expect(r.result.isError).toBe(true);
+    expect(r.result.content[0].text).toContain("already contains a notify tag");
+  });
+
   test("create_issue provisions the sub-issue label before creating a child", async () => {
     const dir = mkdtempSync(join(tmpdir(), "atoma-create-sub-issue-"));
     const log = join(dir, "gh.log");
