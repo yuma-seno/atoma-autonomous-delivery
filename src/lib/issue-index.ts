@@ -17,8 +17,30 @@
 import { ghPaginated } from "./gh.ts";
 import { buildIndex, splitBody, type Bm25Index, type Chunk } from "../domain/bm25.ts";
 
-/** Where the index lives on the `atoma-data` branch. */
-export const INDEX_PATH = "search/issue-index.json";
+/**
+ * The branch the index lives on, which is its own and holds one commit.
+ *
+ * It used to be a path on `atoma-data` beside the sessions, and the two want opposite
+ * things. A session is appended to, so git's delta compression works on it, and its
+ * old versions are worth keeping -- `/resume` restores one. The index is rewritten
+ * whole, its old versions are worth nothing (they are snapshots of a repository with
+ * fewer issues in it), and it cannot be lost: with no stored index the search fetches
+ * every issue and builds one.
+ *
+ * Measured on this repository before the split: ten versions of the index, 53.8 MB
+ * uncompressed, **4.12 MB packed -- 46% of the whole branch's 9 MB history**, for
+ * data nothing would ever read again.
+ *
+ * So it is written as the only commit on its own branch, force-pushed each time. The
+ * history cannot grow, and the force-push cannot disturb a session because no session
+ * is on this branch. Two runs racing means the later one wins, which costs nothing:
+ * each carries a complete index, and the loser's additions come back on the next
+ * refresh through `?since=`.
+ */
+export const INDEX_BRANCH = "atoma-index";
+
+/** The index's name on its own branch, at the root because nothing else is there. */
+export const INDEX_PATH = "issue-index.json";
 
 /**
  * Everything needed to search, and to know what to fetch next time.

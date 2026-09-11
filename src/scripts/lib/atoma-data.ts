@@ -45,6 +45,68 @@ export function restoreSession(targetPath: string): string | undefined {
   return shown.code === 0 ? shown.stdout : undefined;
 }
 
+/** `git` with something on its stdin, which `gitRun` has no way to supply. */
+function gitPipe(input: string, ...args: string[]): { code: number; stdout: string } {
+  const proc = Bun.spawnSync({ cmd: ["git", ...args], stdin: Buffer.from(input), stdout: "pipe", stderr: "pipe" });
+  return { code: proc.exitCode ?? 1, stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "" };
+}
+
+/**
+ * Read one file from the tip of `branch`, without disturbing the working tree.
+ *
+ * `restoreSession` with the branch as a parameter. Kept separate rather than
+ * generalising that one, because its name is what tells a reader which of the two
+ * stores they are looking at, and the two have opposite rules about history.
+ */
+export function restoreFromBranch(branch: string, targetPath: string): string | undefined {
+  if (gitRun("fetch", "origin", branch, "--depth=1").code !== 0) return undefined;
+  if (gitRun("cat-file", "-e", `origin/${branch}:${targetPath}`).code !== 0) return undefined;
+  const shown = gitRun("show", `origin/${branch}:${targetPath}`);
+  return shown.code === 0 ? shown.stdout : undefined;
+}
+
+/**
+ * Write one file as the ONLY commit on `branch`, discarding whatever was there.
+ *
+ * For data that is rewritten whole, whose old versions are worth nothing, and which
+ * can be rebuilt if it is lost. The issue search index is all three -- see
+ * `lib/issue-index.ts` for what keeping its history cost before this existed.
+ *
+ * # Why this does not use a worktree
+ *
+ * `saveSession` checks out a worktree because it edits a tree it must preserve. There
+ * is nothing to preserve here: the commit has no parent and one file, so it can be
+ * built out of plumbing -- a blob, a tree, a commit -- without a checkout, an index,
+ * or a second copy of anything on disk. That also means it cannot disturb the agent's
+ * own checkout, which at this point in a run may hold uncommitted work.
+ *
+ * # Why the force-push is safe here and would not be on `atoma-data`
+ *
+ * Nothing else is on this branch. A force-push that loses a concurrent write loses
+ * one refresh of an index that the next call rebuilds from `?since=`; the same
+ * force-push on `atoma-data` would drop a session that nothing can reconstruct.
+ */
+export function saveAsOnlyCommit(
+  branch: string,
+  targetPath: string,
+  content: string,
+  commitMessage: string,
+): boolean {
+  // commit-tree takes the committer from config, which is not set in a fresh
+  // checkout; the same two lines `saveSession` runs before it creates the branch.
+  gitRun("config", "user.email", "action@github.com");
+  gitRun("config", "user.name", "GitHub Actions");
+
+  const blob = gitPipe(content, "hash-object", "-w", "--stdin");
+  if (blob.code !== 0) return false;
+  const tree = gitPipe(`100644 blob ${blob.stdout}\t${targetPath}\n`, "mktree");
+  if (tree.code !== 0) return false;
+  // No parent: the branch is one commit, now and after every later save.
+  const commit = gitPipe(commitMessage, "commit-tree", tree.stdout);
+  if (commit.code !== 0) return false;
+
+  return gitRun("push", "--force", "origin", `${commit.stdout}:refs/heads/${branch}`).code === 0;
+}
 function gitIn(cwd: string, ...args: string[]): { code: number; stdout: string } {
   const proc = Bun.spawnSync({ cmd: ["git", ...args], cwd, stdout: "pipe", stderr: "pipe" });
   return { code: proc.exitCode ?? 1, stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "" };
