@@ -17936,7 +17936,8 @@ function ghPaginated(...args) {
 }
 
 // src/lib/issue-index.ts
-var INDEX_PATH = "search/issue-index.json";
+var INDEX_BRANCH = "atoma-index";
+var INDEX_PATH = "issue-index.json";
 var INDEX_VERSION = 2;
 function log(message) {
   console.error(`[atoma-search] ${message}`);
@@ -18022,61 +18023,32 @@ ${chunk.text}`);
 }
 
 // src/scripts/lib/atoma-data.ts
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { dirname, join } from "path";
-function restoreSession(targetPath) {
-  if (gitRun("fetch", "origin", "atoma-data", "--depth=1").code !== 0) {
-    return;
-  }
-  if (gitRun("cat-file", "-e", `origin/atoma-data:${targetPath}`).code !== 0) {
-    return;
-  }
-  const shown = gitRun("show", `origin/atoma-data:${targetPath}`);
-  return shown.code === 0 ? shown.stdout : undefined;
-}
-function gitIn(cwd, ...args) {
-  const proc = Bun.spawnSync({ cmd: ["git", ...args], cwd, stdout: "pipe", stderr: "pipe" });
+function gitPipe(input, ...args) {
+  const proc = Bun.spawnSync({ cmd: ["git", ...args], stdin: Buffer.from(input), stdout: "pipe", stderr: "pipe" });
   return { code: proc.exitCode ?? 1, stdout: proc.stdout ? proc.stdout.toString("utf8").trim() : "" };
 }
-function saveSession(targetPath, content, commitMessage) {
-  if (gitRun("ls-remote", "--exit-code", "origin", "atoma-data").code !== 0) {
-    gitRun("config", "user.email", "action@github.com");
-    gitRun("config", "user.name", "GitHub Actions");
-    const commit = gitRun("commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "init: atoma-data session store").stdout;
-    gitRun("push", "origin", `${commit}:refs/heads/atoma-data`);
-  }
-  gitRun("fetch", "origin", "atoma-data");
-  const worktreeDir = mkdtempSync(join(tmpdir(), "atoma-data-wt-"));
-  gitRun("worktree", "add", worktreeDir, "origin/atoma-data");
-  let saved = false;
-  try {
-    gitIn(worktreeDir, "config", "user.email", "action@github.com");
-    gitIn(worktreeDir, "config", "user.name", "GitHub Actions");
-    for (let attempt = 1;attempt <= 5; attempt++) {
-      gitIn(worktreeDir, "fetch", "origin", "atoma-data");
-      gitIn(worktreeDir, "reset", "--hard", "origin/atoma-data");
-      const fullTarget = join(worktreeDir, targetPath);
-      mkdirSync(dirname(fullTarget), { recursive: true });
-      writeFileSync(fullTarget, content);
-      gitIn(worktreeDir, "add", targetPath);
-      if (gitIn(worktreeDir, "diff", "--cached", "--quiet").code === 0) {
-        saved = true;
-        break;
-      }
-      gitIn(worktreeDir, "commit", "-m", commitMessage);
-      if (gitIn(worktreeDir, "push", "origin", "HEAD:atoma-data").code === 0) {
-        saved = true;
-        break;
-      }
-      console.error(`Push attempt ${attempt} failed (concurrent push) -- resetting and retrying with a fresh pull...`);
-      Bun.sleepSync(attempt * 2000);
-    }
-  } finally {
-    gitRun("worktree", "remove", "--force", worktreeDir);
-    rmSync(worktreeDir, { recursive: true, force: true });
-  }
-  return saved;
+function restoreFromBranch(branch, targetPath) {
+  if (gitRun("fetch", "origin", branch, "--depth=1").code !== 0)
+    return;
+  if (gitRun("cat-file", "-e", `origin/${branch}:${targetPath}`).code !== 0)
+    return;
+  const shown = gitRun("show", `origin/${branch}:${targetPath}`);
+  return shown.code === 0 ? shown.stdout : undefined;
+}
+function saveAsOnlyCommit(branch, targetPath, content, commitMessage) {
+  gitRun("config", "user.email", "action@github.com");
+  gitRun("config", "user.name", "GitHub Actions");
+  const blob = gitPipe(content, "hash-object", "-w", "--stdin");
+  if (blob.code !== 0)
+    return false;
+  const tree = gitPipe(`100644 blob ${blob.stdout}	${targetPath}
+`, "mktree");
+  if (tree.code !== 0)
+    return false;
+  const commit = gitPipe(commitMessage, "commit-tree", tree.stdout);
+  if (commit.code !== 0)
+    return false;
+  return gitRun("push", "--force", "origin", `${commit.stdout}:refs/heads/${branch}`).code === 0;
 }
 
 // src/atoma/tools/scripts/lib/harden.ts
@@ -18181,7 +18153,7 @@ function currentIssue() {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 function loadIndex() {
-  const stored = restoreSession(INDEX_PATH);
+  const stored = restoreFromBranch(INDEX_BRANCH, INDEX_PATH);
   let previous;
   if (stored) {
     try {
@@ -18207,7 +18179,7 @@ function loadIndex() {
     updatedThrough: newestTimestamp(fresh, since ?? "1970-01-01T00:00:00Z"),
     issues
   });
-  if (!saveSession(INDEX_PATH, JSON.stringify(index), `atoma: refresh issue search index (${issues.length} issues)`)) {
+  if (!saveAsOnlyCommit(INDEX_BRANCH, INDEX_PATH, JSON.stringify(index), `atoma: issue search index (${issues.length} issues)`)) {
     report("warning", "could not save the search index; every search from here rebuilds it");
   }
   return index;

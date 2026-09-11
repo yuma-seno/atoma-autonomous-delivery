@@ -47,6 +47,22 @@
 # needed and neither substitutes for the other; see docs/customization.md, "Give a
 # tool a credential".
 
+# Hooks that apply to EVERY server below, run before each server's own.
+#
+# `hooks` is a reserved key at this level -- everything else here is a server. The
+# file-wide form exists because what is worth watching is usually the run rather than
+# a tool: how much has been written where, how long a search has gone on. Attached to
+# one server, such a check only watches the agent while it happens to be using that
+# server, and says nothing for the twenty calls it spends elsewhere.
+#
+# `workspace_guard.ts` answers with a notice when /tmp/atoma-workspace has grown past
+# what will be carried into the next run. It is an `after_tool` rather than a
+# `before_tool` because it reports rather than refuses -- nothing the agent is about to
+# do is wrong, and the file it would complain about does not exist until after the
+# call that wrote it.
+hooks:
+  after_tool: ./scripts/hooks/workspace_guard.ts
+
 filesystem:
   command: mcp-server-filesystem
   args: ["."]
