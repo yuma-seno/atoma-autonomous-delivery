@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 /**
  * `tools.yaml` decides how every tool server is started, and nothing was reading
@@ -24,23 +25,51 @@ interface ToolEntry {
   command?: string;
   args?: unknown;
   env?: Record<string, string>;
-  hooks?: { before_tool?: string; tool_allowlist?: string[]; tool_denylist?: string[] };
+  hooks?: { before_tool?: string; after_tool?: string; tool_allowlist?: string[]; tool_denylist?: string[] };
+  /** Only on the reserved `hooks` entry, which is a hooks block rather than a server. */
+  after_tool?: string;
   request_timeout_secs?: number;
 }
+
+/**
+ * The one key at this level that is not a server.
+ *
+ * atoma reserves it for hooks that apply to every server, taking it before it reads
+ * the rest of the file as a map of servers. Named once here so the tests below and
+ * `agent-definitions.test.ts` cannot disagree about what a server is.
+ */
+const RESERVED = "hooks";
 
 function parse(path: string): Record<string, ToolEntry> {
   return Bun.YAML.parse(readFileSync(path, "utf8")) as Record<string, ToolEntry>;
 }
 
+/** The servers, which is everything but the reserved key. */
+function servers(path: string): [string, ToolEntry][] {
+  return Object.entries(parse(path)).filter(([name]) => name !== RESERVED);
+}
+
 describe("tools.yaml is valid YAML with the shape atoma expects", () => {
   for (const path of [SOURCE, DEPLOYED]) {
     test(`${path} parses`, () => {
-      const tools = parse(path);
-      expect(Object.keys(tools).length).toBeGreaterThan(4);
+      expect(servers(path).length).toBeGreaterThan(4);
+    });
+
+    /**
+     * The file-wide hook is the one thing here that runs on every call to every
+     * server, so a typo in its path takes the whole run down at startup rather than
+     * degrading one tool. atoma checks the file exists when it loads; this checks the
+     * declaration is still there at all, which atoma cannot.
+     */
+    test(`${path}: the file-wide after_tool hook is declared and present`, () => {
+      const declared = parse(path)[RESERVED]?.after_tool;
+      expect(declared, "tools.yaml should declare a file-wide after_tool hook").toBeDefined();
+      const resolved = join(dirname(path), declared!);
+      expect(existsSync(resolved), `${resolved} should exist`).toBe(true);
     });
 
     test(`${path}: every entry has a command and a string[] args`, () => {
-      for (const [name, entry] of Object.entries(parse(path))) {
+      for (const [name, entry] of servers(path)) {
         expect(typeof entry.command, `${name}.command`).toBe("string");
         expect(Array.isArray(entry.args), `${name}.args must be a list`).toBe(true);
         for (const arg of entry.args as unknown[]) {

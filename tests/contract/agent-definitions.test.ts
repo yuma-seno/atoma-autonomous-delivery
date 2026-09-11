@@ -30,13 +30,19 @@ import { join } from "node:path";
 const AGENT_DIR = join(process.cwd(), "src/atoma/agent-definitions");
 const TOOLS_YAML = join(process.cwd(), "src/atoma/tools/tools.yaml");
 
-/** Top-level (unindented) keys of tools.yaml — one per MCP server. */
+/**
+ * Top-level (unindented) keys of tools.yaml, minus the one that is not a server.
+ *
+ * atoma reserves `hooks` at this level for hooks that apply to every server. Counting
+ * it would make this check pass for an agent that named a server called `hooks`, which
+ * is exactly the failure the check exists to catch.
+ */
 function declaredServers(): Set<string> {
   const yaml = readFileSync(TOOLS_YAML, "utf8");
   const names = new Set<string>();
   for (const line of yaml.split(/\r?\n/)) {
     const match = /^([A-Za-z_][A-Za-z0-9_-]*):\s*$/.exec(line);
-    if (match?.[1]) names.add(match[1]);
+    if (match?.[1] && match[1] !== "hooks") names.add(match[1]);
   }
   return names;
 }
