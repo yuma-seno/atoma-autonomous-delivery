@@ -170,6 +170,12 @@ function log(message) {
   console.error(`[atoma-notify] ${message}`);
 }
 var MAX_HOPS = 10;
+function repositoryOwner(repo) {
+  const owner = repo.split("/")[0]?.trim() ?? "";
+  if (!owner)
+    log(`WARN could not read an owner out of ${JSON.stringify(repo)}; nobody will be mentioned`);
+  return owner;
+}
 function fetchIssueLookup(repo, number) {
   const { code, stderr, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
   if (code !== 0 || !stdout.trim()) {
@@ -203,7 +209,10 @@ function resolveNotify(repo, number) {
       break;
     current = parent;
   }
-  return "";
+  const owner = repositoryOwner(repo);
+  if (owner)
+    log(`no requester found for #${number}; falling back to the repository owner @${owner}`);
+  return owner;
 }
 
 // src/lib/aggregation.ts

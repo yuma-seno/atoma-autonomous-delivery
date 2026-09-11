@@ -44,17 +44,20 @@ function resolveNoProgressLimit(configured) {
   const value = Number(configured);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_NO_PROGRESS_LIMIT;
 }
+function counted(n, noun) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
 function stopReason(counts) {
   if (noProgressLimitReached(counts.runsWithoutChange, counts.noProgressLimit)) {
     return {
       stop: true,
-      reason: `The last ${counts.runsWithoutChange} agent runs changed nothing \u2014 no commit was pushed by any of them ` + `(limit ${counts.noProgressLimit}). Repeating a run that changes nothing is unlikely to start changing something, ` + `so the next automatic handoff has been withheld.`
+      reason: `The last ${counted(counts.runsWithoutChange, "agent run")} changed nothing \u2014 no commit was pushed by any of them ` + `(limit ${counts.noProgressLimit}). Repeating a run that changes nothing is unlikely to start changing something, ` + `so the next automatic handoff has been withheld.`
     };
   }
   if (counts.handoffs >= counts.handoffLimit) {
     return {
       stop: true,
-      reason: `Auto-dispatch loop limit reached: ${counts.handoffs} agent handoffs since anyone else commented ` + `(limit ${counts.handoffLimit}). To prevent unintended infinite agent loops and excessive API costs, ` + `the next automatic handoff has been withheld.`
+      reason: `Auto-dispatch loop limit reached: ${counted(counts.handoffs, "agent handoff")} since anyone else commented ` + `(limit ${counts.handoffLimit}). To prevent unintended infinite agent loops and excessive API costs, ` + `the next automatic handoff has been withheld.`
     };
   }
   return { stop: false };

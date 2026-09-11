@@ -7161,6 +7161,12 @@ function log(message) {
   console.error(`[atoma-notify] ${message}`);
 }
 var MAX_HOPS = 10;
+function repositoryOwner(repo) {
+  const owner = repo.split("/")[0]?.trim() ?? "";
+  if (!owner)
+    log(`WARN could not read an owner out of ${JSON.stringify(repo)}; nobody will be mentioned`);
+  return owner;
+}
 function fetchIssueLookup(repo, number) {
   const { code, stderr, stdout } = gh("api", `repos/${repo}/issues/${number}`, "--jq", "{body: .body, login: .user.login, type: .user.type}");
   if (code !== 0 || !stdout.trim()) {
@@ -7194,7 +7200,10 @@ function resolveNotify(repo, number) {
       break;
     current = parent;
   }
-  return "";
+  const owner = repositoryOwner(repo);
+  if (owner)
+    log(`no requester found for #${number}; falling back to the repository owner @${owner}`);
+  return owner;
 }
 
 // src/lib/sibling-check.ts
@@ -19094,7 +19103,9 @@ var SUBMIT_PR_REVIEW_SCHEMA = objectType({
 var COMMIT_AND_PUSH_SCHEMA = objectType({
   message: stringType().describe("Commit message.")
 });
-function notifyTagPrefix() {
+function notifyTagPrefix(body, what) {
+  if (NOTIFY_TAG.has(body))
+    mcpFail(`${what} body already contains a notify tag; refusing to add another`);
   const login = (process.env.ISSUE_NOTIFY ?? "").trim();
   return login ? `${NOTIFY_TAG.write(login)}
 ` : "";
@@ -19105,7 +19116,7 @@ async function createIssue(a) {
   let labels = a.labels ?? [];
   const sub = a.sub_issue ?? true;
   const parentNum = (process.env.ISSUE_NUMBER ?? "").trim();
-  body = notifyTagPrefix() + withCheckedMentions(body);
+  body = notifyTagPrefix(body, "Issue") + withCheckedMentions(body);
   if (sub) {
     if (parentNum)
       body = `${PARENT_TAG.write(Number(parentNum))}
@@ -19241,9 +19252,7 @@ ${notice}`;
 }
 function injectParentIssue(body) {
   const parent = (process.env.ISSUE_NUMBER ?? "").trim();
-  if (NOTIFY_TAG.has(body))
-    mcpFail("PR body already contains a notify tag; refusing to add another");
-  body = notifyTagPrefix() + withCheckedMentions(body);
+  body = notifyTagPrefix(body, "PR") + withCheckedMentions(body);
   if (!parent)
     return body;
   if (PARENT_ISSUE_TAG.has(body)) {
