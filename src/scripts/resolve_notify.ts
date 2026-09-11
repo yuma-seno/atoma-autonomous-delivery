@@ -10,7 +10,8 @@
  * Usage:
  *   resolve_notify.ts --repo OWNER/REPO --number N
  *
- * Prints the resolved login (possibly empty) to stdout.
+ * Prints the resolved login to stdout. Never empty now: with nothing in the
+ * thread to go on it prints the repository owner, so a failure reaches somebody.
  */
 import { parseArgs } from "node:util";
 import { defineScript } from "./lib/script-ref.ts";
