@@ -136,7 +136,7 @@ import { TypedOutputsStep } from "./base.ts";
  * its refusal is deterministic, so an agent that ignores it is stopped by the core
  * rather than by a new rule (atoma#17, #570).
  */
-export const ATOMA_DEFAULT_VERSION = "v0.1.26";
+export const ATOMA_DEFAULT_VERSION = "v0.1.27";
 
 export const ATOMA_VERSION_DESC =
   "Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.";
