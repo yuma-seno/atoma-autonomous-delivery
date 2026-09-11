@@ -1,5 +1,5 @@
 {
-  "version": "v0.1.91",
+  "version": "v0.1.92",
   "files": [
     ".github/atoma-release.json",
     ".github/atoma/agent-definitions/engineer.md",
