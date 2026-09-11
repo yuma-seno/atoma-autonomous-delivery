@@ -56,6 +56,7 @@ import { MODEL_CACHE_DIR } from "../../../../domain/model-cache.ts";
 import { readFileSync } from "node:fs";
 import { gitRun } from "../../../../lib/gh.ts";
 import {
+  INDEX_BRANCH,
   INDEX_PATH,
   INDEX_VERSION,
   fetchIssues,
@@ -70,7 +71,7 @@ import {
 // same way for the same reason: a runner has no other durable storage between
 // runs, and the push-retry loop already handles the races that sibling agents
 // cause.
-import { restoreSession as restoreFile, saveSession as saveFile } from "../../../../scripts/lib/atoma-data.ts";
+import { restoreFromBranch, saveAsOnlyCommit } from "../../../../scripts/lib/atoma-data.ts";
 import { hardenCredentialHolder } from "../lib/harden.ts";
 
 const REPO = process.env.GITHUB_REPOSITORY ?? "";
@@ -156,7 +157,7 @@ function currentIssue(): number | undefined {
  * time this is slow.
  */
 function loadIndex(): IssueIndex {
-  const stored = restoreFile(INDEX_PATH);
+  const stored = restoreFromBranch(INDEX_BRANCH, INDEX_PATH);
   let previous: IssueIndex | undefined;
   if (stored) {
     try {
@@ -190,7 +191,7 @@ function loadIndex(): IssueIndex {
 
   // Saving is best-effort. A failure costs the next search a full fetch; it
   // must not cost this one its answer.
-  if (!saveFile(INDEX_PATH, JSON.stringify(index), `atoma: refresh issue search index (${issues.length} issues)`)) {
+  if (!saveAsOnlyCommit(INDEX_BRANCH, INDEX_PATH, JSON.stringify(index), `atoma: issue search index (${issues.length} issues)`)) {
     // Reported, not just logged: the next search rebuilds, and so does the one
     // after it. A cost that repeats is one somebody can fix.
     report("warning", "could not save the search index; every search from here rebuilds it");
