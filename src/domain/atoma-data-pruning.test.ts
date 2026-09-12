@@ -1,0 +1,82 @@
+import { describe, expect, test } from "bun:test";
+import { issueNumberOf, prunablePaths, pruneCommitMessage } from "./atoma-data-pruning.ts";
+
+describe("issueNumberOf", () => {
+  /** Both layouts the branch actually holds, taken from it. */
+  test("reads both session layouts and the workspace", () => {
+    expect(issueNumberOf("sessions/issue-10-engineer.json")).toBe(10);
+    expect(issueNumberOf("sessions/issue-7/engineer.json")).toBe(7);
+    expect(issueNumberOf("sessions/issue-182/archive/orchestrator-1.json")).toBe(182);
+    expect(issueNumberOf("workspace/issue-492/probe/check.sh")).toBe(492);
+  });
+
+  /**
+   * Anything unrecognised is left alone, because the alternative to a guess here is a
+   * deletion. The index is the case that matters: it lived under `search/` on this
+   * branch, is owned by no issue, and is named `issue-index.json`.
+   */
+  test("anything it cannot read belongs to no issue", () => {
+    expect(issueNumberOf("search/issue-index.json")).toBeUndefined();
+    expect(issueNumberOf("sessions/scratch.json")).toBeUndefined();
+    expect(issueNumberOf("sessions/issue-abc.json")).toBeUndefined();
+    expect(issueNumberOf("sessions/issue-0-engineer.json")).toBeUndefined();
+    expect(issueNumberOf("README.md")).toBeUndefined();
+  });
+});
+
+describe("prunablePaths", () => {
+  const paths = [
+    "sessions/issue-1-engineer.json",
+    "sessions/issue-2/engineer.json",
+    "sessions/issue-2/archive/engineer-1.json",
+    "workspace/issue-2/probe/x.sh",
+    "search/issue-index.json",
+  ];
+
+  test("takes every file of an issue that is over, and nothing else", () => {
+    const decision = prunablePaths(paths, (issue) => issue === 2);
+    expect(decision.paths).toEqual([
+      "sessions/issue-2/engineer.json",
+      "sessions/issue-2/archive/engineer-1.json",
+      "workspace/issue-2/probe/x.sh",
+    ]);
+    expect(decision.issues).toEqual([2]);
+  });
+
+  /** One issue, one question. A busy issue has a dozen files and one answer. */
+  test("asks once per issue rather than once per path", () => {
+    let asked = 0;
+    prunablePaths(paths, (issue) => {
+      asked += 1;
+      return issue === 2;
+    });
+    expect(asked).toBe(2);
+  });
+
+  test("nothing is over, nothing is taken", () => {
+    expect(prunablePaths(paths, () => false).paths).toEqual([]);
+  });
+
+  /**
+   * The index is regenerable and owned by nobody, which is exactly the shape of a file
+   * a rule about issues could delete by accident. It cannot be reached from here at all.
+   */
+  test("a file belonging to no issue is never taken, even when everything is over", () => {
+    const decision = prunablePaths(paths, () => true);
+    expect(decision.paths).not.toContain("search/issue-index.json");
+  });
+});
+
+describe("pruneCommitMessage", () => {
+  test("names the issues, so a missing session can be traced to a commit", () => {
+    expect(pruneCommitMessage({ paths: ["a", "b", "c"], issues: [2, 9] })).toBe(
+      "atoma: prune 3 files from closed issues (#2, #9)",
+    );
+  });
+
+  test("one file reads as one", () => {
+    expect(pruneCommitMessage({ paths: ["a"], issues: [9] })).toBe(
+      "atoma: prune 1 file from closed issues (#9)",
+    );
+  });
+});

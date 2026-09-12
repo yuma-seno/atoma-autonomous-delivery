@@ -8,6 +8,7 @@ import { scriptCommand, scriptCommandWithArgs } from "./actions/script-call.ts";
 import { SetupBunAction } from "./actions/third-party.ts";
 import { ref as dispatchIfSiblingsDoneRef } from "../scripts/dispatch_if_siblings_done.ts";
 import { ref as checkSubIssueClosureRef } from "../scripts/check_sub_issue_closure.ts";
+import { ref as pruneAtomaDataRef } from "../scripts/prune_atoma_data.ts";
 
 // FALLBACK for manually closed sub-issues.
 // Primary aggregation happens in atoma-pr-merged.wac.ts (pull_request_target).
@@ -15,6 +16,28 @@ import { ref as checkSubIssueClosureRef } from "../scripts/check_sub_issue_closu
 //
 // Job graph:
 //   check --> aggregate
+//   prune            (independent; every closed issue, not only sub-issues)
+
+// Pruning rides on this event rather than on a schedule, because closing an issue is
+// the moment its stored session becomes dead -- so the trigger and the condition are
+// the same thing, and a cron would only be a worse approximation of it that also has
+// to exist as a workflow of its own. Anything a run misses is picked up the next time
+// any issue closes, which is why this needs no catch-up pass.
+//
+// It does not depend on `check`: that job answers a question about sub-issues, and a
+// root issue's session is just as dead.
+const pruneStep = new TypedOutputsStep(
+  {
+    name: "Prune stored data for issues that are over",
+    shell: "bash",
+    env: {
+      GH_TOKEN: "${{ github.token }}",
+      GITHUB_REPOSITORY: "${{ github.repository }}",
+    },
+    run: `${scriptCommand(pruneAtomaDataRef)}\n`,
+  },
+  [] as const,
+);
 
 const checkStep = new TypedOutputsStep(
   {
@@ -81,5 +104,12 @@ export const atomaSubIssueClosed = new Workflow("atoma-sub-issue-closed", {
           [checkJob],
         ),
     )
-    .jobs(),
+    .jobs()
+    .concat([
+      new DefinedJob("prune", { "runs-on": "ubuntu-latest" }, [
+        new ActionsCheckoutV4({}),
+        new SetupBunAction({ name: "Setup Bun" }),
+        pruneStep,
+      ]),
+    ]),
 );
