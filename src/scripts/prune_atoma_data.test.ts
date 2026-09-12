@@ -62,6 +62,11 @@ function run(rules: FakeGhRule[]) {
   return runWithFakeGh(scriptPath("prune_atoma_data.ts"), ["--repo", "acme/widgets", "--dry-run"], {
     rules,
     cwd: repo,
+    // git work happens in the temp repository above; `config.json` is read from the
+    // real checkout, which is what `ATOMA_MACHINERY_ROOT` exists to separate. Without
+    // it the label lookup reads the temp directory and throws on a file that is not
+    // there -- the script's own resolution, exercised rather than stubbed.
+    env: { ATOMA_MACHINERY_ROOT: process.cwd() },
   });
 }
 
