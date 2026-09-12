@@ -783,6 +783,14 @@ jobs:
         shell: bash
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/save_workspace.ts" --root-issue "${{ steps.workspace.outputs.root_issue }}" --source "/tmp/atoma-workspace" --agent "${{ inputs.agent }}"
+      - name: Write the metrics report
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/write_metrics_report.ts"
       - name: Report failure
         if: always() && job.status != 'success'
         shell: bash

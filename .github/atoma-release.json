@@ -1,5 +1,5 @@
 {
-  "version": "v0.1.96",
+  "version": "v0.1.97",
   "files": [
     ".github/atoma-release.json",
     ".github/atoma/agent-definitions/engineer.md",
@@ -65,6 +65,7 @@
     ".github/scripts/validate_pull_request.ts",
     ".github/scripts/watch_for_stop.ts",
     ".github/scripts/write_credentials_file.ts",
+    ".github/scripts/write_metrics_report.ts",
     ".github/workflows/atoma-check.yml",
     ".github/workflows/atoma-deploy.yml",
     ".github/workflows/atoma-entry.yml",
