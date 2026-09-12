@@ -35,7 +35,7 @@
  *
  * The previous version dropped each result together with the `tool_calls` that
  * produced it. So an agent resuming lost the record of **what it had already
- * looked at** -- and #544 measured what that costs: a run that made 169 distinct
+ * looked at** -- and the cost was measured: a run that made 169 distinct
  * searches and reported nothing. An agent that cannot see what it searched
  * searches again.
  *
@@ -126,7 +126,7 @@ export const KEEP_RECENT_RESULTS = 10;
  */
 export const SESSION_TOKEN_LIMIT = 100_000;
 
-/** Four characters to a token, the estimate #457 measured with. */
+/** Four characters to a token, the estimate this was measured with. */
 const CHARS_PER_TOKEN = 4;
 
 /**
@@ -325,7 +325,7 @@ export function shrinkLogLine(outcome: ShrinkOutcome, what = "tool results repla
  * The case this strategy cannot fix, named rather than left to fail silently.
  *
  * If a session is still too big once the tool output is gone, what is left is the
- * conversation, and nothing here can shorten that. #539 is where deciding what to
+ * conversation, and nothing here can shorten that. Deciding what to
  * do about it lives; this is the line a person sees in the meantime, and it names
  * the way out because "accept the limit" should not mean "fail every run from now
  * on with a provider error nobody connects to this".

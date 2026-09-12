@@ -239,7 +239,7 @@ export function buildMcpTools(specs: BuiltMcpTool[]): { tools: Tool[]; dispatch:
 /**
  * What to say when a name does not exist here.
  *
- * It used to say `Unknown: execute` and stop. Measured (#544): an agent called
+ * It used to say `Unknown: execute` and stop. Measured: an agent called
  * `shell__execute` -- the real name is `shell__shell_execute` -- and, told only that
  * it was unknown, **made the same mistake three times.** The one place that knows the
  * right answer is the map two lines up, and it was not being asked.
@@ -328,7 +328,7 @@ export async function serveMcpServer(options: {
   // notification sent before `initialize` has completed is outside what the protocol
   // allows a server to do, and a client is entitled to drop it -- which would make a
   // report raised during startup the one report that never arrives, and startup is
-  // exactly when #499 happened. Everything said before this moment was held; it goes
+  // exactly when that happened. Everything said before this moment was held; it goes
   // out here, in order.
   //
   // No `logger` field: atoma names the server that produced a result when it

@@ -12,7 +12,7 @@
  * a build that passes for the agent and fails in CI, and the failure comes back to
  * an engineer who cannot reproduce it. `validate_pull_request.ts` retries up to
  * `CI_RETRY_LIMIT`, so one issue can spend three inferences investigating a
- * failure that exists only on the other machine. See #398.
+ * failure that exists only on the other machine.
  *
  * The workaround, which this repository was itself using, is to put the setup at
  * the front of `checks.commands` -- `bun install --frozen-lockfile` before the

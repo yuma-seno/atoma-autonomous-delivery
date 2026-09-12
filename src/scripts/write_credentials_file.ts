@@ -97,7 +97,7 @@ function main(): void {
   }
 
   const credentials = collect(process.env);
-  // Mode 0600, and since #464 it is not only a gesture. Every tool server runs as
+  // Mode 0600, and it is not only a gesture. Every tool server runs as
   // ONE dedicated user and this file is chowned to it, so 0600 is what keeps the
   // file from the user this step runs as once it has been handed over.
   //

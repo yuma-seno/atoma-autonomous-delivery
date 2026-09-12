@@ -130,7 +130,7 @@ describe("deployment contract", () => {
     // is also the weaker of the two — an image can drop a tool between runner
     // releases and nothing here would notice — so listing them makes adding one
     // a decision instead of an omission.
-    // Empty since #464: every server is started with `bun`, so nothing here needs
+    // Empty: every server is started with `bun`, so nothing here needs
     // a binary the runner has to supply. `podman` was the one entry, for the
     // container the shell server ran in, and this is the place a reader would look
     // to find out which external programs an adopter's runner must have — so a

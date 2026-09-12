@@ -83,7 +83,7 @@ describe("what a person is told about why it stopped", () => {
   });
 
   /**
-   * The sentence a person receives when the limit is one, which is what #587 set it to
+   * The sentence a person receives when the limit is one, which is what it was set to
    * in order to see the guard fire at all. It came back as "1 agent handoffs", on the
    * one message anyone gets.
    */

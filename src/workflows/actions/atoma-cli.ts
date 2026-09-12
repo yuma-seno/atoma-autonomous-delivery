@@ -108,25 +108,25 @@ import { TypedOutputsStep } from "./base.ts";
  * denylist: what kept it out was that nothing bounded a third-party server, and the
  * bound is now on the client where it covers all of them. Measured before it: one
  * `read_text_file` returned 72,141 characters, a seventh of a 128k window in one
- * message (#544, atoma#14).
+ * message.
  *
  * v0.1.22 removes the default iteration ceiling and adds `--max-runtime-secs`. The
  * pin is not optional here: the runner passes that flag, and an older binary would
  * reject it and fail every run before the agent started. What it replaces is a count
  * of turns, which stopped a run measured at 169 distinct searches and 6 repeats --
- * working, and stopped for being long (atoma#16, #544).
+ * working, and stopped for being long.
  *
  * v0.1.23 adds `--stop-file`, which is what makes `/stop` a pause rather than a
  * discard: the run ends at a turn boundary with its session written, where killing
  * the job would have left the previous run's session on disk. Pinned rather than
  * optional for the same reason as above — the runner passes the flag, and a binary
- * that does not know it refuses the invocation (#560).
+ * that does not know it refuses the invocation.
  *
  * v0.1.24 keeps a session whatever ended the run, and answers any tool call left
  * without a result before it writes one. The pin is required by the step below it:
  * saving on failure is only safe because of that repair -- a session carrying an
  * unanswered call is refused by every provider, so an older binary would turn lost
- * work into an issue nothing can run on (atoma#18, #564).
+ * work into an issue nothing can run on.
  *
  * v0.1.25 adds three guards on a run that has stopped being work: the same call
  * returning the same answer, a cycle (A,B,A,B) that the old single-slot tracker could
@@ -134,7 +134,7 @@ import { TypedOutputsStep } from "./base.ts";
  * stored sessions, which is the point -- they are insurance with no false positives.
  * The pin moves because the guard in `shell_guard.ts` depends on the first of them:
  * its refusal is deterministic, so an agent that ignores it is stopped by the core
- * rather than by a new rule (atoma#17, #570).
+ * rather than by a new rule.
  */
 export const ATOMA_DEFAULT_VERSION = "v0.1.27";
 

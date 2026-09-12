@@ -12,7 +12,7 @@ describe("a server saying it answered worse than it should have", () => {
   });
 
   /**
-   * The case the whole mechanism exists for. #499's reranker load begins at
+   * The case the whole mechanism exists for. A reranker load begins at
    * startup and fails long before any tool is called, which is also before the
    * server has connected -- so a report that could only be sent through a live
    * connection would be the one report that never arrives.

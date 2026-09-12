@@ -15,7 +15,7 @@
  * It was considered for removal on the theory that a strict reader would force
  * the prompt to be obeyed, but the two failures fix nothing in common: a
  * backtick makes a real handoff disappear, while the failure worth preventing
- * (#204) was a directive written alongside a conclusion that needed none. Only
+ * was a directive written alongside a conclusion that needed none. Only
  * the exclusivity of the outcome prevents that one, and it is stated where the
  * agent decides. Strictness here would cost handoffs and buy nothing.
  *

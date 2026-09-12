@@ -13,7 +13,7 @@
  *
  * ## What changed about what it says
  *
- * **The session now survives a failure** (atoma#18). Anyone who has used Atoma
+ * **The session now survives a failure**. Anyone who has used Atoma
  * before will assume the opposite, so the notice says it outright and gives the
  * two ways forward — continue with the history, or archive it and start clean.
  * Which of those is right is a judgement about the work, and it belongs to the

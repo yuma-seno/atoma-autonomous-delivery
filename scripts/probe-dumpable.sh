@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# probe-dumpable.sh — the measurement #464 turns on.
+# probe-dumpable.sh — the measurement the confinement design turns on.
 #
 # Three questions, in the order they decide things:
 #
 #   1. Does `PR_SET_DUMPABLE(0)` survive `execve` into an ordinary binary?
 #      If it does, every MCP server atoma spawns is already non-dumpable, and the
-#      premise #374's container was built on -- "a same-user process can read the
+#      premise the container was built on -- "a same-user process can read the
 #      environ of the servers that hold credentials" -- does not hold.
 #
 #   2. With the flag NOT set, can a same-user process read another's environ?
@@ -14,7 +14,7 @@
 #      is read against a control on the same runner, not a table from another one.
 #
 #   3. Can a DIFFERENT uid read it either way?
-#      The mechanism #464 proposes.
+#      The mechanism proposed instead.
 #
 # And a fourth, because a uid does not close it: is a world-writable directory
 # really on PATH, where a fake `gh` would be found before the real one.
@@ -136,8 +136,8 @@ pkill -f /tmp/holder.py 2>/dev/null || true
 say "reading the result"
 cat <<'NOTE'
 after_exec_dumpable=0  -> the flag survives execve. Every server atoma spawns is
-                          already non-dumpable, and #374's environ premise does
-                          not hold. #464 becomes a PATH fix plus a uid.
+                          already non-dumpable, and the environ premise does
+                          not hold, so the fix is a PATH change plus a uid.
 after_exec_dumpable=1  -> it does not survive. The servers holding credentials
                           are readable by a same-uid process, and a different uid
                           is what closes it.

@@ -4,8 +4,8 @@
  * uses?
  *
  * `atoma-check` is scan-secrets → typecheck → synth → test, and **not one of those
- * starts a tool server as a process.** #506 records four defects of one shape in a
- * single day, all green in CI, all found only after deploying: the worst was #496,
+ * starts a tool server as a process.** Four defects of one shape landed in a
+ * single day, all green in CI, all found only after deploying: the worst was a path
  * where moving the machinery out of the work tree put `node_modules` out of reach
  * of the module-resolution walk and the search server could not start at all.
  * Atoma treats a server that will not initialise as fatal, so one unresolvable
@@ -26,7 +26,7 @@
  *
  * ## The layout is the point
  *
- * Running the servers from the work tree would prove nothing about #496: that
+ * Running the servers from the work tree would prove nothing about that path defect:
  * defect is entirely about WHERE the files are. So this reproduces the two facts
  * the runner's install step establishes --
  *
@@ -36,15 +36,15 @@
  *
  * -- and `assertLayoutStillMatches` fails if `atoma-runner.wac.ts` stops saying
  * either. A probe that quietly tested a layout the runner no longer uses would be
- * worse than no probe, which is #506's own argument against fake servers.
+ * worse than no probe, which is the argument against fake servers.
  *
  * ## What it does not catch
  *
- * #499: the reranker's cache turning read-only. The load is deliberately started in
- * the background and not awaited (#488), so a run initialises fine and the failure
+ * the reranker's cache turning read-only. The load is deliberately started in
+ * the background and not awaited, so a run initialises fine and the failure
  * is 60 seconds away. Any warning a server does manage to emit in that window is
  * printed here, but nothing waits for one. That case is now covered at run time
- * instead -- atoma v0.1.18 hands the warning to the agent (atoma#13, #514).
+ * instead -- atoma v0.1.18 hands the warning to the agent.
  *
  * Not part of the deliverable -- this repository's own CI, like probe-dumpable.sh.
  */
@@ -158,7 +158,7 @@ async function probe(): Promise<number> {
 
   const bunPackages = packages.bun ?? [];
   if (bunPackages.length > 0) {
-    // Beside the machinery, which is the whole of #496: resolution walks up from
+    // Beside the machinery, which is the whole of that defect: resolution walks up from
     // the importing file, so from `${RUNNER_TEMP}/atoma-machinery/...` it reaches
     // `${RUNNER_TEMP}` and stops. Not the work tree, ever.
     const manifest = Bun.file(`${RUNNER_TEMP}/package.json`);
@@ -247,7 +247,7 @@ async function probe(): Promise<number> {
   }
 
   // Reported, not required: a server may say something at startup, and with
-  // atoma#13 the line is classified rather than only logged. #499's reranker
+  // Atoma classifies the line rather than only logging it. A failing reranker
   // failure is 60 seconds away from here, so its absence proves nothing.
   say("5. anything a server said about itself on the way up");
   const log = `${stdout}\n${stderr}`;

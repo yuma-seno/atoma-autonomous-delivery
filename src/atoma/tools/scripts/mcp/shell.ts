@@ -42,8 +42,8 @@ function log(message: string): void {
  * from a server that does not name one. The literal-value pass below therefore
  * finds nothing to remove, and only the shape patterns do any work.
  *
- * A third reason used to be here — "since #374 this process runs in a container
- * that cannot see the servers which DO hold them" — and #464 removed the
+ * A third reason used to be here — "this process runs in a container
+ * that cannot see the servers which DO hold them" — and the confinement rework removed the
  * container. What stands in its place protects the OTHER servers rather than this
  * one: they make themselves unreadable. It is not a reason this list is empty, so
  * it does not belong in this comment.

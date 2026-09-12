@@ -11,7 +11,7 @@ describe("agent prompt contracts", () => {
   });
 
   /**
-   * The outcome that did not exist, and the run that measured its absence (#544).
+   * The outcome that did not exist, and the run that measured its absence.
    *
    * The engineer's `Outcome` table was five rows, all of them "implement and open a
    * pull request" or "refuse". Asked for an inventory, it spent 200 iterations and
@@ -94,12 +94,12 @@ describe("agent prompt contracts", () => {
   });
 
   /**
-   * The sentence #514 turns on, in both places an agent reads it.
+   * The sentence this turns on, in both places an agent reads it.
    *
-   * A tool server can now say it answered worse than it should have (atoma#13), and
+   * A tool server can now say it answered worse than it should have, and
    * the same warning produces two very different runs depending on what the agent
    * concludes: "my query was poor" ends in trying again differently, and "the
-   * reranker is not running" ends in an issue. The second was the truth in #499 and
+   * reranker is not running" ends in an issue. The second was the truth when it happened and
    * the first is what an agent asked whether something went badly reaches for, because
    * its own conduct is what it has been told to examine.
    *
@@ -139,7 +139,7 @@ describe("agent prompt contracts", () => {
    * `domain/workspace.ts` holds it, the runner mounts it there, the prompt template
    * tells the agent about it, and `shell_execute`'s description repeats it. Both of
    * the last two, because a tool's own description was measured to carry more weight
-   * than the same words in the system prompt (#325) -- and this sentence has to hold
+   * than the same words in the system prompt -- and this sentence has to hold
    * at the moment the agent is deciding where to put a file, which is when it is
    * reading the tool.
    *

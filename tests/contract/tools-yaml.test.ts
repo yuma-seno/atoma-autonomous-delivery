@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
  * production.
  *
  * The `shell` entry is what made this worth writing. Its `args` was a
- * twenty-line flow sequence for a container invocation, hand-written; #464 reduced
+ * twenty-line flow sequence for a container invocation, hand-written; the rework reduced
  * it to a plain `bun run`, and the test that pinned the container is now the test
  * that keeps one from coming back.
  */
@@ -81,7 +81,7 @@ describe("tools.yaml is valid YAML with the shape atoma expects", () => {
     /**
      * The shell server is started plainly, and that is now the property to defend.
      *
-     * It ran in a rootless podman container until #464: twenty-five lines of argv,
+     * It ran in a rootless podman container once: twenty-five lines of argv,
      * an overlay of $HOME, a generated /etc/passwd and subordinate id ranges. The
      * container bought secrecy by giving the shell a different filesystem from
      * every other tool, and a write to $HOME there succeeded and then was not

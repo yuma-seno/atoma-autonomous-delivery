@@ -50,7 +50,7 @@ describe("what upstream no longer ships", () => {
   });
 
   /**
-   * The case this exists for. #486 deleted two workflows because work should start
+   * The case this exists for. Two workflows were deleted because work should start
    * only when somebody asks; `unzip -o` leaves both in place, and an adopter who
    * upgrades keeps the triggers and the behaviour that was removed.
    */

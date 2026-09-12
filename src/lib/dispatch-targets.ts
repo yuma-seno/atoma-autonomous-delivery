@@ -52,7 +52,7 @@ function log(message: string): void {
  * HUMAN's pull request, because GitHub starts no workflow run for an event its own
  * token caused, so an agent's pull request reached its reviewer through THIS call
  * while a person's reached it through the trigger. Two halves of one behaviour,
- * each looking like the whole. Removing the trigger (#486) would silently have
+ * each looking like the whole. Removing the trigger would silently have
  * moved every adopter who renamed their reviewer onto the literal fallback.
  *
  * An empty name means nothing is dispatched after CI, which the validate workflow

@@ -2,10 +2,10 @@
  * server-reports.test.ts — the servers this repository ships report over the
  * protocol, and their log lines do not pretend to.
  *
- * atoma has two channels for a server's trouble (atoma#13). `notifications/message`
+ * atoma has two channels for a server's trouble. `notifications/message`
  * carries a level the server chose; a spawned server's stderr is the fallback, and
  * severity there is read out of the words — `warn`, `warning`, `error`, `fatal`,
- * `panic`. That guess fails in both directions, and #519 is about not relying on it
+ * `panic`. That guess fails in both directions, and this is about not relying on it
  * for the servers we own.
  *
  * Which leaves one thing a test can hold: **a log line in a shipped server must not
@@ -93,7 +93,7 @@ describe("what a shipped tool server says about itself", () => {
       [
         "src/atoma/tools/scripts/mcp/search.ts",
         [
-          // #499 itself, and the line that says the answer is worse.
+          // The failure itself, and the line that says the answer is worse.
           "could not preload the reranker",
           "first-stage ordered, not reranked",
         ],

@@ -36,7 +36,7 @@
 # server only the credentials that server's own `tools.yaml` entry declares.
 #
 # A PAT is acceptable here and not inside Atoma because the thing holding it is a
-# person pressing a button, not a model. #353's line -- a pull request may not
+# person pressing a button, not a model. The rule -- a pull request may not
 # decide its own execution environment -- is not crossed, because nothing an agent
 # produces reaches this token.
 #

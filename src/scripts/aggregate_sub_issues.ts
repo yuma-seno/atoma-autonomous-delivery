@@ -38,8 +38,8 @@ export const ref = defineScript<AggregateSubIssuesArgs>(import.meta.url);
  * for a query of `5`. `PARENT_TAG.read` is the predicate, because it is anchored
  * on the tag's real wire format. The previous version filtered with jq
  * `contains("atoma:parent=<n>")`, an unanchored substring test, so aggregating
- * parent #5 collected every sub-issue of #50 through #59 and fed their results
- * into #5's orchestrator session.
+ * a parent collected every sub-issue of a numeric range and fed their results
+ * into the parent's orchestrator session.
  *
  * `--limit` is explicit because `gh issue list` defaults to 30 and truncates
  * silently, which for a plan with more sub-tasks than that would look like

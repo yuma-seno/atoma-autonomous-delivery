@@ -168,7 +168,7 @@ function loadIndex(): IssueIndex {
       // Not a report: it rebuilds, the answer is correct, and it does not repeat.
       // The word WARN is gone from the text because atoma's fallback channel reads
       // severity out of the words -- leaving it would put this in front of an agent
-      // as a problem, which is the false positive #519 exists to remove.
+      // as a problem, which is the false positive this exists to remove.
       log("the stored index was not valid JSON; rebuilding it");
     }
   }
@@ -335,7 +335,7 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
     // The first stage alone still put the answer in the top twenty every time;
     // it just orders them less well. Better a rougher answer than none.
     // The answer is worse than it should be and looks exactly like a good one,
-    // which is the whole of #499. Nothing else says so.
+    // which is the whole of it. Nothing else says so.
     report(
       "warning",
       `reranking failed (${(error as Error).message}); these results are first-stage ordered, not reranked`,
@@ -463,7 +463,7 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
   } catch (error) {
     // The first stage alone put the answer in the top twenty 93.3% of the time; it
     // just orders them less well. A rougher answer beats none -- and saying so
-    // matters, because a worse answer looks exactly like a good one (#519).
+    // matters, because a worse answer looks exactly like a good one.
     report(
       "warning",
       `reranking failed (${(error as Error).message}); these code results are first-stage ordered, not reranked`,
@@ -516,7 +516,7 @@ async function main(): Promise<void> {
   // The rejection handler is what keeps a promise nobody has awaited yet from
   // becoming an unhandled rejection, which is fatal.
   void loadReranker().catch((error) => {
-    // The earliest moment #499 could have been noticed. Not yet a worse answer --
+    // The earliest moment this could have been noticed. Not yet a worse answer --
     // the first search retries -- but if that fails too it is, and this is the line
     // that names the cause.
     report(

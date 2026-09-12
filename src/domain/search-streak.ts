@@ -10,7 +10,7 @@
  *   session               longest run   searches   opens   prompt tokens
  *   issue-492/engineer            85         188      26           9.6M
  *   issue-200/engineer            44         124      37          13.0M
- *   issue-399 (#544)              30         173      62          19.7M
+ *   issue-399              30         173      62          19.7M
  * ```
  *
  * `issue-492` in full, `S` a search and `r` an open:

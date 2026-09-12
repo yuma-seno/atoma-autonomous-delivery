@@ -352,7 +352,7 @@ function main(): void {
         // written by an earlier run or is the GitHub context put in front of this one,
         // and `post_result_comment.ts` needs the boundary: without it, a run that
         // stopped before writing anything salvages the LAST run's conclusion and
-        // presents it as a fragment of this one. Measured on #568.
+        // presents it as a fragment of this one. Measured in production.
         `messages_before=${mergedSession.messages?.length ?? 0}\n`,
     );
   }

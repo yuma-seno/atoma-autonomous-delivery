@@ -4,7 +4,7 @@
  *
  * ## Why a tool server narrows its own PATH
  *
- * Every tool server runs as one dedicated OS user with no sudo (#464). That user
+ * Every tool server runs as one dedicated OS user with no sudo. That user
  * cannot read another server's environment block, because the servers holding a
  * credential make themselves non-dumpable — but it CAN write a world-writable
  * directory, and three of them are on the runner's PATH. Measured on

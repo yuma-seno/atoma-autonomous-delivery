@@ -632,7 +632,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
   // Opening a pull request used to start one through `pull_request.opened`, which
   // fired only for a HUMAN's pull request -- GitHub starts no workflow for an
   // event its own token caused -- so the trigger and this call were two halves of
-  // one behaviour that looked like one half each. #486 removed the trigger and
+  // one behaviour that looked like one half each. The trigger was removed and
   // asking became explicit.
   //
   // An empty name is a legitimate answer, and `atoma-validate-pr` already handles
@@ -662,7 +662,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
 
   // Nobody coming, said out loud on the pull request itself.
   //
-  // #486 made asking explicit -- an agent names the reviewer, or a person types
+  // Asking is explicit now -- an agent names the reviewer, or a person types
   // `/reviewer` -- which removed a class of unwanted runs and created one silent
   // failure: a pull request opened with no reviewer and nobody mentioned just sits.
   // CI passes, the check goes green, and the work waits for someone who was never
@@ -760,9 +760,9 @@ function commitAndPush(a: z.infer<typeof COMMIT_AND_PUSH_SCHEMA>): string {
       // different question from whether anyone should look at it.
       //
       // `pull_request.synchronize` used to start a reviewer here, and only for a
-      // person's push. #486 removed it: nothing starts unless someone asks. An
+      // person's push. It was removed: nothing starts unless someone asks. An
       // agent that pushed a fix and wants it reviewed hands off by naming the
-      // reviewer as its directive, which is the path #480 put a limit on.
+      // reviewer as its directive, which is the path the handoff limit covers.
       if (pr) dispatchPrValidation(REPO, pr.number, branch, "");
     } catch {
       // This call's result is `{ok: true}` and validation was not started. An

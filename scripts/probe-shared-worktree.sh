@@ -2,7 +2,7 @@
 #
 # probe-shared-worktree.sh — can two OS users share the work tree?
 #
-# #464 proposes running the shell tool server under a different uid, which the
+# The confinement design runs the shell tool server under a different uid, which the
 # dumpable probe showed closes the environ hole outright. This asks the question
 # that decides whether that is implementable at all: **the agent edits files**, so
 # the shell user has to write the checkout `runner` owns, and `runner`'s git has to
@@ -16,7 +16,7 @@
 # is `rw-r--r--` owned by its creator, so the other user can delete and replace it
 # but cannot edit it in place -- and `filesystem__edit_file` edits in place. Two
 # tools would see one file and only one could write it, which is worse than the
-# split #464 exists to remove.
+# split this exists to remove.
 #
 # Three mechanisms, weakest first, each on a FRESH tree so the previous round's
 # arrangement cannot carry it:
@@ -154,7 +154,7 @@ fi
 # **The group would have opened the hole this is closing.** The runner's HOME is
 # 750 with group `runner`, so a shell user in that group can read everything
 # group-readable inside it -- including `~/.bun/bin`, which is on the
-# credential-holding servers' PATH and is where #374 measured a fake `gh` being
+# credential-holding servers' PATH and is where a fake `gh` was measured being
 # planted. Section 5's `shell_user_runs_bun_from_home=yes` came from the group,
 # not from anything safe.
 #
@@ -240,9 +240,9 @@ shell_user_runs_bun_from_home  -> whether the design may depend on $HOME's mode.
 isolated_reaches_tree_after=yes and
 isolated_lists_home=no         -> the deployment works: reach the workspace without
                                   being able to see the home directory it is under.
-group_user_plants_fake_gh      -> whether the group would have opened the hole #464
+group_user_plants_fake_gh      -> whether the group would have opened the hole this
                                   is closing. `no` means ~/.bun/bin is not
-                                  group-writable on this image, and the threat #374
+                                  group-writable on this image, and the threat the
                                   recorded was the shell running AS runner.
 home_file_*=readable_by_isolated=yes for anything holding a credential
                                -> traversal on HOME is too wide and has to be

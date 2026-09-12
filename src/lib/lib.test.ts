@@ -400,7 +400,7 @@ describe("issue-images.ts sniffMimeType", () => {
  * A failure from the far end is not an answer, and the difference decides whether a
  * run dies.
  *
- * One `HTTP 504` on a pull request lookup ended a run on #427 -- the reviewer never
+ * One `HTTP 504` on a pull request lookup ended a run -- the reviewer never
  * started, and a red check appeared for a defect in neither the code nor the
  * machinery. What must NOT be retried matters just as much: a 404 is an answer, and
  * retrying it would turn a clear failure into three of them.
@@ -431,7 +431,7 @@ describe("gh.ts looksTransient", () => {
 });
 
 /**
- * The measured failure this fixes (#544): an agent called `shell__execute`, was told
+ * The measured failure this fixes: an agent called `shell__execute`, was told
  * only `Unknown: execute`, and made the same mistake three times. The one place that
  * knew the right name was the dispatch map, and nothing asked it.
  */

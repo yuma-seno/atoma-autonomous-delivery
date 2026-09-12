@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# probe-tool-user.sh — the arrangement #464 lands on, run end to end before it is
+# probe-tool-user.sh — the arrangement the confinement design lands on, run end to end before it is
 # written into the runner.
 #
 # The decision: every tool server runs as one dedicated OS user that is not in
@@ -12,7 +12,7 @@
 # What is protected, and what is not, is a decision rather than a mechanism: the
 # three properties "one environment", "secrets hidden from the shell" and
 # "arbitrary third-party servers" cannot hold together, and the guarantee for the
-# third is what was given up. See #464.
+# third is what was given up.
 #
 # Everything here is a mechanic the runner will depend on. Each one has cost a
 # round trip before, in this repository's history, so each is asked directly:

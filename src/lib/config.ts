@@ -162,7 +162,7 @@ export function getMergeGates(): MergeGatesResolution {
 // entry routed an event to, and had exactly one caller -- `dispatchPrValidation`,
 // asking who reviews a pull request.
 //
-// That was the coupling #486 removed. Which agent reviews is now a parameter the
+// That coupling was removed. Which agent reviews is now a parameter the
 // caller passes, because opening a pull request no longer starts anyone by itself.
 // Nothing else ever asked this question, so the function went with the trigger.
 

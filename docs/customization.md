@@ -446,7 +446,7 @@ question, or investigated and reported. `0` means the default.
 Nothing starts from a GitHub event on its own. Opening a pull request starts nobody;
 pushing to one starts nobody; leaving a review starts nobody.
 
-**This changed.** Until #486 there were four `auto_triggers` entries that started a
+**This changed.** There were once four `auto_triggers` entries that started a
 reviewer on `pull_request.opened`, `synchronize` and `ready_for_review`, and an
 engineer on a `changes_requested` review. Two rules to learn instead of one — and
 the event-driven half was invisible in a way that mattered: GitHub raises no

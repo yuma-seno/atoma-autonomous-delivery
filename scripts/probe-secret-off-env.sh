@@ -3,7 +3,7 @@
 # probe-secret-off-env.sh — can a credential be held where a same-user process
 # cannot reach it?
 #
-# #464 started as "isolate the shell with a uid". That closes the hole but leaves
+# This started as "isolate the shell with a uid". That closes the hole but leaves
 # `$HOME` meaning two things, which is the confusion it was meant to remove. The
 # alternative is to stop protecting the process and protect the VALUE: if the
 # credential is not in an environment block and the holder's memory is unreadable,

@@ -47,7 +47,7 @@ export interface PostResultCommentArgs {
    * The agent's stdout, and the log it wrote alongside.
    *
    * Arguments rather than the bare names this used to open. Those were relative
-   * paths, correct only while the run's files sat in the repository root -- #487
+   * paths, correct only while the run's files sat in the repository root -- they
    * moved them to `$RUNNER_TEMP/atoma-run` and every result comment since was
    * silently dropped, because `existsSync("atoma_output.txt")` was false and the
    * skip branch reads exactly like a session that ended via a tool call.
@@ -145,7 +145,7 @@ function subIssueState(number: string, type?: string): { isSubIssue: boolean; is
  * in their final turn (450 assistant turns, 1 with text; 204 turns, 1; 200 turns, 0).
  * When the loop ends the turn before that, there is nothing earlier to recover. The
  * only place that can produce the report is the inference loop itself, which is
- * atoma#15.
+ * the run's own files.
  *
  * Kept rather than removed: it costs nothing when there is nothing, and it works for
  * a model that narrates as it goes. But it is not the fix, and reading it as one
@@ -165,7 +165,7 @@ function subIssueState(number: string, type?: string): { isSubIssue: boolean; is
  * it wrote a report, below is the last thing it said, from the middle of the work".
  * Every clause of that is false about the text it shows.
  *
- * Measured on #568: a run stopped after 19 iterations republished the previous run's
+ * Measured: a run stopped after 19 iterations republished the previous run's
  * complete conclusion. It is easy to reach because these models write prose exactly
  * once, in their final turn -- so a run that is stopped has no assistant text of its
  * own at all, and the newest one in the session always belongs to somebody else.
@@ -340,7 +340,7 @@ function main(): void {
   // skip below, and it is right.
   //
   // Reaching a limit leaves it empty too, and there nothing else speaks.
-  // Measured (#544): a run spent 17 minutes and 154k tokens, and the thread received
+  // Measured: a run spent 17 minutes and 154k tokens, and the thread received
   // one notice saying the limit was reached. What it had worked out was in the
   // session and nowhere a person would look.
   let output = redacted;

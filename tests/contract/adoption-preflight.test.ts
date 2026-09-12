@@ -19,7 +19,7 @@
  *
  * The core is authoritative above all of this: the table itself mirrors
  * `PROVIDERS` in atoma's `infra/llm/mod.rs`, and a provider name that atoma does
- * not know is what `atoma validate` should reject (yuma-seno/atoma#9). This test
+ * not know is what `atoma validate` should reject. This test
  * covers the half that lives here.
  */
 import { describe, expect, test } from "bun:test";
