@@ -113,7 +113,7 @@ function getLabel(key) {
 }
 
 // src/domain/atoma-data-pruning.ts
-var OWNED_TREES = ["sessions/", "workspace/"];
+var OWNED_TREES = ["workspace/"];
 function issueNumberOf(path) {
   const tree = OWNED_TREES.find((prefix) => path.startsWith(prefix));
   if (tree === undefined)
