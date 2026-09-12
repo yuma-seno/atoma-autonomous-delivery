@@ -68,7 +68,7 @@ function linkedSubIssues(repo: string, parent: number): number[] {
  * expected when sibling agents finish together, and does all of it in a
  * throwaway worktree so the job's own checkout is untouched. This function used
  * to reimplement that with `git checkout -B atoma-data` in the main checkout
- * (and `git rm -rf.` on the branch-missing path), which worked only because
+ * (and `git rm -rf .` on the branch-missing path), which worked only because
  * nothing in this job reads a file afterwards.
  */
 function injectResultsIntoOrchestratorSession(repo: string, parent: number): void {

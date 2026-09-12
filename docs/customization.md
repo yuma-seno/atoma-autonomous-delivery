@@ -60,13 +60,13 @@ In this repository:
 
 In your adopted repository:
 
-- ` .github/` is the runtime copy that workflows execute.
+- `.github/` is the runtime copy that workflows execute.
 
-If you only customize your own repository, edit your copied ` .github/atoma/*` files directly.
+If you only customize your own repository, edit your copied `.github/atoma/*` files directly.
 
 ## `config.json` contract
 
-Primary file: ` .github/atoma/config.json`
+Primary file: `.github/atoma/config.json`
 
 Every setting Atoma reads, one per line. A key that is not on this list is not
 read by anything — so a typo silently does nothing, which is why the pull request
@@ -118,7 +118,7 @@ authorising a credential does not deliver it. `checks` and `deploy` need no
 routing step, because their commands run in a workflow of their own rather than
 beside an agent. See [Give a tool a credential](#give-a-tool-a-credential).
 
-`config.json` is **yours**. Everything else under ` .github/atoma/` is generated and
+`config.json` is **yours**. Everything else under `.github/atoma/` is generated and
 is replaced when you upgrade the template; this file is not, so edits to it
 survive. Keep project-specific settings here rather than in repository variables,
 where they are neither versioned nor reviewable.
@@ -170,10 +170,10 @@ kinds of file, and only you can say which of your edits are deliberate:
 
 | Path | Yours to edit? |
 | --- | --- |
-| ` .github/scripts/**`, ` .github/workflows/**`, ` .github/atoma/tools/scripts/**` | No — generated code, replace wholesale |
-| ` .github/atoma/config.json` | Yes — most settings live here on purpose |
-| ` .github/atoma/skills/project/**` | Yes — your own skills, the template ships none |
-| ` .github/atoma/agent-definitions/**`, `skills/**`, `prompt-template.md`, `tools/tools.yaml`, `mcp-packages.json` | Both — the template ships defaults it also expects you to tune |
+| `.github/scripts/**`, `.github/workflows/**`, `.github/atoma/tools/scripts/**` | No — generated code, replace wholesale |
+| `.github/atoma/config.json` | Yes — most settings live here on purpose |
+| `.github/atoma/skills/project/**` | Yes — your own skills, the template ships none |
+| `.github/atoma/agent-definitions/**`, `skills/**`, `prompt-template.md`, `tools/tools.yaml`, `mcp-packages.json` | Both — the template ships defaults it also expects you to tune |
 
 That last row is the awkward one, and no script can resolve it: a difference there
 is either an improvement you have not taken yet or a change you made on purpose,
@@ -186,18 +186,18 @@ gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-deliv
 unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root
 rm atoma-delivery.zip
 git diff .github/            # every difference is now a decision
-git checkout --.github/atoma/config.json    # for anything you meant to keep
+git checkout -- .github/atoma/config.json    # for anything you meant to keep
 ```
 
 Name the version rather than taking `latest`, and read the upstream changes between
 yours and the next one (`gh release view`, or compare the two tags) rather than
 rediscovering them in a diff.
 
-**Which release do I have?** ` .github/atoma-release.json` says. It ships with the
+**Which release do I have?** `.github/atoma-release.json` says. It ships with the
 release and records the version and every path the release contains:
 
 ```bash
-jq -r.version .github/atoma-release.json
+jq -r .version .github/atoma-release.json
 ```
 
 **What did upstream delete?** Extracting never deletes, so a file the template
@@ -210,7 +210,7 @@ the triggers. The manifest is what makes them findable:
 # Your own files appear here too, which is why it is a list to read, not to pipe
 # into rm.
 comm -23 \
-  <(git ls-files ' .github/*' | sort) \
+  <(git ls-files '.github/*' | sort) \
   <(jq -r '.files[]' .github/atoma-release.json | sort)
 ```
 
@@ -226,7 +226,7 @@ workflow names, and `skills/project/` is yours outright.
 
 ### Change model per agent
 
-Edit ` .github/atoma/agent-definitions/<agent>.md` and update the frontmatter `model` field.
+Edit `.github/atoma/agent-definitions/<agent>.md` and update the frontmatter `model` field.
 
 ### Let an agent read images
 
@@ -643,7 +643,7 @@ workflow at all and describe the pipeline as commands:
 Two shipped workflows run these — `atoma-check.yml` and `atoma-deploy.yml`.
 Neither changes per project, which is the whole point: **an agent can write
 configuration and cannot write a workflow.** GitHub refuses `GITHUB_TOKEN` on
-` .github/workflows/**` by identity, on every path and every branch, and no
+`.github/workflows/**` by identity, on every path and every branch, and no
 permission grants it. So a repository whose pipeline lives in `config.json` is
 one an agent can set up, extend and repair; one whose pipeline lives in workflow
 YAML always needs a person.
@@ -697,7 +697,7 @@ Most of the limits people expect are not real. Service containers work through
 `docker run`, and a matrix works as a loop, losing only parallelism. Both are
 commands.
 
-**The required check is a matched pair.** ` .github/atoma/rulesets/main.json`
+**The required check is a matched pair.** `.github/atoma/rulesets/main.json`
 ships requiring the context `atoma-check`, which is the job name in
 `atoma-check.yml`. Apply it with:
 
@@ -712,7 +712,7 @@ that will never report, and re-running nothing fixes it.
 ### What a pull request is checked against
 
 Every pull request an agent opens is checked for one thing before your CI is asked
-to run at all: whether the ` .github/atoma/` it would merge can still start a run.
+to run at all: whether the `.github/atoma/` it would merge can still start a run.
 
 This is not your pipeline and it is not configurable. It runs whether or not
 `checks.commands` is set, and it reads nothing from `checks` or `deploy` to decide
@@ -753,7 +753,7 @@ default branch rather than from the pull request.
 You can run the same check yourself, against a checkout or a worktree:
 
 ```bash
-bun run .github/scripts/validate_deliverable.ts --root.
+bun run .github/scripts/validate_deliverable.ts --root .
 ```
 
 ### Requiring a check that agents can satisfy
@@ -831,7 +831,7 @@ body reaches exactly as far, and so does an ordinary mistake. Both stop at a
 person reading the diff.
 
 The whole directory rather than the parts of it that obviously matter. An earlier
-default named four subdirectories and left out ` .github/scripts/**`, which is
+default named four subdirectories and left out `.github/scripts/**`, which is
 where the runner's own control logic lives — nothing decided that, the list was
 simply written before the directory existed. A list of the paths that count has
 to be revisited every time the tree grows, and gives no sign when it has not been.
@@ -841,7 +841,7 @@ Narrow it, or extend it, with `governed_paths`, which replaces the default:
 ```json
 {
   "governed_paths": [
-    " .github/**",
+    ".github/**",
     "infra/**"
   ]
 }
@@ -849,7 +849,7 @@ Narrow it, or extend it, with `governed_paths`, which replaces the default:
 
 Set it to `[]` to turn the gate off.
 
-If you deliberately want a corner of ` .github/` back — issue templates, say —
+If you deliberately want a corner of `.github/` back — issue templates, say —
 name the parts you do want governed instead. Prefer that to a narrower default:
 being explicit about the exception leaves a record of the decision.
 
@@ -1073,7 +1073,7 @@ the tool's own description.
 prose rather than markup; `raw: true` returns the markup, and a URL that
 resolves to an image comes back as an image for agents with `vision: true`.
 
-Searching is a skill rather than a tool. ` .github/atoma/skills/research/web-search.md`
+Searching is a skill rather than a tool. `.github/atoma/skills/research/web-search.md`
 tells agents to fetch a search engine's results page and read the links out of
 it. The endpoint lives in that file on purpose:
 
@@ -1129,15 +1129,15 @@ Current code path reads this value for merge decisions in GitHub MCP tooling.
 
 ### Customize prompt template
 
-Edit ` .github/atoma/prompt-template.md`.
+Edit `.github/atoma/prompt-template.md`.
 
 This file is passed to Atoma with `--template` on every runner invocation.
 
 ### Customize skills and tools
 
-- Skills live under ` .github/atoma/skills/**/*.md`.
-- Tool server config lives in ` .github/atoma/tools/tools.yaml`.
-- Tool scripts and MCP servers live under ` .github/atoma/tools/scripts/`.
+- Skills live under `.github/atoma/skills/**/*.md`.
+- Tool server config lives in `.github/atoma/tools/tools.yaml`.
+- Tool scripts and MCP servers live under `.github/atoma/tools/scripts/`.
 
 Dynamic skill behavior:
 
@@ -1452,7 +1452,7 @@ and to the other agents working on the same issue. Sub-issues and the pull reque
 share the root issue's workspace, because that is one piece of work even though it
 is several GitHub objects.
 
-**Nothing to configure and nothing to add to ` .gitignore`.** It is outside the
+**Nothing to configure and nothing to add to `.gitignore`.** It is outside the
 repository, so `git add -A` never sees it.
 
 The rule an agent is given is one sentence, and it is the reason this is a
@@ -1477,7 +1477,7 @@ You want a check run every week. Atoma has no schedule setting, and will not
 grow one — but the thing you want is two steps away, and both are ordinary.
 
 Copy [`examples/workflows/scheduled-issue.yml`](../examples/workflows/scheduled-issue.yml)
-into your own ` .github/workflows/`, edit the cron, the title, the body and the
+into your own `.github/workflows/`, edit the cron, the title, the body and the
 agent, and you are done.
 
 **Why it is not a setting.** `on:` accepts no expression, so a cron string cannot
@@ -1509,8 +1509,8 @@ pull requests use `pull_request_target`, and agent merges are followed by an
 explicit dispatch from `dispatchCi` / `dispatchCd`.
 
 **You have to copy it yourself.** GitHub refuses `GITHUB_TOKEN` writes to
-` .github/workflows/**` by identity, on every path and branch, so no agent can add
-this for you — and ` .github/**` is a governed path, so a person merges the pull
+`.github/workflows/**` by identity, on every path and branch, so no agent can add
+this for you — and `.github/**` is a governed path, so a person merges the pull
 request that adds it. Both of those are the system working, not obstacles to
 route around.
 
@@ -1533,5 +1533,5 @@ If you are modifying this template repository:
 
 If you are only adopting in your own repository:
 
-1. Edit your copied ` .github/` runtime files.
+1. Edit your copied `.github/` runtime files.
 2. Commit and run workflows in that repository.

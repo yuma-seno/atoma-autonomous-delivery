@@ -72,7 +72,7 @@ export interface RunnerDispatch {
  */
 export function dispatchRunner(d: RunnerDispatch): boolean {
   const args = [
-...(d.repo ? ["--repo", d.repo] : []),
+    ...(d.repo ? ["--repo", d.repo] : []),
     "--field", `agent=${d.agent}`,
     "--field", `number=${d.number}`,
     "--field", `type=${d.type}`,

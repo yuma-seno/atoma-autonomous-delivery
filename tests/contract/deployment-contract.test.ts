@@ -1,19 +1,19 @@
 /**
  * deployment-contract.test.ts — every static Atoma file reaches the deployed
- * ` .github/`.
+ * `.github/`.
  *
- * A repository adopts the deliverable by copying it over its own ` .github/`:
+ * A repository adopts the deliverable by copying it over its own `.github/`:
  *
- *     cp -r dist/.github/..github/
+ *     cp -r dist/.github/. .github/
  *
- * So a file that exists only under ` .github/` is not part of the deliverable at
+ * So a file that exists only under `.github/` is not part of the deliverable at
  * all. It keeps working wherever it already sits and is simply missing
  * everywhere else, which leaves no diff and so cannot be caught in review. That
  * is the failure this file exists to make loud, and it is why the check is
  * against `src/atoma/` and `build-dist.ts` rather than against any deployed
  * tree.
  *
- * This already happened: a PR added ` .github/atoma/mcp-packages.json` by hand
+ * This already happened: a PR added `.github/atoma/mcp-packages.json` by hand
  * without adding it to `src/atoma/` or to build-dist.ts's copy list, while
  * switching tools.yaml to a binary that only that file installs.
  */
@@ -40,8 +40,8 @@ function copiedFiles(): string[] {
  */
 function staticFiles(): string[] {
   return readdirSync(ATOMA_SRC, { withFileTypes: true })
-.filter((e) => e.isFile() && /\.(json|md|ya?ml)$/.test(e.name))
-.map((e) => e.name);
+    .filter((e) => e.isFile() && /\.(json|md|ya?ml)$/.test(e.name))
+    .map((e) => e.name);
 }
 
 /** Every file under a directory, recursively, repo-relative. */
@@ -57,7 +57,7 @@ function walk(dir: string): string[] {
 
 describe("deployment contract", () => {
   // `src/atoma/` is the deliverable, mirrored 1:1 into `dist/.github/atoma/`
-  // and from there into an adopter's own ` .github/`. Anything that exists to
+  // and from there into an adopter's own `.github/`. Anything that exists to
   // develop THIS repository belongs outside it, which is why these contract
   // tests live under `tests/`.
   //
@@ -71,8 +71,8 @@ describe("deployment contract", () => {
   // shipped an untested MCP server would be handing adopters untested code.
   test("the deliverable's content directories hold no test files", () => {
     const strays = walk(ATOMA_SRC)
-.filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
-.filter((f) => !f.startsWith("src/atoma/tools/scripts/"));
+      .filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
+      .filter((f) => !f.startsWith("src/atoma/tools/scripts/"));
     expect(strays, `move these out of src/atoma/: ${strays.join(", ")}`).toEqual([]);
   });
 
@@ -92,8 +92,8 @@ describe("deployment contract", () => {
 
     // Markdown and YAML are copied verbatim, so every one in src must ship.
     const sourceStatic = walk(ATOMA_SRC)
-.map((f) => f.replace("src/atoma/", ""))
-.filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".json"));
+      .map((f) => f.replace("src/atoma/", ""))
+      .filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".json"));
 
     for (const file of sourceStatic) {
       expect(shipped.includes(file), `src/atoma/${file} never reaches dist/.github/atoma/`).toBe(true);
@@ -146,7 +146,7 @@ describe("deployment contract", () => {
       npm?: string[];
       pip?: string[];
     };
-    const declared = [...(packages.npm ?? []),...(packages.pip ?? [])].join(" ");
+    const declared = [...(packages.npm ?? []), ...(packages.pip ?? [])].join(" ");
 
     for (const command of mustBeInstalled) {
       // The npm package name need not equal the binary name, so require only

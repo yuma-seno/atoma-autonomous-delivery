@@ -32,7 +32,7 @@ import type { AtomaConfig } from "./types.ts";
  */
 function configPath(): string {
   const root = process.env.ATOMA_MACHINERY_ROOT?.trim();
-  return root ? `${root}/.github/atoma/config.json` : " .github/atoma/config.json";
+  return root ? `${root}/.github/atoma/config.json` : ".github/atoma/config.json";
 }
 
 let cached: AtomaConfig | undefined;
@@ -208,7 +208,7 @@ export function getDeployTargets(): DeployTargetsResolution {
  * project configuration: versioned, reviewable in a pull request, and one fewer
  * thing to remember when setting a repository up. That only works because
  * config.json is yours — the documented upgrade deliberately does not overwrite
- * it, unlike everything else under ` .github/atoma/`.
+ * it, unlike everything else under `.github/atoma/`.
  */
 export function getWorkflowName(kind: "ci" | "cd", fallback = ""): string {
   return (loadConfig().workflows?.[kind] ?? "").trim() || fallback;

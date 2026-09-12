@@ -144,7 +144,7 @@ You are a test agent.
         promptFilePath: join(dir, "prompt.txt"),
         outSessionPath: join(dir, "session.json"),
         env: {
-...fakeGh.env,
+          ...fakeGh.env,
           GITHUB_REPOSITORY: "owner/repo",
           ATOMA_OPS_LOG: join(dir, "ops.log"),
           OPENAI_BASE_URL: mock.url,

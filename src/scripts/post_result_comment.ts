@@ -95,8 +95,8 @@ export const ref = defineScript<PostResultCommentArgs>(import.meta.url);
 function tokenUsageLines(logsFile: string): string[] {
   if (!existsSync(logsFile)) return [];
   const usageLine = readFileSync(logsFile, "utf8")
-.split("\n")
-.find((l) => l.includes("ATOMA_TOKEN_USAGE:"));
+    .split("\n")
+    .find((l) => l.includes("ATOMA_TOKEN_USAGE:"));
   if (!usageLine) return [];
 
   const prompt = /prompt=(\d+)/.exec(usageLine)?.[1];
@@ -236,7 +236,7 @@ export function buildCommentBody(args: {
       "",
     );
   }
-  lines.push(args.output, "",...args.usageLines);
+  lines.push(args.output, "", ...args.usageLines);
 
   // Directly under what the agent wrote, because that is what it is about, and
   // above the run footer, which nobody reads for this.
@@ -329,7 +329,7 @@ function main(): void {
   // atoma's own inference loop stops immediately in that case, before the
   // model ever gets a further turn to produce text. Each of those tools
   // already posts its OWN dedicated, meaningful comment (e.g. "Launched
-  // sub-agent(s):...", "PR #N created..."), so posting a second, essentially
+  // sub-agent(s): ...", "PR #N created..."), so posting a second, essentially
   // content-free "run by [agent](url)" comment here on top of that would
   // just be noise -- skip entirely rather than post an empty wrapper.
   // Empty output has two meanings, and they need opposite treatment.
@@ -388,7 +388,7 @@ function main(): void {
     escapedMentions: checked.escaped,
     changed: values.changed === "true",
     usageLines: tokenUsageLines(values["logs-file"] ?? ""),
-...subIssueState(values.number, values.type),
+    ...subIssueState(values.number, values.type),
   });
 
   const { code, stdout, stderr } = gh(

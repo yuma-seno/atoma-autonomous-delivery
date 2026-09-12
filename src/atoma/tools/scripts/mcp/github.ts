@@ -203,9 +203,9 @@ const CREATE_ISSUE_SCHEMA = z.object({
   body: z.string().optional().describe("Issue body in GitHub-flavored Markdown. Defaults to an empty body."),
   labels: stringArray("Existing repository label names to apply. Defaults to no extra labels.").optional(),
   sub_issue: z
-.boolean()
-.optional()
-.describe("Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true."),
+    .boolean()
+    .optional()
+    .describe("Set sub_issue=true to automatically link it to the current issue as a child task. Defaults to true."),
 });
 
 const LIST_ISSUES_SCHEMA = z.object({
@@ -219,9 +219,9 @@ const CREATE_PR_SCHEMA = z.object({
   body: z.string().optional().describe("Pull request body in GitHub-flavored Markdown. Atoma adds issue traceability metadata automatically."),
   base: z.string().optional().describe("Target branch name. Omit and this is resolved in three steps: the parent's branch when this run is a sub-issue whose parent branch exists, so sibling work stacks and integrates once; otherwise the repository's configured base branch; otherwise its default branch. The resolved value is returned as `base`, and it decides whether merging this deploys."),
   reviewer: z
-.string()
-.optional()
-.describe(
+    .string()
+    .optional()
+    .describe(
       "Which agent should review this once CI passes, for example 'reviewer'. Nothing reviews a pull request " +
         "unless you ask: opening one no longer starts anyone by itself. Omit it only when a review is genuinely " +
         "not wanted -- a person is then told the pull request is waiting, by name, so it does not sit unnoticed.",
@@ -267,8 +267,8 @@ const SUBMIT_PR_REVIEW_SCHEMA = z.object({
   // valid values, which costs an iteration and teaches the right answer. The
   // silent rewrite cost nothing and taught the wrong one.
   event: z
-.enum(["COMMENT", "REQUEST_CHANGES"])
-.describe(
+    .enum(["COMMENT", "REQUEST_CHANGES"])
+    .describe(
       "Review outcome. COMMENT for approval-like feedback: every Atoma agent shares one bot identity, " +
         "and GitHub never lets an identity approve its own pull request, so approving is not available. " +
         "To merge, use github__merge_pr.",
@@ -364,7 +364,7 @@ async function createIssue(a: z.infer<typeof CREATE_ISSUE_SCHEMA>): Promise<stri
     number: num,
     url: stdout.trim(),
     parent,
-...(sub && !parent
+    ...(sub && !parent
       ? {
           note:
             "Labelled as a sub-issue, but this run has no current issue, so no parent was recorded. " +
@@ -390,10 +390,10 @@ function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
     "issue", "view", String(number), "--repo", REPO,
     "--json", "number,title,body,state,labels,createdAt,closedAt,comments",
   );
-  const { comments, body,...rest } = issue ?? {};
+  const { comments, body, ...rest } = issue ?? {};
   const links = issueLinks(REPO, number);
   return JSON.stringify({
-...rest,
+    ...rest,
     // An issue body is text a person wrote and has no bound. Most are short; the
     // ones that are not tend to be the ones with a log or a table pasted in, and
     // that arrives once per lookup and then stays in the session forever.
@@ -405,7 +405,7 @@ function getIssue(a: z.infer<typeof ISSUE_CONTEXT_NUMBER_ARG_SCHEMA>): string {
     // Empty because there are none, or empty because nobody could look? The
     // three fields above cannot say, and the difference decides whether
     // "no open pull request" means the work landed or means nothing is known.
-...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
+    ...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
   });
 }
 
@@ -442,7 +442,7 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
   const issue = ghJsonOrThrow<{ title?: string; state?: string; comments?: unknown[] }>(
     "issue", "view", String(number), "--repo", REPO, "--json", "title,state,comments",
   );
-  const all = (issue?.comments ?? []).map((comment, i) => ({ index: i + 1,...(comment as object) }));
+  const all = (issue?.comments ?? []).map((comment, i) => ({ index: i + 1, ...(comment as object) }));
 
   // The four interacting defaults live in `domain/comment-range.ts`, where the
   // truth table is testable without a `gh` in the loop.
@@ -452,7 +452,7 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
   // pasted into it filled the window while `showing` reported three of forty.
   const selected = (range.count > 0 ? all.slice(range.from - 1, range.to) : []).map((comment) => {
     const body = (comment as { body?: unknown }).body;
-    return typeof body === "string" ? {...comment, body: capText(body, PER_ITEM_BUDGET).text } : comment;
+    return typeof body === "string" ? { ...comment, body: capText(body, PER_ITEM_BUDGET).text } : comment;
   });
 
   const links = issueLinks(REPO, number);
@@ -466,7 +466,7 @@ function getIssueComments(a: z.infer<typeof ISSUE_COMMENTS_SCHEMA>): string {
       pull_requests: links.pullRequests,
       // See `get_issue`: an unread link list is not an empty one, and this
       // header exists precisely so a comment is not read as settled work.
-...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
+      ...(links.unavailable ? { links_unavailable: links.unavailable } : {}),
     },
     // Always stated, never implied. A truncated read that looks complete is how
     // a caller concludes something is absent when it was merely not shown -- and
@@ -527,7 +527,7 @@ async function closeIssueAndDispatch(a: z.infer<typeof NUMBER_ARG_SCHEMA>): Prom
     ok: true,
     closed: num,
     aggregation: aggregation.kind,
-...(needsAttention(aggregation)
+    ...(needsAttention(aggregation)
       ? { note: describeGateResult(aggregation, num) }
       : {}),
   });
@@ -705,7 +705,7 @@ function createPr(a: z.infer<typeof CREATE_PR_SCHEMA>): McpToolResult {
       url: stdout.trim(),
       base,
       validation_dispatched: validationDispatched,
-...(validationDispatched
+      ...(validationDispatched
         ? {}
         : {
             note:
@@ -867,9 +867,9 @@ function getPr(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
     "pr", "view", String(a.number), "--repo", REPO,
     "--json", "number,title,body,state,baseRefName,headRefName,createdAt",
   );
-  const { body,...rest } = pr ?? {};
+  const { body, ...rest } = pr ?? {};
   // Same as `get_issue`: the description is the one unbounded field here.
-  return JSON.stringify({...rest, body: typeof body === "string" ? capText(body).text : body });
+  return JSON.stringify({ ...rest, body: typeof body === "string" ? capText(body).text : body });
 }
 
 function getPrDiff(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
@@ -920,7 +920,7 @@ function getPrReviews(a: z.infer<typeof NUMBER_ARG_SCHEMA>): string {
   const reviews = (d?.reviews ?? []).map((review) => {
     const kept = pick(review, ["author", "state", "submittedAt"]);
     const body = (review as { body?: unknown }).body;
-    return {...kept, body: typeof body === "string" ? capText(body, PER_ITEM_BUDGET).text : body };
+    return { ...kept, body: typeof body === "string" ? capText(body, PER_ITEM_BUDGET).text : body };
   });
   // Whole reviews go, not a slice of the JSON: cutting the array mid-string
   // returns text that no longer parses. `omitted` is what stops "not shown" being

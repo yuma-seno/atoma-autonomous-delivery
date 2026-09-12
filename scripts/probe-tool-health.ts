@@ -218,7 +218,7 @@ async function probe(): Promise<number> {
     ],
     {
       env: {
-...process.env,
+        ...process.env,
         OPENAI_API_KEY: "probe-key",
         OPENAI_BASE_URL: `http://127.0.0.1:${llm.port}`,
         ATOMA_PROVIDER: "openai",

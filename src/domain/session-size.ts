@@ -207,7 +207,7 @@ export function capToolResults(session: Session, limit = TOOL_RESULT_CAP): Shrin
       const text = contentText(message.content);
       if (text === undefined || text.length <= limit) return message;
       changed += 1;
-      return {...message, content: capText(text, limit) };
+      return { ...message, content: capText(text, limit) };
     }
     const calls = message.tool_calls;
     if (!Array.isArray(calls)) return message;
@@ -218,17 +218,17 @@ export function capToolResults(session: Session, limit = TOOL_RESULT_CAP): Shrin
       const args = fn?.arguments;
       if (typeof args !== "string" || args.length <= TOOL_CALL_ARGS_CAP) return call;
       touched = true;
-      return {...call, function: {...fn, arguments: capText(args, TOOL_CALL_ARGS_CAP) } };
+      return { ...call, function: { ...fn, arguments: capText(args, TOOL_CALL_ARGS_CAP) } };
     });
     if (!touched) return message;
     changed += 1;
-    return {...message, tool_calls: capped };
+    return { ...message, tool_calls: capped };
   });
 
   if (changed === 0) {
     return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
   }
-  const out: Session = {...session, messages: kept };
+  const out: Session = { ...session, messages: kept };
   return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
 }
 
@@ -248,8 +248,8 @@ export function replaceOldToolResults(
   const tokensBefore = estimateTokens(session);
 
   const resultIndexes = messages
-.map((m, i) => (m.role === "tool" ? i : -1))
-.filter((i) => i >= 0);
+    .map((m, i) => (m.role === "tool" ? i : -1))
+    .filter((i) => i >= 0);
   const replaceBefore = resultIndexes[resultIndexes.length - keepRecent] ?? Infinity;
 
   let changed = 0;
@@ -260,13 +260,13 @@ export function replaceOldToolResults(
     // characters with a 150-character notice would make the session bigger.
     if (text === undefined || text.length <= 200) return message;
     changed += 1;
-    return {...message, content: removedResultNotice(text.length) };
+    return { ...message, content: removedResultNotice(text.length) };
   });
 
   if (changed === 0) {
     return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
   }
-  const out: Session = {...session, messages: [...kept, shrinkNotice(changed)] };
+  const out: Session = { ...session, messages: [...kept, shrinkNotice(changed)] };
   return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
 }
 

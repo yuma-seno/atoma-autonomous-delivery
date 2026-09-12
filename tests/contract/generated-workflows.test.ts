@@ -353,8 +353,8 @@ describe("generated workflows", () => {
     // covered -- the failure this guards against came from a step nobody thought
     // of as an installer at the time.
     const installs = steps
-.map((step, index) => ({ step, index }))
-.filter(({ step }) => {
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => {
         const run = step.run ?? "";
         return (
           /\/usr\/local\/bin|\/usr\/bin/.test(run) ||
@@ -362,7 +362,7 @@ describe("generated workflows", () => {
           /\b(apt-get install|npm install -g|bun add -g|pipx install)\b/.test(run)
         );
       })
-.filter(({ index }) => index !== closer);
+      .filter(({ index }) => index !== closer);
 
     expect(installs.length, "at least one install step should be recognised").toBeGreaterThan(0);
     for (const { step, index } of installs) {
@@ -383,7 +383,7 @@ describe("generated workflows", () => {
    *
    * The session, the fetched events, the ops log and the agent's stdout and stderr
    * used to be written to the repository root. That cost an adopter five
-   * ` .gitignore` lines as a precondition -- skip them and the engineer's
+   * `.gitignore` lines as a precondition -- skip them and the engineer's
    * `git add -A` committed the session and logs, then `create_pr` refused for a
    * dirty worktree, every time, with nothing naming the cause.
    *
@@ -401,13 +401,13 @@ describe("generated workflows", () => {
 
     const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
     for (const step of steps) {
-      const lines = [step.run ?? "",...Object.values(step.env ?? {}), step.if ?? ""]
-.join("\n")
-.split("\n")
+      const lines = [step.run ?? "", ...Object.values(step.env ?? {}), step.if ?? ""]
+        .join("\n")
+        .split("\n")
         // Shell comments are prose, and prose about where a file USED to live is
         // worth being able to write. Only what the shell executes can put a file
         // back in the work tree.
-.filter((line) => !line.trimStart().startsWith("#"));
+        .filter((line) => !line.trimStart().startsWith("#"));
       const text = lines.join("\n");
       for (const name of names) {
         for (const match of text.matchAll(new RegExp(`(.{0,24})${name.replace(".", "\.")}`, "g"))) {
@@ -474,8 +474,8 @@ describe("generated workflows", () => {
     const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
     const CALLS = ["existsSync", "readFileSync", "writeFileSync", "appendFileSync", "unlinkSync", "statSync"];
     const scripts = readdirSync("src/scripts", { withFileTypes: true })
-.filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
-.map((entry) => join("src/scripts", entry.name));
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+      .map((entry) => join("src/scripts", entry.name));
     expect(scripts.length, "there should be scripts to check").toBeGreaterThan(5);
 
     for (const file of scripts) {
@@ -484,9 +484,9 @@ describe("generated workflows", () => {
       // quoting the call that caused it. A test that could not tell the two apart
       // would forbid writing down what went wrong.
       const text = readFileSync(file, "utf8")
-.split("\n")
-.filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-.join("\n");
+        .split("\n")
+        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+        .join("\n");
       for (const name of names) {
         // Built without a regular expression, because a regular expression here has
         // to survive being written into a template literal -- and it did not: `\s`
@@ -515,7 +515,7 @@ describe("generated workflows", () => {
    * `?? atoma-machinery/` -- which meant `git add -A` committing it as a dangling
    * gitlink with no `.gitmodules`, and `create_pr` refusing for a dirty worktree.
    *
-   * ` .gitignore` in this repository already carries `atoma-src/` with a comment
+   * `.gitignore` in this repository already carries `atoma-src/` with a comment
    * describing exactly that failure. Same shape, found once, and
    * `atoma-machinery/` was never added beside it -- and an adopter has neither
    * line, so it happened to every one of them.
@@ -580,8 +580,8 @@ describe("generated workflows", () => {
     ) as WorkflowDocument;
     const steps = workflow.jobs?.run?.steps ?? [];
     const grep = steps
-.map((step) => step.run ?? "")
-.find((run) => run.includes('"op":"(commit_and_push'));
+      .map((step) => step.run ?? "")
+      .find((run) => run.includes('"op":"(commit_and_push'));
     expect(grep, "the runner must read what the run changed out of the ops log").toBeDefined();
 
     const ops = /"op":"\(([a-z_|]+)\)"/.exec(grep ?? "")?.[1]?.split("|") ?? [];
@@ -628,9 +628,9 @@ describe("generated workflows", () => {
     // like one that posts untagged.
     const executed = (step: WorkflowStep): string =>
       (step.run ?? "")
-.split("\n")
-.filter((line) => !line.trimStart().startsWith("#"))
-.join("\n");
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
 
     const posters = steps.filter((step) => /gh issue comment/.test(executed(step)));
     // A floor, not a census. Notices keep moving out of workflow bash and into
@@ -662,7 +662,7 @@ describe("generated workflows", () => {
       const workflow = Bun.YAML.parse(readFileSync(join(directory, name), "utf8")) as WorkflowDocument;
       for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
         const steps = job.steps ?? [];
-        const firstScript = steps.findIndex((step) => step.run?.includes(" .github/scripts/"));
+        const firstScript = steps.findIndex((step) => step.run?.includes(".github/scripts/"));
         if (firstScript === -1) continue;
 
         const checkout = steps.findIndex((step) => step.uses?.startsWith("actions/checkout@"));
@@ -743,8 +743,8 @@ describe("generated workflows", () => {
     for (const file of carriers) {
       const workflow = Bun.YAML.parse(readFileSync(join(directory, file), "utf8")) as WorkflowDocument;
       const step = Object.values(workflow.jobs ?? {})
-.flatMap((job) => job.steps ?? [])
-.find((candidate) => candidate.id === "secret-names");
+        .flatMap((job) => job.steps ?? [])
+        .find((candidate) => candidate.id === "secret-names");
       expect(step, `${file} secret-names step`).toBeDefined();
 
       expect(step?.env?.ATOMA_DEFAULT_BRANCH, file).toBe("${{ github.event.repository.default_branch }}");
@@ -877,7 +877,7 @@ describe("generated workflows", () => {
     expect(machineryCheckout?.with?.ref).toContain("default_branch");
     expect(setter?.run, "the setter must be what moves that checkout").toContain("mv \"atoma-machinery\"");
 
-    // Nothing runs a script from the workspace. A bare ` .github/scripts/` would
+    // Nothing runs a script from the workspace. A bare `.github/scripts/` would
     // be the pull request's copy.
     for (const step of steps) {
       const run = step.run ?? "";
@@ -916,7 +916,7 @@ describe("generated workflows", () => {
     const workflow = readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8");
     // The deployed path, not the bare filename: the install step also names the
     // file in prose when it is absent, and a message is not a read.
-    for (const path of [" .github/atoma/mcp-packages.json", " .github/atoma/tools/scripts/hooks"]) {
+    for (const path of [".github/atoma/mcp-packages.json", ".github/atoma/tools/scripts/hooks"]) {
       const reads = workflow.split(/\r?\n/).filter((l) => l.includes(path));
       expect(reads.length, `${path} must still be referenced at all`).toBeGreaterThan(0);
       for (const line of reads) {
@@ -940,10 +940,10 @@ describe("generated workflows", () => {
 
     const ruleset = JSON.parse(readFileSync("dist/.github/atoma/rulesets/main.json", "utf8")) as Ruleset;
     const contexts = (ruleset.rules ?? [])
-.filter((rule) => rule.type === "required_status_checks")
-.flatMap((rule) => rule.parameters?.required_status_checks ?? [])
-.map((entry) => entry.context)
-.filter((context): context is string => typeof context === "string");
+      .filter((rule) => rule.type === "required_status_checks")
+      .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
+      .map((entry) => entry.context)
+      .filter((context): context is string => typeof context === "string");
     expect(contexts, "the shipped ruleset must require a check").not.toEqual([]);
 
     const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-check.yml", "utf8")) as WorkflowDocument;
@@ -988,7 +988,7 @@ describe("generated workflows", () => {
    *
    * This was once `ubuntu-latest` hardcoded in eleven files, unreachable from
    * `config.json` -- and unfixable by an agent, because the fix is in
-   * ` .github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
+   * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
    */
   test("the jobs that run a project's commands take their runner from configuration", () => {
     type WorkflowDocument = { jobs?: Record<string, { "runs-on"?: unknown; needs?: unknown }> };

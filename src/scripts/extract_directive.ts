@@ -5,7 +5,7 @@
  *
  * Accepts a standalone "/engineer" line and the common
  * markdown-mangled form "/`engineer`". A candidate is only accepted if it
- * names a real agent (a matching.md file exists in --def-dir) -- this
+ * names a real agent (a matching .md file exists in --def-dir) -- this
  * guards against false positives like a model writing "/agent reviewer"
  * (matching "agent", not a real agent name) instead of the expected
  * "/reviewer", which would otherwise dispatch a doomed-to-fail run for a

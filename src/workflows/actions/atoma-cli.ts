@@ -168,16 +168,16 @@ export function installAtomaCliStep(version: string): TypedOutputsStep {
     shell: "bash",
     run: `VERSION="${version}"
 if [ "$VERSION" = "source" ]; then
-  echo "Building Atoma from source (atoma-src/)..."
+  echo "Building Atoma from source (atoma-src/) ..."
   cargo install --path atoma-src --force --locked
 elif [ "$VERSION" = "latest" ]; then
   URL="https://github.com/yuma-seno/atoma/releases/latest/download/atoma-linux-x86_64"
-  echo "Downloading Atoma \${VERSION}..."
+  echo "Downloading Atoma \${VERSION} ..."
   curl -fsSL "$URL" -o /usr/local/bin/atoma
   chmod +x /usr/local/bin/atoma
 else
   URL="https://github.com/yuma-seno/atoma/releases/download/\${VERSION}/atoma-linux-x86_64"
-  echo "Downloading Atoma \${VERSION}..."
+  echo "Downloading Atoma \${VERSION} ..."
   curl -fsSL "$URL" -o /usr/local/bin/atoma
   chmod +x /usr/local/bin/atoma
 fi

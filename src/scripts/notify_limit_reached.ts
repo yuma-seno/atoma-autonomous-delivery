@@ -67,7 +67,7 @@ function main(): void {
     "comment",
     values.number,
     "--body",
-    [`${LLM_CONTEXT_TAG.write("exclude")}`, notice,...(spent ? ["", spent] : [])].join("\n"),
+    [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...(spent ? ["", spent] : [])].join("\n"),
   );
 }
 

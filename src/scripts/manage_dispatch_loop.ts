@@ -64,7 +64,7 @@ function readComments(repo: string, number: string): { comments: ChainComment[];
     // One JSON object per line, the same shape `readChangedFiles` uses and for the
     // same reason: with `--paginate` the pages arrive as separate documents that
     // `JSON.parse` cannot read as one.
-    '.[] | {authorType:.user.type, body:.body}',
+    '.[] | {authorType: .user.type, body: .body}',
   );
   if (code) return { comments: [], read: false };
   const comments: ChainComment[] = [];

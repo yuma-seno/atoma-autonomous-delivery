@@ -41,7 +41,7 @@ describe("agent prompt contracts", () => {
 
   /**
    * The three properties of the skill wording, rather than the sentence carrying them.
-   * This test used to pin "Load each relevant skill with..." word for word, which said
+   * This test used to pin "Load each relevant skill with ..." word for word, which said
    * nothing about why that sentence had to be there and broke on the rewrite that fixed
    * it.
    *

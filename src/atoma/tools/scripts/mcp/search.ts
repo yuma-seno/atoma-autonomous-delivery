@@ -11,8 +11,8 @@
  * Measured over this repository, 181 issues and 22 questions phrased the way an
  * agent phrases them:
  *
- *   BM25 alone, recall@20......... 100%
- *   plus the cross encoder, top 1.. 91%, top 3 100%
+ *   BM25 alone, recall@20 ......... 100%
+ *   plus the cross encoder, top 1 .. 91%, top 3 100%
  *
  * A dense vector index alongside BM25 changed the final ranking on none of the
  * 22, which is why there is no embedding model here, no vector store, and
@@ -93,9 +93,9 @@ const EXCERPT_BUDGET = 700;
 
 const SEARCH_SCHEMA = z.object({
   query: z
-.string()
-.min(1)
-.describe(
+    .string()
+    .min(1)
+    .describe(
       [
         "A whole question, in the language the issues are written in.",
         "",
@@ -117,8 +117,8 @@ const SEARCH_SCHEMA = z.object({
     "How many issues to return. Defaults to 3, which held the answer for every question measured. " +
       "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.",
   )
-.max(CANDIDATES)
-.optional(),
+    .max(CANDIDATES)
+    .optional(),
 });
 
 function log(message: string): void {
@@ -328,9 +328,9 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   try {
     const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates
-.map((match, i) => [match, scores[i] ?? 0] as const)
-.sort((x, y) => y[1] - x[1])
-.map(([match]) => match);
+      .map((match, i) => [match, scores[i] ?? 0] as const)
+      .sort((x, y) => y[1] - x[1])
+      .map(([match]) => match);
   } catch (error) {
     // The first stage alone still put the answer in the top twenty every time;
     // it just orders them less well. Better a rougher answer than none.
@@ -374,9 +374,9 @@ function locationOf(source: Chunk["source"] | undefined): string {
 
 const CODE_SCHEMA = z.object({
   query: z
-.string()
-.min(1)
-.describe(
+    .string()
+    .min(1)
+    .describe(
       [
         "A whole question about what the code does, in one sentence.",
         "",
@@ -457,9 +457,9 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
     const documents = candidates.map((match) => codeDocumentFor(passages[match.passage]!));
     const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates
-.map((match, i) => [match, scores[i] ?? 0] as const)
-.sort((x, y) => y[1] - x[1])
-.map(([match]) => match);
+      .map((match, i) => [match, scores[i] ?? 0] as const)
+      .sort((x, y) => y[1] - x[1])
+      .map(([match]) => match);
   } catch (error) {
     // The first stage alone put the answer in the top twenty 93.3% of the time; it
     // just orders them less well. A rougher answer beats none -- and saying so

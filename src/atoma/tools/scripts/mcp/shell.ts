@@ -61,7 +61,7 @@ function log(message: string): void {
  * every mention of the word.
  */
 const SECRET_ENV_NAMES = [
-...RUN_CREDENTIALS,
+  ...RUN_CREDENTIALS,
   // The two GitHub names a run does not supply but a project might, so a value under
   // either is still redacted from this server's own output.
   "GITHUB_TOKEN",
@@ -113,7 +113,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
   logCommand(args.command);
   const child = Bun.spawn(["bash", "-lc", args.command], {
     cwd: args.working_directory ?? process.cwd(),
-    env: {...process.env,...args.environment_variables },
+    env: { ...process.env, ...args.environment_variables },
     stdin: args.input_data === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",

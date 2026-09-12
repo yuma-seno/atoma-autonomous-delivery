@@ -39,8 +39,8 @@ const toolIds = (s: Session) =>
   (s.messages ?? []).filter((m) => m.role === "tool").map((m) => m.tool_call_id);
 const callIds = (s: Session) =>
   (s.messages ?? [])
-.flatMap((m) => (Array.isArray(m.tool_calls) ? m.tool_calls : []))
-.map((c) => (c as { id?: string }).id);
+    .flatMap((m) => (Array.isArray(m.tool_calls) ? m.tool_calls : []))
+    .map((c) => (c as { id?: string }).id);
 
 describe("how big a session is", () => {
   test("an empty session costs nothing", () => {
@@ -131,7 +131,7 @@ describe("capping a session on the way to disk", () => {
     const result = capToolResults(before);
     expect(result.shrunk).toBe(true);
     const args = (result.session.messages?.[0]?.tool_calls as { function: { arguments: string } }[])[0]!
-.function.arguments;
+      .function.arguments;
     expect(args.length).toBeLessThan(TOOL_CALL_ARGS_CAP + 200);
     expect(args.startsWith("yyyy")).toBe(true);
   });

@@ -27,7 +27,7 @@ import type { Session } from "./session.ts";
 
 const LIB_DIR = import.meta.dir;
 
-/** Writes a temp.ts file containing `code` and returns its absolute path. */
+/** Writes a temp .ts file containing `code` and returns its absolute path. */
 function makeShim(code: string): { file: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "atoma-lib-shim-"));
   const file = join(dir, "shim.ts");
@@ -371,7 +371,7 @@ describe("issue-images.ts extractImageUrls", () => {
 });
 
 describe("issue-images.ts sniffMimeType", () => {
-  const bytes = (...b: number[]) => new Uint8Array([...b,...Array(12).fill(0)]);
+  const bytes = (...b: number[]) => new Uint8Array([...b, ...Array(12).fill(0)]);
 
   // The case that made this necessary: GitHub serves an attachment from
   // `user-attachments/assets/<uuid>`, which has no extension. A real one turned

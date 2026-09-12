@@ -53,7 +53,7 @@ function serverFiles(): string[] {
  * Deliberately simple: it reads the first line of each call, which is where the
  * fixed words are. A message assembled somewhere else and passed in as a variable
  * is not reachable this way, and that is a limit rather than a hole -- the failure
- * this guards against is somebody typing `log("WARN...")` out of habit.
+ * this guards against is somebody typing `log("WARN ...")` out of habit.
  */
 function logLiterals(source: string): string[] {
   const found: string[] = [];

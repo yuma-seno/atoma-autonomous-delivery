@@ -5,7 +5,7 @@
  * not reach any of them. For a project that builds on macOS, or that needs a
  * self-hosted runner for a licensed toolchain or a GPU, `atoma-check` and
  * `atoma-deploy` were simply unusable -- and fixing them meant editing
- * ` .github/workflows/**`, the one place `GITHUB_TOKEN` cannot write. So neither an
+ * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write. So neither an
  * agent nor a workflow could do it, and a hand-edited fork is overwritten by the
  * next upgrade. The same argument that put `checks.commands` in
  * `config.json` applies: a fact a project owns was living where the project cannot

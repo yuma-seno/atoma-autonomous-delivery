@@ -31,9 +31,9 @@ describe.skipIf(!atomaAvailable)("E2E: real atoma binary + real mcp/atoma.ts", (
       },
     ]);
     // Real invocations the real dispatch chain makes, in order:
-    //   1. dispatchSubAgent: `gh issue comment 7 --body...`
+    //   1. dispatchSubAgent: `gh issue comment 7 --body ...`
     //   2. dispatchSubAgent: `gh issue edit 7 --add-label atoma/launched`
-    //   3. dispatchSubAgent: `gh workflow run atoma-runner.yml...`
+    //   3. dispatchSubAgent: `gh workflow run atoma-runner.yml ...`
     const fakeGh = setupFakeGh([
       { match: ["issue", "comment"] },
       { match: ["issue", "edit"] },
@@ -71,7 +71,7 @@ You are a test orchestrator agent.
         promptFilePath: join(dir, "prompt.txt"),
         outSessionPath: join(dir, "session.json"),
         env: {
-...fakeGh.env,
+          ...fakeGh.env,
           // dispatchSubAgent reads .github/atoma/config.json relative to this
           // test's cwd (the repository root).
           OPENAI_BASE_URL: mock.url,

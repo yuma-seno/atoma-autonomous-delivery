@@ -44,9 +44,9 @@ export type IsWorldWritable = (directory: string) => boolean;
  */
 export function pathWithoutWorldWritable(path: string, isWorldWritable: IsWorldWritable): string {
   return path
-.split(":")
-.filter((entry) => entry !== "" && entry !== "." && !isWorldWritable(entry))
-.join(":");
+    .split(":")
+    .filter((entry) => entry !== "" && entry !== "." && !isWorldWritable(entry))
+    .join(":");
 }
 
 /**

@@ -22,7 +22,7 @@ import type { Session } from "../lib/session.ts";
 const NAMED = 4;
 
 /**
- * `215 tool calls: shell__shell_execute 199, filesystem__read_text_file 8,...`
+ * `215 tool calls: shell__shell_execute 199, filesystem__read_text_file 8, ...`
  *
  * `undefined` when there is nothing to say — no session, or a session with no calls
  * in it. The caller posts its notice either way; this is an addition to it.

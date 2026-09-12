@@ -99,11 +99,11 @@ interface Session {
  * is being measured is what appears on the transport.
  */
 async function talkTo(script: string, args: string[], waitForReport: boolean): Promise<Session> {
-  const server = Bun.spawn([process.execPath, "run", script,...args], {
+  const server = Bun.spawn([process.execPath, "run", script, ...args], {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: {...process.env, GH_TOKEN: "" },
+    env: { ...process.env, GH_TOKEN: "" },
   });
 
   // Flushed every time: the sink buffers, and a handshake that never left this

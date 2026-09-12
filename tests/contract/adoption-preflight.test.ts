@@ -42,7 +42,7 @@ function providerOf(file: string): string | undefined {
 /**
  * The provider -> credential mapping, read out of the customization guide's table.
  *
- * Rows look like: `| \`openrouter-responses\` | Responses | \`OPENROUTER_API_KEY\` |... |`
+ * Rows look like: `| \`openrouter-responses\` | Responses | \`OPENROUTER_API_KEY\` | ... |`
  */
 function credentialByProvider(): Map<string, string> {
   const docs = readFileSync("docs/customization.md", "utf8");

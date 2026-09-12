@@ -20,7 +20,7 @@ function main(): void {
   const githubOutput = process.env.GITHUB_OUTPUT;
 
   // Kept as a string: it is written straight to $GITHUB_OUTPUT, and an absent
-  // tag has to render as empty so the caller's `if:... != ''` stays false.
+  // tag has to render as empty so the caller's `if: ... != ''` stays false.
   const parentIssue = PARENT_ISSUE_TAG.read(body);
   const parent = parentIssue === undefined ? "" : String(parentIssue);
   if (parent) console.error(`PR #${prNumber} is linked to parent issue #${parent}`);

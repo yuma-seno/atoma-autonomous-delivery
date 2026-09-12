@@ -35,10 +35,10 @@ export interface AtomaConfig {
    * person — workflows, runner scripts, agent definitions, tool configuration,
    * rulesets.
    *
-   * Unset takes `DEFAULT_GOVERNED_PATHS`, the whole deployed ` .github/` control
+   * Unset takes `DEFAULT_GOVERNED_PATHS`, the whole deployed `.github/` control
    * surface. Set it to add a repository's own — a template that generates its
    * workflows from source has a second place those live — or to hand a corner of
-   * ` .github/` back, which is better done by naming the parts you do want
+   * `.github/` back, which is better done by naming the parts you do want
    * governed than by trusting a shorter default. Set it to `[]` to turn the gate
    * off, which is a decision rather than an accident.
    *
@@ -74,7 +74,7 @@ export interface AtomaConfig {
    * What this project runs to verify a change, as commands.
    *
    * Commands and not a workflow file because an agent can write one and not the
-   * other: GITHUB_TOKEN is refused on ` .github/workflows/**` by identity, on
+   * other: GITHUB_TOKEN is refused on `.github/workflows/**` by identity, on
    * every path and branch. `atoma-check.yml` runs whatever is named here, so a
    * project's verification can be authored by an agent and reviewed as an
    * ordinary diff.
@@ -93,7 +93,7 @@ export interface AtomaConfig {
      *
      * Unset takes `ubuntu-latest`. This was hardcoded and unreachable from here,
      * which made `atoma-check` unusable for a project that builds on macOS or needs
-     * a licensed toolchain: fixing it meant editing ` .github/workflows/**`, the one
+     * a licensed toolchain: fixing it meant editing `.github/workflows/**`, the one
      * place `GITHUB_TOKEN` cannot write, so neither an agent nor a workflow could,
      * and a hand-edited fork is overwritten by the next upgrade.
      *

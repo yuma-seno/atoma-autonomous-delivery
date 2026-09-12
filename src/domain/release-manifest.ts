@@ -6,7 +6,7 @@
  * **"Which release am I on?"** `docs/customization.md` tells an adopter to name a
  * version rather than `latest`, and to record which one they took, because that is
  * what makes the next diff readable. It never gave them anywhere to record it, and
- * nothing in ` .github/atoma/` said. So the answer was memory, or downloading a zip
+ * nothing in `.github/atoma/` said. So the answer was memory, or downloading a zip
  * and diffing.
  *
  * **"What did upstream delete?"** The documented upgrade is `unzip -o` over the
@@ -29,7 +29,7 @@
  */
 
 /** The file the release carries, at the root of what it ships. */
-export const MANIFEST_PATH = " .github/atoma-release.json";
+export const MANIFEST_PATH = ".github/atoma-release.json";
 
 export interface ReleaseManifest {
   /** The release this tree came from, as the tag names it: `v0.1.77`. */
@@ -59,7 +59,7 @@ export function buildManifest(version: string, files: Iterable<string>): Release
  * Paths present in a tree and not in the release: what upstream no longer ships.
  *
  * `tree` is what the adopter has under the paths the release owns. Only those:
- * asking about ` .github/workflows/their-own-ci.yml` would report every file they
+ * asking about `.github/workflows/their-own-ci.yml` would report every file they
  * wrote themselves as deleted upstream, which is how a warning gets ignored.
  */
 export function noLongerShipped(manifest: ReleaseManifest, tree: Iterable<string>): string[] {

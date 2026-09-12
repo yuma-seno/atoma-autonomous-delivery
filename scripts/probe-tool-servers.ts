@@ -197,7 +197,7 @@ async function probe(): Promise<number> {
       "provider: openai",
       "model: probe-model",
       "mcp_servers:",
-...servers.map((name) => `  - ${name}`),
+      ...servers.map((name) => `  - ${name}`),
       "---",
       "",
       "Say done.",
@@ -214,7 +214,7 @@ async function probe(): Promise<number> {
     [atoma, "run", "--agent-def", `${dir}/agent.md`, "--tools-file", TOOLS_FILE, "--prompt-file", `${dir}/prompt.txt`, "--max-iterations", "2"],
     {
       env: {
-...process.env,
+        ...process.env,
         ATOMA_MACHINERY_ROOT: MACHINERY,
         OPENAI_API_KEY: "probe-key",
         OPENAI_BASE_URL: `http://127.0.0.1:${llm.port}`,
@@ -252,9 +252,9 @@ async function probe(): Promise<number> {
   say("5. anything a server said about itself on the way up");
   const log = `${stdout}\n${stderr}`;
   const said = log
-.split("\n")
-.filter((line) => /MCP:[a-z_]+:(stderr|log)/.test(line))
-.filter((line) => /\b(warn|warning|warnings|error|errors|fatal|panic)\b/i.test(line));
+    .split("\n")
+    .filter((line) => /MCP:[a-z_]+:(stderr|log)/.test(line))
+    .filter((line) => /\b(warn|warning|warnings|error|errors|fatal|panic)\b/i.test(line));
   result("startup_reports", said.length);
   for (const line of said) process.stdout.write(`${line}\n`);
 

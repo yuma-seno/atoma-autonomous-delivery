@@ -12,7 +12,7 @@ function guard(args: Record<string, unknown>, env?: Record<string, string>): str
   return spawnSync("bun", ["run", SCRIPT], {
     input: JSON.stringify({ arguments: args }),
     encoding: "utf8",
-    env: env ? {...process.env,...env } : process.env,
+    env: env ? { ...process.env, ...env } : process.env,
   }).stdout;
 }
 

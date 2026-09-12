@@ -64,12 +64,12 @@ const EXCERPT_LINES = 5;
  */
 export function logExcerpt(text: string): string {
   return text
-.split("\n")
-.filter((line) => INTERESTING.test(line))
-.slice(0, EXCERPT_LINES)
-.map((line) => redact(line))
-.join("\n")
-.trim();
+    .split("\n")
+    .filter((line) => INTERESTING.test(line))
+    .slice(0, EXCERPT_LINES)
+    .map((line) => redact(line))
+    .join("\n")
+    .trim();
 }
 
 /** The comment, as the person watching the issue will read it. */
