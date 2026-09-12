@@ -31,8 +31,27 @@
  * same shape and dies of the same cause, so it is pruned by the same pass.
  */
 
-/** The prefixes under which everything is owned by one issue. */
-const OWNED_TREES = ["sessions/", "workspace/"];
+/**
+ * The one tree this prunes, and why sessions are not in it.
+ *
+ * Sessions are kept permanently. They were pruned once, and restored the same day for
+ * a reason the day itself supplied: they are the only measurement substrate this
+ * project has. The search guard's threshold, the cause of a 6.4M-token run, and the
+ * finding that the edit/verify loop does not occur in 354 sessions all came from
+ * reading them, and none of them needed a record to be added first. An aggregate
+ * answers the questions it was built to answer; the raw sessions answer the ones
+ * nobody has thought of yet, which is where every one of those three came from.
+ *
+ * They are also cheap, which is what makes the choice easy rather than a trade. A
+ * session is appended-to JSON, so git's delta compression works on it: measured over
+ * this repository, every version of every session is 40 MB of text and **4.7 MB on
+ * disk**. The index was the expensive thing here and it now lives on its own branch.
+ *
+ * The escape directory is different in the way that matters. Its contents are
+ * arbitrary -- whatever an agent chose to put there -- so nothing can be assumed about
+ * how it compresses, and a closed issue's scratch files answer no question at all.
+ */
+const OWNED_TREES = ["workspace/"];
 
 /**
  * The issue a stored path belongs to, or `undefined` if it belongs to none.
