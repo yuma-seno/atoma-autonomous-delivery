@@ -1,29 +1,43 @@
 # Agent metrics
 
-Read from 355 stored sessions on this branch. Nothing here is recorded specially: every number is something the agents already wrote down while working.
+Read from 356 stored sessions on this branch. Nothing here is recorded specially: every number is something the agents already wrote down while working.
 
 Generated 2026-09-12.
 
+## Runs
+
+| window | runs | gave up | median seconds | longest |
+| --- | ---: | ---: | ---: | ---: |
+| Last 7 days | 1 | 0% | 61 | 61 |
+| Last 30 days | 1 | 0% | 61 | 61 |
+| All time | 1 | 0% | 61 | 61 |
+
+**Gave up** is every ending that is not `completed` — a ceiling reached, a person asking, a provider hanging up, a loop cut short. Each one is a mechanism deciding the run should not continue, which is worth watching whether or not it was right.
+
+| ended because | runs |
+| --- | ---: |
+| `completed` | 1 |
+
 ## Tokens
 
-116,115,789 tokens over 408 runs that reported them. **98.9% of that is prompt** — what the agents were made to read, not what they wrote. Anything spent on making runs cheaper belongs on that side.
+116,143,227 tokens over 409 runs that reported them. **98.9% of that is prompt** — what the agents were made to read, not what they wrote. Anything spent on making runs cheaper belongs on that side.
 
 No money here, deliberately: of the four providers only one reports a cost, and a price table goes quietly stale and then prints confident wrong numbers. Multiply by a rate you know.
 
 | | p50 | p90 | p99 | max | total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| tokens per run | 24,454 | 284,011 | 5,198,798 | 39,737,697 | 116,115,789 |
+| tokens per run | 24,454 | 284,011 | 5,198,798 | 39,737,697 | 116,143,227 |
 
 ## Sessions
 
 | | p50 | p90 | p99 | max | total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| messages per session | 10 | 90 | 433 | 1,011 | 12,799 |
+| messages per session | 10 | 90 | 433 | 1,011 | 12,805 |
 
 | agent | sessions | share |
 | --- | ---: | ---: |
-| `reviewer` | 236 | 66.5% |
-| `engineer` | 82 | 23.1% |
+| `reviewer` | 236 | 66.3% |
+| `engineer` | 83 | 23.3% |
 | `orchestrator` | 37 | 10.4% |
 
 ## Tools
@@ -59,9 +73,9 @@ Failure is counted by the result reading as an error, which is a string match an
 | `github__merge_pr` | 32 | 1 | 3.1% |
 | `github__close_issue` | 31 | 13 | 41.9% |
 | `github__list_issues` | 31 | 3 | 9.7% |
+| `search__search_issues` | 30 | 4 | 13.3% |
 | `filesystem_readonly__read_text_file` | 29 | 29 | 100% |
 | `github__list_prs` | 29 | 0 | 0% |
-| `search__search_issues` | 29 | 4 | 13.8% |
 | `web__fetch` | 29 | 1 | 3.4% |
 | `github__get_branch` | 28 | 13 | 46.4% |
 | `github__get_pr_reviews` | 28 | 1 | 3.6% |
