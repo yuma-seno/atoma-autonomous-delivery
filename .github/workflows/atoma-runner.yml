@@ -40,7 +40,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.27
+        default: v0.1.28
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -80,7 +80,7 @@ name: Atoma Runner
         description: Atoma CLI version tag to install (e.g. v0.1.7). Use `source` to build from a checkout of yuma-seno/atoma@main.
         required: false
         type: string
-        default: v0.1.27
+        default: v0.1.28
       reload_count:
         description: How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)
         required: false
@@ -229,7 +229,7 @@ jobs:
           # up from the importing file looking for `node_modules`, and the servers now live
           # in `$RUNNER_TEMP/atoma-machinery` -- so the walk goes to `$RUNNER_TEMP` and stops
           # at the root, never reaching the workspace. This was measured, not reasoned about:
-          # moving the machinery out (#493) killed the search server with
+          # moving the machinery out killed the search server with
           #
           #   Failed to initialize MCP server 'search': MCP server closed connection
           #   error: Unexpected while resolving package 'onnxruntime-common'
@@ -405,7 +405,7 @@ jobs:
           # This directory is no longer only the tool user's: actions/cache restored the
           # reranker into it as the RUNNER, moments ago, and will read it back as the runner
           # after the agent has finished. Without these the two users have half of it each --
-          # the restored weights unwritable by the server that loads them, which is #499
+          # the restored weights unwritable by the server that loads them, which is the
           # exactly, and the downloaded weights unreadable by the save that should keep them.
           #
           # -R as well as -d: a default ACL only reaches files created after it is set, and

@@ -76,8 +76,8 @@ filesystem:
       # v0.1.21 capped every tool result: what kept it out was unbounded output, not
       # what it does. Worth being precise about what it does, though -- it matches
       # PATHS against a glob and never reads a file, so it does not replace a grep.
-      # #544 measured an agent making 324 content searches through the shell; this
-      # tool would have replaced none of them. #555 is the gap that would.
+      # An agent was measured making 324 content searches through the shell; this
+      # tool would have replaced none of them. A semantic code search is the gap that would.
       - "filesystem__directory_tree"
 
 filesystem_readonly:
@@ -102,7 +102,7 @@ filesystem_readonly:
 #
 # It used to run in a rootless podman container -- twenty-five lines of argv, an
 # overlay of $HOME, a generated /etc/passwd, subordinate id ranges and a
-# newuidmap shim, all documented across #374's twenty-four measurements. All of
+# newuidmap shim, all documented across twenty-four measurements. All of
 # that is gone. The reason is worth reading before adding a tool of your own,
 # because it decides what you can expect of one.
 #
