@@ -187,6 +187,7 @@ function metricsOf(sessions, declaredServers, declaredSkills, tokens) {
     neverUsedServers: declaredServers.filter((s) => !usedServers.has(s)).sort(),
     neverLoaded: declaredSkills.filter((s) => !loaded.has(s)).sort(),
     refusals: calls.filter((c) => c.refused).length,
+    runs: sessions.flatMap((s) => s.runs),
     tokens: tokens.length === 0 ? undefined : tokenSummary(tokens)
   };
 }
@@ -201,7 +202,63 @@ function tokenSummary(tokens) {
   };
 }
 
+// src/domain/metrics-windows.ts
+var WINDOWS = [
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+  { label: "All time" }
+];
+function within(run, window, now) {
+  if (window.days === undefined)
+    return true;
+  const ended = Date.parse(run.ended);
+  if (Number.isNaN(ended))
+    return false;
+  return now.getTime() - ended <= window.days * 86400000;
+}
+function endings(runs) {
+  const counts = new Map;
+  for (const run of runs)
+    counts.set(run.ended_because, (counts.get(run.ended_because) ?? 0) + 1);
+  return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+function gaveUpShare(runs) {
+  if (runs.length === 0)
+    return 0;
+  return runs.filter((r) => r.ended_because !== "completed").length / runs.length;
+}
+
 // src/domain/metrics-report.ts
+function runSection(runs, now) {
+  const out = ["## Runs", ""];
+  if (runs.length === 0) {
+    out.push("No run has recorded itself yet. Atoma writes `atoma_runs` into a session from " + "v0.1.28; sessions older than that carry no times, and there is no way to backfill " + "one that would not be a guess.", "");
+    return out;
+  }
+  out.push("| window | runs | gave up | median seconds | longest |");
+  out.push("| --- | ---: | ---: | ---: | ---: |");
+  for (const window of WINDOWS) {
+    const inside = runs.filter((run) => within(run, window, now));
+    if (inside.length === 0) {
+      out.push(`| ${window.label} | 0 | \u2014 | \u2014 | \u2014 |`);
+      continue;
+    }
+    const seconds = inside.map((r) => r.seconds).sort((a, b) => a - b);
+    const median = seconds[Math.floor(seconds.length / 2)] ?? 0;
+    const share = Math.round(gaveUpShare(inside) * 1000) / 10;
+    const longest = seconds[seconds.length - 1] ?? 0;
+    out.push(`| ${window.label} | ${n(inside.length)} | ${share}% | ${n(median)} | ${n(longest)} |`);
+  }
+  out.push("");
+  out.push("**Gave up** is every ending that is not `completed` \u2014 a ceiling reached, a person " + "asking, a provider hanging up, a loop cut short. Each one is a mechanism deciding " + "the run should not continue, which is worth watching whether or not it was right.");
+  out.push("");
+  out.push("| ended because | runs |");
+  out.push("| --- | ---: |");
+  for (const row of endings(runs))
+    out.push(`| \`${row.name}\` | ${n(row.count)} |`);
+  out.push("");
+  return out;
+}
 function n(value) {
   return value.toLocaleString("en-US");
 }
@@ -218,14 +275,15 @@ function tallyTable(rows, of, what, unit) {
   }
   return out;
 }
-function renderReport(metrics, generatedAt) {
+function renderReport(metrics, now) {
   const out = [];
   out.push("# Agent metrics");
   out.push("");
   out.push(`Read from ${n(metrics.sessions)} stored sessions on this branch. Nothing here is recorded ` + "specially: every number is something the agents already wrote down while working.");
   out.push("");
-  out.push(`Generated ${generatedAt}.`);
+  out.push(`Generated ${now.toISOString().slice(0, 10)}.`);
   out.push("");
+  out.push(...runSection(metrics.runs, now));
   if (metrics.tokens) {
     const t = metrics.tokens;
     out.push("## Tokens");
@@ -296,6 +354,30 @@ function renderReport(metrics, generatedAt) {
 var ref = defineScript(import.meta.url);
 var BRANCH = "atoma-data";
 var REPORT_PATH = "metrics/report.md";
+var ROWS_PATH = "metrics/rows.json";
+function rowsOf(sessions) {
+  return sessions.map((s) => {
+    const tools = {};
+    const acts = {};
+    for (const call of s.calls) {
+      tools[call.tool] = (tools[call.tool] ?? 0) + 1;
+      if (call.act)
+        acts[call.act] = (acts[call.act] ?? 0) + 1;
+    }
+    return {
+      path: s.path,
+      agent: s.agent,
+      messages: s.messages,
+      calls: s.calls.length,
+      failed: s.calls.filter((c) => c.failed).length,
+      refused: s.calls.filter((c) => c.refused).length,
+      skills: s.calls.flatMap((c) => c.skill ? [c.skill] : []),
+      tools,
+      acts,
+      runs: s.runs
+    };
+  });
+}
 function log(message) {
   console.error(`[metrics] ${message}`);
 }
@@ -351,7 +433,8 @@ function sessionFrom(path, raw) {
       calls.push({ tool, agent, failed: looksFailed(result), refused: looksRefused(result), skill, act });
     }
   }
-  return { path, agent, messages: messages.length, calls };
+  const runs = Array.isArray(parsed.atoma_runs) ? parsed.atoma_runs : [];
+  return { path, agent, messages: messages.length, calls, runs };
 }
 function shellAct(command) {
   if (/>\s*[^\s|&>]+/.test(command) && !/>\s*\/dev\/null/.test(command))
@@ -438,11 +521,17 @@ function main() {
     }
   }
   const { tools, skills } = declared();
-  const report = renderReport(metricsOf(sessions, tools, skills, tokens), new Date().toISOString().slice(0, 10));
-  log(`${sessions.length} sessions, ${tokens.length} runs reporting tokens`);
+  const now = new Date;
+  const report = renderReport(metricsOf(sessions, tools, skills, tokens), now);
+  const runs = sessions.flatMap((s) => s.runs);
+  log(`${sessions.length} sessions, ${runs.length} recorded runs, ${tokens.length} reporting tokens`);
   if (values.stdout) {
     console.log(report);
     return;
+  }
+  if (!saveSession(ROWS_PATH, `${JSON.stringify(rowsOf(sessions), null, 2)}
+`, `atoma: metric rows from ${sessions.length} sessions`)) {
+    log("could not write the rows; the report is unaffected");
   }
   if (!saveSession(REPORT_PATH, report, `atoma: metrics from ${sessions.length} sessions`)) {
     log("could not write the report; the run is unaffected");
@@ -452,6 +541,7 @@ if (import.meta.main)
   main();
 export {
   REPORT_PATH,
+  ROWS_PATH,
   agentOf,
   ref
 };
