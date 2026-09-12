@@ -65,3 +65,18 @@ jobs:
           CLOSED_NUM: ${{ github.event.issue.number }}
         run: |
           bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/dispatch_if_siblings_done.ts" --repo "${OWNER}/${REPO}" --parent "${PARENT}" --closed-num "${CLOSED_NUM}"
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Bun
+        with:
+          bun-version: latest
+        uses: oven-sh/setup-bun@v2
+      - name: Prune stored data for issues that are over
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bun run "${ATOMA_MACHINERY_ROOT:-.}/.github/scripts/prune_atoma_data.ts"
