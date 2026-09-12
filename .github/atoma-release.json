@@ -1,5 +1,5 @@
 {
-  "version": "v0.1.93",
+  "version": "v0.1.94",
   "files": [
     ".github/atoma-release.json",
     ".github/atoma/agent-definitions/engineer.md",
@@ -41,6 +41,7 @@
     ".github/scripts/parse_comment_command.ts",
     ".github/scripts/parse_pr_metadata.ts",
     ".github/scripts/post_result_comment.ts",
+    ".github/scripts/prune_atoma_data.ts",
     ".github/scripts/read_secret_names.ts",
     ".github/scripts/reconcile_github_session.ts",
     ".github/scripts/record_run_metadata.ts",
