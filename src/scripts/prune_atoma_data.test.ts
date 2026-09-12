@@ -40,9 +40,10 @@ beforeAll(() => {
   git(repo, "config", "user.email", "test@example.com");
   git(repo, "config", "user.name", "Test");
   for (const path of [
-    "sessions/issue-1-engineer.json",
     "sessions/issue-2/engineer.json",
-    "sessions/issue-3-engineer.json",
+    "workspace/issue-1/notes.md",
+    "workspace/issue-2/probe/check.sh",
+    "workspace/issue-3/scratch.txt",
     "search/issue-index.json",
   ]) {
     mkdirSync(join(repo, path, ".."), { recursive: true });
@@ -93,9 +94,19 @@ describe("prune_atoma_data.ts", () => {
 
   test("takes the closed issue, leaves the open one and the one still running", () => {
     const printed = run([{ match: ["api", "issues"], stdout: ISSUES }]).stderr;
-    expect(printed).toContain("sessions/issue-2/engineer.json");
-    expect(printed).not.toContain("sessions/issue-1-engineer.json");
-    expect(printed).not.toContain("sessions/issue-3-engineer.json");
+    expect(printed).toContain("workspace/issue-2/probe/check.sh");
+    expect(printed).not.toContain("workspace/issue-1/notes.md");
+    expect(printed).not.toContain("workspace/issue-3/scratch.txt");
+  });
+
+  /**
+   * End to end, because this is the property that was briefly untrue in production:
+   * 102 sessions were deleted before being restored the same day. They are the only
+   * measurement substrate this project has, and they compress to 4.7 MB.
+   */
+  test("never takes a session, whatever its issue says", () => {
+    const printed = run([{ match: ["api", "issues"], stdout: ISSUES }]).stderr;
+    expect(printed).not.toContain("sessions/");
   });
 
   /** Regenerable, owned by nobody, and named `issue-index.json`. */

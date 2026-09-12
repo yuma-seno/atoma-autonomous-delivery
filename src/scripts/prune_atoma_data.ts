@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * prune_atoma_data.ts — remove what `atoma-data` is storing for work that is over.
+ * prune_atoma_data.ts — remove the scratch a finished issue left behind.
  *
  * See `domain/atoma-data-pruning.ts` for why the rule is the issue's state rather than
  * an age, and what is deliberately left alone. This file is the part that talks to
