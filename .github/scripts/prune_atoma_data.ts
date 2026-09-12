@@ -165,7 +165,7 @@ function log(message) {
 function issueStates(repo) {
   const byNumber = new Map;
   for (const state of ["open", "closed"]) {
-    const page = ghPaginated(`repos/${repo}/issues?state=${state}&per_page=100`);
+    const page = ghPaginated("api", `repos/${repo}/issues?state=${state}&per_page=100`);
     for (const issue of page) {
       if (issue.pull_request !== undefined)
         continue;
