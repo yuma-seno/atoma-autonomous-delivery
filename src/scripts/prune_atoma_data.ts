@@ -58,7 +58,7 @@ interface IssueState {
 function issueStates(repo: string): Map<number, IssueState> {
   const byNumber = new Map<number, IssueState>();
   for (const state of ["open", "closed"]) {
-    const page = ghPaginated(`repos/${repo}/issues?state=${state}&per_page=100`) as IssueState[];
+    const page = ghPaginated<IssueState>("api", `repos/${repo}/issues?state=${state}&per_page=100`);
     for (const issue of page) {
       // Pull requests come back from this endpoint too, and nothing here is stored
       // under a pull request's number.
