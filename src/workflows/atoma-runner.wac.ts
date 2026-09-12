@@ -24,6 +24,7 @@ import { ref as notifyLimitReachedRef } from "../scripts/notify_limit_reached.ts
 import { ref as injectUncommittedNoticeRef } from "../scripts/inject_uncommitted_notice.ts";
 import { ref as restoreWorkspaceRef } from "../scripts/restore_workspace.ts";
 import { ref as saveWorkspaceRef } from "../scripts/save_workspace.ts";
+import { ref as writeMetricsReportRef } from "../scripts/write_metrics_report.ts";
 import { WORKSPACE_PATH } from "../domain/workspace.ts";
 import { ref as fetchEventsRef } from "../scripts/fetch_events.ts";
 import { ref as restoreAgentSessionRef } from "../scripts/restore_agent_session.ts";
@@ -1599,6 +1600,17 @@ echo "tool servers will run as ${TOOL_USER} (no sudo), caches in ${TOOL_CACHE}"
       source: WORKSPACE_DIR,
       agent: "${{ inputs.agent }}",
     })}\n`,
+  }),
+  // After the session is saved, so this run counts itself. `always()`: a run that
+  // failed is one of the more interesting rows in the report, and the failure is
+  // already reported elsewhere. The script never fails the job either way -- see its
+  // module comment for why a report must not become the thing that breaks the work.
+  new TypedOutputsStep({
+    name: "Write the metrics report",
+    if: "always()",
+    shell: "bash",
+    env: { GH_TOKEN: "${{ github.token }}", GITHUB_REPOSITORY: "${{ github.repository }}" },
+    run: `${scriptCommand(writeMetricsReportRef)}\n`,
   }),
   reportFailureStep,
   dirtyStep,
