@@ -1,7 +1,7 @@
 /**
  * unattended-pull-request.ts — whether a new pull request has anyone coming for it.
  *
- * #486 removed the `auto_triggers` entries that started a reviewer when a pull
+ * The `auto_triggers` entries that started a reviewer on a pull
  * request was opened, synchronised or marked ready. Nothing starts unless someone
  * asks, which is the rule the whole system now runs on -- an agent names the
  * reviewer, or a person types `/reviewer`.
@@ -35,7 +35,7 @@ export interface Attendance {
  * A mention is `@` followed by a GitHub login. Deliberately loose: this decides
  * whether to add a notice, and a false positive costs a notice nobody needed while
  * a false negative leaves work unattended. Whether the mention reaches a real,
- * relevant person is a separate question, and a real one -- see #509.
+ * relevant person is a separate question, and a real one.
  */
 export function isAttended(attendance: Attendance): boolean {
   if (attendance.reviewer.trim() !== "") return true;

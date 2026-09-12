@@ -35,7 +35,7 @@
  *
  * The previous version dropped each result together with the `tool_calls` that
  * produced it. So an agent resuming lost the record of **what it had already
- * looked at** -- and #544 measured what that costs: a run that made 169 distinct
+ * looked at** -- and the cost was measured: a run that made 169 distinct
  * searches and reported nothing. An agent that cannot see what it searched
  * searches again.
  *
@@ -126,7 +126,7 @@ export const KEEP_RECENT_RESULTS = 10;
  */
 export const SESSION_TOKEN_LIMIT = 100_000;
 
-/** Four characters to a token, the estimate #457 measured with. */
+/** Four characters to a token, the estimate this was measured with. */
 const CHARS_PER_TOKEN = 4;
 
 /**
@@ -207,7 +207,7 @@ export function capToolResults(session: Session, limit = TOOL_RESULT_CAP): Shrin
       const text = contentText(message.content);
       if (text === undefined || text.length <= limit) return message;
       changed += 1;
-      return { ...message, content: capText(text, limit) };
+      return {...message, content: capText(text, limit) };
     }
     const calls = message.tool_calls;
     if (!Array.isArray(calls)) return message;
@@ -218,17 +218,17 @@ export function capToolResults(session: Session, limit = TOOL_RESULT_CAP): Shrin
       const args = fn?.arguments;
       if (typeof args !== "string" || args.length <= TOOL_CALL_ARGS_CAP) return call;
       touched = true;
-      return { ...call, function: { ...fn, arguments: capText(args, TOOL_CALL_ARGS_CAP) } };
+      return {...call, function: {...fn, arguments: capText(args, TOOL_CALL_ARGS_CAP) } };
     });
     if (!touched) return message;
     changed += 1;
-    return { ...message, tool_calls: capped };
+    return {...message, tool_calls: capped };
   });
 
   if (changed === 0) {
     return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
   }
-  const out: Session = { ...session, messages: kept };
+  const out: Session = {...session, messages: kept };
   return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
 }
 
@@ -248,8 +248,8 @@ export function replaceOldToolResults(
   const tokensBefore = estimateTokens(session);
 
   const resultIndexes = messages
-    .map((m, i) => (m.role === "tool" ? i : -1))
-    .filter((i) => i >= 0);
+.map((m, i) => (m.role === "tool" ? i : -1))
+.filter((i) => i >= 0);
   const replaceBefore = resultIndexes[resultIndexes.length - keepRecent] ?? Infinity;
 
   let changed = 0;
@@ -260,13 +260,13 @@ export function replaceOldToolResults(
     // characters with a 150-character notice would make the session bigger.
     if (text === undefined || text.length <= 200) return message;
     changed += 1;
-    return { ...message, content: removedResultNotice(text.length) };
+    return {...message, content: removedResultNotice(text.length) };
   });
 
   if (changed === 0) {
     return { session, shrunk: false, tokensBefore, tokensAfter: tokensBefore, changed: 0 };
   }
-  const out: Session = { ...session, messages: [...kept, shrinkNotice(changed)] };
+  const out: Session = {...session, messages: [...kept, shrinkNotice(changed)] };
   return { session: out, shrunk: true, tokensBefore, tokensAfter: estimateTokens(out), changed };
 }
 
@@ -325,7 +325,7 @@ export function shrinkLogLine(outcome: ShrinkOutcome, what = "tool results repla
  * The case this strategy cannot fix, named rather than left to fail silently.
  *
  * If a session is still too big once the tool output is gone, what is left is the
- * conversation, and nothing here can shorten that. #539 is where deciding what to
+ * conversation, and nothing here can shorten that. Deciding what to
  * do about it lives; this is the line a person sees in the meantime, and it names
  * the way out because "accept the limit" should not mean "fail every run from now
  * on with a provider error nobody connects to this".

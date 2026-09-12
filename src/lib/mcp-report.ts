@@ -4,12 +4,12 @@
  * Not logging. `log()` is for a person reading a run afterwards; this is for the
  * agent that is about to use the answer. atoma attaches what arrives here to that
  * server's next tool result, so it reaches the run that is affected, in the place
- * it is affected — see atoma#13, and `engineering/environment` for what the agent
+ * it is affected — see `engineering/environment` for what the agent
  * then does about it.
  *
  * ## Why not just keep writing WARN to stderr
  *
- * That works today, and it is why #499's reranker line is caught at all: atoma
+ * That works today, and it is why the reranker line is caught at all: atoma
  * reads a spawned server's stderr and guesses severity from the words. Guessing is
  * the fallback's defining weakness, and it fails in both directions —
  *
@@ -19,7 +19,7 @@
  *
  * — neither of which announces itself. `notifications/message` carries the level
  * as a field, so nothing is inferred. It also works over any transport, which
- * matters the moment a server moves to a `url` (#525): a server atoma did not
+ * matters the moment a server moves to a `url`: a server atoma did not
  * start has no stderr atoma can read, and this becomes the only channel it has.
  *
  * ## What belongs here
@@ -44,7 +44,7 @@
  * ## Ordering
  *
  * A report made before the server has connected is held and sent once it has. That
- * is not an edge case: #499's load begins at startup, and the failure this whole
+ * is not an edge case: that load begins at startup, and the failure this whole
  * mechanism exists for happens before any tool has been called. atoma buffers it
  * from there until the first result, so it still arrives where it is used.
  */

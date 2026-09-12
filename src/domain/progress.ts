@@ -4,8 +4,8 @@
  *
  * # Why a count of runs is the wrong thing to count
  *
- * #480 put a limit on consecutive handoffs, and it is worth having, but a count of
- * runs is a proxy and a poor one in both directions. #362 spent 2,299k tokens and
+ * A limit on consecutive handoffs is worth having, but a count of
+ * runs is a proxy and a poor one in both directions. One chain spent 2,299k tokens and
  * **finished the work**; a pointless loop can spend 30k and finish nothing. Cutting
  * on volume stops the large legitimate job and lets the small useless one run.
  *
@@ -114,7 +114,7 @@ export interface StopDecision {
  *
  * Both sentences below quote a count a person sees exactly once, and both read wrong
  * at one. Observed in production while verifying that the handoff limit fires at all
- * (#587): with the limit set to 1, the one message anyone received said "1 agent
+ *: with the limit set to 1, the one message anyone received said "1 agent
  * handoffs since anyone else commented". A count that can be one has to be written
  * for one.
  */

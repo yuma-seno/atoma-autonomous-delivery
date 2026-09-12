@@ -70,20 +70,20 @@ describe("what a person is told about why it stopped", () => {
   const limits = { handoffLimit: 5, noProgressLimit: 2 };
 
   test("nothing, while both limits are unreached", () => {
-    const decision = stopReason({ handoffs: 3, runsWithoutChange: 1, ...limits });
+    const decision = stopReason({ handoffs: 3, runsWithoutChange: 1,...limits });
     expect(decision.stop).toBe(false);
     expect(decision.reason).toBeUndefined();
   });
 
   test("the handoff limit says how many handoffs", () => {
-    const decision = stopReason({ handoffs: 5, runsWithoutChange: 0, ...limits });
+    const decision = stopReason({ handoffs: 5, runsWithoutChange: 0,...limits });
     expect(decision.stop).toBe(true);
     expect(decision.reason).toContain("5 agent handoffs");
     expect(decision.reason).toContain("limit 5");
   });
 
   /**
-   * The sentence a person receives when the limit is one, which is what #587 set it to
+   * The sentence a person receives when the limit is one, which is what it was set to
    * in order to see the guard fire at all. It came back as "1 agent handoffs", on the
    * one message anyone gets.
    */
@@ -97,7 +97,7 @@ describe("what a person is told about why it stopped", () => {
   });
 
   test("the progress limit says what to look at instead of how many there were", () => {
-    const decision = stopReason({ handoffs: 1, runsWithoutChange: 2, ...limits });
+    const decision = stopReason({ handoffs: 1, runsWithoutChange: 2,...limits });
     expect(decision.stop).toBe(true);
     expect(decision.reason).toContain("changed nothing");
     expect(decision.reason).toContain("no commit was pushed");
@@ -109,7 +109,7 @@ describe("what a person is told about why it stopped", () => {
    * it would have told a person their chain was too long when it was not.
    */
   test("when both are reached, the more specific one is what is said", () => {
-    const decision = stopReason({ handoffs: 9, runsWithoutChange: 4, ...limits });
+    const decision = stopReason({ handoffs: 9, runsWithoutChange: 4,...limits });
     expect(decision.reason).toContain("changed nothing");
     expect(decision.reason).not.toContain("handoffs since");
   });

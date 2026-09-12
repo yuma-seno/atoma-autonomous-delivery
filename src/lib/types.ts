@@ -120,7 +120,7 @@ export interface AtomaConfig {
      * One runner for the whole job, because the targets run in declared order and
      * stop at the first failure — that ordering is the contract, and a runner per
      * target would end it. A project that genuinely needs different machines for
-     * different targets is asking for something else; see #437.
+     * different targets is asking for something else.
      */
     runs_on?: string | string[];
   };
@@ -203,7 +203,7 @@ export interface AtomaConfig {
      * A reload re-runs `environment.setup_commands` as a privileged workflow step
      * and starts a NEW RUN — so the run's own time budget resets with it. Without a
      * limit, reloading is an unbounded extension of whatever bounds a run, which is
-     * why #456 blocked the tool until there was one.
+     * why the tool was blocked until there was one.
      *
      * Carried as a workflow input rather than counted from comments, unlike
      * `agent_handoffs`: a reload leaves no comment for a later run to count.

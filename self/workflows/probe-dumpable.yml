@@ -1,13 +1,13 @@
 # Does a child process inherit `PR_SET_DUMPABLE(0)`, and does a different UID help?
 #
-# This decides #464. Atoma makes ITSELF non-dumpable so a tool server cannot read
+# This decides the confinement design. Atoma makes ITSELF non-dumpable so a tool server cannot read
 # `/proc/<atoma>/environ` -- but the credentials a project declares are handed to
-# the SERVERS, in their own environment blocks, and #374 built a container on the
+# the SERVERS, in their own environment blocks, and a container was built on the
 # premise that a same-user process can read those. Whether it can depends on one
 # kernel behaviour nobody here has measured: whether the flag survives `execve`.
 #
 # Measured rather than reasoned about, because the answer changes the design. If it
-# is inherited, the environ hole is already closed and #464 is a PATH fix plus a
+# is inherited, the environ hole is already closed and the fix is a PATH change plus a
 # uid. If it is not, a different uid closes it. Either way the container goes -- the
 # difference is how much moves.
 #
@@ -36,7 +36,7 @@ name: Process and worktree isolation
       - 'src/atoma/tools/scripts/**'
       - 'src/workflows/actions/atoma-cli.ts'
       - 'src/workflows/atoma-runner.wac.ts'
-      # .github/** is the deployed machinery -- what a run actually starts. A
+      #.github/** is the deployed machinery -- what a run actually starts. A
       # change under src/ is not tested here, and should not be: it is tested at
       # the deploy pull request, which is when what runs changes.
       - '.github/atoma/**'
@@ -68,7 +68,7 @@ jobs:
         run: bash scripts/probe-secret-off-env.sh
       - name: Measure — can a process be hardened without changing its code
         run: bash scripts/probe-preload.sh
-      - name: Measure — the arrangement #464 lands on, end to end
+      - name: Measure — the arrangement the design lands on, end to end
         run: bash scripts/probe-tool-user.sh
       - name: Measure — can two users share the work tree
         run: bash scripts/probe-shared-worktree.sh
@@ -79,7 +79,7 @@ jobs:
       - name: Measure — does a tool's report about itself reach the model
         run: bash scripts/probe-tool-health.sh
       # atoma-check starts no tool server, so module resolution and file
-      # permissions are first tried by a real run -- #506's open half, and #496 in
+      # permissions are first tried by a real run -- the half left open, and the path defect in
       # particular. One turn with a fake LLM, at the layout the runner builds.
       #
       # Reuses the CLI that probe-tool-health.sh downloaded at the pinned version,
@@ -87,13 +87,13 @@ jobs:
       # way the runner does.
       - name: Measure — do the tool servers start at the layout a run uses
         run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-tool-servers.ts
-      # The transport atoma#12 added. Unreachable from a unit test: what is left
+      # The transport atoma added. Unreachable from a unit test: what is left
       # once the pure parts are covered is the socket itself -- a session header
       # echoed back, a notification on a tool call's stream, a server that is not
       # listening yet when the first POST arrives.
       - name: Measure — can atoma use a server it did not start
         run: ATOMA_BIN="${RUNNER_TEMP}/atoma-probe" bun run scripts/probe-http-transport.ts
-      # The other end of the same wire (#519): a server this repository ships,
+      # The other end of the same wire: a server this repository ships,
       # started as a real process, putting a report on the protocol rather than
       # writing WARN to stderr and hoping the word-matching catches it.
       #

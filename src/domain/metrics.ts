@@ -5,12 +5,12 @@
  *
  * Nothing here asks for a new record to be kept. Every number below is already in
  * `atoma-data`: a session holds every tool call an agent made, in order, with the
- * arguments it passed and the result it got back. #370 found that half the work was
+ * arguments it passed and the result it got back. Half the work turned out to be
  * reading what is there, and the week that followed proved it three times — the search
  * guard's threshold, the cause of a 6.4M-token run, and the finding that the
  * edit/verify loop does not occur at all were each read out of these files.
  *
- * That is also why sessions are kept permanently (#623). An aggregate answers the
+ * That is also why sessions are kept permanently. An aggregate answers the
  * questions it was built to answer. The raw sessions answer the ones nobody has thought
  * of yet, and all three of those started as questions nobody had thought of.
  *
@@ -19,7 +19,7 @@
  * **Money.** Four providers, and only one of them reports a cost; a price table goes
  * quietly stale and then prints confident wrong numbers. Tokens are the axis instead:
  * measured, comparable across providers, and anybody who knows their own rate can
- * multiply. This follows #371, which removed cost display for the same reason.
+ * multiply. Cost display was removed elsewhere for the same reason.
  *
  * **Averages, where a distribution is the point.** One run spent 54M tokens. Any mean
  * containing it describes nothing; the percentiles say what a normal run costs and what
@@ -41,7 +41,7 @@ export interface CallRecord {
   refused: boolean;
 }
 
-/** What a shell command was doing, coarsely. The categories #585 and #586 argue about. */
+/** What a shell command was doing, coarsely. The categories the guard proposals argue about. */
 export type ShellAct = "search" | "open" | "edit" | "verify" | "other";
 
 /** One stored session, reduced to what is counted. */
@@ -123,8 +123,8 @@ function tally(names: readonly string[]): Tally[] {
   const counts = new Map<string, number>();
   for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
   return [...counts]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+.map(([name, count]) => ({ name, count }))
+.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 /**

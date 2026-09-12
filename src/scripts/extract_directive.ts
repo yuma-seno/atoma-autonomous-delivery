@@ -5,7 +5,7 @@
  *
  * Accepts a standalone "/engineer" line and the common
  * markdown-mangled form "/`engineer`". A candidate is only accepted if it
- * names a real agent (a matching .md file exists in --def-dir) -- this
+ * names a real agent (a matching.md file exists in --def-dir) -- this
  * guards against false positives like a model writing "/agent reviewer"
  * (matching "agent", not a real agent name) instead of the expected
  * "/reviewer", which would otherwise dispatch a doomed-to-fail run for a
@@ -15,7 +15,7 @@
  * It was considered for removal on the theory that a strict reader would force
  * the prompt to be obeyed, but the two failures fix nothing in common: a
  * backtick makes a real handoff disappear, while the failure worth preventing
- * (#204) was a directive written alongside a conclusion that needed none. Only
+ * was a directive written alongside a conclusion that needed none. Only
  * the exclusivity of the outcome prevents that one, and it is stated where the
  * agent decides. Strictness here would cost handoffs and buy nothing.
  *

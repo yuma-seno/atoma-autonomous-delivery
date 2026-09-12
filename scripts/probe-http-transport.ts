@@ -3,7 +3,7 @@
  * probe-http-transport.ts — can atoma actually use a tool server that is not a
  * child process?
  *
- * atoma#12 added MCP's Streamable HTTP transport: `url` reaches a server that is
+ * Atoma added MCP's Streamable HTTP transport: `url` reaches a server that is
  * already running, `command` still starts one over stdio, and both together start
  * a server and then speak HTTP to it. This runs all three against the released
  * binary.
@@ -264,7 +264,7 @@ async function runAtoma(
     ],
     {
       env: {
-        ...process.env,
+...process.env,
         OPENAI_API_KEY: "probe-key",
         OPENAI_BASE_URL: `http://127.0.0.1:${llm.port}`,
         ATOMA_PROVIDER: "openai",

@@ -12,7 +12,7 @@
  * workspace is checked out fresh in a new job every time, so committed was the only
  * thing that survived. It cost three things: working files in the pull request for
  * a person to read past, build output and leftovers arriving the same way, and an
- * adopter needing five `.gitignore` lines before anything worked (#487 removed the
+ * adopter needing five `.gitignore` lines before anything worked (since removed, the
  * third).
  *
  * ## Why not a pair of tools
@@ -36,7 +36,7 @@
  *     Everything in the work tree is a deliverable. Nothing else survives.
  *
  * Worth more than any tool: an agent can be told this in one sentence, with no
- * table of which tool handles which file. #487 made the first half true by moving
+ * table of which tool handles which file. The first half became true when
  * the session and the logs out. This makes the second half true by giving the rest
  * somewhere to go.
  *
@@ -51,8 +51,8 @@
  * "there is nothing there" are indistinguishable is a hallucination waiting to be
  * reported as fact.
  *
- * `/tmp` because it is writable by the tool user -- measured on the runner in #468
- * and #477, where `$HOME` was not -- and because it is the same string on every
+ * `/tmp` because it is writable by the tool user -- measured on the runner,
+ * where `$HOME` was not -- and because it is the same string on every
  * run. `RUNNER_TEMP` changes per run, so it cannot be written down.
  */
 
@@ -66,7 +66,7 @@ export const WORKSPACE_PATH = "/tmp/atoma-workspace";
  *
  * Goes in the prompt template AND in `shell_execute`'s description. Both, because
  * a tool's own description was measured to carry more weight than the same words
- * in the system prompt (#325) -- and this sentence has to hold at the moment the
+ * in the system prompt -- and this sentence has to hold at the moment the
  * agent is choosing where to put a file, which is when it is reading the tool.
  */
 export const WORKSPACE_SENTENCE =

@@ -42,8 +42,8 @@ function log(message: string): void {
  * from a server that does not name one. The literal-value pass below therefore
  * finds nothing to remove, and only the shape patterns do any work.
  *
- * A third reason used to be here — "since #374 this process runs in a container
- * that cannot see the servers which DO hold them" — and #464 removed the
+ * A third reason used to be here — "this process runs in a container
+ * that cannot see the servers which DO hold them" — and the confinement rework removed the
  * container. What stands in its place protects the OTHER servers rather than this
  * one: they make themselves unreadable. It is not a reason this list is empty, so
  * it does not belong in this comment.
@@ -61,7 +61,7 @@ function log(message: string): void {
  * every mention of the word.
  */
 const SECRET_ENV_NAMES = [
-  ...RUN_CREDENTIALS,
+...RUN_CREDENTIALS,
   // The two GitHub names a run does not supply but a project might, so a value under
   // either is still redacted from this server's own output.
   "GITHUB_TOKEN",
@@ -113,7 +113,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
   logCommand(args.command);
   const child = Bun.spawn(["bash", "-lc", args.command], {
     cwd: args.working_directory ?? process.cwd(),
-    env: { ...process.env, ...args.environment_variables },
+    env: {...process.env,...args.environment_variables },
     stdin: args.input_data === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -180,7 +180,7 @@ async function executeShell(args: z.infer<typeof SHELL_EXECUTE_SCHEMA>): Promise
 const { tools, dispatch } = buildMcpTools([
   defineMcpTool({
     name: "shell_execute",
-    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run on the same machine, as the same user, and with the same filesystem as every other tool: a file you write in the repository is the same file github__* commits and filesystem__* reads, at the same path. Writes OUTSIDE the repository mostly fail rather than silently not persisting: $HOME is not writable and system packages cannot be installed. $HOME itself also cannot be LISTED -- `ls ~` is refused -- while paths under it can be read and executed, so use `command -v` or a direct path rather than listing the home directory to find a toolchain. /tmp is writable. Within it, `/tmp/atoma-workspace` is the one place that SURVIVES: anything you leave there is restored on the next run on this issue and is shared with the other agents working on it. Put notes, scratch scripts and intermediate output there rather than in the repository, where they would be committed as part of the work. Elsewhere under /tmp is fine for scratch that does not need to outlive the run. That is a real error you can read, not a write that looks like it worked. If something must persist, add it to `environment.setup_commands` in .github/atoma/config.json and say so in your report; a person merges that and the next run has it. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
+    description: "Execute one foreground bash command and return its exit code, stdout, stderr, and duration. Use this for tests, builds, linting, and focused read-only inspection. Set timeout_seconds for commands that may run longer than five minutes. Commands run on the same machine, as the same user, and with the same filesystem as every other tool: a file you write in the repository is the same file github__* commits and filesystem__* reads, at the same path. Writes OUTSIDE the repository mostly fail rather than silently not persisting: $HOME is not writable and system packages cannot be installed. $HOME itself also cannot be LISTED -- `ls ~` is refused -- while paths under it can be read and executed, so use `command -v` or a direct path rather than listing the home directory to find a toolchain. /tmp is writable. Within it, `/tmp/atoma-workspace` is the one place that SURVIVES: anything you leave there is restored on the next run on this issue and is shared with the other agents working on it. Put notes, scratch scripts and intermediate output there rather than in the repository, where they would be committed as part of the work. Elsewhere under /tmp is fine for scratch that does not need to outlive the run. That is a real error you can read, not a write that looks like it worked. If something must persist, add it to `environment.setup_commands` in.github/atoma/config.json and say so in your report; a person merges that and the next run has it. Some commands are routed to MCP tools instead of running here -- Git mutations, `gh`, `curl`, `wget`, `ssh`, `scp`, `rsync` -- and the set may grow, so read the refusal rather than assuming a fixed list: each one names the tool to use in its place. Read-only Git inspection (status, diff, log) runs normally. Output is capped: a long stdout or stderr keeps its beginning and its END, with a marker naming how much was dropped from the middle, and `output_truncated` set. So a build log keeps its failure -- but if you see that marker, narrow the command (a specific test, `grep`, `tail`) rather than re-running the same one and expecting more.",
     schema: SHELL_EXECUTE_SCHEMA,
     handler: executeShell,
   }),

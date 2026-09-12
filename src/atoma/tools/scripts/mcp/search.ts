@@ -11,8 +11,8 @@
  * Measured over this repository, 181 issues and 22 questions phrased the way an
  * agent phrases them:
  *
- *   BM25 alone, recall@20 ......... 100%
- *   plus the cross encoder, top 1 .. 91%, top 3 100%
+ *   BM25 alone, recall@20......... 100%
+ *   plus the cross encoder, top 1.. 91%, top 3 100%
  *
  * A dense vector index alongside BM25 changed the final ranking on none of the
  * 22, which is why there is no embedding model here, no vector store, and
@@ -93,9 +93,9 @@ const EXCERPT_BUDGET = 700;
 
 const SEARCH_SCHEMA = z.object({
   query: z
-    .string()
-    .min(1)
-    .describe(
+.string()
+.min(1)
+.describe(
       [
         "A whole question, in the language the issues are written in.",
         "",
@@ -117,8 +117,8 @@ const SEARCH_SCHEMA = z.object({
     "How many issues to return. Defaults to 3, which held the answer for every question measured. " +
       "At most 20: the ranking pipeline considers that many candidates, so a larger number returns 20.",
   )
-    .max(CANDIDATES)
-    .optional(),
+.max(CANDIDATES)
+.optional(),
 });
 
 function log(message: string): void {
@@ -168,7 +168,7 @@ function loadIndex(): IssueIndex {
       // Not a report: it rebuilds, the answer is correct, and it does not repeat.
       // The word WARN is gone from the text because atoma's fallback channel reads
       // severity out of the words -- leaving it would put this in front of an agent
-      // as a problem, which is the false positive #519 exists to remove.
+      // as a problem, which is the false positive this exists to remove.
       log("the stored index was not valid JSON; rebuilding it");
     }
   }
@@ -328,14 +328,14 @@ async function searchIssues(a: z.infer<typeof SEARCH_SCHEMA>): Promise<string> {
   try {
     const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates
-      .map((match, i) => [match, scores[i] ?? 0] as const)
-      .sort((x, y) => y[1] - x[1])
-      .map(([match]) => match);
+.map((match, i) => [match, scores[i] ?? 0] as const)
+.sort((x, y) => y[1] - x[1])
+.map(([match]) => match);
   } catch (error) {
     // The first stage alone still put the answer in the top twenty every time;
     // it just orders them less well. Better a rougher answer than none.
     // The answer is worse than it should be and looks exactly like a good one,
-    // which is the whole of #499. Nothing else says so.
+    // which is the whole of it. Nothing else says so.
     report(
       "warning",
       `reranking failed (${(error as Error).message}); these results are first-stage ordered, not reranked`,
@@ -374,9 +374,9 @@ function locationOf(source: Chunk["source"] | undefined): string {
 
 const CODE_SCHEMA = z.object({
   query: z
-    .string()
-    .min(1)
-    .describe(
+.string()
+.min(1)
+.describe(
       [
         "A whole question about what the code does, in one sentence.",
         "",
@@ -457,13 +457,13 @@ async function searchCode(a: z.infer<typeof CODE_SCHEMA>): Promise<string> {
     const documents = candidates.map((match) => codeDocumentFor(passages[match.passage]!));
     const scores = await (await loadReranker()).score(a.query, documents);
     ordered = candidates
-      .map((match, i) => [match, scores[i] ?? 0] as const)
-      .sort((x, y) => y[1] - x[1])
-      .map(([match]) => match);
+.map((match, i) => [match, scores[i] ?? 0] as const)
+.sort((x, y) => y[1] - x[1])
+.map(([match]) => match);
   } catch (error) {
     // The first stage alone put the answer in the top twenty 93.3% of the time; it
     // just orders them less well. A rougher answer beats none -- and saying so
-    // matters, because a worse answer looks exactly like a good one (#519).
+    // matters, because a worse answer looks exactly like a good one.
     report(
       "warning",
       `reranking failed (${(error as Error).message}); these code results are first-stage ordered, not reranked`,
@@ -516,7 +516,7 @@ async function main(): Promise<void> {
   // The rejection handler is what keeps a promise nobody has awaited yet from
   // becoming an unhandled rejection, which is fatal.
   void loadReranker().catch((error) => {
-    // The earliest moment #499 could have been noticed. Not yet a worse answer --
+    // The earliest moment this could have been noticed. Not yet a worse answer --
     // the first search retries -- but if that fails too it is, and this is the line
     // that names the cause.
     report(

@@ -5,7 +5,7 @@
  * The failure this prevents is not a broken build. It is a build that passes for
  * the agent and fails in CI, on a machine the agent cannot see, which comes back
  * to an engineer as a defect that does not reproduce -- and `CI_RETRY_LIMIT`
- * spends three inferences on it before a human hears about it. #398.
+ * spends three inferences on it before a human hears about it.
  *
  * Pinned against the generated YAML rather than the `.wac.ts`, because the
  * generated file is what an adopter receives and what actually runs. A fourth job
@@ -69,7 +69,7 @@ describe("environment setup reaches every job that runs project commands", () =>
 
   // Setup runs a project's commands, and a project's commands are not the place
   // for a credential nobody asked to expose. In the agent's run this is load
-  // bearing -- the whole confinement in #374 rests on secrets not being in the
+  // bearing -- the whole confinement rests on secrets not being in the
   // environment when third-party build code runs -- and in the other two it falls
   // out of step order. Either way, nothing should quietly add one.
   test("setup runs before any secret enters the environment", () => {

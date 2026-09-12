@@ -21,7 +21,7 @@ describe("claimsToClose", () => {
     expect(claimsToClose("Closes: #7", 7)).toBe(true);
   });
 
-  // #286 mentioned #281 while closing #280. Counting it would attach the
+  // A pull request mentioned one issue while closing another. Counting it would attach the
   // parent's delivery to the child and report work as landed that is not.
   test("rejects a pull request that merely mentions the issue", () => {
     expect(claimsToClose("Issue #281 の作業成果です。", 281)).toBe(false);

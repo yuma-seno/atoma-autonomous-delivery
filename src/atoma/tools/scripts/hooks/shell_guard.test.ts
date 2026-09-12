@@ -12,7 +12,7 @@ function guard(args: Record<string, unknown>, env?: Record<string, string>): str
   return spawnSync("bun", ["run", SCRIPT], {
     input: JSON.stringify({ arguments: args }),
     encoding: "utf8",
-    env: env ? { ...process.env, ...env } : process.env,
+    env: env ? {...process.env,...env } : process.env,
   }).stdout;
 }
 
@@ -168,7 +168,7 @@ describe("shell_guard.ts", () => {
   });
 
   // The one rule that is not routing. It stops an accident, not an intent — the
-  // structural fix is a separate UID per server (#374). These tests pin the
+  // structural fix is a separate UID per server. These tests pin the
   // accident cases and, just as importantly, the honest uses it must not break.
   describe("reading another process's environment", () => {
     test("is refused whatever reads it", () => {

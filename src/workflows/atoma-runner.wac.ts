@@ -76,7 +76,7 @@ const SESSION_MODE_INPUT_DESC = "Session mode: continue restores history; recove
  *
  * It bounds a real hole: a reload starts a new run, and its time budget resets
  * with it, so an unbounded chain of reloads is an unbounded budget. That
- * is what #456 blocked this tool on.
+ * is what this tool was blocked on.
  */
 const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt its environment (set by atoma_env__reload_environment; leave at 0)";
 // The version this installs, the description of the input that overrides it, and the
@@ -99,7 +99,7 @@ const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt it
  * A pull request run checks out the pull request, and every script and setting
  * this job reads used to come from there -- so a pull request could decide how
  * the agent reviewing it behaves: which agent, which
- * commands, which credentials. #337 closed that for the credential declaration
+ * commands, which credentials. That was closed for the credential declaration
  * alone; this closes it for the rest.
  *
  * The split is between the work and the machinery. The workspace stays the pull
@@ -132,7 +132,7 @@ const MACHINERY_DIR = "atoma-machinery";
  *
  * The alternative was `.git/info/exclude`, which needs nothing from an adopter and
  * is two lines. It was rejected: the directory would still be visible to `ls`, so
- * the invariant #461 exists to state --
+ * the invariant this exists to state --
  *
  *     Everything in the work tree is a deliverable.
  *
@@ -295,7 +295,7 @@ const TOOL_HOOKS_DIR = ".github/atoma/tools/scripts/hooks";
 
 // Every input this workflow takes is spliced into shell TEXT somewhere below:
 // `AGENT="${{ inputs.agent }}"`, `BRANCH="atoma/issue-${{ inputs.number }}"`,
-// `VERSION="${{ inputs.atoma_version }}"`, and a dozen `--flag "${{ ... }}"`
+// `VERSION="${{ inputs.atoma_version }}"`, and a dozen `--flag "${{... }}"`
 // script arguments. GitHub Actions substitutes `${{ }}` into the script before
 // bash ever parses it, so a value carrying a quote or a `$(...)` is not data --
 // it is code, running in a job that holds write scopes and, via
@@ -541,12 +541,12 @@ const writeCredentialsStep = new TypedOutputsStep({
     //
     // `GH_TOKEN` is the exception and stays written: its value is the run's own token
     // rather than a repository secret.
-    ...runCredentialEnv(),
+...runCredentialEnv(),
     // Written here rather than generated: its value is the run's own token, not a
     // repository secret, so it is not one of the names `RUN_CREDENTIALS` can supply.
     GH_TOKEN: "${{ github.token }}",
     // Plus whatever config.json declared. See `actions/secret-slots.ts`.
-    ...secretSlotEnv(),
+...secretSlotEnv(),
   },
   run: `${scriptCommandWithArgs(writeCredentialsFileRef, { out: CREDENTIALS_FILE })}
 # Handed to the user atoma runs as, which reads it and deletes it before starting
@@ -687,7 +687,7 @@ AGENT_ENV=(
   # Caches, because $HOME is read-only to this user. CARGO_HOME is not a cache
   # directory -- redirecting it also hides ~/.cargo/config.toml -- but cargo has no
   # separate cache variable, and a project needing that config can commit
-  # .cargo/config.toml, which cargo reads from the work tree.
+  #.cargo/config.toml, which cargo reads from the work tree.
   XDG_CACHE_HOME="${TOOL_CACHE}"
   XDG_CONFIG_HOME="${TOOL_CACHE}/config"
   XDG_DATA_HOME="${TOOL_CACHE}/data"
@@ -866,10 +866,10 @@ const postResultCommentStep = new TypedOutputsStep(
       changed: runAgentStep.outputs.changed,
       "run-url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
       // Passed in, because the script used to open these by their bare names --
-      // relative paths that stopped resolving when #487 moved the run's files out
+      // relative paths that stopped resolving when the run's files moved out
       // of the work tree, and every result comment since was dropped in silence.
       // Read only when the run reached its limit, to salvage the last thing the
-      // agent said -- see post_result_comment.ts. #544 measured what the alternative
+      // agent said -- see post_result_comment.ts. Measurement showed what the alternative
       // costs: 17 minutes of work and a one-line notice.
       session: `${RUN_DIR}/session.json`,
       output: `${RUN_DIR}/atoma_output.txt`,
@@ -912,7 +912,7 @@ const recordRunMetadataStep = new TypedOutputsStep({
  *
  * Safe because atoma v0.1.24 answers any tool call left without a result before it
  * writes -- a session carrying one is refused by every provider, so saving it would
- * have traded lost work for an issue nothing can run on. See atoma#18.
+ * have traded lost work for an issue nothing can run on.
  *
  * Discarding was never this machinery's decision either: `/<agent> recover` archives
  * the session and starts fresh, so keeping it leaves a person both options.
@@ -1058,7 +1058,7 @@ const dispatchNextAgentStep = new TypedOutputsStep({
   exit 1
 fi
 
-echo "Dispatching '\${DIRECTIVE}' on \${TYPE} #\${NUMBER} via atoma-runner.yml ..."
+echo "Dispatching '\${DIRECTIVE}' on \${TYPE} #\${NUMBER} via atoma-runner.yml..."
 # Use gh workflow run with the current GH_TOKEN (caller's token, e.g. from issue_comment event).
 # This preserves the caller's token permissions (PR creation OK for issue_comment events).
 gh workflow run atoma-runner.yml \\
@@ -1201,7 +1201,7 @@ echo "machinery moved to ${MACHINERY_ABS}; the work tree holds only the reposito
 `,
   }),
   // Required for every subsequent step / the "Run agent" step itself
-  // (tools.yaml spawns the atoma MCP servers via `bun run ...`) --
+  // (tools.yaml spawns the atoma MCP servers via `bun run...`) --
   // GitHub-hosted runners do not ship Bun preinstalled.
   new SetupBunAction({ name: "Setup Bun" }),
   // The two branch steps sit after Bun and before everything that reads the
@@ -1278,7 +1278,7 @@ fi
 # up from the importing file looking for \`node_modules\`, and the servers now live
 # in \`$RUNNER_TEMP/atoma-machinery\` -- so the walk goes to \`$RUNNER_TEMP\` and stops
 # at the root, never reaching the workspace. This was measured, not reasoned about:
-# moving the machinery out (#493) killed the search server with
+# moving the machinery out killed the search server with
 #
 #   Failed to initialize MCP server 'search': MCP server closed connection
 #   error: Unexpected while resolving package 'onnxruntime-common'
@@ -1315,7 +1315,7 @@ fi
   //
   // The search server starts loading its reranker the moment it starts, and does
   // not wait for it: a search that arrives during the load awaits the same
-  // promise, so it costs whatever is left of it (#488). In the run that measured
+  // promise, so it costs whatever is left of it. In the run that measured
   // this there were 47 seconds between the server connecting and the first search,
   // which absorbed most of a 63.9s load.
   //
@@ -1414,7 +1414,7 @@ git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
   //
   // This replaced a rootless podman container and the seventy lines that built it
   // -- an overlay of $HOME, a generated /etc/passwd, subordinate id ranges, a
-  // newuidmap shim. #464 has the measurements; the decision in one paragraph:
+  // newuidmap shim. The decision, in one paragraph:
   //
   // Three things cannot all be true -- every tool sees the same environment, a
   // credential in one tool is hidden from the shell, and any third-party server
@@ -1483,7 +1483,7 @@ sudo install -d -o "${TOOL_USER}" -m 0700 "${TOOL_CACHE}"
 # This directory is no longer only the tool user's: actions/cache restored the
 # reranker into it as the RUNNER, moments ago, and will read it back as the runner
 # after the agent has finished. Without these the two users have half of it each --
-# the restored weights unwritable by the server that loads them, which is #499
+# the restored weights unwritable by the server that loads them, which is the
 # exactly, and the downloaded weights unreadable by the save that should keep them.
 #
 # -R as well as -d: a default ACL only reaches files created after it is set, and

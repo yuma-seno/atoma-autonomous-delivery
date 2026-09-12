@@ -149,7 +149,7 @@ describe("post_result_comment.ts main", () => {
   /**
    * The path is required, and this is why.
    *
-   * It used to open `atoma_output.txt` relative to the working directory. #487
+   * It used to open `atoma_output.txt` relative to the working directory. A change
    * moved the run's files out of the work tree and the read went to a path that no
    * longer existed -- landing in the "empty output" branch, whose message reads
    * like a session that ended via a tool call. Two releases shipped where no
@@ -270,7 +270,7 @@ describe("post_result_comment.ts main", () => {
 /**
  * What a run that ran out of iterations leaves behind.
  *
- * Measured (#544): 17 minutes, 154k tokens, 352 tool calls, and the thread received
+ * Measured: 17 minutes, 154k tokens, 352 tool calls, and the thread received
  * a one-line notice saying the limit was reached. Everything the run had worked out
  * was in the session, where nobody looks.
  */
@@ -294,7 +294,7 @@ describe("salvaging a run that ended before it reported", () => {
   });
 
   /**
-   * The defect this boundary exists for, measured on #568.
+   * The defect this boundary exists for, measured in production.
    *
    * A session accumulates across runs, and these models write prose exactly once, in
    * their final turn. So a run that is stopped has no assistant text of its own at

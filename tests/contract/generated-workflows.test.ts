@@ -18,7 +18,7 @@ describe("generated workflows", () => {
    *
    * A disagreement between any two of them is silent. The weights download again
    * every run, or fail to and reranking falls back to a first-stage order that
-   * looks exactly like a good answer -- which is #499, and it went unnoticed for
+   * looks exactly like a good answer, and it went unnoticed for
    * two releases.
    *
    * `MODEL_CACHE_DIR` is imported rather than typed out here, so this test cannot
@@ -111,7 +111,7 @@ describe("generated workflows", () => {
    * omission -- nobody chose it, and the choice is invisible to the next reader.
    *
    * It is not cosmetic. An untagged notice becomes part of what the next run reads,
-   * and #492 measured the cost: three failed runs left a 425-message session, and the
+   * and the cost was measured: three failed runs left a 425-message session, and the
    * fourth spent 348k prompt tokens and then abandoned its instructions. The same
    * instructions on a fresh issue took 61k.
    */
@@ -221,7 +221,7 @@ describe("generated workflows", () => {
    *
    * Three properties, and each one is a way the check could be present and useless.
    *
-   * It must be unconditional. #414 asks for a validation that runs independently of
+   * It must be unconditional. The validation has to run independently of
    * `config.json`'s `checks.commands` — an adopter's `atoma-check.yml` runs nothing
    * at all until they configure it, and whatever they put there is their pipeline.
    * An `if:` on this step would put our own integrity check back under their
@@ -262,7 +262,7 @@ describe("generated workflows", () => {
   /**
    * Everything a tool server reads from the environment is passed to it.
    *
-   * This is the test the review of #464 asked for, because the change it reviewed
+   * This is the test a review asked for, because the change it reviewed
    * had exactly this bug. `sudo` resets the environment, so the agent step now
    * enumerates what to pass — and the first version of that list was assembled from
    * the step's own `env:` block rather than from what the servers read.
@@ -353,8 +353,8 @@ describe("generated workflows", () => {
     // covered -- the failure this guards against came from a step nobody thought
     // of as an installer at the time.
     const installs = steps
-      .map((step, index) => ({ step, index }))
-      .filter(({ step }) => {
+.map((step, index) => ({ step, index }))
+.filter(({ step }) => {
         const run = step.run ?? "";
         return (
           /\/usr\/local\/bin|\/usr\/bin/.test(run) ||
@@ -362,7 +362,7 @@ describe("generated workflows", () => {
           /\b(apt-get install|npm install -g|bun add -g|pipx install)\b/.test(run)
         );
       })
-      .filter(({ index }) => index !== closer);
+.filter(({ index }) => index !== closer);
 
     expect(installs.length, "at least one install step should be recognised").toBeGreaterThan(0);
     for (const { step, index } of installs) {
@@ -401,13 +401,13 @@ describe("generated workflows", () => {
 
     const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
     for (const step of steps) {
-      const lines = [step.run ?? "", ...Object.values(step.env ?? {}), step.if ?? ""]
-        .join("\n")
-        .split("\n")
+      const lines = [step.run ?? "",...Object.values(step.env ?? {}), step.if ?? ""]
+.join("\n")
+.split("\n")
         // Shell comments are prose, and prose about where a file USED to live is
         // worth being able to write. Only what the shell executes can put a file
         // back in the work tree.
-        .filter((line) => !line.trimStart().startsWith("#"));
+.filter((line) => !line.trimStart().startsWith("#"));
       const text = lines.join("\n");
       for (const name of names) {
         for (const match of text.matchAll(new RegExp(`(.{0,24})${name.replace(".", "\.")}`, "g"))) {
@@ -460,7 +460,7 @@ describe("generated workflows", () => {
    *     existsSync("atoma_output.txt")
    *     readFileSync("atoma_logs.txt", "utf8")
    *
-   * Correct only while the run's files sat in the repository root. #487 moved them
+   * Correct only while the run's files sat in the repository root. They moved
    * to `$RUNNER_TEMP/atoma-run`, so `existsSync` went false -- and the branch it
    * falls into reports "session ended via a tool call", which reads like a normal
    * outcome. **Two releases went out where no agent's report reached anyone.** The
@@ -474,8 +474,8 @@ describe("generated workflows", () => {
     const names = ["session.json", "events.json", "atoma_ops.log", "atoma_output.txt", "atoma_logs.txt"];
     const CALLS = ["existsSync", "readFileSync", "writeFileSync", "appendFileSync", "unlinkSync", "statSync"];
     const scripts = readdirSync("src/scripts", { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
-      .map((entry) => join("src/scripts", entry.name));
+.filter((entry) => entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+.map((entry) => join("src/scripts", entry.name));
     expect(scripts.length, "there should be scripts to check").toBeGreaterThan(5);
 
     for (const file of scripts) {
@@ -484,9 +484,9 @@ describe("generated workflows", () => {
       // quoting the call that caused it. A test that could not tell the two apart
       // would forbid writing down what went wrong.
       const text = readFileSync(file, "utf8")
-        .split("\n")
-        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-        .join("\n");
+.split("\n")
+.filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+.join("\n");
       for (const name of names) {
         // Built without a regular expression, because a regular expression here has
         // to survive being written into a template literal -- and it did not: `\s`
@@ -520,7 +520,7 @@ describe("generated workflows", () => {
    * `atoma-machinery/` was never added beside it -- and an adopter has neither
    * line, so it happened to every one of them.
    *
-   * Found by the verification run for #461, which is the point: the agent was told
+   * Found by a verification run, which is the point: the agent was told
    * the work tree would be clean, found it was not, and spent its whole iteration
    * budget working out why.
    */
@@ -580,8 +580,8 @@ describe("generated workflows", () => {
     ) as WorkflowDocument;
     const steps = workflow.jobs?.run?.steps ?? [];
     const grep = steps
-      .map((step) => step.run ?? "")
-      .find((run) => run.includes('"op":"(commit_and_push'));
+.map((step) => step.run ?? "")
+.find((run) => run.includes('"op":"(commit_and_push'));
     expect(grep, "the runner must read what the run changed out of the ops log").toBeDefined();
 
     const ops = /"op":"\(([a-z_|]+)\)"/.exec(grep ?? "")?.[1]?.split("|") ?? [];
@@ -604,7 +604,7 @@ describe("generated workflows", () => {
    *
    * Carrying them is not free, and the direction is the wrong one: failing appends
    * a notice, a longer context fails more, and a failure appends another notice.
-   * Measured on #492 -- three failed runs, a 425-message session, and a fourth run
+   * Measured -- three failed runs, a 425-message session, and a fourth run
    * that spent 348k prompt tokens over four iterations and then abandoned its
    * instructions. The same instructions on a fresh issue: 61k, completed.
    *
@@ -628,9 +628,9 @@ describe("generated workflows", () => {
     // like one that posts untagged.
     const executed = (step: WorkflowStep): string =>
       (step.run ?? "")
-        .split("\n")
-        .filter((line) => !line.trimStart().startsWith("#"))
-        .join("\n");
+.split("\n")
+.filter((line) => !line.trimStart().startsWith("#"))
+.join("\n");
 
     const posters = steps.filter((step) => /gh issue comment/.test(executed(step)));
     // A floor, not a census. Notices keep moving out of workflow bash and into
@@ -743,8 +743,8 @@ describe("generated workflows", () => {
     for (const file of carriers) {
       const workflow = Bun.YAML.parse(readFileSync(join(directory, file), "utf8")) as WorkflowDocument;
       const step = Object.values(workflow.jobs ?? {})
-        .flatMap((job) => job.steps ?? [])
-        .find((candidate) => candidate.id === "secret-names");
+.flatMap((job) => job.steps ?? [])
+.find((candidate) => candidate.id === "secret-names");
       expect(step, `${file} secret-names step`).toBeDefined();
 
       expect(step?.env?.ATOMA_DEFAULT_BRANCH, file).toBe("${{ github.event.repository.default_branch }}");
@@ -848,7 +848,7 @@ describe("generated workflows", () => {
   // A pull request run checks out the pull request, so anything this job reads
   // from the workspace is the pull request's own -- which let a pull request
   // decide how the agent reviewing it behaves: which agent, which iteration
-  // budget, which commands, which credentials. #337 closed that for the
+  // budget, which commands, which credentials. That was closed for the
   // credential declaration alone.
   //
   // The split is between the work and the machinery. Losing it is silent: runs
@@ -940,10 +940,10 @@ describe("generated workflows", () => {
 
     const ruleset = JSON.parse(readFileSync("dist/.github/atoma/rulesets/main.json", "utf8")) as Ruleset;
     const contexts = (ruleset.rules ?? [])
-      .filter((rule) => rule.type === "required_status_checks")
-      .flatMap((rule) => rule.parameters?.required_status_checks ?? [])
-      .map((entry) => entry.context)
-      .filter((context): context is string => typeof context === "string");
+.filter((rule) => rule.type === "required_status_checks")
+.flatMap((rule) => rule.parameters?.required_status_checks ?? [])
+.map((entry) => entry.context)
+.filter((context): context is string => typeof context === "string");
     expect(contexts, "the shipped ruleset must require a check").not.toEqual([]);
 
     const workflow = Bun.YAML.parse(readFileSync("dist/.github/workflows/atoma-check.yml", "utf8")) as WorkflowDocument;
@@ -958,7 +958,7 @@ describe("generated workflows", () => {
     //
     // A matrix renames the check run: `atoma-check` becomes
     // `atoma-check (ubuntu-latest)`, and the bare name stops existing. Measured on
-    // a throwaway branch for #437 -- `gh api .../check-runs` listed
+    // a throwaway branch -- `gh api.../check-runs` listed
     // `probe-check (macos-latest)` and `probe-check (ubuntu-latest)` and no
     // `probe-check`. So the required context would refer to nothing, and every pull
     // request would wait forever on a check that never reports.
@@ -986,7 +986,7 @@ describe("generated workflows", () => {
    * why it is pinned to `ubuntu-latest`: it is the job that finds out what the
    * configured runner is, so it cannot itself be on it.
    *
-   * Before #437 this was `ubuntu-latest` hardcoded in eleven files, unreachable from
+   * This was once `ubuntu-latest` hardcoded in eleven files, unreachable from
    * `config.json` -- and unfixable by an agent, because the fix is in
    * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
    */

@@ -76,11 +76,11 @@ const ROUTING_RULES: [RegExp, string][] = [
  * credential still sitting in the environment block, which is the point: it locks
  * the entry rather than the value. See `../lib/harden.ts`.
  *
- * That replaced a rootless container with its own PID namespace (#374). The
+ * That replaced a rootless container with its own PID namespace. The
  * container hid the other servers outright, and the reason it went is not that it
  * failed at this: it gave the shell a different filesystem from every other tool,
  * and a write to $HOME inside it succeeded and then was not there for anything
- * else. #464 has the measurements and the three-way trade it comes from.
+ * else. The confinement design carries the measurements and the three-way trade.
  *
  * This rule is kept for two cases the flag does not cover. A hand-run `atoma`
  * where a server is an ordinary sibling process. And a THIRD-PARTY server, which

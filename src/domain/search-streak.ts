@@ -10,7 +10,7 @@
  *   session               longest run   searches   opens   prompt tokens
  *   issue-492/engineer            85         188      26           9.6M
  *   issue-200/engineer            44         124      37          13.0M
- *   issue-399 (#544)              30         173      62          19.7M
+ *   issue-399              30         173      62          19.7M
  * ```
  *
  * `issue-492` in full, `S` a search and `r` an open:
@@ -80,18 +80,18 @@ const OPENS = /^(cat|bat|head|tail|sed|less|more|nl|od|xxd)$/;
  * because `sed -n '10,40p' file` is how a range gets read; `sed -i` is a write and is
  * refused elsewhere in this guard.
  *
- * `find . -exec cat {} \;` reads as a search, which is the one classification here that
+ * `find. -exec cat {} \;` reads as a search, which is the one classification here that
  * is arguably wrong. It makes the guard fire slightly sooner, and the threshold has
  * room for it.
  */
 export function classifyShellAct(command: string): ShellAct {
   const first = command
-    .trim()
-    .split(/\s*(?:\|\||&&|[;|])\s*/)[0]
+.trim()
+.split(/\s*(?:\|\||&&|[;|])\s*/)[0]
     ?.trim()
-    .split(/\s+/)
-    // `VAR=x grep ...` and `sudo grep ...`: step over what is not the command itself.
-    .find((token) => token.length > 0 && !token.includes("=") && token !== "sudo" && token !== "time");
+.split(/\s+/)
+    // `VAR=x grep...` and `sudo grep...`: step over what is not the command itself.
+.find((token) => token.length > 0 && !token.includes("=") && token !== "sudo" && token !== "time");
   if (first === undefined) return "other";
 
   const name = first.split("/").pop() ?? first;

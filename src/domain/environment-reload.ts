@@ -33,13 +33,13 @@
  *
  * A reload starts a NEW RUN, and a run's own limits reset with it. Without a limit,
  * reloading is an unbounded extension of whatever bounds a run -- which is
- * why #456 blocked this: the budget that bounds a run cannot be bounded by
+ * why this was blocked: the budget that bounds a run cannot be bounded by
  * something the run can reset at will.
  *
  * Counted differently from the handoff limit in `dispatch-chain.ts`, and the
  * difference is not arbitrary. That one is derived from comments, because handoffs
  * leave comments. A reload leaves none, so there is nothing to count -- the tally
- * travels as a workflow input instead, which is what #456's own proposal suggested.
+ * travels as a workflow input instead, which is what the proposal suggested.
  */
 
 /**
@@ -87,7 +87,7 @@ export function reloadRefusal(soFar: number, limit: number): string | undefined 
     `unbounded chain of them is an unbounded chain of runs. ` +
     `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` +
     `and a person can decide. If the answer is a system package, it belongs in ` +
-    `\`environment.setup_commands\` in .github/atoma/config.json, which needs a human merge either way.`
+    `\`environment.setup_commands\` in.github/atoma/config.json, which needs a human merge either way.`
   );
 }
 

@@ -4,7 +4,7 @@
  *
  * A repository adopts the deliverable by copying it over its own `.github/`:
  *
- *     cp -r dist/.github/. .github/
+ *     cp -r dist/.github/..github/
  *
  * So a file that exists only under `.github/` is not part of the deliverable at
  * all. It keeps working wherever it already sits and is simply missing
@@ -40,8 +40,8 @@ function copiedFiles(): string[] {
  */
 function staticFiles(): string[] {
   return readdirSync(ATOMA_SRC, { withFileTypes: true })
-    .filter((e) => e.isFile() && /\.(json|md|ya?ml)$/.test(e.name))
-    .map((e) => e.name);
+.filter((e) => e.isFile() && /\.(json|md|ya?ml)$/.test(e.name))
+.map((e) => e.name);
 }
 
 /** Every file under a directory, recursively, repo-relative. */
@@ -71,8 +71,8 @@ describe("deployment contract", () => {
   // shipped an untested MCP server would be handing adopters untested code.
   test("the deliverable's content directories hold no test files", () => {
     const strays = walk(ATOMA_SRC)
-      .filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
-      .filter((f) => !f.startsWith("src/atoma/tools/scripts/"));
+.filter((f) => /\.test\.ts$|\.spec\.ts$/.test(f))
+.filter((f) => !f.startsWith("src/atoma/tools/scripts/"));
     expect(strays, `move these out of src/atoma/: ${strays.join(", ")}`).toEqual([]);
   });
 
@@ -92,8 +92,8 @@ describe("deployment contract", () => {
 
     // Markdown and YAML are copied verbatim, so every one in src must ship.
     const sourceStatic = walk(ATOMA_SRC)
-      .map((f) => f.replace("src/atoma/", ""))
-      .filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".json"));
+.map((f) => f.replace("src/atoma/", ""))
+.filter((f) => f.endsWith(".md") || f.endsWith(".yaml") || f.endsWith(".json"));
 
     for (const file of sourceStatic) {
       expect(shipped.includes(file), `src/atoma/${file} never reaches dist/.github/atoma/`).toBe(true);
@@ -130,7 +130,7 @@ describe("deployment contract", () => {
     // is also the weaker of the two — an image can drop a tool between runner
     // releases and nothing here would notice — so listing them makes adding one
     // a decision instead of an omission.
-    // Empty since #464: every server is started with `bun`, so nothing here needs
+    // Empty: every server is started with `bun`, so nothing here needs
     // a binary the runner has to supply. `podman` was the one entry, for the
     // container the shell server ran in, and this is the place a reader would look
     // to find out which external programs an adopter's runner must have — so a
@@ -146,7 +146,7 @@ describe("deployment contract", () => {
       npm?: string[];
       pip?: string[];
     };
-    const declared = [...(packages.npm ?? []), ...(packages.pip ?? [])].join(" ");
+    const declared = [...(packages.npm ?? []),...(packages.pip ?? [])].join(" ");
 
     for (const command of mustBeInstalled) {
       // The npm package name need not equal the binary name, so require only

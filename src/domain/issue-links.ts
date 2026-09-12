@@ -60,7 +60,7 @@ export interface IssueLinks {
  * own closing link only for pull requests that target the default branch, and
  * Atoma aims a sub-issue's pull request at its parent's branch. Measured on
  * this repository, #281's `Closes #281` in PR #284 produced no native link
- * because #284 targeted `atoma/issue-280`, while #280's did because its pull
+ * because the pull request targeted `atoma/issue-280`, while the parent's did because its pull
  * request targeted `main`.
  */
 const CLOSING_KEYWORDS = "close[sd]?|fix(?:e[sd])?|resolve[sd]?";

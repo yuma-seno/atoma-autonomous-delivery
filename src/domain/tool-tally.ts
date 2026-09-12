@@ -10,7 +10,7 @@
  * calls, 199 of them `shell__shell_execute` — and that shape is recognisable
  * without opening a session or a workflow log.
  *
- * Deliberately not a report. #544 asked for one, and the measurement refused it:
+ * Deliberately not a report. One was asked for, and the measurement refused it:
  * these agents write no prose until their final turn, so a run cut off before that
  * has nothing to say. The session survives for a retry either way, so nothing is
  * lost — what was missing was the one thing a person needed to decide, and this is
@@ -22,7 +22,7 @@ import type { Session } from "../lib/session.ts";
 const NAMED = 4;
 
 /**
- * `215 tool calls: shell__shell_execute 199, filesystem__read_text_file 8, ...`
+ * `215 tool calls: shell__shell_execute 199, filesystem__read_text_file 8,...`
  *
  * `undefined` when there is nothing to say — no session, or a session with no calls
  * in it. The caller posts its notice either way; this is an addition to it.

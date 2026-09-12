@@ -12,7 +12,7 @@ describe("whether anybody was asked to look at a new pull request", () => {
   });
 
   /**
-   * The case this module exists for. #486 made asking explicit, which made
+   * The case this module exists for. Asking became explicit, which made
    * forgetting possible -- and forgetting is silent: CI runs, the check goes green,
    * and the work waits for somebody who was never told.
    */

@@ -12,7 +12,7 @@
  *            non-dumpable -- the arrangement that needs no change to how atoma
  *            delivers credentials, and the one the design now rests on
  *
- * The last one is the unknown #464 now turns on. `PR_SET_DUMPABLE(0)` is what
+ * The last one is the unknown the confinement design turns on. `PR_SET_DUMPABLE(0)` is what
  * makes `/proc/<pid>/environ` and `/proc/<pid>/mem` unreadable to the same user,
  * atoma calls it for itself, and it does NOT survive `execve` -- so a server has
  * to call it in its own process. Whether Bun can is the question: it needs

@@ -39,8 +39,8 @@ const toolIds = (s: Session) =>
   (s.messages ?? []).filter((m) => m.role === "tool").map((m) => m.tool_call_id);
 const callIds = (s: Session) =>
   (s.messages ?? [])
-    .flatMap((m) => (Array.isArray(m.tool_calls) ? m.tool_calls : []))
-    .map((c) => (c as { id?: string }).id);
+.flatMap((m) => (Array.isArray(m.tool_calls) ? m.tool_calls : []))
+.map((c) => (c as { id?: string }).id);
 
 describe("how big a session is", () => {
   test("an empty session costs nothing", () => {
@@ -131,7 +131,7 @@ describe("capping a session on the way to disk", () => {
     const result = capToolResults(before);
     expect(result.shrunk).toBe(true);
     const args = (result.session.messages?.[0]?.tool_calls as { function: { arguments: string } }[])[0]!
-      .function.arguments;
+.function.arguments;
     expect(args.length).toBeLessThan(TOOL_CALL_ARGS_CAP + 200);
     expect(args.startsWith("yyyy")).toBe(true);
   });
@@ -172,9 +172,9 @@ describe("shrinking a restored session that will not fit", () => {
   });
 
   /**
-   * The change this replaces #457 with. The old version dropped each result
+   * The change this replaces the stopgap with. The old version dropped each result
    * together with the call that produced it, so an agent resuming lost the record
-   * of what it had already looked at — and #544 measured what that costs: 169
+   * of what it had already looked at — and the cost was measured: 169
    * distinct searches and no report. An agent that cannot see what it searched
    * searches again.
    */
@@ -262,7 +262,7 @@ describe("shrinking a restored session that will not fit", () => {
   });
 
   /**
-   * The limit #539 exists to answer properly. Until it does, failing every run
+   * The limit a proper compression policy has to answer. Until it does, failing every run
    * with a provider error nobody connects to this is not acceptable, so the one
    * way out is named where somebody reading the run will see it.
    */

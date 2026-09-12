@@ -183,10 +183,10 @@ So treat it as vendoring, and let git do the merge:
 
 ```bash
 gh release download v0.1.1 -R yuma-seno/atoma-autonomous-delivery -p atoma-delivery.zip
-unzip -o atoma-delivery.zip   # the archive holds .github/, so run this at the repo root
+unzip -o atoma-delivery.zip   # the archive holds.github/, so run this at the repo root
 rm atoma-delivery.zip
-git diff .github/            # every difference is now a decision
-git checkout -- .github/atoma/config.json    # for anything you meant to keep
+git diff.github/            # every difference is now a decision
+git checkout --.github/atoma/config.json    # for anything you meant to keep
 ```
 
 Name the version rather than taking `latest`, and read the upstream changes between
@@ -197,7 +197,7 @@ rediscovering them in a diff.
 release and records the version and every path the release contains:
 
 ```bash
-jq -r .version .github/atoma-release.json
+jq -r.version.github/atoma-release.json
 ```
 
 **What did upstream delete?** Extracting never deletes, so a file the template
@@ -206,12 +206,12 @@ in v0.1.73 because work should start only when somebody asks; keeping them keeps
 the triggers. The manifest is what makes them findable:
 
 ```bash
-# Paths you have under .github/ that this release no longer ships.
+# Paths you have under.github/ that this release no longer ships.
 # Your own files appear here too, which is why it is a list to read, not to pipe
 # into rm.
 comm -23 \
   <(git ls-files '.github/*' | sort) \
-  <(jq -r '.files[]' .github/atoma-release.json | sort)
+  <(jq -r '.files[]'.github/atoma-release.json | sort)
 ```
 
 Read it rather than acting on it: your own workflows and your own project skills are
@@ -446,7 +446,7 @@ question, or investigated and reported. `0` means the default.
 Nothing starts from a GitHub event on its own. Opening a pull request starts nobody;
 pushing to one starts nobody; leaving a review starts nobody.
 
-**This changed.** Until #486 there were four `auto_triggers` entries that started a
+**This changed.** There were once four `auto_triggers` entries that started a
 reviewer on `pull_request.opened`, `synchronize` and `ready_for_review`, and an
 engineer on a `changes_requested` review. Two rules to learn instead of one — and
 the event-driven half was invisible in a way that mattered: GitHub raises no
@@ -702,7 +702,7 @@ ships requiring the context `atoma-check`, which is the job name in
 `atoma-check.yml`. Apply it with:
 
 ```bash
-gh api repos/{owner}/{repo}/rulesets --input .github/atoma/rulesets/main.json
+gh api repos/{owner}/{repo}/rulesets --input.github/atoma/rulesets/main.json
 ```
 
 Do not rename one side without the other. A ruleset requiring a context no job
@@ -753,7 +753,7 @@ default branch rather than from the pull request.
 You can run the same check yourself, against a checkout or a worktree:
 
 ```bash
-bun run .github/scripts/validate_deliverable.ts --root .
+bun run.github/scripts/validate_deliverable.ts --root.
 ```
 
 ### Requiring a check that agents can satisfy

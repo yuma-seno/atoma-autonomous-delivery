@@ -7,7 +7,7 @@
  * write it. A disagreement between any two of them is silent — the model
  * downloads again, or fails to, and every search still answers, worse.
  *
- * That is not hypothetical. #499 was this directory being unwritable: the load
+ * That is not hypothetical. It happened: this directory was unwritable, the load
  * failed with EACCES, reranking fell back to a first-stage order, and two releases
  * went out before anyone read a log. The path is a constant for the same reason
  * `domain/workspace.ts` holds one.

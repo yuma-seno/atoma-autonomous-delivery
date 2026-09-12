@@ -5,7 +5,7 @@
  *
  * A template does not know where an adopter keeps their source. `git ls-files` is the
  * answer they already gave: it is exactly what the project tracks, it respects
- * `.gitignore`, and it needs no key in `config.json` — which #399 is about not adding.
+ * `.gitignore`, and it needs no key in `config.json`, which is one fewer key to add.
  *
  * The I/O half is the caller's. This module decides what to keep.
  *
@@ -64,7 +64,7 @@ export function shouldIndex(path: string): boolean {
  */
 export function corpusFrom(tracked: readonly string[]): string[] {
   return tracked
-    .map((line) => line.trim().replace(/\\/g, "/"))
-    .filter((path) => path.length > 0 && shouldIndex(path))
-    .sort();
+.map((line) => line.trim().replace(/\\/g, "/"))
+.filter((path) => path.length > 0 && shouldIndex(path))
+.sort();
 }

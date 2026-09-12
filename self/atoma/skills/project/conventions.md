@@ -30,7 +30,7 @@ which rules apply:
   else, and it applies as soon as it merges.
 
 The rest of this file does not separate them cleanly. That is a known gap, tracked
-in #323; until then, read each rule and ask which of the two it is about.
+in the documentation restructure; until then, read each rule and ask which of the two it is about.
 
 `src/atoma/**` is mirrored verbatim into `dist/.github/atoma/` and from there
 into an adopter's repository. **It may only contain content that holds for any
@@ -106,14 +106,14 @@ Actions tab. It opens a pull request and merges nothing. `.github/**` is in
 What it does:
 
 ```bash
-rm -rf .github            # so a file the release DELETED is gone, not orphaned
+rm -rf.github            # so a file the release DELETED is gone, not orphaned
 unzip release.zip         # the deliverable
-cp -r self/. .github/     # this repository's own, at the same paths
+cp -r self/..github/     # this repository's own, at the same paths
 ```
 
 `.github/` is therefore exactly those two sources, with nothing kept alive by
 remembering to. Before `self/` existed this was a `cp -r` followed by
-`git checkout -- .github/atoma/config.json`, and a file the template had removed
+`git checkout --.github/atoma/config.json`, and a file the template had removed
 stayed in the tree with no diff to notice it by.
 
 It needs `ATOMA_SELF_DEPLOY_TOKEN`, a PAT with the `workflow` scope, because

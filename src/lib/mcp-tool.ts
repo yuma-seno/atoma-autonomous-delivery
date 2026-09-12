@@ -72,11 +72,11 @@ export function positiveInt(description: string) {
  */
 export function stringArray(description: string) {
   return z
-    .preprocess(
+.preprocess(
       (value) => (typeof value === "string" ? [value] : value),
       z.array(z.string()),
     )
-    .describe(description);
+.describe(description);
 }
 
 /**
@@ -120,8 +120,8 @@ function acceptNumberAliases(raw: unknown): unknown {
   const value = raw as Record<string, unknown>;
   const alias = NUMBER_ALIASES.find((name) => name in value);
   if (alias === undefined) return raw;
-  const { [alias]: aliased, ...rest } = value;
-  return "number" in rest ? rest : { ...rest, number: aliased };
+  const { [alias]: aliased,...rest } = value;
+  return "number" in rest ? rest : {...rest, number: aliased };
 }
 
 /** An image in MCP's own content-block shape, which the Atoma core maps per provider. */
@@ -198,7 +198,7 @@ function refuseUnknownKeys<S extends z.ZodTypeAny>(schema: S): S {
 
 export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): BuiltMcpTool {
   const schema = refuseUnknownKeys(spec.schema);
-  const { $schema: _drop, ...jsonSchema } = zodToJsonSchema(schema, {
+  const { $schema: _drop,...jsonSchema } = zodToJsonSchema(schema, {
     target: "jsonSchema7",
     $refStrategy: "none",
   }) as Record<string, unknown>;
@@ -211,8 +211,8 @@ export function defineMcpTool<S extends z.ZodTypeAny>(spec: McpToolSpec<S>): Bui
       const result = schema.safeParse(acceptNumberAliases(args));
       if (!result.success) {
         const message = result.error.issues
-          .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-          .join("; ");
+.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+.join("; ");
         throw new Error(`Invalid arguments for ${spec.name}: ${message}`);
       }
       return normalizeResult(await spec.handler(result.data));
@@ -239,7 +239,7 @@ export function buildMcpTools(specs: BuiltMcpTool[]): { tools: Tool[]; dispatch:
 /**
  * What to say when a name does not exist here.
  *
- * It used to say `Unknown: execute` and stop. Measured (#544): an agent called
+ * It used to say `Unknown: execute` and stop. Measured: an agent called
  * `shell__execute` -- the real name is `shell__shell_execute` -- and, told only that
  * it was unknown, **made the same mistake three times.** The one place that knows the
  * right answer is the map two lines up, and it was not being asked.
@@ -313,9 +313,9 @@ export async function serveMcpServer(options: {
     try {
       const { text, meta, images } = await options.dispatch(name, args);
       return {
-        content: [{ type: "text", text }, ...(images ?? [])],
+        content: [{ type: "text", text },...(images ?? [])],
         isError: false,
-        ...(meta ? { _meta: meta } : {}),
+...(meta ? { _meta: meta } : {}),
       };
     } catch (error) {
       const message = (error as Error).message ?? String(error);
@@ -328,7 +328,7 @@ export async function serveMcpServer(options: {
   // notification sent before `initialize` has completed is outside what the protocol
   // allows a server to do, and a client is entitled to drop it -- which would make a
   // report raised during startup the one report that never arrives, and startup is
-  // exactly when #499 happened. Everything said before this moment was held; it goes
+  // exactly when that happened. Everything said before this moment was held; it goes
   // out here, in order.
   //
   // No `logger` field: atoma names the server that produced a result when it

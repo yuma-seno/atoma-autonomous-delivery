@@ -82,13 +82,13 @@ describe("prunablePaths", () => {
 describe("pruneCommitMessage", () => {
   test("names the issues, so a missing session can be traced to a commit", () => {
     expect(pruneCommitMessage({ paths: ["a", "b", "c"], issues: [2, 9] })).toBe(
-      "atoma: prune 3 files from closed issues (#2, #9)",
+      "atoma: prune 3 files from closed issues",
     );
   });
 
   test("one file reads as one", () => {
     expect(pruneCommitMessage({ paths: ["a"], issues: [9] })).toBe(
-      "atoma: prune 1 file from closed issues (#9)",
+      "atoma: prune 1 file from closed issues",
     );
   });
 });

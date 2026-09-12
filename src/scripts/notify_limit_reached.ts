@@ -43,7 +43,7 @@ function main(): void {
   // one, and asks them to retry -- and the next run can do nothing with it but
   // carry it.
   //
-  // Carrying it is not free. Measured on #492: three failed runs left a session of
+  // Carrying it is not free. Measured: three failed runs left a session of
   // 425 messages, and the fourth spent 348k prompt tokens over four iterations and
   // then gave up without following its instructions. The same instructions on a
   // fresh issue took 61k and completed. Failure notices are part of what filled
@@ -56,7 +56,7 @@ function main(): void {
   // What it spent it on, so a person can tell a run that was going round from one
   // that was making progress -- without opening the workflow log or the session.
   //
-  // No model call and no report. #544 asked for one and the data said no: these
+  // No model call and no report. One was asked for and the data said no: these
   // agents write nothing until their final turn, so a run cut off before it has
   // nothing to say, and the session survives for a retry anyway. What a person
   // actually needs here is whether to retry or to re-scope, and a tally answers that.
@@ -67,7 +67,7 @@ function main(): void {
     "comment",
     values.number,
     "--body",
-    [`${LLM_CONTEXT_TAG.write("exclude")}`, notice, ...(spent ? ["", spent] : [])].join("\n"),
+    [`${LLM_CONTEXT_TAG.write("exclude")}`, notice,...(spent ? ["", spent] : [])].join("\n"),
   );
 }
 

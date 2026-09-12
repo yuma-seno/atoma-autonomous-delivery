@@ -95,7 +95,7 @@ function deletedGithubMessage(message: SessionMessage): SessionMessage {
   return {
     role: "user",
     content: `[Deleted GitHub ${String(message.atoma_metadata?.event_type ?? "event")}]`,
-    atoma_metadata: { ...message.atoma_metadata, deleted: true },
+    atoma_metadata: {...message.atoma_metadata, deleted: true },
   };
 }
 
@@ -133,7 +133,7 @@ function reconcilePersistedGithubContext(
     }
   }
 
-  return { ...session, messages: reconciled };
+  return {...session, messages: reconciled };
 }
 
 /**
@@ -154,11 +154,11 @@ export function mergeGithubContext(
   const firstHistoryIndex = existingMessages.findIndex((message) => message.role !== "system");
   const insertionIndex = firstHistoryIndex === -1 ? existingMessages.length : firstHistoryIndex;
   return {
-    ...session,
+...session,
     messages: [
-      ...existingMessages.slice(0, insertionIndex),
-      ...messages,
-      ...existingMessages.slice(insertionIndex),
+...existingMessages.slice(0, insertionIndex),
+...messages,
+...existingMessages.slice(insertionIndex),
     ],
   };
 }
@@ -248,7 +248,7 @@ function eventToUserMessage(event: GithubEvent, vision: boolean): GithubEventMes
       id: event.id,
       author: event.author ?? "unknown",
       created_at: event.created_at ?? "",
-      ...(event.sha !== undefined ? { sha: event.sha } : {}),
+...(event.sha !== undefined ? { sha: event.sha } : {}),
     },
   };
 }
@@ -291,9 +291,9 @@ export function reconcileGithubSession(
 
   const mergedSession = mergeGithubContext(session, contextMessages, fetchedEventKeys);
   mergedSession.metadata = {
-    ...mergedSession.metadata,
+...mergedSession.metadata,
     github_context: {
-      ...mergedSession.metadata?.github_context,
+...mergedSession.metadata?.github_context,
       version: 1,
       snapshot_hash: currentHash,
       event_count: filteredEvents.length,
@@ -352,7 +352,7 @@ function main(): void {
         // written by an earlier run or is the GitHub context put in front of this one,
         // and `post_result_comment.ts` needs the boundary: without it, a run that
         // stopped before writing anything salvages the LAST run's conclusion and
-        // presents it as a fragment of this one. Measured on #568.
+        // presents it as a fragment of this one. Measured in production.
         `messages_before=${mergedSession.messages?.length ?? 0}\n`,
     );
   }

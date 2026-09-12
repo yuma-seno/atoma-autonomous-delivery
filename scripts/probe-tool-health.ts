@@ -3,8 +3,8 @@
  * probe-tool-health.ts — does a server's report about itself actually reach the
  * model?
  *
- * atoma v0.1.18 (atoma#13) attaches what a tool server said about its own trouble
- * to that server's next tool result. #514 is the instruction that acts on it. Both
+ * atoma v0.1.18 attaches what a tool server said about its own trouble
+ * to that server's next tool result, and the prompt instructs an agent to act on it. Both
  * are built on a claim that had never been run: that the note survives the whole
  * path from a server's stderr line, or its `notifications/message`, into the
  * request the model receives.
@@ -43,7 +43,7 @@ const TOOL = "probe__ping";
  * answers one tool.
  *
  * The stderr line goes out at startup on purpose: that is the case the whole
- * feature exists for (#499's reranker failed while the server was starting, long
+ * feature exists for (a reranker failed while the server was starting, long
  * before any search arrived), and it is the one with a race in it -- atoma spawns
  * the stderr reader after `initialize` returns, so whether the line is read before
  * the first tool result is a matter of scheduling. Measuring it is the point.
@@ -218,7 +218,7 @@ async function probe(): Promise<number> {
     ],
     {
       env: {
-        ...process.env,
+...process.env,
         OPENAI_API_KEY: "probe-key",
         OPENAI_BASE_URL: `http://127.0.0.1:${llm.port}`,
         ATOMA_PROVIDER: "openai",

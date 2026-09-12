@@ -16,8 +16,8 @@
  * $GITHUB_OUTPUT. The first two names are unchanged so the workflow's guards and
  * `decide_guard_release`'s input keep working.
  *
- * `loop_limit_reached` now covers two limits: consecutive handoffs (#480) and
- * consecutive runs that changed nothing (#481). One guard, because the workflow's
+ * `loop_limit_reached` now covers two limits: consecutive handoffs and
+ * consecutive runs that changed nothing. One guard, because the workflow's
  * response to both is the same -- withhold the handoff and tell a person -- and
  * `stop_reason` is what makes the message say which.
  *
@@ -64,7 +64,7 @@ function readComments(repo: string, number: string): { comments: ChainComment[];
     // One JSON object per line, the same shape `readChangedFiles` uses and for the
     // same reason: with `--paginate` the pages arrive as separate documents that
     // `JSON.parse` cannot read as one.
-    '.[] | {authorType: .user.type, body: .body}',
+    '.[] | {authorType:.user.type, body:.body}',
   );
   if (code) return { comments: [], read: false };
   const comments: ChainComment[] = [];

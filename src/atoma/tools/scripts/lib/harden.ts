@@ -2,7 +2,7 @@
  * harden.ts — what a tool server that holds a credential does to itself at startup.
  *
  * Two things, and both exist because every tool server now runs as ONE dedicated
- * OS user (#464). That arrangement is what gives every tool the same environment,
+ * OS user. That arrangement is what gives every tool the same environment,
  * and it is also what makes these two necessary: same user means the shell server
  * is a peer, not a stranger.
  *

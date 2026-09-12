@@ -11,7 +11,7 @@ Entry workflows:
 - `atoma-pr-merged.yml` for merged PR aggregation
 - `atoma-sub-issue-closed.yml` for manual sub-issue close fallback
 
-`atoma-auto-trigger.yml` and `atoma-pr-review.yml` are gone (#486). They listened
+`atoma-auto-trigger.yml` and `atoma-pr-review.yml` are gone. They listened
 for `pull_request_target` and `pull_request_review.submitted` to start a reviewer or
 an engineer, and nothing now starts from a pull request event: work starts when a
 person comments `/agent` or when an agent asks for the next one. See

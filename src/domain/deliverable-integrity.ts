@@ -197,7 +197,7 @@ export function configProblems(facts: DeliverableFacts): string[] {
   problems.push(...resolveMergeGates(config.merge_gates).problems);
 
   // `deploy` and `checks` are read for their SHAPE only, which is not the same as
-  // taking direction from them. #414 rules out letting an adopter's pipeline
+  // taking direction from them. Letting an adopter's pipeline decide is ruled out
   // configure this validation — running their commands, deciding what to check
   // from their config. Asking whether `deploy.targets` is a well-formed array of
   // targets is this deliverable validating itself, and the alternative is what
@@ -265,7 +265,7 @@ export function configProblems(facts: DeliverableFacts): string[] {
       const effective = configured || fallback;
       if (!present.has(effective)) {
         problems.push(
-          `\`workflows.${kind}\` resolves to '${effective}', which is not a file in .github/workflows/. ` +
+          `\`workflows.${kind}\` resolves to '${effective}', which is not a file in.github/workflows/. ` +
             (configured ? "Check the name." : "The shipped default is missing from this repository."),
         );
       }

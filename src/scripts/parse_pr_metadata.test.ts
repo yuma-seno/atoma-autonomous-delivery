@@ -13,7 +13,7 @@ describe("parse_pr_metadata.ts", () => {
     spawnSync("bun", ["run", `${SCRIPTS_DIR}/parse_pr_metadata.ts`], {
       encoding: "utf8",
       env: {
-        ...process.env,
+...process.env,
         PR_BODY: "<!-- atoma:parent-issue=42 -->\nCloses #7\nsome body",
         PR_NUMBER: "99",
         GITHUB_OUTPUT: outputFile,
@@ -31,7 +31,7 @@ describe("parse_pr_metadata.ts", () => {
     writeFileSync(outputFile, "");
     spawnSync("bun", ["run", `${SCRIPTS_DIR}/parse_pr_metadata.ts`], {
       encoding: "utf8",
-      env: { ...process.env, PR_BODY: "plain body", PR_NUMBER: "1", GITHUB_OUTPUT: outputFile },
+      env: {...process.env, PR_BODY: "plain body", PR_NUMBER: "1", GITHUB_OUTPUT: outputFile },
     });
     const out = parseGithubOutput(await Bun.file(outputFile).text());
     expect(out.parent_number).toBe("");

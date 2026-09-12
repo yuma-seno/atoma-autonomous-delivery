@@ -2,14 +2,14 @@
 /**
  * probe-server-reports.ts — does a report actually reach the wire?
  *
- * #519 moved this repository's servers off "write WARN to stderr and hope atoma's
+ * This repository's servers moved off "write WARN to stderr and hope atoma's
  * word-matching catches it" and onto MCP's `notifications/message`, where the level
  * is a field. Everything about that is checkable by reading the source except the
  * part that matters: that a server, started as a real process, puts the
  * notification on the wire — and that a report raised *before* it had anywhere to
  * send it still arrives.
  *
- * That second half is what earns a probe. #499's reranker fails while loading and
+ * That second half is what earns a probe. A reranker fails while loading and
  * `harden.ts` speaks at module scope, both long before any tool is called, so a
  * report that could only travel through an open connection would be the one report
  * that never arrives.
@@ -99,11 +99,11 @@ interface Session {
  * is being measured is what appears on the transport.
  */
 async function talkTo(script: string, args: string[], waitForReport: boolean): Promise<Session> {
-  const server = Bun.spawn([process.execPath, "run", script, ...args], {
+  const server = Bun.spawn([process.execPath, "run", script,...args], {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, GH_TOKEN: "" },
+    env: {...process.env, GH_TOKEN: "" },
   });
 
   // Flushed every time: the sink buffers, and a handshake that never left this

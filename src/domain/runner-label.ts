@@ -7,14 +7,14 @@
  * `atoma-deploy` were simply unusable -- and fixing them meant editing
  * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write. So neither an
  * agent nor a workflow could do it, and a hand-edited fork is overwritten by the
- * next upgrade (#435). The same argument that put `checks.commands` in
+ * next upgrade. The same argument that put `checks.commands` in
  * `config.json` applies: a fact a project owns was living where the project cannot
  * reach it.
  *
  * ## Two jobs, not a matrix
  *
  * `runs-on` cannot read a file, so a small job reads `config.json` first and the
- * real job takes its output. Measured on a throwaway branch (#437): asking for
+ * real job takes its output. Measured on a throwaway branch: asking for
  * `ubuntu-22.04` through a job output landed on `Ubuntu 22.04.5 LTS`, while
  * `ubuntu-latest` is 24.04 -- so the value genuinely decides the machine.
  *

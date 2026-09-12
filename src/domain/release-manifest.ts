@@ -11,7 +11,7 @@
  *
  * **"What did upstream delete?"** The documented upgrade is `unzip -o` over the
  * tree, and that only ever overwrites. A file we removed stays in their repository
- * forever, and this is not cosmetic: #486 deleted `atoma-auto-trigger.yml` and
+ * forever, and this is not cosmetic: a release deleted `atoma-auto-trigger.yml` and
  * `atoma-pr-review.yml` because work should start only when somebody asks. An
  * adopter who upgrades keeps both files, keeps the triggers, and keeps the
  * behaviour we removed — with nothing anywhere saying so.

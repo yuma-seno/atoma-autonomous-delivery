@@ -16,7 +16,7 @@
 #
 # Exactly two things, and nothing else: the release, plus `self/` copied over it.
 #
-#     rm -rf .github && unzip release.zip && cp -r self/. .github/
+#     rm -rf.github && unzip release.zip && cp -r self/..github/
 #
 # That is the whole reason `self/` exists. Before it, `.github/` was the release
 # plus three files kept alive by remembering to run `git checkout --` on them
@@ -36,7 +36,7 @@
 # server only the credentials that server's own `tools.yaml` entry declares.
 #
 # A PAT is acceptable here and not inside Atoma because the thing holding it is a
-# person pressing a button, not a model. #353's line -- a pull request may not
+# person pressing a button, not a model. The rule -- a pull request may not
 # decide its own execution environment -- is not crossed, because nothing an agent
 # produces reaches this token.
 #
@@ -91,7 +91,7 @@ jobs:
           TOKEN: ${{ secrets.ATOMA_SELF_DEPLOY_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "::error::ATOMA_SELF_DEPLOY_TOKEN is unset. It needs a PAT with the 'workflow' scope; GITHUB_TOKEN cannot write .github/workflows/**. See CONTRIBUTING.md."
+            echo "::error::ATOMA_SELF_DEPLOY_TOKEN is unset. It needs a PAT with the 'workflow' scope; GITHUB_TOKEN cannot write.github/workflows/**. See CONTRIBUTING.md."
             exit 1
           fi
 
@@ -110,17 +110,17 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$REQUESTED" = "latest" ]; then
-            TAG=$(gh release view --json tagName -q .tagName)
+            TAG=$(gh release view --json tagName -q.tagName)
           else
             TAG="$REQUESTED"
             # Checked here rather than left to a 404 from the download, so the
             # error names the tag that does not exist.
-            gh release view "$TAG" --json tagName -q .tagName >/dev/null
+            gh release view "$TAG" --json tagName -q.tagName >/dev/null
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "applying ${TAG}"
 
-      - name: Rebuild .github/ from the release and self/
+      - name: Rebuild.github/ from the release and self/
         id: apply
         env:
           GH_TOKEN: ${{ github.token }}
@@ -133,12 +133,12 @@ jobs:
           # release dropped would otherwise stay forever with no diff to see it by.
           # Everything under here is derived from two places, both of which are
           # about to be reapplied, so there is nothing to preserve.
-          rm -rf .github
-          unzip -q /tmp/delivery.zip -d .
+          rm -rf.github
+          unzip -q /tmp/delivery.zip -d.
 
           # `self/` mirrors `.github/`, so this needs no mapping table and no
           # preserve list: whatever is in there wins, at the same path.
-          cp -r self/. .github/
+          cp -r self/..github/
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -163,7 +163,7 @@ jobs:
           git config user.name "atoma-self-deploy"
           git config user.email "atoma-self-deploy@users.noreply.github.com"
           git checkout -q -b "$BRANCH"
-          git add -A .github
+          git add -A.github
 
           # Through a file, not `-m`. A multi-line message written inline has to
           # start its continuation lines at column 0 to keep them out of the commit
@@ -174,7 +174,7 @@ jobs:
           # says why.
           MSG=$(mktemp)
           {
-            echo "deploy: apply ${TAG} to .github/"
+            echo "deploy: apply ${TAG} to.github/"
             echo
             echo "Prepared by self/workflows/atoma-self-deploy.yml, dispatched by ${ACTOR}."
             echo
@@ -210,7 +210,7 @@ jobs:
             echo "::notice::updated pull request #${EXISTING}"
           else
             gh pr create \
-              --title "deploy: apply ${TAG} to .github/" \
+              --title "deploy: apply ${TAG} to.github/" \
               --body-file /tmp/body.md \
               --head "$BRANCH"
           fi

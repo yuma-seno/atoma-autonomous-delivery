@@ -27,7 +27,7 @@ import type { Session } from "./session.ts";
 
 const LIB_DIR = import.meta.dir;
 
-/** Writes a temp .ts file containing `code` and returns its absolute path. */
+/** Writes a temp.ts file containing `code` and returns its absolute path. */
 function makeShim(code: string): { file: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "atoma-lib-shim-"));
   const file = join(dir, "shim.ts");
@@ -371,7 +371,7 @@ describe("issue-images.ts extractImageUrls", () => {
 });
 
 describe("issue-images.ts sniffMimeType", () => {
-  const bytes = (...b: number[]) => new Uint8Array([...b, ...Array(12).fill(0)]);
+  const bytes = (...b: number[]) => new Uint8Array([...b,...Array(12).fill(0)]);
 
   // The case that made this necessary: GitHub serves an attachment from
   // `user-attachments/assets/<uuid>`, which has no extension. A real one turned
@@ -400,7 +400,7 @@ describe("issue-images.ts sniffMimeType", () => {
  * A failure from the far end is not an answer, and the difference decides whether a
  * run dies.
  *
- * One `HTTP 504` on a pull request lookup ended a run on #427 -- the reviewer never
+ * One `HTTP 504` on a pull request lookup ended a run -- the reviewer never
  * started, and a red check appeared for a defect in neither the code nor the
  * machinery. What must NOT be retried matters just as much: a 404 is an answer, and
  * retrying it would turn a clear failure into three of them.
@@ -431,7 +431,7 @@ describe("gh.ts looksTransient", () => {
 });
 
 /**
- * The measured failure this fixes (#544): an agent called `shell__execute`, was told
+ * The measured failure this fixes: an agent called `shell__execute`, was told
  * only `Unknown: execute`, and made the same mistake three times. The one place that
  * knew the right name was the dispatch map, and nothing asked it.
  */

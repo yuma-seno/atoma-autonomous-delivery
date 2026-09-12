@@ -80,7 +80,7 @@ describe("reconcile_github_session.ts", () => {
     third.messages!.push({ role: "assistant", content: "Third response" });
     const final = reconcileGithubSession(
       third,
-      [{ ...issue, content: "Edited instruction" }, commentB],
+      [{...issue, content: "Edited instruction" }, commentB],
       "engineer",
     ).mergedSession;
 
@@ -93,8 +93,8 @@ describe("reconcile_github_session.ts", () => {
       "Third response",
     ]);
     const eventKeys = final.messages!
-      .filter((message) => message.atoma_metadata?.source === "github")
-      .map((message) => `${message.atoma_metadata?.event_type}:${String(message.atoma_metadata?.id)}`);
+.filter((message) => message.atoma_metadata?.source === "github")
+.map((message) => `${message.atoma_metadata?.event_type}:${String(message.atoma_metadata?.id)}`);
     expect(new Set(eventKeys).size).toBe(eventKeys.length);
   });
 
@@ -218,7 +218,7 @@ describe("reconcile_github_session.ts", () => {
 
     const keptIds = mergedSession.messages
       ?.filter((message) => message.atoma_metadata?.source === "github")
-      .map((message) => message.atoma_metadata?.id);
+.map((message) => message.atoma_metadata?.id);
     expect(keptIds).toEqual([102, 103]);
     expect(changedCount).toBeGreaterThan(0);
   });
