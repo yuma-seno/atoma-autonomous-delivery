@@ -26,6 +26,8 @@
  * the tail looks like, separately.
  */
 
+import type { RunRecord } from "./metrics-windows.ts";
+
 /** One tool call, as the aggregation needs it. */
 export interface CallRecord {
   tool: string;
@@ -50,6 +52,13 @@ export interface SessionRecord {
   agent: string;
   messages: number;
   calls: CallRecord[];
+  /**
+   * What atoma recorded about the runs that wrote this session, oldest first.
+   *
+   * Empty for anything written before atoma v0.1.28, which is most of the history and
+   * is why the report's windows fill in going forward rather than being backfilled.
+   */
+  runs: RunRecord[];
 }
 
 /** One run's token usage, read from the result comment it posted. */
@@ -72,6 +81,8 @@ export interface Metrics {
   neverUsedServers: string[];
   neverLoaded: string[];
   refusals: number;
+  /** Every run every session recorded, flattened. Empty until atoma v0.1.28 wrote any. */
+  runs: RunRecord[];
   tokens?: TokenSummary;
 }
 
@@ -168,6 +179,7 @@ export function metricsOf(
     neverUsedServers: declaredServers.filter((s) => !usedServers.has(s)).sort(),
     neverLoaded: declaredSkills.filter((s) => !loaded.has(s)).sort(),
     refusals: calls.filter((c) => c.refused).length,
+    runs: sessions.flatMap((s) => s.runs),
     tokens: tokens.length === 0 ? undefined : tokenSummary(tokens),
   };
 }

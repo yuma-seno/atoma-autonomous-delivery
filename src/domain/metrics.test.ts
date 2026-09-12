@@ -15,6 +15,7 @@ const SESSIONS: SessionRecord[] = [
     path: "sessions/issue-1/engineer.json",
     agent: "engineer",
     messages: 10,
+    runs: [],
     calls: [
       call("shell__shell_execute", { act: "search" }),
       call("shell__shell_execute", { act: "open" }),
@@ -24,7 +25,7 @@ const SESSIONS: SessionRecord[] = [
       call("shell__shell_execute", { act: "edit", refused: true }),
     ],
   },
-  { path: "sessions/issue-2/reviewer.json", agent: "reviewer", messages: 40, calls: [call("github__get_pr")] },
+  { path: "sessions/issue-2/reviewer.json", agent: "reviewer", messages: 40, runs: [], calls: [call("github__get_pr")] },
 ];
 
 const SERVERS = ["shell", "filesystem", "github", "web", "search"];
@@ -82,7 +83,8 @@ describe("metricsOf", () => {
 });
 
 describe("renderReport", () => {
-  const report = renderReport(metricsOf(SESSIONS, SERVERS, SKILLS, TOKENS), "2026-09-13");
+  const NOW = new Date("2026-09-13T00:00:00Z");
+  const report = renderReport(metricsOf(SESSIONS, SERVERS, SKILLS, TOKENS), NOW);
 
   /**
    * Each table counts a different thing, and the first version labelled all of them
@@ -112,6 +114,64 @@ describe("renderReport", () => {
    * nothing produces no commit.
    */
   test("the same input renders the same output", () => {
-    expect(renderReport(metricsOf(SESSIONS, SERVERS, SKILLS, TOKENS), "2026-09-13")).toBe(report);
+    expect(renderReport(metricsOf(SESSIONS, SERVERS, SKILLS, TOKENS), NOW)).toBe(report);
+  });
+});
+
+/**
+ * The section that answers "is this getting better or worse", which is the question
+ * dogfooding exists to ask and the only one an all-time table cannot answer.
+ */
+describe("the run windows", () => {
+  const NOW = new Date("2026-09-13T12:00:00Z");
+  const run = (ended: string, why = "completed", seconds = 60) => ({
+    started: ended,
+    ended,
+    seconds,
+    ended_because: why,
+    messages: 20,
+  });
+  const withRuns = (runs: ReturnType<typeof run>[]) => [
+    { path: "a", agent: "engineer", messages: 10, runs, calls: [] },
+  ];
+
+  /**
+   * The state this repository is in until atoma v0.1.28 has run. An omitted section
+   * would read as "nothing went wrong"; this says what is actually true.
+   */
+  test("no recorded run says so rather than showing empty tables", () => {
+    const report = renderReport(metricsOf(withRuns([]), [], [], []), NOW);
+    expect(report).toContain("No run has recorded itself yet");
+    expect(report).not.toContain("| window |");
+  });
+
+  test("a run counts in every window that reaches it", () => {
+    const report = renderReport(
+      metricsOf(withRuns([run("2026-09-13T00:00:00Z"), run("2026-08-01T00:00:00Z", "failed")]), [], [], []),
+      NOW,
+    );
+    expect(report).toContain("| Last 7 days | 1 |");
+    expect(report).toContain("| All time | 2 |");
+  });
+
+  /** An empty window is a row, not a gap, so the reader can see it was asked. */
+  test("a window with nothing in it is still a row", () => {
+    expect(renderReport(metricsOf(withRuns([run("2026-01-01T00:00:00Z")]), [], [], []), NOW)).toContain(
+      "| Last 7 days | 0 | — | — | — |",
+    );
+  });
+
+  test("every ending that is not completed counts as giving up", () => {
+    const report = renderReport(
+      metricsOf(
+        withRuns([run("2026-09-13T00:00:00Z"), run("2026-09-13T00:00:00Z", "iterations")]),
+        [],
+        [],
+        [],
+      ),
+      NOW,
+    );
+    expect(report).toContain("| Last 7 days | 2 | 50% |");
+    expect(report).toContain("| `iterations` | 1 |");
   });
 });
