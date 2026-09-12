@@ -16,7 +16,60 @@
  * time and returns nothing.
  */
 import type { Distribution, Metrics, Tally } from "./metrics.ts";
+import { WINDOWS, endings, gaveUpShare, within, type RunRecord } from "./metrics-windows.ts";
 
+/**
+ * How the runs went, over each window.
+ *
+ * First, because it is the only section that answers "is this getting better or worse".
+ * Everything below it is all-time and says what the repository has ever done.
+ *
+ * A window with nothing in it says so rather than being left out: a missing heading
+ * reads as "nothing went wrong last week", and an empty row reads as what it is.
+ * Sessions written before atoma v0.1.28 carry no times at all, so for a while every
+ * window but the last is empty, and saying that plainly is the honest state of it.
+ */
+function runSection(runs: readonly RunRecord[], now: Date): string[] {
+  const out = ["## Runs", ""];
+  if (runs.length === 0) {
+    out.push(
+      "No run has recorded itself yet. Atoma writes `atoma_runs` into a session from " +
+        "v0.1.28; sessions older than that carry no times, and there is no way to backfill " +
+        "one that would not be a guess.",
+      "",
+    );
+    return out;
+  }
+
+  out.push("| window | runs | gave up | median seconds | longest |");
+  out.push("| --- | ---: | ---: | ---: | ---: |");
+  for (const window of WINDOWS) {
+    const inside = runs.filter((run) => within(run, window, now));
+    if (inside.length === 0) {
+      out.push(`| ${window.label} | 0 | — | — | — |`);
+      continue;
+    }
+    const seconds = inside.map((r) => r.seconds).sort((a, b) => a - b);
+    const median = seconds[Math.floor(seconds.length / 2)] ?? 0;
+    const share = Math.round(gaveUpShare(inside) * 1000) / 10;
+    const longest = seconds[seconds.length - 1] ?? 0;
+    out.push(
+      `| ${window.label} | ${n(inside.length)} | ${share}% | ${n(median)} | ${n(longest)} |`,
+    );
+  }
+  out.push("");
+  out.push(
+    "**Gave up** is every ending that is not `completed` — a ceiling reached, a person " +
+      "asking, a provider hanging up, a loop cut short. Each one is a mechanism deciding " +
+      "the run should not continue, which is worth watching whether or not it was right.",
+  );
+  out.push("");
+  out.push("| ended because | runs |");
+  out.push("| --- | ---: |");
+  for (const row of endings(runs)) out.push(`| \`${row.name}\` | ${n(row.count)} |`);
+  out.push("");
+  return out;
+}
 /** Thousands separators, because these numbers are read rather than computed with. */
 function n(value: number): string {
   return value.toLocaleString("en-US");
@@ -39,11 +92,11 @@ function tallyTable(rows: readonly Tally[], of: number, what: string, unit: stri
 /**
  * The report.
  *
- * `generatedAt` is passed in rather than read from the clock so the same input renders
- * the same output — which is what lets a test assert on it, and what keeps a rerun that
- * changed nothing from producing a commit.
+ * `now` is passed in rather than read from the clock so the same input renders the same
+ * output — which is what lets a test assert on it, and what keeps a rerun that changed
+ * nothing from producing a commit. It is also what the windows are measured back from.
  */
-export function renderReport(metrics: Metrics, generatedAt: string): string {
+export function renderReport(metrics: Metrics, now: Date): string {
   const out: string[] = [];
 
   out.push("# Agent metrics");
@@ -53,8 +106,9 @@ export function renderReport(metrics: Metrics, generatedAt: string): string {
       "specially: every number is something the agents already wrote down while working.",
   );
   out.push("");
-  out.push(`Generated ${generatedAt}.`);
+  out.push(`Generated ${now.toISOString().slice(0, 10)}.`);
   out.push("");
+  out.push(...runSection(metrics.runs, now));
 
   if (metrics.tokens) {
     const t = metrics.tokens;

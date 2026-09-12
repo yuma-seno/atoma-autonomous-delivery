@@ -25,6 +25,7 @@ import { defineScript } from "./lib/script-ref.ts";
 import { saveSession } from "./lib/atoma-data.ts";
 import { classifyShellAct } from "../domain/search-streak.ts";
 import { metricsOf, type CallRecord, type SessionRecord, type TokenRecord } from "../domain/metrics.ts";
+import { type RunRecord } from "../domain/metrics-windows.ts";
 import { renderReport } from "../domain/metrics-report.ts";
 
 export const ref = defineScript(import.meta.url);
@@ -33,6 +34,40 @@ const BRANCH = "atoma-data";
 
 /** Where the report lives. Beside the data it is read from, not in the deliverable. */
 export const REPORT_PATH = "metrics/report.md";
+
+/**
+ * Where the same data lives unsummarised.
+ *
+ * One row per session, with its runs and its call tallies. The report shows the slices
+ * somebody decided were worth a heading; this is for the slice nobody has thought of,
+ * which is where every finding this repository has made about its own agents came from.
+ * Answering a new question should be a query rather than a change to this file.
+ */
+export const ROWS_PATH = "metrics/rows.json";
+
+/** The rows, in the shape a one-off script would want them. */
+function rowsOf(sessions: readonly SessionRecord[]): unknown[] {
+  return sessions.map((s) => {
+    const tools: Record<string, number> = {};
+    const acts: Record<string, number> = {};
+    for (const call of s.calls) {
+      tools[call.tool] = (tools[call.tool] ?? 0) + 1;
+      if (call.act) acts[call.act] = (acts[call.act] ?? 0) + 1;
+    }
+    return {
+      path: s.path,
+      agent: s.agent,
+      messages: s.messages,
+      calls: s.calls.length,
+      failed: s.calls.filter((c) => c.failed).length,
+      refused: s.calls.filter((c) => c.refused).length,
+      skills: s.calls.flatMap((c) => (c.skill ? [c.skill] : [])),
+      tools,
+      acts,
+      runs: s.runs,
+    };
+  });
+}
 
 function log(message: string): void {
   console.error(`[metrics] ${message}`);
@@ -64,7 +99,10 @@ function looksRefused(content: string): boolean {
 }
 
 function sessionFrom(path: string, raw: string): SessionRecord | undefined {
-  let parsed: { messages?: { role?: string; content?: unknown; tool_call_id?: string; tool_calls?: unknown[] }[] };
+  let parsed: {
+    messages?: { role?: string; content?: unknown; tool_call_id?: string; tool_calls?: unknown[] }[];
+    atoma_runs?: unknown;
+  };
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -105,7 +143,12 @@ function sessionFrom(path: string, raw: string): SessionRecord | undefined {
       calls.push({ tool, agent, failed: looksFailed(result), refused: looksRefused(result), skill, act });
     }
   }
-  return { path, agent, messages: messages.length, calls };
+  // `atoma_runs` is atoma's own, written from v0.1.28. Anything unreadable is no
+  // runs rather than a failure: a session from before it is the normal case.
+  const runs = Array.isArray((parsed as { atoma_runs?: unknown }).atoma_runs)
+    ? ((parsed as { atoma_runs: RunRecord[] }).atoma_runs)
+    : [];
+  return { path, agent, messages: messages.length, calls, runs };
 }
 
 /**
@@ -211,12 +254,20 @@ function main(): void {
   }
 
   const { tools, skills } = declared();
-  const report = renderReport(metricsOf(sessions, tools, skills, tokens), new Date().toISOString().slice(0, 10));
-  log(`${sessions.length} sessions, ${tokens.length} runs reporting tokens`);
+  const now = new Date();
+  const report = renderReport(metricsOf(sessions, tools, skills, tokens), now);
+  const runs = sessions.flatMap((s) => s.runs);
+  log(`${sessions.length} sessions, ${runs.length} recorded runs, ${tokens.length} reporting tokens`);
 
   if (values.stdout) {
     console.log(report);
     return;
+  }
+  // Beside the report, and the reason it exists: the report answers the questions it
+  // was built for, and this answers the ones nobody has asked yet. Every finding this
+  // repository has made about its own agents came from a question of the second kind.
+  if (!saveSession(ROWS_PATH, `${JSON.stringify(rowsOf(sessions), null, 2)}\n`, `atoma: metric rows from ${sessions.length} sessions`)) {
+    log("could not write the rows; the report is unaffected");
   }
   if (!saveSession(REPORT_PATH, report, `atoma: metrics from ${sessions.length} sessions`)) {
     log("could not write the report; the run is unaffected");
