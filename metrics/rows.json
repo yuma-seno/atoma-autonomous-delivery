@@ -1,0 +1,6557 @@
+[
+  {
+    "path": "sessions/issue-1-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 78,
+    "calls": 52,
+    "failed": 10,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "shell__shell_execute": 3,
+      "filesystem_readonly__read_text_file": 3,
+      "filesystem_readonly__search_files": 1,
+      "github__search_code": 6,
+      "github__list_issues": 1,
+      "github__get_branch": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__read_file": 24,
+      "filesystem_readonly__list_directory": 7,
+      "github__add_issue_comment": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-10-engineer.json",
+    "agent": "engineer",
+    "messages": 102,
+    "calls": 51,
+    "failed": 31,
+    "refused": 3,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 2,
+      "shell__shell_execute": 15,
+      "github__get_issue": 1,
+      "filesystem__create_directory": 1,
+      "filesystem__write_file": 3,
+      "shell__terminal_operate": 15,
+      "shell__terminal_list": 3,
+      "github__commit_and_push": 2,
+      "github__get_branch": 1,
+      "filesystem__read_text_file": 4,
+      "filesystem__get_file_info": 1,
+      "filesystem__search_files": 1
+    },
+    "acts": {
+      "other": 15
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-104-engineer.json",
+    "agent": "engineer",
+    "messages": 103,
+    "calls": 52,
+    "failed": 16,
+    "refused": 5,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 4,
+      "filesystem__write_file": 1,
+      "shell__shell_execute": 2,
+      "shell__terminal_operate": 33,
+      "github__commit_and_push": 2,
+      "github__create_pr": 2,
+      "shell__terminal_list": 1,
+      "github__get_issue": 1,
+      "shell__terminal_get_info": 3,
+      "github__get_branch": 1
+    },
+    "acts": {
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-106-engineer.json",
+    "agent": "engineer",
+    "messages": 129,
+    "calls": 78,
+    "failed": 34,
+    "refused": 12,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 2,
+      "github__get_issue": 3,
+      "filesystem__search_files": 3,
+      "shell__shell_execute": 24,
+      "filesystem__list_directory": 7,
+      "filesystem__read_text_file": 18,
+      "github__search_code": 11,
+      "github__get_issue_comments": 2,
+      "filesystem__write_file": 6,
+      "shell__terminal_operate": 2
+    },
+    "acts": {
+      "search": 11,
+      "other": 7,
+      "edit": 1,
+      "verify": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-11-engineer.json",
+    "agent": "engineer",
+    "messages": 113,
+    "calls": 62,
+    "failed": 24,
+    "refused": 3,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 13,
+      "shell__shell_execute": 18,
+      "filesystem__search_files": 3,
+      "filesystem__read_text_file": 14,
+      "filesystem__create_directory": 2,
+      "shell__terminal_operate": 2,
+      "filesystem__write_file": 6,
+      "github__get_issue": 2,
+      "github__list_prs": 1
+    },
+    "acts": {
+      "search": 2,
+      "other": 12,
+      "verify": 4
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-111-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 9,
+    "calls": 4,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "shell__shell_execute": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-113-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 208,
+    "calls": 107,
+    "failed": 52,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 3,
+      "github__get_issue_comments": 4,
+      "filesystem_readonly__search_files": 2,
+      "shell__shell_execute": 10,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "shell__shell_set_default_workdir": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__read_text_file": 1,
+      "filesystem_readonly__read_file": 8,
+      "shell__terminal_operate": 61,
+      "github__get_pr": 5,
+      "github__get_pr_diff": 5,
+      "github__list_pr_review_comments": 1,
+      "filesystem_readonly__edit_file": 1,
+      "filesystem_readonly__write_file": 1,
+      "shell__terminal_list": 1,
+      "github__list_issues": 1
+    },
+    "acts": {
+      "other": 6,
+      "search": 1,
+      "open": 1,
+      "edit": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-12-engineer.json",
+    "agent": "engineer",
+    "messages": 112,
+    "calls": 61,
+    "failed": 33,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 4,
+      "filesystem__read_text_file": 4,
+      "github__get_branch": 1,
+      "shell__shell_execute": 21,
+      "shell__terminal_operate": 15,
+      "github__get_issue": 3,
+      "github__get_issue_comments": 1,
+      "filesystem__search_files": 2,
+      "github__list_prs": 3,
+      "filesystem__create_directory": 2,
+      "filesystem__write_file": 3,
+      "github__commit_and_push": 1
+    },
+    "acts": {
+      "other": 19,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-128-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 217,
+    "calls": 116,
+    "failed": 60,
+    "refused": 4,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 5,
+      "github__get_issue_comments": 1,
+      "github__list_issues": 2,
+      "filesystem_readonly__directory_tree": 1,
+      "shell__shell_execute": 31,
+      "filesystem_readonly__list_directory": 2,
+      "filesystem_readonly__read_text_file": 2,
+      "filesystem_readonly__read_file": 29,
+      "shell__terminal_operate": 30,
+      "filesystem_readonly__edit_file": 2,
+      "filesystem_readonly__write_file": 1,
+      "shell__terminal_close": 4,
+      "shell__terminal_list": 1,
+      "shell__list_execution_outputs": 1,
+      "shell__command_history_query": 3,
+      "github__commit_and_push": 1
+    },
+    "acts": {
+      "search": 1,
+      "other": 23,
+      "verify": 1,
+      "open": 3,
+      "edit": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-131-engineer.json",
+    "agent": "engineer",
+    "messages": 110,
+    "calls": 59,
+    "failed": 21,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 3,
+      "filesystem__read_text_file": 14,
+      "filesystem__search_files": 1,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 10,
+      "shell__terminal_operate": 19,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 2,
+      "shell__terminal_close": 1,
+      "shell__terminal_list": 2,
+      "filesystem__get_file_info": 3
+    },
+    "acts": {
+      "other": 10
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-132-engineer.json",
+    "agent": "engineer",
+    "messages": 108,
+    "calls": 57,
+    "failed": 40,
+    "refused": 2,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "shell__shell_execute": 18,
+      "filesystem__search_files": 3,
+      "filesystem__list_directory": 3,
+      "filesystem__read_text_file": 5,
+      "shell__terminal_operate": 20,
+      "filesystem__get_file_info": 2,
+      "github__get_branch": 1,
+      "shell__terminal_list": 2,
+      "filesystem__write_file": 2
+    },
+    "acts": {
+      "search": 4,
+      "other": 14
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-138-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 47,
+    "calls": 27,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__list_allowed_directories": 1,
+      "github__get_issue": 9,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__search_files": 1,
+      "filesystem_readonly__read_text_file": 1,
+      "github__create_issue": 4,
+      "atoma__launch_sub_agent": 4,
+      "github__get_pr": 4,
+      "github__list_issues": 1,
+      "github__list_prs": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-139-engineer.json",
+    "agent": "engineer",
+    "messages": 200,
+    "calls": 102,
+    "failed": 66,
+    "refused": 3,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "shell__shell_execute": 40,
+      "shell__shell_set_default_workdir": 1,
+      "shell__terminal_operate": 33,
+      "filesystem__write_file": 9,
+      "filesystem__read_text_file": 8,
+      "shell__process_get_execution": 2,
+      "shell__terminal_list": 2,
+      "filesystem__get_file_info": 1,
+      "filesystem__search_files": 2,
+      "shell__command_history_query": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 33,
+      "verify": 6,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-140-engineer.json",
+    "agent": "engineer",
+    "messages": 36,
+    "calls": 18,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 4,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 2,
+      "shell__terminal_operate": 7,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-141-engineer.json",
+    "agent": "engineer",
+    "messages": 64,
+    "calls": 34,
+    "failed": 15,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__search_files": 4,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 7,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 8,
+      "shell__terminal_operate": 6,
+      "filesystem__edit_file": 3,
+      "shell__terminal_close": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 8
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-142-engineer.json",
+    "agent": "engineer",
+    "messages": 32,
+    "calls": 17,
+    "failed": 7,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__search_files": 1,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 4,
+      "filesystem__write_file": 1,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-147-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 24,
+    "calls": 14,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__create_issue": 4,
+      "atoma__launch_sub_agent": 3,
+      "github__get_issue": 7
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-148-engineer.json",
+    "agent": "engineer",
+    "messages": 32,
+    "calls": 15,
+    "failed": 6,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 2,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-149-engineer.json",
+    "agent": "engineer",
+    "messages": 61,
+    "calls": 31,
+    "failed": 15,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 6,
+      "filesystem__write_file": 3,
+      "shell__shell_execute": 12,
+      "shell__terminal_operate": 1,
+      "filesystem__get_file_info": 2,
+      "filesystem__search_files": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 10,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-150-engineer.json",
+    "agent": "engineer",
+    "messages": 90,
+    "calls": 46,
+    "failed": 28,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 7,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 19,
+      "shell__terminal_operate": 6,
+      "filesystem__edit_file": 1,
+      "shell__terminals_terminal_operate": 1,
+      "shell__terminal_list": 2,
+      "filesystem__search_files": 1,
+      "github__commit_and_push": 1,
+      "github__get_branch": 1,
+      "github__create_pr": 1,
+      "github__get_issue": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 19
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-151-engineer.json",
+    "agent": "engineer",
+    "messages": 36,
+    "calls": 20,
+    "failed": 7,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "filesystem__search_files": 2,
+      "filesystem__read_text_file": 7,
+      "filesystem__write_file": 1,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-156-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 31,
+    "calls": 18,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 8,
+      "filesystem_readonly__directory_tree": 1,
+      "github__list_issues": 1,
+      "github__create_issue": 4,
+      "atoma__launch_sub_agent": 3,
+      "github__close_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-157-engineer.json",
+    "agent": "engineer",
+    "messages": 34,
+    "calls": 17,
+    "failed": 5,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 3,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 4,
+      "shell__terminal_operate": 2,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 3,
+      "verify": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-158-engineer.json",
+    "agent": "engineer",
+    "messages": 221,
+    "calls": 116,
+    "failed": 76,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__search_files": 2,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 2,
+      "filesystem__read_text_file": 18,
+      "shell__shell_execute": 52,
+      "shell__terminal_operate": 16,
+      "filesystem__write_file": 11,
+      "shell__shell_set_default_workdir": 1,
+      "shell__list_execution_outputs": 1,
+      "shell__terminal_list": 3,
+      "filesystem__edit_file": 1,
+      "shell__terminal_close": 2,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_issue": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "search": 1,
+      "other": 22,
+      "verify": 29
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-159-engineer.json",
+    "agent": "engineer",
+    "messages": 131,
+    "calls": 69,
+    "failed": 28,
+    "refused": 2,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 5,
+      "filesystem__read_text_file": 17,
+      "filesystem__write_file": 6,
+      "shell__shell_execute": 11,
+      "filesystem__search_files": 1,
+      "shell__terminal_operate": 21,
+      "shell__terminal_list": 1,
+      "filesystem__edit_file": 1,
+      "shell__shell_set_default_workdir": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 10,
+      "verify": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-160-engineer.json",
+    "agent": "engineer",
+    "messages": 36,
+    "calls": 19,
+    "failed": 6,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 6,
+      "filesystem__write_file": 1,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 2,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-165-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 18,
+    "calls": 9,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 4,
+      "github__create_issue": 1,
+      "atoma__launch_sub_agent": 1,
+      "atoma__request_close_issue": 2,
+      "github__list_issues": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-167-engineer.json",
+    "agent": "engineer",
+    "messages": 35,
+    "calls": 17,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 3,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 3,
+      "shell__terminal_operate": 3,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-170-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 55,
+    "calls": 35,
+    "failed": 7,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 3,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__read_text_file": 2,
+      "filesystem_readonly__list_directory": 3,
+      "filesystem_readonly__read_file": 10,
+      "filesystem_readonly__search_files": 3,
+      "filesystem_readonly__get_file_info": 2,
+      "atoma__request_close_issue": 3,
+      "github__create_issue": 6,
+      "atoma__launch_sub_agent": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-171-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 148,
+    "calls": 84,
+    "failed": 25,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__search_files": 2,
+      "filesystem_readonly__list_directory": 10,
+      "filesystem_readonly__read_text_file": 1,
+      "filesystem_readonly__read_file": 29,
+      "github__get_issue": 2,
+      "github__search_code": 32,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 2,
+      "github__create_issue": 1,
+      "atoma__launch_sub_agent": 1,
+      "atoma__request_close_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-172-engineer.json",
+    "agent": "engineer",
+    "messages": 96,
+    "calls": 50,
+    "failed": 34,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__read_text_file": 7,
+      "filesystem__edit_file": 3,
+      "shell__shell_execute": 24,
+      "shell__terminal_operate": 10,
+      "filesystem__write_file": 1,
+      "shell__terminal_list": 1,
+      "github__commit_and_push": 1,
+      "filesystem__move_file": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 24
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-174-engineer.json",
+    "agent": "engineer",
+    "messages": 1011,
+    "calls": 560,
+    "failed": 278,
+    "refused": 5,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__search_files": 4,
+      "filesystem__list_directory": 65,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__read_text_file": 91,
+      "shell__shell_execute": 177,
+      "shell__terminal_operate": 96,
+      "filesystem__create_directory": 24,
+      "filesystem__write_file": 60,
+      "github__commit_and_push": 19,
+      "github__create_pr": 15,
+      "filesystem__edit_file": 2,
+      "filesystem__read_multiple_files": 1,
+      "filesystem__delete_file": 1,
+      "github__get_issue": 2,
+      "github__list_prs": 1
+    },
+    "acts": {
+      "other": 162,
+      "verify": 11,
+      "open": 2,
+      "edit": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-178-engineer.json",
+    "agent": "engineer",
+    "messages": 283,
+    "calls": 171,
+    "failed": 48,
+    "refused": 3,
+    "skills": [],
+    "tools": {
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 25,
+      "filesystem__read_text_file": 46,
+      "shell__shell_execute": 22,
+      "filesystem__get_file_info": 2,
+      "filesystem__create_directory": 34,
+      "filesystem__write_file": 31,
+      "shell__terminal_operate": 2,
+      "filesystem__edit_file": 3,
+      "github__get_branch": 2,
+      "github__commit_and_push": 2
+    },
+    "acts": {
+      "other": 21,
+      "verify": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-18-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 7,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__directory_tree": 1,
+      "github__get_issue": 1,
+      "filesystem_readonly__list_directory": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-180-engineer.json",
+    "agent": "engineer",
+    "messages": 15,
+    "calls": 6,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__read_text_file": 1,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1,
+      "github__get_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-180-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 67,
+    "calls": 44,
+    "failed": 32,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 4,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_directory": 7,
+      "filesystem_readonly__search_files": 5,
+      "filesystem_readonly__list_directory_with_sizes": 1,
+      "filesystem_readonly__read_text_file": 10,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "github__search_code": 7,
+      "github__get_branch": 1,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 1,
+      "github__get_pr": 1,
+      "github__list_prs": 1,
+      "filesystem_readonly__read_file": 3
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-182/archive/orchestrator-1.json",
+    "agent": "orchestrator",
+    "messages": 79,
+    "calls": 51,
+    "failed": 3,
+    "refused": 1,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "filesystem_readonly__list_directory": 23,
+      "filesystem_readonly__read_file": 24,
+      "github__get_issue": 2,
+      "github__list_issues": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-182/archive/orchestrator-2.json",
+    "agent": "orchestrator",
+    "messages": 79,
+    "calls": 51,
+    "failed": 3,
+    "refused": 1,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "filesystem_readonly__list_directory": 23,
+      "filesystem_readonly__read_file": 24,
+      "github__get_issue": 2,
+      "github__list_issues": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-182/archive/orchestrator-3.json",
+    "agent": "orchestrator",
+    "messages": 79,
+    "calls": 51,
+    "failed": 3,
+    "refused": 1,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "filesystem_readonly__list_directory": 23,
+      "filesystem_readonly__read_file": 24,
+      "github__get_issue": 2,
+      "github__list_issues": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-182/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 38,
+    "calls": 19,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 1,
+      "github__get_issue_comments": 1,
+      "filesystem_readonly__list_directory": 9,
+      "github__list_issues": 2,
+      "filesystem_readonly__read_file": 5
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-182/reviewer.json",
+    "agent": "reviewer",
+    "messages": 18,
+    "calls": 0,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {},
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-184/archive/orchestrator-1.json",
+    "agent": "orchestrator",
+    "messages": 70,
+    "calls": 51,
+    "failed": 5,
+    "refused": 0,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 3,
+      "filesystem_readonly__list_directory": 14,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 2,
+      "filesystem_readonly__read_file": 30
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-184/archive/orchestrator-2.json",
+    "agent": "orchestrator",
+    "messages": 70,
+    "calls": 51,
+    "failed": 5,
+    "refused": 0,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 3,
+      "filesystem_readonly__list_directory": 14,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 2,
+      "filesystem_readonly__read_file": 30
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-184/archive/orchestrator-3.json",
+    "agent": "orchestrator",
+    "messages": 70,
+    "calls": 51,
+    "failed": 5,
+    "refused": 0,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 3,
+      "filesystem_readonly__list_directory": 14,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 2,
+      "filesystem_readonly__read_file": 30
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-184/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 141,
+    "calls": 77,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "delivery/issue-decomposition"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 6,
+      "filesystem_readonly__list_directory": 11,
+      "github__list_issues": 5,
+      "filesystem_readonly__read_multiple_files": 12,
+      "filesystem_readonly__read_file": 17,
+      "github__search_code": 6,
+      "github__list_prs": 4,
+      "github__create_issue": 4,
+      "atoma__launch_sub_agent": 3,
+      "github__get_pr": 3,
+      "atoma__request_close_issue": 2,
+      "github__get_pr_diff": 2,
+      "github__get_branch": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-186/engineer.json",
+    "agent": "engineer",
+    "messages": 49,
+    "calls": 22,
+    "failed": 5,
+    "refused": 2,
+    "skills": [
+      "engineering/tdd",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__read_text_file": 1,
+      "shell__shell_execute": 14,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 14
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-186/reviewer.json",
+    "agent": "reviewer",
+    "messages": 30,
+    "calls": 14,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr": 1,
+      "github__list_prs": 1,
+      "github__get_check_runs": 2,
+      "filesystem_readonly__list_directory": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__read_file": 1,
+      "github__search_code": 2,
+      "github__get_branch": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-187/engineer.json",
+    "agent": "engineer",
+    "messages": 163,
+    "calls": 83,
+    "failed": 10,
+    "refused": 2,
+    "skills": [
+      "engineering/tdd",
+      "delivery/implementation-handoff",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 3,
+      "github__get_issue": 1,
+      "shell__shell_execute": 52,
+      "filesystem__read_text_file": 9,
+      "filesystem__write_file": 4,
+      "filesystem__edit_file": 10,
+      "bun__run__synth__check__fix__the__dist__git__is__stale__with__the__source__changes": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 21,
+      "open": 13,
+      "verify": 13,
+      "search": 4,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-187/reviewer.json",
+    "agent": "reviewer",
+    "messages": 26,
+    "calls": 13,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr": 1,
+      "filesystem_readonly__read_file": 5,
+      "github__get_check_runs": 1,
+      "github__list_pr_review_comments": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-190/engineer.json",
+    "agent": "engineer",
+    "messages": 99,
+    "calls": 54,
+    "failed": 6,
+    "refused": 0,
+    "skills": [
+      "engineering/tdd",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 5,
+      "github__get_branch": 1,
+      "filesystem__read_multiple_files": 2,
+      "filesystem__read_text_file": 9,
+      "shell__shell_execute": 21,
+      "filesystem__search_code": 1,
+      "filesystem__edit_file": 8,
+      "filesystem__write_file": 2,
+      "github__commit_and_push": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "search": 4,
+      "other": 17
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-191/engineer.json",
+    "agent": "engineer",
+    "messages": 69,
+    "calls": 36,
+    "failed": 13,
+    "refused": 9,
+    "skills": [
+      "delivery/implementation-handoff",
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "github__sync_branch": 1,
+      "github__get_branch": 1,
+      "github__list_prs": 1,
+      "shell__shell_execute": 23,
+      "filesystem__write_file": 1,
+      "github__get_pr": 2,
+      "github__get_pr_diff": 1,
+      "github__get_check_runs": 1,
+      "github__merge_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 20,
+      "open": 1,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-194/engineer.json",
+    "agent": "engineer",
+    "messages": 64,
+    "calls": 38,
+    "failed": 4,
+    "refused": 3,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem__list_allowed_directories": 1,
+      "atoma_builtin__load_skill": 1,
+      "filesystem__list_directory": 12,
+      "github__get_issue_comments": 1,
+      "filesystem__read_multiple_files": 9,
+      "filesystem__read_file": 4,
+      "github__search_code": 2,
+      "shell__shell_execute": 7
+    },
+    "acts": {
+      "search": 7
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-196/engineer.json",
+    "agent": "engineer",
+    "messages": 63,
+    "calls": 28,
+    "failed": 5,
+    "refused": 3,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "shell__shell_execute": 13,
+      "filesystem__list_directory": 2,
+      "filesystem__read_multiple_files": 2,
+      "filesystem__read_text_file": 2,
+      "filesystem__edit_file": 3,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "search": 5,
+      "other": 6,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-196/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 15,
+    "calls": 0,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {},
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-196/reviewer.json",
+    "agent": "reviewer",
+    "messages": 28,
+    "calls": 12,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr": 1,
+      "filesystem_readonly__read_multiple_files": 1,
+      "github__search_code": 1,
+      "github__check_merge_readiness": 4,
+      "github__get_check_runs": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-2-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 28,
+    "calls": 14,
+    "failed": 7,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__search_files": 1,
+      "filesystem_readonly__list_directory": 1,
+      "filesystem_readonly__read_text_file": 1,
+      "shell__shell_execute": 3,
+      "filesystem_readonly__read_file": 1,
+      "github__create_issue": 3,
+      "atoma__launch_sub_agent": 1
+    },
+    "acts": {
+      "other": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-200/engineer.json",
+    "agent": "engineer",
+    "messages": 401,
+    "calls": 210,
+    "failed": 22,
+    "refused": 15,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 11,
+      "filesystem__list_allowed_directories": 1,
+      "shell__shell_execute": 156,
+      "filesystem__list_directory": 7,
+      "filesystem__read_multiple_files": 3,
+      "filesystem__read_text_file": 8,
+      "github__list_prs": 2,
+      "github__get_pr": 5,
+      "github__get_pr_diff": 5,
+      "shell__ssh_execute": 1,
+      "github__search_code": 2,
+      "github__create_pr": 2,
+      "github__commit_and_push": 2,
+      "filesystem__edit_file": 2,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 10,
+      "search": 114,
+      "open": 32
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-200/reviewer.json",
+    "agent": "reviewer",
+    "messages": 23,
+    "calls": 6,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 2,
+      "github__check_merge_readiness": 3
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-21-engineer.json",
+    "agent": "engineer",
+    "messages": 66,
+    "calls": 35,
+    "failed": 19,
+    "refused": 2,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__search_files": 2,
+      "filesystem__list_directory": 7,
+      "shell__shell_execute": 14,
+      "shell__shell_set_default_workdir": 1,
+      "github__get_issue": 1,
+      "github__list_issues": 1,
+      "github__list_prs": 1,
+      "filesystem__read_text_file": 3,
+      "filesystem__get_file_info": 1,
+      "shell__terminal_operate": 2,
+      "github__get_branch": 1
+    },
+    "acts": {
+      "search": 4,
+      "other": 10
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-212/engineer.json",
+    "agent": "engineer",
+    "messages": 23,
+    "calls": 11,
+    "failed": 1,
+    "refused": 1,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__read_text_file": 1,
+      "shell__shell_execute": 3,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-212/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 0,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {},
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-219/engineer.json",
+    "agent": "engineer",
+    "messages": 43,
+    "calls": 20,
+    "failed": 2,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "filesystem__read_text_file": 4,
+      "github__search_code": 4,
+      "github__get_issue": 2,
+      "shell__shell_execute": 2,
+      "github__get_branch": 1,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-219/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 2,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-235/engineer.json",
+    "agent": "engineer",
+    "messages": 33,
+    "calls": 14,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 2,
+      "filesystem__get_file_info": 1,
+      "filesystem__read_text_file": 2,
+      "filesystem__edit_file": 1,
+      "shell__shell_execute": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-235/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-253/engineer.json",
+    "agent": "engineer",
+    "messages": 27,
+    "calls": 11,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__read_text_file": 2,
+      "filesystem__edit_file": 1,
+      "shell__shell_execute": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-253/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-262/engineer.json",
+    "agent": "engineer",
+    "messages": 44,
+    "calls": 20,
+    "failed": 3,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__read_text_file": 3,
+      "github__search_code": 1,
+      "shell__shell_execute": 7,
+      "filesystem__read_multiple_files": 1,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "search": 3,
+      "open": 3,
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-262/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-27-engineer.json",
+    "agent": "engineer",
+    "messages": 75,
+    "calls": 44,
+    "failed": 8,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__read_text_file": 10,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 3,
+      "github__get_issue": 2,
+      "filesystem__search_files": 2,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 10,
+      "github__list_prs": 1,
+      "filesystem__create_directory": 2,
+      "filesystem__write_file": 7
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-280/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 39,
+    "calls": 18,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "github__get_issue": 3,
+      "github__list_issues": 1,
+      "github__list_prs": 2,
+      "github__get_branch": 2,
+      "atoma_builtin__load_skill": 1,
+      "filesystem_readonly__list_directory": 1,
+      "github__get_pr_diff": 2,
+      "filesystem_readonly__read_file": 2,
+      "github__create_pr": 1,
+      "github__check_merge_readiness": 1,
+      "github__get_check_runs": 1,
+      "atoma__request_close_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-280/reviewer.json",
+    "agent": "reviewer",
+    "messages": 13,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-281/engineer.json",
+    "agent": "engineer",
+    "messages": 60,
+    "calls": 29,
+    "failed": 2,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "filesystem__list_directory": 2,
+      "filesystem__read_text_file": 3,
+      "shell__shell_execute": 16,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 7,
+      "search": 3,
+      "open": 3,
+      "verify": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-281/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-282/engineer.json",
+    "agent": "engineer",
+    "messages": 48,
+    "calls": 22,
+    "failed": 3,
+    "refused": 0,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 2,
+      "filesystem__read_text_file": 2,
+      "filesystem__list_directory": 1,
+      "shell__shell_execute": 10,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1,
+      "github__get_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "search": 1,
+      "open": 2,
+      "other": 4,
+      "verify": 3
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-282/reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-299/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 0,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {},
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-3-engineer.json",
+    "agent": "engineer",
+    "messages": 108,
+    "calls": 57,
+    "failed": 38,
+    "refused": 9,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__search_files": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 7,
+      "shell__shell_execute": 22,
+      "github__get_issue": 1,
+      "github__get_branch": 1,
+      "shell__shell_set_default_workdir": 1,
+      "shell__terminal_operate": 14,
+      "github__list_issues": 1,
+      "github__list_prs": 2,
+      "filesystem__write_file": 2,
+      "shell__terminal_list": 1,
+      "filesystem__edit_file": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 17,
+      "verify": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-307/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 58,
+    "calls": 30,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "search__search_issues": 16,
+      "github__get_issue": 5,
+      "web__fetch": 4,
+      "github__get_issue_comments": 5
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-32-engineer.json",
+    "agent": "engineer",
+    "messages": 64,
+    "calls": 33,
+    "failed": 13,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 2,
+      "shell__shell_execute": 9,
+      "filesystem__read_text_file": 1,
+      "shell__terminal_operate": 18,
+      "filesystem__write_file": 1,
+      "github__commit_and_push": 1,
+      "shell__terminal_list": 1
+    },
+    "acts": {
+      "other": 9
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-335/reviewer.json",
+    "agent": "reviewer",
+    "messages": 3,
+    "calls": 0,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {},
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-34-engineer.json",
+    "agent": "engineer",
+    "messages": 28,
+    "calls": 13,
+    "failed": 4,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__write_file": 2,
+      "shell__shell_execute": 2,
+      "shell__terminal_operate": 4,
+      "github__commit_and_push": 1,
+      "github__list_prs": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-351/engineer.json",
+    "agent": "engineer",
+    "messages": 6,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "shell__shell_execute": 1,
+      "github__get_issue": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-353/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 5,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_pr": 1,
+      "github__get_pr_diff": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-357/engineer.json",
+    "agent": "engineer",
+    "messages": 6,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "shell__shell_execute": 1,
+      "github__get_issue": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-38-engineer.json",
+    "agent": "engineer",
+    "messages": 34,
+    "calls": 16,
+    "failed": 4,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "filesystem__write_file": 1,
+      "shell__shell_execute": 1,
+      "shell__terminal_operate": 8,
+      "github__create_pr": 2,
+      "github__commit_and_push": 1,
+      "github__list_prs": 1,
+      "github__get_branch": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-39-engineer.json",
+    "agent": "engineer",
+    "messages": 105,
+    "calls": 54,
+    "failed": 23,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__read_text_file": 4,
+      "filesystem__list_directory": 1,
+      "github__list_prs": 1,
+      "github__list_issues": 1,
+      "shell__shell_execute": 14,
+      "github__get_issue": 3,
+      "shell__terminal_operate": 24,
+      "shell__terminal_close": 1,
+      "filesystem__write_file": 2,
+      "shell__terminal_list": 1,
+      "github__commit_and_push": 1,
+      "github__create_pr": 1
+    },
+    "acts": {
+      "other": 13,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-399/archive/engineer-1.json",
+    "agent": "engineer",
+    "messages": 457,
+    "calls": 248,
+    "failed": 27,
+    "refused": 25,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "filesystem__list_directory": 8,
+      "filesystem__read_text_file": 17,
+      "shell__shell_execute": 221,
+      "shell__execute": 1
+    },
+    "acts": {
+      "search": 153,
+      "open": 35,
+      "other": 23,
+      "verify": 8,
+      "edit": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-399/engineer.json",
+    "agent": "engineer",
+    "messages": 40,
+    "calls": 17,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "github__get_issue": 1,
+      "github__search_code": 4,
+      "filesystem__read_multiple_files": 2,
+      "shell__shell_execute": 9
+    },
+    "acts": {
+      "search": 7,
+      "open": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-4-engineer.json",
+    "agent": "engineer",
+    "messages": 103,
+    "calls": 52,
+    "failed": 22,
+    "refused": 2,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__search_files": 2,
+      "filesystem__list_directory": 2,
+      "filesystem__read_text_file": 7,
+      "shell__shell_execute": 10,
+      "shell__shell_set_default_workdir": 1,
+      "github__get_branch": 1,
+      "github__list_prs": 1,
+      "shell__terminal_operate": 20,
+      "filesystem__write_file": 4,
+      "shell__terminal_close": 2
+    },
+    "acts": {
+      "other": 8,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-403/engineer.json",
+    "agent": "engineer",
+    "messages": 39,
+    "calls": 21,
+    "failed": 3,
+    "refused": 0,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "github__get_issue": 1,
+      "atoma_builtin__load_skill": 2,
+      "filesystem__list_directory": 1,
+      "shell__shell_execute": 14,
+      "github__create_issue": 1,
+      "github__get_issue_comments": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 12,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-403/orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 15,
+    "calls": 6,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 2,
+      "github__list_issues": 1,
+      "github__get_issue_comments": 1,
+      "atoma__request_close_issue": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-408/engineer.json",
+    "agent": "engineer",
+    "messages": 24,
+    "calls": 13,
+    "failed": 6,
+    "refused": 3,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "shell__shell_execute": 12
+    },
+    "acts": {
+      "other": 11,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-412/engineer.json",
+    "agent": "engineer",
+    "messages": 31,
+    "calls": 17,
+    "failed": 4,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "shell__shell_execute": 16
+    },
+    "acts": {
+      "other": 13,
+      "open": 1,
+      "search": 1,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-417/engineer.json",
+    "agent": "engineer",
+    "messages": 64,
+    "calls": 34,
+    "failed": 5,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "shell__shell_execute": 33
+    },
+    "acts": {
+      "other": 25,
+      "open": 1,
+      "edit": 3,
+      "search": 4
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-422/engineer.json",
+    "agent": "engineer",
+    "messages": 33,
+    "calls": 18,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "shell__shell_execute": 18
+    },
+    "acts": {
+      "other": 17,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-426/engineer.json",
+    "agent": "engineer",
+    "messages": 31,
+    "calls": 16,
+    "failed": 2,
+    "refused": 0,
+    "skills": [
+      "engineering/debugging"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 1,
+      "shell__shell_execute": 13
+    },
+    "acts": {
+      "other": 10,
+      "verify": 1,
+      "edit": 1,
+      "open": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-430/engineer.json",
+    "agent": "engineer",
+    "messages": 77,
+    "calls": 42,
+    "failed": 7,
+    "refused": 0,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 4,
+      "filesystem__list_directory": 1,
+      "shell__shell_execute": 30,
+      "filesystem__read_file": 2,
+      "search__search_issues": 1,
+      "github__get_issue_comments": 2
+    },
+    "acts": {
+      "other": 21,
+      "search": 3,
+      "edit": 1,
+      "open": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-445/engineer.json",
+    "agent": "engineer",
+    "messages": 14,
+    "calls": 7,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "shell__shell_execute": 3,
+      "filesystem__read_file": 4
+    },
+    "acts": {
+      "other": 2,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-453/engineer.json",
+    "agent": "engineer",
+    "messages": 7,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "github__get_issue_comments": 1,
+      "shell__shell_execute": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-468/engineer.json",
+    "agent": "engineer",
+    "messages": 41,
+    "calls": 21,
+    "failed": 4,
+    "refused": 1,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 1,
+      "shell__shell_execute": 14,
+      "github__get_issue_comments": 1,
+      "filesystem__read_text_file": 1,
+      "filesystem__write_file": 1,
+      "search__search_issues": 2
+    },
+    "acts": {
+      "other": 10,
+      "edit": 1,
+      "open": 2,
+      "search": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-477/engineer.json",
+    "agent": "engineer",
+    "messages": 14,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "search__search_issues": 2,
+      "shell__shell_execute": 2
+    },
+    "acts": {
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-492/engineer.json",
+    "agent": "engineer",
+    "messages": 433,
+    "calls": 221,
+    "failed": 12,
+    "refused": 2,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_issue": 1,
+      "github__get_issue_comments": 1,
+      "shell__shell_execute": 218
+    },
+    "acts": {
+      "other": 11,
+      "open": 20,
+      "edit": 2,
+      "search": 185
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-5-engineer.json",
+    "agent": "engineer",
+    "messages": 22,
+    "calls": 10,
+    "failed": 5,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__read_text_file": 2,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 2,
+      "shell__shell_execute": 1,
+      "shell__terminal_operate": 2,
+      "github__create_pr": 1,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-50-engineer.json",
+    "agent": "engineer",
+    "messages": 117,
+    "calls": 66,
+    "failed": 27,
+    "refused": 5,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "search_files": 2,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__search_files": 3,
+      "shell__shell_execute": 7,
+      "shell__terminal_operate": 35,
+      "github__get_issue": 2,
+      "github__list_prs": 2,
+      "github__get_issue_comments": 1,
+      "filesystem__read_text_file": 4,
+      "shell__terminal_list": 1,
+      "filesystem__list_directory": 2,
+      "filesystem__create_directory": 1,
+      "filesystem__write_file": 2,
+      "filesystem__get_file_info": 2
+    },
+    "acts": {
+      "search": 1,
+      "verify": 1,
+      "other": 4,
+      "open": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-502/engineer.json",
+    "agent": "engineer",
+    "messages": 14,
+    "calls": 6,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "shell__shell_execute": 5,
+      "search__search_issues": 1
+    },
+    "acts": {
+      "other": 4,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-568/engineer.json",
+    "agent": "engineer",
+    "messages": 139,
+    "calls": 80,
+    "failed": 0,
+    "refused": 1,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "filesystem__list_directory": 24,
+      "filesystem__read_multiple_files": 26,
+      "filesystem__read_text_file": 29
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-573/engineer.json",
+    "agent": "engineer",
+    "messages": 27,
+    "calls": 14,
+    "failed": 0,
+    "refused": 1,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "shell__shell_execute": 9,
+      "filesystem__read_text_file": 4
+    },
+    "acts": {
+      "search": 3,
+      "open": 4,
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-577/engineer.json",
+    "agent": "engineer",
+    "messages": 44,
+    "calls": 29,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 5,
+      "github__get_issue": 4,
+      "search__search_code": 12,
+      "shell__shell_execute": 1,
+      "filesystem__read_text_file": 7
+    },
+    "acts": {
+      "open": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-581/engineer.json",
+    "agent": "engineer",
+    "messages": 59,
+    "calls": 28,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "search__search_code": 13,
+      "shell__shell_execute": 15
+    },
+    "acts": {
+      "open": 9,
+      "search": 5,
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-591/engineer.json",
+    "agent": "engineer",
+    "messages": 189,
+    "calls": 104,
+    "failed": 7,
+    "refused": 2,
+    "skills": [],
+    "tools": {
+      "search__search_code": 18,
+      "filesystem__read_text_file": 14,
+      "shell__shell_execute": 59,
+      "search__search_issues": 4,
+      "github__get_issue": 2,
+      "web__fetch": 3,
+      "web__search": 1,
+      "github__get_branch": 1,
+      "github__list_prs": 1,
+      "github__list_issues": 1
+    },
+    "acts": {
+      "search": 32,
+      "open": 21,
+      "other": 6
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-597/engineer.json",
+    "agent": "engineer",
+    "messages": 601,
+    "calls": 311,
+    "failed": 11,
+    "refused": 1,
+    "skills": [
+      "research/web-search",
+      "engineering/environment"
+    ],
+    "tools": {
+      "filesystem__list_directory": 6,
+      "github__get_issue": 1,
+      "atoma_builtin__load_skill": 2,
+      "search__search_code": 17,
+      "read_multiple_files": 1,
+      "filesystem__read_text_file": 29,
+      "shell__shell_execute": 241,
+      "filesystem__search_files": 1,
+      "web__fetch": 10,
+      "github__get_issue_comments": 1,
+      "filesystem__write_file": 1,
+      "shell__execute": 1
+    },
+    "acts": {
+      "search": 201,
+      "other": 8,
+      "open": 32
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-601/engineer.json",
+    "agent": "engineer",
+    "messages": 54,
+    "calls": 31,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "research/web-search"
+    ],
+    "tools": {
+      "search__search_code": 8,
+      "filesystem__list_directory": 2,
+      "filesystem__read_multiple_files": 1,
+      "filesystem__read_text_file": 6,
+      "atoma_builtin__load_skill": 1,
+      "search__search_issues": 1,
+      "github__get_issue_comments": 1,
+      "web__fetch": 11
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-603/engineer.json",
+    "agent": "engineer",
+    "messages": 12,
+    "calls": 5,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__list_directory": 1,
+      "github__get_issue": 1,
+      "filesystem__read_text_file": 1,
+      "github__get_issue_comments": 1,
+      "shell__shell_execute": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-61-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 4,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-614/engineer.json",
+    "agent": "engineer",
+    "messages": 23,
+    "calls": 10,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem__write_file": 1,
+      "filesystem__list_allowed_directories": 1,
+      "shell__shell_execute": 4,
+      "filesystem__list_directory": 2,
+      "filesystem__get_file_info": 1,
+      "search__search_issues": 1
+    },
+    "acts": {
+      "edit": 2,
+      "other": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-62-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 5,
+    "calls": 2,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-629/engineer.json",
+    "agent": "engineer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "engineering/environment"
+    ],
+    "tools": {
+      "search__search_issues": 1,
+      "atoma_builtin__load_skill": 1,
+      "github__create_issue": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-638/engineer.json",
+    "agent": "engineer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "search__search_issues": 1
+    },
+    "acts": {},
+    "runs": [
+      {
+        "ended": "2026-09-12T19:03:20Z",
+        "ended_because": "completed",
+        "messages": 6,
+        "seconds": 61,
+        "started": "2026-09-12T19:02:19Z"
+      }
+    ]
+  },
+  {
+    "path": "sessions/issue-64-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 5,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__list_directory": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-65-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 8,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__write_file": 1,
+      "shell__shell_set_default_workdir": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-66-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 8,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "shell__shell_execute": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-68-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 8,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_directory": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-7-engineer.json",
+    "agent": "engineer",
+    "messages": 102,
+    "calls": 51,
+    "failed": 16,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__directory_tree": 1,
+      "filesystem__list_allowed_directories": 1,
+      "filesystem__list_directory": 1,
+      "filesystem__read_text_file": 4,
+      "github__get_issue": 1,
+      "shell__shell_execute": 5,
+      "shell__terminal_operate": 26,
+      "filesystem__write_file": 4,
+      "filesystem__edit_file": 2,
+      "shell__terminal_list": 1,
+      "shell__terminal_close": 1,
+      "filesystem__search_files": 2,
+      "github__commit_and_push": 2
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-71-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 23,
+    "calls": 12,
+    "failed": 7,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__directory_tree": 1,
+      "github__get_issue": 1,
+      "shell__shell_execute": 3,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__list_directory": 2,
+      "filesystem_readonly__read_text_file": 2,
+      "filesystem_readonly__read_file": 2
+    },
+    "acts": {
+      "other": 2,
+      "open": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-73-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 8,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_directory": 1,
+      "github__get_issue_comments": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-74-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 31,
+    "calls": 16,
+    "failed": 10,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "shell__shell_set_default_workdir": 1,
+      "shell__shell_execute": 5,
+      "filesystem_readonly__search_files": 1,
+      "filesystem_readonly__list_directory": 1,
+      "github__create_issue": 2,
+      "github__list_issues": 3
+    },
+    "acts": {
+      "other": 3,
+      "search": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-88-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 10,
+    "calls": 5,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__directory_tree": 1,
+      "github__get_issue": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__search_files": 1,
+      "shell__shell_execute": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-89-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 27,
+    "calls": 14,
+    "failed": 9,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "github__get_issue": 1,
+      "shell__shell_execute": 5,
+      "shell__shell_set_default_workdir": 1,
+      "filesystem_readonly__list_directory": 1,
+      "filesystem_readonly__read_text_file": 2,
+      "github__create_issue": 1,
+      "github__get_issue_comments": 1
+    },
+    "acts": {
+      "other": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/issue-92-orchestrator.json",
+    "agent": "orchestrator",
+    "messages": 12,
+    "calls": 5,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_issue": 1,
+      "filesystem_readonly__directory_tree": 1,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "shell__shell_execute": 1,
+      "shell__shell_set_default_workdir": 1
+    },
+    "acts": {
+      "other": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-112-engineer.json",
+    "agent": "engineer",
+    "messages": 104,
+    "calls": 53,
+    "failed": 28,
+    "refused": 1,
+    "skills": [],
+    "tools": {
+      "filesystem__read_text_file": 3,
+      "filesystem__get_file_info": 2,
+      "filesystem__edit_file": 1,
+      "shell__shell_execute": 18,
+      "shell__terminal_operate": 19,
+      "github__commit_and_push": 3,
+      "terminal_operate": 1,
+      "shell__terminal_list": 2,
+      "shell__read_execution_output": 2,
+      "github__get_pr": 1,
+      "github__get_branch": 1
+    },
+    "acts": {
+      "other": 16,
+      "verify": 2
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-112-reviewer.json",
+    "agent": "reviewer",
+    "messages": 29,
+    "calls": 15,
+    "failed": 5,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr": 1,
+      "github__get_pr_diff": 1,
+      "github__get_check_runs": 5,
+      "filesystem_readonly__read_text_file": 2,
+      "filesystem_readonly__list_allowed_directories": 1,
+      "filesystem_readonly__search_files": 2,
+      "github__get_issue_comments": 2,
+      "github__get_pr_reviews": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-143-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-144-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-145-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-146-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-152-reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-153-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-154-reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 8,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__search_files": 2,
+      "filesystem_readonly__read_text_file": 2,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-155-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-161-reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-162-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-163-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-164-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-168-reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-173-reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 6,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 2,
+      "github__get_pr_diff": 2,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-181-reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-203/engineer.json",
+    "agent": "engineer",
+    "messages": 50,
+    "calls": 32,
+    "failed": 4,
+    "refused": 2,
+    "skills": [
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__get_issue": 5,
+      "filesystem__list_directory": 1,
+      "github__get_pr": 1,
+      "github__get_pr_diff": 1,
+      "shell__shell_execute": 11,
+      "filesystem__read_text_file": 4,
+      "github__get_branch": 1,
+      "github__get_check_runs": 1,
+      "github__check_merge_readiness": 1,
+      "github__list_prs": 1,
+      "github__get_pr_reviews": 1,
+      "github__list_pr_review_comments": 1,
+      "github__search_code": 1
+    },
+    "acts": {
+      "other": 6,
+      "open": 5
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-203/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__search_code": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-206/reviewer.json",
+    "agent": "reviewer",
+    "messages": 20,
+    "calls": 6,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-207/reviewer.json",
+    "agent": "reviewer",
+    "messages": 16,
+    "calls": 5,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-208/reviewer.json",
+    "agent": "reviewer",
+    "messages": 13,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-216/reviewer.json",
+    "agent": "reviewer",
+    "messages": 15,
+    "calls": 5,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr": 1,
+      "github__get_pr_diff": 1,
+      "github__get_pr_reviews": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-217/reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-218/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-221/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-223/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-226/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-227/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-230/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-231/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-232/reviewer.json",
+    "agent": "reviewer",
+    "messages": 15,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__get_pr_reviews": 1,
+      "github__get_pr_diff": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-233/reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-234/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-237/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-238/reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-239/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-240/reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-241/engineer.json",
+    "agent": "engineer",
+    "messages": 290,
+    "calls": 151,
+    "failed": 34,
+    "refused": 10,
+    "skills": [
+      "project/conventions",
+      "engineering/tdd",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 3,
+      "github__get_issue": 3,
+      "github__get_pr": 3,
+      "filesystem__list_directory": 3,
+      "shell__shell_execute": 111,
+      "filesystem__read_multiple_files": 1,
+      "filesystem__read_text_file": 7,
+      "github__get_branch": 1,
+      "github__get_check_runs": 1,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 10,
+      "github__get_issue_comments": 1,
+      "github__sync_branch": 2,
+      "shell__write_file": 1,
+      "github__create_issue": 2,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 51,
+      "verify": 6,
+      "edit": 26,
+      "search": 9,
+      "open": 19
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-241/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-242/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__get_pr": 1,
+      "filesystem_readonly__read_file": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-243/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-244/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-245/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-250/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-251/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-252/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-256/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-257/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-258/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-259/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-260/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-261/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-265/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-266/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-267/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-268/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-269/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-270/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-271/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-272/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-273/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-274/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-275/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-276/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-277/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-278/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-279/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-283/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-287/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-288/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-290/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-291/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-295/reviewer.json",
+    "agent": "reviewer",
+    "messages": 65,
+    "calls": 30,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__get_check_runs": 27,
+      "github__get_pr": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-296/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-297/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-298/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-300/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-301/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-302/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-303/reviewer.json",
+    "agent": "reviewer",
+    "messages": 9,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-304/engineer.json",
+    "agent": "engineer",
+    "messages": 253,
+    "calls": 129,
+    "failed": 26,
+    "refused": 6,
+    "skills": [
+      "engineering/debugging",
+      "project/conventions",
+      "delivery/implementation-handoff"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 6,
+      "github__get_pr": 4,
+      "github__get_check_runs": 2,
+      "shell__shell_execute": 104,
+      "filesystem__read_file": 2,
+      "github__commit_and_push": 4,
+      "github__get_branch": 2,
+      "github__sync_branch": 4,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 52,
+      "verify": 6,
+      "search": 26,
+      "open": 20
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-304/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-305/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-308/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-309/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-310/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-311/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-312/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-313/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-314/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-315/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-316/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-318/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-319/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-320/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-321/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-326/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-327/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-328/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-329/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-330/reviewer.json",
+    "agent": "reviewer",
+    "messages": 18,
+    "calls": 6,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "atoma_builtin__load_skill": 2,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-331/reviewer.json",
+    "agent": "reviewer",
+    "messages": 15,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-332/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-334/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-336/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-337/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-338/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-339/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-340/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-341/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-342/reviewer.json",
+    "agent": "reviewer",
+    "messages": 26,
+    "calls": 11,
+    "failed": 2,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "atoma_builtin__load_skill": 2,
+      "filesystem_readonly__read_file": 4,
+      "github__get_check_runs": 2,
+      "github__get_pr": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-343/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-344/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-348/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-349/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-350/reviewer.json",
+    "agent": "reviewer",
+    "messages": 13,
+    "calls": 4,
+    "failed": 4,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__get_pr": 2,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-352/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-354/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-355/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-356/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-358/engineer.json",
+    "agent": "engineer",
+    "messages": 135,
+    "calls": 74,
+    "failed": 11,
+    "refused": 4,
+    "skills": [
+      "project/conventions",
+      "engineering/debugging",
+      "engineering/tdd"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 6,
+      "github__get_pr": 3,
+      "github__get_check_runs": 4,
+      "shell__shell_execute": 49,
+      "filesystem__read_text_file": 4,
+      "web__fetch": 1,
+      "filesystem__edit_file": 1,
+      "github__commit_and_push": 1,
+      "github__get_branch": 2,
+      "github__get_pr_diff": 2,
+      "github__close_issue": 1
+    },
+    "acts": {
+      "other": 10,
+      "verify": 23,
+      "edit": 9,
+      "open": 6,
+      "search": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-358/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-359/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-360/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-361/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-362/engineer.json",
+    "agent": "engineer",
+    "messages": 126,
+    "calls": 67,
+    "failed": 15,
+    "refused": 4,
+    "skills": [
+      "project/conventions"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 6,
+      "github__get_issue": 1,
+      "github__get_pr": 3,
+      "filesystem__read_text_file": 2,
+      "shell__shell_execute": 49,
+      "github__get_check_runs": 2,
+      "filesystem__edit_file": 1,
+      "github__get_pr_diff": 1,
+      "github__commit_and_push": 1,
+      "github__sync_branch": 1
+    },
+    "acts": {
+      "open": 13,
+      "other": 20,
+      "search": 8,
+      "verify": 7,
+      "edit": 1
+    },
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-362/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-363/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-364/reviewer.json",
+    "agent": "reviewer",
+    "messages": 16,
+    "calls": 6,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-365/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-366/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-367/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 5,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-372/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-373/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-375/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-376/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-377/reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-378/reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-379/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 5,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-380/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-381/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-382/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-383/reviewer.json",
+    "agent": "reviewer",
+    "messages": 19,
+    "calls": 7,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 3,
+      "github__merge_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-384/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-385/reviewer.json",
+    "agent": "reviewer",
+    "messages": 7,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-386/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-387/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-391/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-392/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-393/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-394/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-395/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-396/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 5,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-397/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-400/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-401/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-402/reviewer.json",
+    "agent": "reviewer",
+    "messages": 12,
+    "calls": 4,
+    "failed": 1,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-405/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-406/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-407/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-409/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-410/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-411/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-413/reviewer.json",
+    "agent": "reviewer",
+    "messages": 16,
+    "calls": 6,
+    "failed": 3,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 2,
+      "github__get_pr": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-415/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-416/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-418/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-419/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-420/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-421/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-423/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-424/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-425/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-428/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-429/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-431/reviewer.json",
+    "agent": "reviewer",
+    "messages": 11,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-432/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-433/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-434/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-436/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-439/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-440/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-446/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-447/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-448/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-449/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-450/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 2,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "atoma_builtin__load_skill": 2,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-451/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-452/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-454/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-455/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-459/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-460/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-462/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-463/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-465/reviewer.json",
+    "agent": "reviewer",
+    "messages": 14,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-466/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-467/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-472/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-473/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-475/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-476/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-478/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-479/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-480/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-482/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-483/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-484/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-485/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-487/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-488/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-490/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-491/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-493/reviewer.json",
+    "agent": "reviewer",
+    "messages": 69,
+    "calls": 32,
+    "failed": 1,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__get_check_runs": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__read_file": 25,
+      "github__search_code": 1,
+      "github__submit_pr_review": 2
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-494/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-495/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-499/reviewer.json",
+    "agent": "reviewer",
+    "messages": 10,
+    "calls": 3,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-500/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-501/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-503/reviewer.json",
+    "agent": "reviewer",
+    "messages": 20,
+    "calls": 7,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__get_check_runs": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__read_multiple_files": 1,
+      "github__get_pr_reviews": 1,
+      "github__list_pr_review_comments": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-504/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-505/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1,
+      "github__submit_pr_review": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-507/reviewer.json",
+    "agent": "reviewer",
+    "messages": 8,
+    "calls": 2,
+    "failed": 0,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-508/reviewer.json",
+    "agent": "reviewer",
+    "messages": 65,
+    "calls": 30,
+    "failed": 9,
+    "refused": 0,
+    "skills": [
+      "review/quick-quality-gate"
+    ],
+    "tools": {
+      "atoma_builtin__load_skill": 1,
+      "github__check_merge_readiness": 1,
+      "github__get_check_runs": 1,
+      "github__get_pr_diff": 1,
+      "filesystem_readonly__read_multiple_files": 1,
+      "filesystem_readonly__read_file": 22,
+      "github__search_code": 3
+    },
+    "acts": {},
+    "runs": []
+  },
+  {
+    "path": "sessions/pr-510/reviewer.json",
+    "agent": "reviewer",
+    "messages": 6,
+    "calls": 1,
+    "failed": 0,
+    "refused": 0,
+    "skills": [],
+    "tools": {
+      "github__check_merge_readiness": 1
+    },
+    "acts": {},
+    "runs": []
+  }
+]
