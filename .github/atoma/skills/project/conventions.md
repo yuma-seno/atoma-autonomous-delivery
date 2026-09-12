@@ -30,7 +30,7 @@ which rules apply:
   else, and it applies as soon as it merges.
 
 The rest of this file does not separate them cleanly. That is a known gap, tracked
-in #323; until then, read each rule and ask which of the two it is about.
+in the documentation restructure; until then, read each rule and ask which of the two it is about.
 
 `src/atoma/**` is mirrored verbatim into `dist/.github/atoma/` and from there
 into an adopter's repository. **It may only contain content that holds for any
