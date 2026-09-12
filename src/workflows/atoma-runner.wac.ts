@@ -89,7 +89,7 @@ const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt it
 // places to move the pin, and the pin is coupled to `tools/tools.yaml`, to
 // `agent-definitions/*.md` and to the repository's secrets.
 
-// Deployed-repo-relative paths into the `.github/atoma/` content tree (see
+// Deployed-repo-relative paths into the ` .github/atoma/` content tree (see
 // src/atoma/ -- config.json, agent-definitions/, tools/tools.yaml).
 // Referenced from three separate steps below (prepare/run/dispatch-next);
 // centralized here so they can't drift from each other by typo.
@@ -108,7 +108,7 @@ const RELOAD_COUNT_INPUT_DESC = "How many times this work has already rebuilt it
  * here.
  *
  * A change to the machinery is therefore not exercised by its own review. That
- * is the intent rather than a loss: `.github/**` is governed, so a person reads
+ * is the intent rather than a loss: ` .github/**` is governed, so a person reads
  * that diff, and CI still runs the pull request's own checks.
  */
 const MACHINERY_DIR = "atoma-machinery";
@@ -125,7 +125,7 @@ const MACHINERY_DIR = "atoma-machinery";
  *     ?? atoma-machinery/
  *
  * Which meant `git add -A` committing it as a dangling gitlink with no
- * `.gitmodules`, and `create_pr` refusing for a dirty worktree. `.gitignore` in
+ * `.gitmodules`, and `create_pr` refusing for a dirty worktree. ` .gitignore` in
  * this repository already carries `atoma-src/` with a comment describing exactly
  * that failure -- the same shape, found once, and `atoma-machinery/` was never
  * added beside it. An adopter has neither, so it happened to all of them.
@@ -144,11 +144,11 @@ const MACHINERY_ABS = "\${RUNNER_TEMP}/atoma-machinery";
 /** The same directory, as shell -- the job exports it so every step agrees. */
 const MACHINERY = "${ATOMA_MACHINERY_ROOT}";
 
-const ORCHESTRATION_FILE = ".github/atoma/config.json";
-const AGENT_DEF_DIR = ".github/atoma/agent-definitions";
-const PROMPT_TEMPLATE = ".github/atoma/prompt-template.md";
-const SKILLS_DIR = ".github/atoma/skills";
-const TOOLS_FILE = ".github/atoma/tools/tools.yaml";
+const ORCHESTRATION_FILE = " .github/atoma/config.json";
+const AGENT_DEF_DIR = " .github/atoma/agent-definitions";
+const PROMPT_TEMPLATE = " .github/atoma/prompt-template.md";
+const SKILLS_DIR = " .github/atoma/skills";
+const TOOLS_FILE = " .github/atoma/tools/tools.yaml";
 
 /**
  * The OS user every tool server runs as.
@@ -216,7 +216,7 @@ echo "cache_key=atoma-reranker-$(echo "\${MODEL}" | tr '/:' '--')" >> "$GITHUB_O
  * to the repository root, which had two costs:
  *
  *   - the engineer's `git add -A` committed them, so an adopter had to add five
- *     lines to `.gitignore` before anything worked. Skip it and `create_pr` --
+ *     lines to ` .gitignore` before anything worked. Skip it and `create_pr` --
  *     which requires a clean worktree -- refused every time, with nothing naming
  *     the cause.
  *   - "everything in the work tree is a deliverable" was not true, so it could not
@@ -291,7 +291,7 @@ const resolveIssueBranchStep = new TypedOutputsStep(
 );
 // Hook scripts named by `tools.yaml`. Atoma resolves a relative hook path
 // against the directory holding that file, so these two have to agree.
-const TOOL_HOOKS_DIR = ".github/atoma/tools/scripts/hooks";
+const TOOL_HOOKS_DIR = " .github/atoma/tools/scripts/hooks";
 
 // Every input this workflow takes is spliced into shell TEXT somewhere below:
 // `AGENT="${{ inputs.agent }}"`, `BRANCH="atoma/issue-${{ inputs.number }}"`,
@@ -1367,14 +1367,14 @@ fi
   // No separate "install MCP server dependencies" step needed: build-dist.ts
   // bundles every script (via Bun.build) with all its imports -- including
   // npm dependencies like @modelcontextprotocol/sdk -- inlined
-  // into a single self-contained file, so the deployed `.github/atoma/tools/scripts/**`
+  // into a single self-contained file, so the deployed ` .github/atoma/tools/scripts/**`
   // needs no package.json/node_modules/bun install at all.
   environmentSetupStep(),
   new TypedOutputsStep({
     name: "Configure git identity",
     shell: "bash",
     run: `git config user.name "atoma-\${{ inputs.agent }}"
-git config user.email "atoma-\${{ inputs.agent }}@users.noreply.github.com"
+git config user.email "atoma-\${{ inputs.agent }}@users.noreply .github.com"
 `,
   }),
   notifyStep,

@@ -1,19 +1,19 @@
 /**
  * deployment-contract.test.ts — every static Atoma file reaches the deployed
- * `.github/`.
+ * ` .github/`.
  *
- * A repository adopts the deliverable by copying it over its own `.github/`:
+ * A repository adopts the deliverable by copying it over its own ` .github/`:
  *
  *     cp -r dist/.github/..github/
  *
- * So a file that exists only under `.github/` is not part of the deliverable at
+ * So a file that exists only under ` .github/` is not part of the deliverable at
  * all. It keeps working wherever it already sits and is simply missing
  * everywhere else, which leaves no diff and so cannot be caught in review. That
  * is the failure this file exists to make loud, and it is why the check is
  * against `src/atoma/` and `build-dist.ts` rather than against any deployed
  * tree.
  *
- * This already happened: a PR added `.github/atoma/mcp-packages.json` by hand
+ * This already happened: a PR added ` .github/atoma/mcp-packages.json` by hand
  * without adding it to `src/atoma/` or to build-dist.ts's copy list, while
  * switching tools.yaml to a binary that only that file installs.
  */
@@ -57,7 +57,7 @@ function walk(dir: string): string[] {
 
 describe("deployment contract", () => {
   // `src/atoma/` is the deliverable, mirrored 1:1 into `dist/.github/atoma/`
-  // and from there into an adopter's own `.github/`. Anything that exists to
+  // and from there into an adopter's own ` .github/`. Anything that exists to
   // develop THIS repository belongs outside it, which is why these contract
   // tests live under `tests/`.
   //

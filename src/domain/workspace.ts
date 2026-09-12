@@ -12,7 +12,7 @@
  * workspace is checked out fresh in a new job every time, so committed was the only
  * thing that survived. It cost three things: working files in the pull request for
  * a person to read past, build output and leftovers arriving the same way, and an
- * adopter needing five `.gitignore` lines before anything worked (since removed, the
+ * adopter needing five ` .gitignore` lines before anything worked (since removed, the
  * third).
  *
  * ## Why not a pair of tools

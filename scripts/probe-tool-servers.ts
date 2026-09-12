@@ -133,7 +133,7 @@ async function probe(): Promise<number> {
   say("2. put the machinery where a run puts it");
   await Bun.$`rm -rf ${MACHINERY}`.quiet();
   await Bun.$`mkdir -p ${MACHINERY}`.quiet();
-  await Bun.$`cp -r.github ${MACHINERY}/.github`.quiet();
+  await Bun.$`cp -r .github ${MACHINERY}/.github`.quiet();
   // The runner sets these on every run rather than trusting the checkout: the mode
   // is decided wherever the repository was committed from. `before_tool` is
   // fail-closed, so a hook that cannot start denies the tool outright.

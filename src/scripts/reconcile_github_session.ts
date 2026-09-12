@@ -331,7 +331,7 @@ function main(): void {
 
   const session: Session = existsSync(values.session) ? JSON.parse(readFileSync(values.session, "utf8")) : { messages: [] };
   const events = JSON.parse(readFileSync(values.events, "utf8")) as GithubEvent[];
-  const config: SharedContextConfig = values.config && existsSync(values.config) ? JSON.parse(readFileSync(values.config, "utf8")) : {};
+  const config: SharedContextConfig = values .config && existsSync(values .config) ? JSON.parse(readFileSync(values .config, "utf8")) : {};
 
   const { mergedSession, changedCount, snapshotHash, eventCount } = reconcileGithubSession(
     session,

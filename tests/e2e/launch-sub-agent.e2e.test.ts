@@ -72,7 +72,7 @@ You are a test orchestrator agent.
         outSessionPath: join(dir, "session.json"),
         env: {
 ...fakeGh.env,
-          // dispatchSubAgent reads.github/atoma/config.json relative to this
+          // dispatchSubAgent reads .github/atoma/config.json relative to this
           // test's cwd (the repository root).
           OPENAI_BASE_URL: mock.url,
           OPENAI_API_KEY: "dummy-test-key",

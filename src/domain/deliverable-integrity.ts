@@ -1,5 +1,5 @@
 /**
- * deliverable-integrity.ts — whether the `.github/atoma/` a pull request would
+ * deliverable-integrity.ts — whether the ` .github/atoma/` a pull request would
  * merge is internally consistent, decided from its content and nothing else.
  *
  * ## What this is for
@@ -157,7 +157,7 @@ export interface DeliverableFacts {
   readonly config: unknown;
   /** Agent names available, one per `agent-definitions/<name>.md`. */
   readonly agentNames: readonly string[];
-  /** File names present in `.github/workflows/`, e.g. `atoma-check.yml`. */
+  /** File names present in ` .github/workflows/`, e.g. `atoma-check.yml`. */
   readonly workflowFiles: readonly string[];
 }
 
@@ -245,7 +245,7 @@ export function configProblems(facts: DeliverableFacts): string[] {
       }
     }
   } else {
-    problems.push("No agent definitions were found. `.github/atoma/agent-definitions/*.md` is empty or missing.");
+    problems.push("No agent definitions were found. ` .github/atoma/agent-definitions/*.md` is empty or missing.");
   }
 
   // ── the two workflows a dispatch names ────────────────────────────────────
@@ -265,7 +265,7 @@ export function configProblems(facts: DeliverableFacts): string[] {
       const effective = configured || fallback;
       if (!present.has(effective)) {
         problems.push(
-          `\`workflows.${kind}\` resolves to '${effective}', which is not a file in.github/workflows/. ` +
+          `\`workflows.${kind}\` resolves to '${effective}', which is not a file in .github/workflows/. ` +
             (configured ? "Check the name." : "The shipped default is missing from this repository."),
         );
       }

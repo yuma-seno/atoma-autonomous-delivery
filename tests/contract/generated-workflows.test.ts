@@ -383,7 +383,7 @@ describe("generated workflows", () => {
    *
    * The session, the fetched events, the ops log and the agent's stdout and stderr
    * used to be written to the repository root. That cost an adopter five
-   * `.gitignore` lines as a precondition -- skip them and the engineer's
+   * ` .gitignore` lines as a precondition -- skip them and the engineer's
    * `git add -A` committed the session and logs, then `create_pr` refused for a
    * dirty worktree, every time, with nothing naming the cause.
    *
@@ -515,7 +515,7 @@ describe("generated workflows", () => {
    * `?? atoma-machinery/` -- which meant `git add -A` committing it as a dangling
    * gitlink with no `.gitmodules`, and `create_pr` refusing for a dirty worktree.
    *
-   * `.gitignore` in this repository already carries `atoma-src/` with a comment
+   * ` .gitignore` in this repository already carries `atoma-src/` with a comment
    * describing exactly that failure. Same shape, found once, and
    * `atoma-machinery/` was never added beside it -- and an adopter has neither
    * line, so it happened to every one of them.
@@ -662,7 +662,7 @@ describe("generated workflows", () => {
       const workflow = Bun.YAML.parse(readFileSync(join(directory, name), "utf8")) as WorkflowDocument;
       for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
         const steps = job.steps ?? [];
-        const firstScript = steps.findIndex((step) => step.run?.includes(".github/scripts/"));
+        const firstScript = steps.findIndex((step) => step.run?.includes(" .github/scripts/"));
         if (firstScript === -1) continue;
 
         const checkout = steps.findIndex((step) => step.uses?.startsWith("actions/checkout@"));
@@ -877,7 +877,7 @@ describe("generated workflows", () => {
     expect(machineryCheckout?.with?.ref).toContain("default_branch");
     expect(setter?.run, "the setter must be what moves that checkout").toContain("mv \"atoma-machinery\"");
 
-    // Nothing runs a script from the workspace. A bare `.github/scripts/` would
+    // Nothing runs a script from the workspace. A bare ` .github/scripts/` would
     // be the pull request's copy.
     for (const step of steps) {
       const run = step.run ?? "";
@@ -916,7 +916,7 @@ describe("generated workflows", () => {
     const workflow = readFileSync("dist/.github/workflows/atoma-runner.yml", "utf8");
     // The deployed path, not the bare filename: the install step also names the
     // file in prose when it is absent, and a message is not a read.
-    for (const path of [".github/atoma/mcp-packages.json", ".github/atoma/tools/scripts/hooks"]) {
+    for (const path of [" .github/atoma/mcp-packages.json", " .github/atoma/tools/scripts/hooks"]) {
       const reads = workflow.split(/\r?\n/).filter((l) => l.includes(path));
       expect(reads.length, `${path} must still be referenced at all`).toBeGreaterThan(0);
       for (const line of reads) {
@@ -988,7 +988,7 @@ describe("generated workflows", () => {
    *
    * This was once `ubuntu-latest` hardcoded in eleven files, unreachable from
    * `config.json` -- and unfixable by an agent, because the fix is in
-   * `.github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
+   * ` .github/workflows/**`, the one place `GITHUB_TOKEN` cannot write.
    */
   test("the jobs that run a project's commands take their runner from configuration", () => {
     type WorkflowDocument = { jobs?: Record<string, { "runs-on"?: unknown; needs?: unknown }> };

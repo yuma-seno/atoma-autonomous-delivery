@@ -87,7 +87,7 @@ export function reloadRefusal(soFar: number, limit: number): string | undefined 
     `unbounded chain of them is an unbounded chain of runs. ` +
     `Report what you found instead -- say which dependency or tool is missing and what you were trying to do -- ` +
     `and a person can decide. If the answer is a system package, it belongs in ` +
-    `\`environment.setup_commands\` in.github/atoma/config.json, which needs a human merge either way.`
+    `\`environment.setup_commands\` in .github/atoma/config.json, which needs a human merge either way.`
   );
 }
 

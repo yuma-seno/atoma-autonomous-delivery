@@ -216,7 +216,7 @@ rm -f "$BUNDIR/gh-probe" 2>/dev/null || true
 # `~/.config/gh/hosts.yml` instead. Asked rather than assumed, because the answer
 # decides whether traversal needs to be narrowed to the work path alone.
 say "8. credential-bearing files under a traversable HOME"
-for f in.config/gh/hosts.yml.netrc.git-credentials.npmrc.docker/config.json.gitconfig; do
+for f in .config/gh/hosts.yml .netrc.git-credentials .npmrc.docker/config.json .gitconfig; do
   target="$HOME/$f"
   if [ -e "$target" ]; then
     result "home_file_${f//[\/.]/_}" "$(stat -L -c '%A' "$target") readable_by_isolated=$(sudo -u isolated sh -c "cat '$target' >/dev/null 2>&1 && echo yes || echo no")"
